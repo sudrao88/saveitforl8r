@@ -1,0 +1,7 @@
+{
+  "name": "JotItDown",
+  "description": "A context-aware personal Second Brain that captures, enriches, and retrieves memories without hallucination.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}

@@ -1,0 +1,15 @@
+
+self.addEventListener('install', () => {
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    self.registration.unregister()
+      .then(() => self.clients.matchAll())
+      .then((clients) => {
+        // Force reload to ensure index.html is served fresh from network
+        clients.forEach(client => client.navigate(client.url));
+      })
+  );
+});
