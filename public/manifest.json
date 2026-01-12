@@ -1,13 +1,13 @@
 {
   "name": "SaveItForL8r",
   "short_name": "SaveItForL8r",
-  "start_url": "/",
+  "start_url": "./",
   "display": "standalone",
   "background_color": "#111827",
   "theme_color": "#111827",
   "icons": [
     {
-      "src": "/icon.svg",
+      "src": "icon.svg",
       "type": "image/svg+xml",
       "sizes": "512x512"
     }
