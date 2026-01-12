@@ -1,7 +1,5 @@
 {
-  "name": "JotItDown",
-  "description": "A context-aware personal Second Brain that captures, enriches, and retrieves memories without hallucination.",
-  "requestFramePermissions": [
-    "geolocation"
-  ]
+  "name": "SaveItForL8r",
+  "description": "Your AI-powered second brain for capturing and recalling thoughts, links, and media.",
+  "icon": "icon.svg"
 }

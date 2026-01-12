@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Search, Filter, X, Tag, Tv, BookOpen, ShoppingBag, Music, Layers } from 'lucide-react';
+import { Plus, Search, Filter, X, Tag, Tv, BookOpen, ShoppingBag, Music, Layers, LogOut } from 'lucide-react';
 import InputBuffer from './components/InputBuffer.tsx';
 import MemoryCard from './components/MemoryCard.tsx';
 import ChatInterface from './components/ChatInterface.tsx';
@@ -25,6 +25,7 @@ const App: React.FC = () => {
   const [memories, setMemories] = useState<Memory[]>([]);
   const [isCaptureOpen, setIsCaptureOpen] = useState(false);
   const [apiKeySet, setApiKeySet] = useState(false);
+  const [inputApiKey, setInputApiKey] = useState('');
   
   // Filter State
   const [filterType, setFilterType] = useState<string | null>(null);
@@ -39,31 +40,20 @@ const App: React.FC = () => {
     refreshMemories();
 
     const checkKey = async () => {
-        const localAccess = localStorage.getItem('jotitdown_access');
-
-        if ((window as any).aistudio) {
-            try {
-                const hasKey = await (window as any).aistudio.hasSelectedApiKey();
-                if (hasKey) {
-                    setApiKeySet(true);
-                    localStorage.setItem('jotitdown_access', 'true');
-                    return;
-                }
-            } catch (e) {
-                console.log("AI Studio check failed", e);
-            }
-        } 
-        
-        if (process.env.API_KEY) {
-            setApiKeySet(true);
-            localStorage.setItem('jotitdown_access', 'true');
-        } else if (localAccess === 'true') {
-            // Allow access if previously authenticated
+        const storedKey = localStorage.getItem('gemini_api_key');
+        if (storedKey) {
             setApiKeySet(true);
         }
     };
     checkKey();
   }, []);
+
+  const clearKey = () => {
+    localStorage.removeItem('gemini_api_key');
+    localStorage.removeItem('saveitforl8r_access');
+    setApiKeySet(false);
+    setInputApiKey('');
+  };
 
   const handleDelete = async (id: string) => {
     setMemories(prev => prev.map(m => m.id === id ? { ...m, isDeleting: true } : m));
@@ -178,28 +168,37 @@ const App: React.FC = () => {
   if (!apiKeySet) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-900 p-4">
-        <div className="max-w-md text-center bg-gray-800 p-8 rounded-3xl shadow-xl border border-gray-700">
+        <div className="max-w-md text-center bg-gray-800 p-8 rounded-3xl shadow-xl border border-gray-700 w-full">
           <div className="w-20 h-20 mx-auto mb-6 shadow-lg rounded-2xl overflow-hidden">
              <Logo className="w-full h-full" />
           </div>
-          <h1 className="text-3xl font-black text-white mb-4 tracking-tight">Access JotItDown</h1>
-          <p className="text-gray-400 mb-8 leading-relaxed">Please authenticate with your AI Studio credentials to enable multimodal knowledge capture.</p>
-          {(window as any).aistudio && (
-            <button 
-              onClick={async () => {
-                try {
-                  await (window as any).aistudio.openSelectKey();
-                  setApiKeySet(true);
-                  localStorage.setItem('jotitdown_access', 'true');
-                } catch(e) {
-                  console.error(e);
-                }
-              }}
-              className="w-full bg-blue-600 text-white px-6 py-4 rounded-2xl hover:bg-blue-700 transition-all font-bold shadow-lg shadow-blue-900/50"
-            >
-              Connect API Key
-            </button>
-          )}
+          <h1 className="text-3xl font-black text-white mb-4 tracking-tight">Access SaveItForL8r</h1>
+          <p className="text-gray-400 mb-8 leading-relaxed">Please enter your Gemini API Key to enable multimodal knowledge capture.</p>
+          
+          <div className="space-y-4">
+             <input 
+                type="password"
+                value={inputApiKey}
+                onChange={(e) => setInputApiKey(e.target.value)}
+                placeholder="Enter Gemini API Key"
+                className="w-full bg-gray-700 text-white px-4 py-3 rounded-xl border border-gray-600 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+             />
+             <button 
+               onClick={() => {
+                 if (inputApiKey.trim()) {
+                   localStorage.setItem('gemini_api_key', inputApiKey.trim());
+                   setApiKeySet(true);
+                 }
+               }}
+               className="w-full bg-blue-600 text-white px-6 py-4 rounded-2xl hover:bg-blue-700 transition-all font-bold shadow-lg shadow-blue-900/50 disabled:opacity-50 disabled:cursor-not-allowed"
+               disabled={!inputApiKey.trim()}
+             >
+               Connect API Key
+             </button>
+             <p className="text-xs text-gray-500 mt-4">
+                Don't have a key? <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">Get one here</a>
+             </p>
+          </div>
         </div>
       </div>
     );
@@ -217,7 +216,7 @@ const App: React.FC = () => {
                 onClick={() => { setFilterType(null); setFilterTag(null); setView(ViewMode.FEED); }}
               >
                 <Logo className="w-8 h-8 rounded-lg shadow-sm" />
-                <span className="hidden sm:inline">JotItDown</span>
+                <span className="hidden sm:inline">SaveItForL8r</span>
               </div>
               <div 
                 onClick={() => setView(ViewMode.RECALL)}
@@ -226,6 +225,14 @@ const App: React.FC = () => {
                 <Search size={18} className="text-gray-500 group-hover:text-blue-400" />
                 <span className="text-gray-400 font-medium text-sm sm:text-base truncate">Search your second brain...</span>
               </div>
+
+              <button
+                onClick={clearKey}
+                className="p-2.5 text-gray-500 hover:text-red-400 hover:bg-red-900/20 rounded-xl transition-colors shrink-0"
+                title="Clear API Key"
+              >
+                <LogOut size={20} />
+              </button>
             </div>
           </nav>
 
@@ -290,7 +297,7 @@ const App: React.FC = () => {
                     <p className="text-gray-400 max-w-md text-lg leading-relaxed mb-8">
                     Capture thoughts, links, and images. 
                     <br className="hidden sm:block" />
-                    JotItDown organizes them for you.
+                    SaveItForL8r organizes them for you.
                     </p>
                     <div className="fixed bottom-28 right-8 sm:bottom-32 sm:right-24 z-10 animate-bounce pointer-events-none opacity-50 sm:opacity-100">
                         <svg width="100" height="100" viewBox="0 0 100 100" fill="none" className="text-gray-600 rotate-12 drop-shadow-sm">

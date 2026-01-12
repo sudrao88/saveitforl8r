@@ -1,7 +1,7 @@
 
 import { Memory } from '../types.ts';
 
-const DB_NAME = 'JotItDownDB';
+const DB_NAME = 'SaveItForL8rDB';
 const STORE_NAME = 'memories';
 const DB_VERSION = 1;
 

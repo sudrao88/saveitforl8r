@@ -3,8 +3,10 @@ import { GoogleGenAI, Type, HarmCategory, HarmBlockThreshold } from "@google/gen
 import { EnrichmentData, Memory, Attachment } from '../types.ts';
 
 const getAiClient = () => {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) throw new Error("API Key not found in environment");
+  // STRICT REQUIREMENT: Only use user-provided API key from storage.
+  // Do NOT fallback to process.env.API_KEY
+  const apiKey = localStorage.getItem('gemini_api_key');
+  if (!apiKey) throw new Error("API Key not found in storage");
   return new GoogleGenAI({ apiKey });
 };
 
@@ -176,7 +178,7 @@ export const queryBrain = async (query: string, memories: Memory[]): Promise<{ a
   `).join("\n---\n");
 
   const systemInstruction = `
-    You are JotItDown. Answer based ONLY on context. 
+    You are SaveItForL8r. Answer based ONLY on context. 
     Format: Conversational. 
     End with: [[SOURCE_IDS: id1, id2]].
   `;

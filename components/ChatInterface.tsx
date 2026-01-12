@@ -57,7 +57,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose }) => {
           <div className="h-full flex flex-col items-center justify-center text-center max-w-sm mx-auto opacity-50">
             <Bot size={48} className="text-blue-500 mb-6" />
             <h3 className="text-xl font-bold text-gray-100 mb-2">Neural Retrieval</h3>
-            <p className="text-sm text-gray-400 leading-relaxed">JotItDown synthesizes answers using only your captured memories.</p>
+            <p className="text-sm text-gray-400 leading-relaxed">SaveItForL8r synthesizes answers using only your captured memories.</p>
           </div>
         )}
 
