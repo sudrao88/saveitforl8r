@@ -25,7 +25,7 @@ const openDB = (): Promise<IDBDatabase> => {
 export const getMemories = async (): Promise<Memory[]> => {
   try {
     const db = await openDB();
-    return new Promise((resolve, reject) => {
+    return await new Promise((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, 'readonly');
       const store = tx.objectStore(STORE_NAME);
       const request = store.getAll();
@@ -48,7 +48,7 @@ export const getMemories = async (): Promise<Memory[]> => {
 export const getMemory = async (id: string): Promise<Memory | null> => {
   try {
     const db = await openDB();
-    return new Promise((resolve, reject) => {
+    return await new Promise((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, 'readonly');
       const store = tx.objectStore(STORE_NAME);
       const request = store.get(id);
