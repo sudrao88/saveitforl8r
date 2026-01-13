@@ -1,5 +1,5 @@
 # Stage 1: Build
-FROM node:18-alpine as build
+FROM node:20-alpine as build
 WORKDIR /app
 COPY package*.json ./
 # Use npm install instead of ci to tolerate potential lockfile name mismatches after renaming
@@ -9,8 +9,8 @@ RUN npm run build
 
 # Stage 2: Serve
 FROM nginx:alpine
-# Copy build output to /launch subfolder to match the URL structure
-COPY --from=build /app/dist /usr/share/nginx/html/launch
+# Copy build output to the root html folder since we are serving from root now
+COPY --from=build /app/dist /usr/share/nginx/html
 # Copy custom nginx config
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 8080

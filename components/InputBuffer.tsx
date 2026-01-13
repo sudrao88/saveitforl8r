@@ -91,17 +91,24 @@ const InputBuffer: React.FC<InputBufferProps> = ({ isOpen, onClose, onMemoryCrea
       let location: { latitude: number; longitude: number; accuracy?: number } | undefined;
       try {
         if (navigator.geolocation) {
-            const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
-                navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
-            });
-            location = {
-                latitude: pos.coords.latitude,
-                longitude: pos.coords.longitude,
-                accuracy: pos.coords.accuracy
-            };
+            // Add a timeout to geolocation to prevent hanging
+            const pos = await Promise.race([
+                new Promise<GeolocationPosition>((resolve, reject) => {
+                    navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
+                }),
+                new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000))
+            ]) as GeolocationPosition | null;
+
+            if (pos) {
+                location = {
+                    latitude: pos.coords.latitude,
+                    longitude: pos.coords.longitude,
+                    accuracy: pos.coords.accuracy
+                };
+            }
         }
       } catch (e) {
-        console.warn("Location access denied or unavailable");
+        console.warn("Location access denied or unavailable", e);
       }
 
       // 2. Create Initial Memory Object (Pending State)
@@ -151,7 +158,7 @@ const InputBuffer: React.FC<InputBufferProps> = ({ isOpen, onClose, onMemoryCrea
 
     } catch (error) {
         console.error("Error creating memory:", error);
-        setIsProcessing(false); // Only reset if initial save failed and we didn't close
+        setIsProcessing(false); 
         alert("Failed to save memory. Please try again.");
     }
   };
