@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Search, Filter, X, Tag, Tv, BookOpen, ShoppingBag, Music, Layers, LogOut } from 'lucide-react';
+import { Plus, Search, Filter, X, Tag, Tv, BookOpen, ShoppingBag, Music, Layers, KeyOff, AlertTriangle } from 'lucide-react';
 import InputBuffer from './components/InputBuffer.tsx';
 import MemoryCard from './components/MemoryCard.tsx';
 import ChatInterface from './components/ChatInterface.tsx';
@@ -26,7 +26,8 @@ const App: React.FC = () => {
   const [isCaptureOpen, setIsCaptureOpen] = useState(false);
   const [apiKeySet, setApiKeySet] = useState(false);
   const [inputApiKey, setInputApiKey] = useState('');
-  
+  const [isClearKeyDialogOpen, setIsClearKeyDialogOpen] = useState(false);
+
   // Filter State
   const [filterType, setFilterType] = useState<string | null>(null);
   const [filterTag, setFilterTag] = useState<string | null>(null);
@@ -53,6 +54,7 @@ const App: React.FC = () => {
     localStorage.removeItem('saveitforl8r_access');
     setApiKeySet(false);
     setInputApiKey('');
+    setIsClearKeyDialogOpen(false);
   };
 
   const handleDelete = async (id: string) => {
@@ -227,11 +229,11 @@ const App: React.FC = () => {
               </div>
 
               <button
-                onClick={clearKey}
+                onClick={() => setIsClearKeyDialogOpen(true)}
                 className="p-2.5 text-gray-500 hover:text-red-400 hover:bg-red-900/20 rounded-xl transition-colors shrink-0"
                 title="Clear API Key"
               >
-                <LogOut size={20} />
+                <KeyOff size={20} />
               </button>
             </div>
           </nav>
@@ -357,6 +359,48 @@ const App: React.FC = () => {
           memories={filteredMemories.filter(m => !m.isDeleting)} 
           onClose={() => setView(ViewMode.FEED)} 
         />
+      )}
+
+      {/* Clear Key Dialog */}
+      {isClearKeyDialogOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="bg-gray-800 border border-gray-700 rounded-3xl p-6 max-w-md w-full shadow-2xl relative">
+            <button 
+              onClick={() => setIsClearKeyDialogOpen(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors"
+            >
+              <X size={20} />
+            </button>
+            
+            <div className="flex flex-col items-center text-center">
+              <div className="w-16 h-16 bg-yellow-900/20 rounded-2xl flex items-center justify-center mb-4 text-yellow-500">
+                <AlertTriangle size={32} />
+              </div>
+              
+              <h3 className="text-xl font-bold text-white mb-2">Clear API Key?</h3>
+              <p className="text-gray-400 mb-6 leading-relaxed">
+                This will remove the API key from this device. 
+                <br/>
+                <span className="font-semibold text-gray-300">Your data will NOT be deleted</span>, but you will need to re-enter a key to access it again.
+              </p>
+              
+              <div className="flex gap-3 w-full">
+                <button
+                  onClick={() => setIsClearKeyDialogOpen(false)}
+                  className="flex-1 px-4 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-xl font-bold transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={clearKey}
+                  className="flex-1 px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold transition-colors shadow-lg shadow-red-900/30"
+                >
+                  Clear Key
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

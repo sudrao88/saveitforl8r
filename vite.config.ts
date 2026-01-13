@@ -7,7 +7,7 @@ export default defineConfig(({ mode }) => {
     return {
       base: '/',
       server: {
-        port: Number(process.env.PORT) || 3000,
+        port: 9000,
         host: '0.0.0.0',
         allowedHosts: true, // Allow all hosts for cloud environments
       },
