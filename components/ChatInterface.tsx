@@ -20,7 +20,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose }) => {
 
   // Viewport management for iOS keyboard handling
   const [viewportStyle, setViewportStyle] = useState<{ height: string; top: number }>({
-    height: '100%', 
+    height: '100dvh', // Default to dynamic viewport height
     top: 0
   });
 
@@ -30,18 +30,22 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose }) => {
     document.body.style.overflow = 'hidden';
 
     const handleVisualViewport = () => {
-      if (!window.visualViewport) return;
-      
-      // Update dimensions to match the visual viewport exactly
-      setViewportStyle({
-        height: `${window.visualViewport.height}px`,
-        top: window.visualViewport.offsetTop
-      });
-
-      // Ensure active element is in view if needed, but the layout resize usually handles it.
-      // We can also scroll the message list to bottom if the keyboard appeared
-      if (scrollRef.current) {
-        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      // If visualViewport API is supported (modern mobile browsers)
+      if (window.visualViewport) {
+        setViewportStyle({
+          height: `${window.visualViewport.height}px`,
+          top: window.visualViewport.offsetTop
+        });
+        
+        // Ensure scrolling to bottom if needed when viewport resizes (e.g., keyboard opens)
+        if (scrollRef.current) {
+          // Small delay to ensure layout is done
+          setTimeout(() => {
+              if (scrollRef.current) {
+                  scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+              }
+          }, 100);
+        }
       }
     };
 
@@ -80,8 +84,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose }) => {
       setMessages(prev => [...prev, { role: 'model', text: "Sorry, I encountered an error searching your memories." }]);
     } finally {
       setIsLoading(false);
-      // Refocus input after sending (optional, might dismiss keyboard on mobile if we are not careful, 
-      // usually keeping focus is good for chat)
+      // Refocus input after sending to keep keyboard up for chat flow
       if (inputRef.current) {
         inputRef.current.focus();
       }
@@ -92,15 +95,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose }) => {
 
   return (
     <div 
-      className="fixed left-0 right-0 z-[60] bg-gray-900 flex flex-col"
+      className="fixed left-0 right-0 z-[60] bg-gray-900 flex flex-col overflow-hidden"
       style={{ 
         height: viewportStyle.height, 
         top: viewportStyle.top,
-        // Ensure it sits above everything
       }}
     >
       {/* Header */}
-      <div className="flex-none border-b border-gray-800 px-6 py-4 flex items-center justify-between bg-gray-900/95 backdrop-blur-md z-10">
+      <div className="flex-none border-b border-gray-800 px-6 py-4 flex items-center justify-between bg-gray-900 z-10">
           <div className="flex items-center gap-2">
              <Bot size={24} className="text-blue-500" />
              <h2 className="text-lg font-bold text-gray-100">Brain Search</h2>
@@ -109,7 +111,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose }) => {
       </div>
 
       {/* Messages Area - Flex 1 to take available space */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 md:px-20 lg:px-64 space-y-6 bg-gray-900">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 md:px-20 lg:px-64 space-y-6 bg-gray-900 overscroll-contain">
         {messages.length === 0 && (
           <div className="h-full flex flex-col items-center justify-center text-center max-w-sm mx-auto opacity-50 px-4">
             <Bot size={48} className="text-blue-500 mb-6" />

@@ -33,10 +33,10 @@ const TopNavigation: React.FC<TopNavigationProps> = ({ setView, resetFilters, on
 
           <button
             onClick={onSettingsClick}
-            className="p-2.5 text-gray-500 hover:text-white hover:bg-gray-800 rounded-xl transition-colors shrink-0"
+            className="flex items-center justify-center bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-gray-600 transition-all rounded-xl p-2.5 text-gray-400 hover:text-white group shrink-0"
             title="Settings"
           >
-            <Settings size={20} />
+            <Settings size={20} className="text-gray-500 group-hover:text-white" />
           </button>
         </div>
       </div>
