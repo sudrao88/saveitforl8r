@@ -1,9 +1,9 @@
 #!/bin/bash
 set -e
 
-# Check if gcloud is authenticated
-if ! gcloud auth print-identity > /dev/null 2>&1; then
-  echo "Error: gcloud is not authenticated."
+# Check if gcloud is authenticated by trying to list the active account
+if ! gcloud auth list --filter=status:ACTIVE --format="value(account)" > /dev/null 2>&1; then
+  echo "Error: No active account found in gcloud."
   echo "Please run 'gcloud auth login' and then try this script again."
   exit 1
 fi
