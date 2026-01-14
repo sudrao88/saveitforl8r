@@ -10,6 +10,7 @@ const getAiClient = () => {
   return new GoogleGenAI({ apiKey });
 };
 
+// Define schema using the SDK's types strictly
 const enrichmentSchema = {
   type: Type.OBJECT,
   properties: {
@@ -26,7 +27,8 @@ const enrichmentSchema = {
         latitude: { type: Type.NUMBER },
         longitude: { type: Type.NUMBER },
         mapsUri: { type: Type.STRING, description: "Direct Google Maps URL for the specific place found." }
-      }
+      },
+      required: ["name"]
     },
     entityContext: {
       type: Type.OBJECT,
@@ -71,7 +73,8 @@ export const enrichInput = async (
   }
 
   let prompt = `Analyze this Second Brain entry.
-  TASK: Use Google Search to enrich the content using the INPUT TEXT, USER TAGS, and attached DOCUMENTS/IMAGES.
+  
+  TASK: Enrich the content using the INPUT TEXT, USER TAGS, and attached DOCUMENTS/IMAGES.
   
   SEARCH STRATEGY:
   1. Combine the INPUT TEXT and USER TAGS to form your search queries. The tags provide essential context (e.g., "Movie", "Book", "Restaurant") that disambiguates the text.
@@ -109,10 +112,6 @@ export const enrichInput = async (
     1. MOVIE/TV: Identify Title, Director/Year, and Description.
     2. BOOK: Identify Title, Author, and Description.
     3. LOCATION/BUSINESS: Populate locationContext fully, especially mapsUri.
-    
-    OUTPUT FORMAT:
-    You must return a raw JSON object (no markdown) matching this schema:
-    ${JSON.stringify(enrichmentSchema, null, 2)}
   `;
 
   if (text) prompt += `\nINPUT TEXT: "${text}"`;
@@ -127,42 +126,30 @@ export const enrichInput = async (
         { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
         { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
       ],
-      // OPTIMIZATION: Disable thinking process to minimize latency
-      thinkingConfig: { thinkingBudget: 0 }
+      responseMimeType: 'application/json',
+      responseSchema: enrichmentSchema,
   };
 
   try {
     const ai = getAiClient();
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview', 
+      model: 'gemini-2.0-flash', 
       contents: { parts },
       config: config
     });
     
-    let jsonString = response.text || "{}";
-    
-    // Cleanup if markdown code blocks are present
-    const rawResponse = jsonString; // Store raw before cleanup
-    jsonString = jsonString.replace(/```json/g, '').replace(/```/g, '').trim();
-    // Robustness: Extract JSON object if there is extra text
-    const firstBrace = jsonString.indexOf('{');
-    const lastBrace = jsonString.lastIndexOf('}');
-    if (firstBrace !== -1 && lastBrace !== -1) {
-        jsonString = jsonString.substring(firstBrace, lastBrace + 1);
-    }
-    
+    const jsonString = response.text || "{}";
     const parsedData = JSON.parse(jsonString) as EnrichmentData;
     
     // Inject Audit Trail
     parsedData.audit = {
         prompt: prompt,
-        rawResponse: rawResponse
+        rawResponse: jsonString
     };
     
     return parsedData;
   } catch (error: any) {
     console.error("Enrichment Error:", error);
-    // Rethrow to allow caller (UI) to handle the error state
     throw error;
   }
 };
@@ -185,7 +172,7 @@ export const queryBrain = async (query: string, memories: Memory[]): Promise<{ a
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-2.0-flash',
       contents: `CONTEXT:\n${contextBlock}\nQUERY: "${query}"`,
       config: { 
           systemInstruction, 
@@ -195,9 +182,7 @@ export const queryBrain = async (query: string, memories: Memory[]): Promise<{ a
             { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
             { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
             { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-          ],
-          // OPTIMIZATION: Disable thinking process to minimize latency
-          thinkingConfig: { thinkingBudget: 0 }
+          ]
       }
     });
     const text = response.text || "";
