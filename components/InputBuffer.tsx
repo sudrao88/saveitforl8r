@@ -175,7 +175,7 @@ const InputBuffer: React.FC<InputBufferProps> = ({ isOpen, onClose, onMemoryCrea
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-6" style={{ zIndex: 100 }}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-6 h-[100dvh]" style={{ zIndex: 100 }}>
         {/* Backdrop */}
         <div 
             className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
@@ -183,17 +183,17 @@ const InputBuffer: React.FC<InputBufferProps> = ({ isOpen, onClose, onMemoryCrea
         />
 
         {/* Modal Content */}
-        <div className="relative w-full max-w-2xl bg-gray-900 border-t sm:border border-gray-700 rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-in slide-in-from-bottom-4 duration-300 max-h-[90vh]">
+        <div className="relative w-full max-w-2xl bg-gray-900 border-t sm:border border-gray-700 rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-in slide-in-from-bottom-4 duration-300 max-h-[100dvh] sm:max-h-[90vh]">
             
             {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800 bg-gray-900/95 backdrop-blur">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800 bg-gray-900/95 backdrop-blur shrink-0">
                 <h3 className="text-gray-100 font-bold text-sm">New Memory</h3>
                 <button onClick={handleClose} className="p-1.5 rounded-full hover:bg-gray-800 text-gray-500 hover:text-white transition-colors">
                     <X size={20} />
                 </button>
             </div>
 
-            <div className="p-4 space-y-4 overflow-y-auto custom-scrollbar">
+            <div className="flex-1 p-4 space-y-4 overflow-y-auto custom-scrollbar min-h-0">
                 {/* Text Input */}
                 <textarea
                     ref={textAreaRef}
@@ -282,7 +282,7 @@ const InputBuffer: React.FC<InputBufferProps> = ({ isOpen, onClose, onMemoryCrea
             </div>
 
             {/* Footer / Actions */}
-            <div className="p-4 bg-gray-900 border-t border-gray-800 flex items-center justify-between gap-4">
+            <div className="p-4 bg-gray-900 border-t border-gray-800 flex items-center justify-between gap-4 shrink-0 pb-[env(safe-area-inset-bottom,1rem)]">
                 <div className="flex items-center gap-2">
                     <button 
                         onClick={() => fileInputRef.current?.click()}
