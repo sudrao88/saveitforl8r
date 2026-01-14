@@ -12,7 +12,6 @@ interface MemoryCardProps {
 const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, isDialog }) => {
   const [isConfirming, setIsConfirming] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
-  const [showAudit, setShowAudit] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [dismissedError, setDismissedError] = useState(false);
@@ -297,15 +296,6 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, isDi
                             <>
                             <div className="fixed inset-0 z-10 cursor-default" onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); }} />
                             <div className="absolute bottom-full right-0 mb-1 w-32 bg-gray-900 border border-gray-700 rounded-xl shadow-xl z-20 overflow-hidden animate-in slide-in-from-bottom-2 fade-in duration-200">
-                                {memory.enrichment?.audit && (
-                                        <button 
-                                        onClick={(e) => { e.stopPropagation(); setShowAudit(true); setIsMenuOpen(false); }} 
-                                        className="w-full px-3 py-2.5 text-left text-xs font-medium text-gray-300 hover:bg-gray-800 hover:text-blue-400 flex items-center gap-2 border-b border-gray-800"
-                                    >
-                                        <FileCode size={14} />
-                                        Audit Trail
-                                        </button>
-                                )}
                                 {onDelete && (
                                         <button 
                                         onClick={startDelete} 
@@ -324,28 +314,6 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, isDi
           </div>
         </div>
       </div>
-
-      {/* Audit Modal */}
-      {showAudit && memory.enrichment?.audit && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200" onClick={() => setShowAudit(false)}>
-            <div className="w-full max-w-2xl bg-gray-900 rounded-2xl border border-gray-700 shadow-2xl flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
-                <div className="flex items-center justify-between p-4 border-b border-gray-800">
-                    <h3 className="text-gray-100 font-bold flex items-center gap-2"><FileCode size={20} className="text-blue-500" /> AI Audit Trail</h3>
-                    <button onClick={() => setShowAudit(false)} className="p-2 hover:bg-gray-800 rounded-full text-gray-400 transition-colors"><X size={20} /></button>
-                </div>
-                <div className="flex-1 overflow-auto p-4 space-y-6">
-                    <div>
-                        <h4 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">System Prompt & Input</h4>
-                        <div className="bg-black/50 p-3 rounded-xl border border-gray-800 overflow-x-auto"><pre className="text-xs text-green-400 font-mono whitespace-pre-wrap leading-relaxed">{memory.enrichment.audit.prompt}</pre></div>
-                    </div>
-                    <div>
-                        <h4 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Raw Gemini Response</h4>
-                        <div className="bg-black/50 p-3 rounded-xl border border-gray-800 overflow-x-auto"><pre className="text-xs text-amber-400 font-mono whitespace-pre-wrap leading-relaxed">{memory.enrichment.audit.rawResponse}</pre></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-      )}
     </>
   );
 };

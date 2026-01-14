@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Search, Filter, X, Tag, Tv, BookOpen, ShoppingBag, Music, Layers, KeyOff, AlertTriangle } from 'lucide-react';
+import { Plus, Search, Filter, X, Tag, Tv, BookOpen, ShoppingBag, Music, Layers, AlertTriangle, Shield, Zap } from 'lucide-react';
 import InputBuffer from './components/InputBuffer.tsx';
 import MemoryCard from './components/MemoryCard.tsx';
 import ChatInterface from './components/ChatInterface.tsx';
@@ -18,6 +18,20 @@ const Logo = ({ className }: { className?: string }) => (
       <path d="M100 420L180 440" stroke="white" strokeWidth="36" strokeLinecap="round" strokeOpacity="0.5"/>
     </svg>
   </div>
+);
+
+// KeyOff Icon Component from Google Material Design Icons
+const KeyOff = ({ size = 24, className = "" }: { size?: number, className?: string }) => (
+  <svg 
+    xmlns="http://www.w3.org/2000/svg" 
+    height={size} 
+    width={size}
+    viewBox="0 -960 960 960"
+    fill="currentColor"
+    className={className}
+  >
+    <path d="M790-57 488-359q-32 54-87 86.5T280-240q-100 0-170-70T40-480q0-66 32.5-121t86.5-87L57-790l57-56 732 733-56 56Zm50-543 120 120-183 183-127-126 50-37 72 54 75-74-40-40H553l-80-80h367ZM280-320q51 0 90.5-27.5T428-419l-56-56-48.5-48.5L275-572l-56-56q-44 18-71.5 57.5T120-480q0 66 47 113t113 47Zm0-80q-33 0-56.5-23.5T200-480q0-33 23.5-56.5T280-560q33 0 56.5 23.5T360-480q0 33-23.5 56.5T280-400Z"/>
+  </svg>
 );
 
 const App: React.FC = () => {
@@ -169,38 +183,82 @@ const App: React.FC = () => {
 
   if (!apiKeySet) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-900 p-4">
-        <div className="max-w-md text-center bg-gray-800 p-8 rounded-3xl shadow-xl border border-gray-700 w-full">
-          <div className="w-20 h-20 mx-auto mb-6 shadow-lg rounded-2xl overflow-hidden">
-             <Logo className="w-full h-full" />
-          </div>
-          <h1 className="text-3xl font-black text-white mb-4 tracking-tight">Access SaveItForL8r</h1>
-          <p className="text-gray-400 mb-8 leading-relaxed">Please enter your Gemini API Key to enable multimodal knowledge capture.</p>
+      <div className="min-h-screen flex items-center justify-center bg-gray-900 p-4 sm:p-8">
+        <div className="max-w-6xl w-full grid lg:grid-cols-2 gap-12 items-center">
           
-          <div className="space-y-4">
-             <input 
-                type="password"
-                value={inputApiKey}
-                onChange={(e) => setInputApiKey(e.target.value)}
-                placeholder="Enter Gemini API Key"
-                className="w-full bg-gray-700 text-white px-4 py-3 rounded-xl border border-gray-600 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-             />
-             <button 
-               onClick={() => {
-                 if (inputApiKey.trim()) {
-                   localStorage.setItem('gemini_api_key', inputApiKey.trim());
-                   setApiKeySet(true);
-                 }
-               }}
-               className="w-full bg-blue-600 text-white px-6 py-4 rounded-2xl hover:bg-blue-700 transition-all font-bold shadow-lg shadow-blue-900/50 disabled:opacity-50 disabled:cursor-not-allowed"
-               disabled={!inputApiKey.trim()}
-             >
-               Connect API Key
-             </button>
-             <p className="text-xs text-gray-500 mt-4">
-                Don't have a key? <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">Get one here</a>
-             </p>
+          {/* Left Column: Marketing Content */}
+          <div className="text-left order-1">
+             <div className="mb-8">
+                <div className="flex items-center gap-4 mb-4">
+                     <div className="w-16 h-16 shadow-2xl rounded-2xl overflow-hidden animate-in fade-in zoom-in duration-500 hidden lg:block">
+                        <Logo className="w-full h-full" />
+                    </div>
+                    <div>
+                        <h1 className="text-4xl sm:text-5xl font-black text-white tracking-tight leading-tight">SaveItForL8r</h1>
+                        <p className="text-xl text-blue-400 font-medium">Your AI-Powered Second Brain</p>
+                    </div>
+                </div>
+             </div>
+
+             <div className="grid gap-6">
+                <div className="bg-gray-800/50 p-6 rounded-2xl border border-gray-700 hover:border-blue-500/50 transition-colors group flex gap-4 items-start">
+                  <div className="w-12 h-12 bg-blue-500/10 rounded-xl flex items-center justify-center shrink-0 group-hover:bg-blue-500/20 transition-colors">
+                    <Zap className="text-blue-400" size={24} />
+                  </div>
+                  <div>
+                    <h3 className="text-white font-bold text-lg mb-1">Smart Organization</h3>
+                    <p className="text-gray-400 text-sm leading-relaxed">
+                        Gemini automatically tags and categorizes your saved links, images, and notes so you can easily find them later.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-gray-800/50 p-6 rounded-2xl border border-gray-700 hover:border-green-500/50 transition-colors group flex gap-4 items-start">
+                  <div className="w-12 h-12 bg-green-500/10 rounded-xl flex items-center justify-center shrink-0 group-hover:bg-green-500/20 transition-colors">
+                    <Shield className="text-green-400" size={24} />
+                  </div>
+                  <div>
+                    <h3 className="text-white font-bold text-lg mb-1">Private & Local</h3>
+                    <p className="text-gray-400 text-sm leading-relaxed">
+                        Your data is stored locally on your device. We don't track your memories or store them on external servers.
+                    </p>
+                  </div>
+                </div>
+             </div>
           </div>
+
+          {/* Right Column: Input Form */}
+          <div className="bg-gray-800 p-8 rounded-3xl shadow-xl border border-gray-700 w-full max-w-md mx-auto lg:mx-0 lg:ml-auto order-2">
+            
+            <h2 className="text-xl font-bold text-white mb-2">Get Started</h2>
+            <p className="text-gray-400 mb-6 text-sm leading-relaxed">Please enter your Gemini API Key to enable multimodal knowledge capture.</p>
+            
+            <div className="space-y-4">
+               <input 
+                  type="password"
+                  value={inputApiKey}
+                  onChange={(e) => setInputApiKey(e.target.value)}
+                  placeholder="Enter Gemini API Key"
+                  className="w-full bg-gray-700 text-white px-4 py-3 rounded-xl border border-gray-600 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
+               />
+               <button 
+                 onClick={() => {
+                   if (inputApiKey.trim()) {
+                     localStorage.setItem('gemini_api_key', inputApiKey.trim());
+                     setApiKeySet(true);
+                   }
+                 }}
+                 className="w-full bg-blue-600 text-white px-6 py-4 rounded-2xl hover:bg-blue-700 transition-all font-bold shadow-lg shadow-blue-900/50 disabled:opacity-50 disabled:cursor-not-allowed transform active:scale-95"
+                 disabled={!inputApiKey.trim()}
+               >
+                 Connect API Key
+               </button>
+               <p className="text-xs text-gray-500 mt-4">
+                  Don't have a key? <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">Get one here</a>
+               </p>
+            </div>
+          </div>
+
         </div>
       </div>
     );
