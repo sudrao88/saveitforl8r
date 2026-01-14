@@ -36,28 +36,21 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose }) => {
 
   return (
     <div className="fixed inset-0 z-[60] bg-gray-900 flex flex-col animate-in slide-in-from-bottom duration-300">
+      {/* Header */}
       <div className="border-b border-gray-800 px-6 py-4 flex items-center justify-between bg-gray-900/95 backdrop-blur-md sticky top-0 z-10">
-        <div className="flex items-center gap-4 flex-1 max-w-2xl bg-gray-800 px-4 py-2 rounded-2xl border border-gray-700">
-          <Search size={20} className="text-blue-500 shrink-0" />
-          <input
-            autoFocus
-            type="text"
-            className="w-full text-lg font-medium focus:outline-none bg-transparent placeholder-gray-500 border-none text-gray-100"
-            placeholder="Search your brain..."
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-          />
-        </div>
+          <div className="flex items-center gap-2">
+             <Bot size={24} className="text-blue-500" />
+             <h2 className="text-lg font-bold text-gray-100">Brain Search</h2>
+          </div>
         <button onClick={onClose} className="ml-4 p-2 hover:bg-gray-800 rounded-full transition text-gray-400"><X size={24} /></button>
       </div>
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 md:px-20 lg:px-64 space-y-10">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 md:px-20 lg:px-64 space-y-10 pb-32">
         {messages.length === 0 && (
           <div className="h-full flex flex-col items-center justify-center text-center max-w-sm mx-auto opacity-50">
             <Bot size={48} className="text-blue-500 mb-6" />
             <h3 className="text-xl font-bold text-gray-100 mb-2">Neural Retrieval</h3>
-            <p className="text-sm text-gray-400 leading-relaxed">SaveItForL8r synthesizes answers using only your captured memories.</p>
+            <p className="text-sm text-gray-400 leading-relaxed">Ask questions to your second brain. SaveItForL8r synthesizes answers using only your captured memories.</p>
           </div>
         )}
 
@@ -104,6 +97,28 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose }) => {
             <span className="text-sm">Synthesizing...</span>
           </div>
         )}
+      </div>
+
+       {/* Input Area */}
+       <div className="bg-gray-900 border-t border-gray-800 p-4 sticky bottom-0 z-20">
+        <div className="max-w-4xl mx-auto flex items-center gap-4 bg-gray-800 px-4 py-2 rounded-2xl border border-gray-700 focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500 transition-all">
+          <input
+            autoFocus
+            type="text"
+            className="w-full text-lg font-medium focus:outline-none bg-transparent placeholder-gray-500 border-none text-gray-100 py-2"
+            placeholder="Ask your second brain..."
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+          />
+           <button 
+            onClick={handleSend}
+            disabled={!query.trim() || isLoading}
+            className="p-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Send size={20} />
+          </button>
+        </div>
       </div>
 
       {selectedMemory && (
