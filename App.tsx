@@ -1,11 +1,12 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Search, Filter, X, Tag, Tv, BookOpen, ShoppingBag, Music, Layers, AlertTriangle, Shield, Zap } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { Plus, Search, Filter, X, Tag, Tv, BookOpen, ShoppingBag, Music, Layers, AlertTriangle, Shield, Zap, Settings, Download, Upload } from 'lucide-react';
 import InputBuffer from './components/InputBuffer.tsx';
 import MemoryCard from './components/MemoryCard.tsx';
 import ChatInterface from './components/ChatInterface.tsx';
 import { getMemories, deleteMemory, saveMemory } from './services/storageService.ts';
 import { enrichInput } from './services/geminiService.ts';
+import { memoriesToCSV, csvToMemories } from './services/csvService.ts';
 import { Memory, ViewMode, Attachment } from './types.ts';
 
 // Inline Logo Component with wrapper to guarantee specific sizing
@@ -40,7 +41,14 @@ const App: React.FC = () => {
   const [isCaptureOpen, setIsCaptureOpen] = useState(false);
   const [apiKeySet, setApiKeySet] = useState(false);
   const [inputApiKey, setInputApiKey] = useState('');
-  const [isClearKeyDialogOpen, setIsClearKeyDialogOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  
+  // Export Filter State
+  const [exportFilterType, setExportFilterType] = useState<string>('all');
+  const [exportFilterTag, setExportFilterTag] = useState<string>('all');
+  
+  // Ref for file input
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Filter State
   const [filterType, setFilterType] = useState<string | null>(null);
@@ -68,7 +76,75 @@ const App: React.FC = () => {
     localStorage.removeItem('saveitforl8r_access');
     setApiKeySet(false);
     setInputApiKey('');
-    setIsClearKeyDialogOpen(false);
+    setIsSettingsOpen(false);
+  };
+
+  const handleExport = async () => {
+    let data = await getMemories();
+
+    // Apply filters
+    if (exportFilterType !== 'all') {
+        data = data.filter(m => m.enrichment?.entityContext?.type === exportFilterType);
+    }
+    if (exportFilterTag !== 'all') {
+        data = data.filter(m => m.tags.includes(exportFilterTag));
+    }
+
+    if (data.length === 0) {
+        alert("No memories match the selected filters.");
+        return;
+    }
+
+    const csvString = memoriesToCSV(data);
+    const blob = new Blob([csvString], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `saveitforl8r-backup-${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleImportClick = () => {
+      fileInputRef.current?.click();
+  };
+
+  const handleImportFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const content = e.target?.result as string;
+        
+        if (file.name.endsWith('.csv')) {
+            const parsedMemories = csvToMemories(content);
+            if (parsedMemories.length > 0) {
+                 let count = 0;
+                 for (const mem of parsedMemories) {
+                     await saveMemory(mem);
+                     count++;
+                 }
+                 alert(`Successfully imported ${count} memories from CSV.`);
+                 refreshMemories();
+            } else {
+                alert("No valid memories found in CSV.");
+            }
+        } else {
+             alert("Please upload a valid .csv file.");
+        }
+      } catch (error) {
+        console.error("Import failed:", error);
+        alert("Failed to import file.");
+      }
+      // Reset file input
+      if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+      }
+    };
+    reader.readAsText(file);
   };
 
   const handleDelete = async (id: string) => {
@@ -287,11 +363,11 @@ const App: React.FC = () => {
               </div>
 
               <button
-                onClick={() => setIsClearKeyDialogOpen(true)}
-                className="p-2.5 text-gray-500 hover:text-red-400 hover:bg-red-900/20 rounded-xl transition-colors shrink-0"
-                title="Clear API Key"
+                onClick={() => setIsSettingsOpen(true)}
+                className="p-2.5 text-gray-500 hover:text-white hover:bg-gray-800 rounded-xl transition-colors shrink-0"
+                title="Settings"
               >
-                <KeyOff size={20} />
+                <Settings size={20} />
               </button>
             </div>
           </nav>
@@ -405,6 +481,15 @@ const App: React.FC = () => {
         <Plus size={32} strokeWidth={3} />
       </button>
 
+      {/* Hidden File Input for Import */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleImportFile}
+        className="hidden"
+        accept=".csv"
+      />
+
       {/* Modals */}
       <InputBuffer 
         isOpen={isCaptureOpen} 
@@ -419,42 +504,77 @@ const App: React.FC = () => {
         />
       )}
 
-      {/* Clear Key Dialog */}
-      {isClearKeyDialogOpen && (
+      {/* Settings Dialog */}
+      {isSettingsOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
           <div className="bg-gray-800 border border-gray-700 rounded-3xl p-6 max-w-md w-full shadow-2xl relative">
             <button 
-              onClick={() => setIsClearKeyDialogOpen(false)}
+              onClick={() => setIsSettingsOpen(false)}
               className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors"
             >
               <X size={20} />
             </button>
             
             <div className="flex flex-col items-center text-center">
-              <div className="w-16 h-16 bg-yellow-900/20 rounded-2xl flex items-center justify-center mb-4 text-yellow-500">
-                <AlertTriangle size={32} />
+              <div className="w-16 h-16 bg-gray-700/50 rounded-2xl flex items-center justify-center mb-4 text-gray-300">
+                <Settings size={32} />
               </div>
               
-              <h3 className="text-xl font-bold text-white mb-2">Clear API Key?</h3>
-              <p className="text-gray-400 mb-6 leading-relaxed">
-                This will remove the API key from this device. 
-                <br/>
-                <span className="font-semibold text-gray-300">Your data will NOT be deleted</span>, but you will need to re-enter a key to access it again.
-              </p>
+              <h3 className="text-xl font-bold text-white mb-6">Settings</h3>
               
-              <div className="flex gap-3 w-full">
-                <button
-                  onClick={() => setIsClearKeyDialogOpen(false)}
-                  className="flex-1 px-4 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-xl font-bold transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={clearKey}
-                  className="flex-1 px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold transition-colors shadow-lg shadow-red-900/30"
-                >
-                  Clear Key
-                </button>
+              <div className="w-full space-y-4">
+                  
+                   {/* Export Section */}
+                   <div className="bg-gray-700/30 p-4 rounded-2xl border border-gray-700">
+                      <div className="flex justify-between items-center mb-3">
+                        <h4 className="text-sm font-bold text-gray-400 uppercase tracking-wider">Export Data</h4>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-2 mb-3">
+                        <select 
+                            value={exportFilterType} 
+                            onChange={(e) => setExportFilterType(e.target.value)}
+                            className="bg-gray-800 text-white text-sm rounded-lg p-2 border border-gray-600 focus:border-blue-500 outline-none"
+                        >
+                            <option value="all">All Types</option>
+                            {availableTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                         <select 
+                            value={exportFilterTag} 
+                            onChange={(e) => setExportFilterTag(e.target.value)}
+                            className="bg-gray-800 text-white text-sm rounded-lg p-2 border border-gray-600 focus:border-blue-500 outline-none"
+                        >
+                            <option value="all">All Tags</option>
+                            {availableTags.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                      </div>
+
+                      <button
+                        onClick={handleExport}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-colors text-sm"
+                      >
+                        <Download size={16} />
+                        <span>Download CSV</span>
+                      </button>
+                  </div>
+
+                  <button
+                    onClick={handleImportClick}
+                    className="w-full flex items-center gap-3 px-4 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-xl font-bold transition-colors border border-gray-600"
+                  >
+                    <Upload size={20} className="text-green-400" />
+                    <span>Import Data (CSV)</span>
+                  </button>
+
+                  <div className="h-px bg-gray-700 my-4" />
+
+                  <button
+                    onClick={clearKey}
+                    className="w-full flex items-center gap-3 px-4 py-3 bg-red-900/20 hover:bg-red-900/40 text-red-400 rounded-xl font-bold transition-colors border border-red-900/30"
+                  >
+                    <KeyOff size={20} />
+                    <span>Clear API Key</span>
+                  </button>
               </div>
             </div>
           </div>
