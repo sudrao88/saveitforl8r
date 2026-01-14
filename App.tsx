@@ -1,9 +1,10 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Plus, Search, Filter, X, Tag, Tv, BookOpen, ShoppingBag, Music, Layers, AlertTriangle, Shield, Zap, Settings, Download, Upload } from 'lucide-react';
+import { Plus, Search, Filter, X, Tag, Tv, BookOpen, ShoppingBag, Music, Layers, AlertTriangle, Shield, Zap, Settings, Download, Upload, HelpCircle } from 'lucide-react';
 import InputBuffer from './components/InputBuffer.tsx';
 import MemoryCard from './components/MemoryCard.tsx';
 import ChatInterface from './components/ChatInterface.tsx';
+import MultiSelect from './components/MultiSelect.tsx';
 import { getMemories, deleteMemory, saveMemory } from './services/storageService.ts';
 import { enrichInput } from './services/geminiService.ts';
 import { memoriesToCSV, csvToMemories } from './services/csvService.ts';
@@ -44,8 +45,8 @@ const App: React.FC = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   
   // Export Filter State
-  const [exportFilterType, setExportFilterType] = useState<string>('all');
-  const [exportFilterTag, setExportFilterTag] = useState<string>('all');
+  const [exportSelectedTypes, setExportSelectedTypes] = useState<string[]>([]);
+  const [exportSelectedTags, setExportSelectedTags] = useState<string[]>([]);
   
   // Ref for file input
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -82,12 +83,21 @@ const App: React.FC = () => {
   const handleExport = async () => {
     let data = await getMemories();
 
-    // Apply filters
-    if (exportFilterType !== 'all') {
-        data = data.filter(m => m.enrichment?.entityContext?.type === exportFilterType);
+    // 1. Filter by Types (OR logic within types)
+    // If types are selected, keep memories that match ANY of those types.
+    if (exportSelectedTypes.length > 0) {
+        data = data.filter(m => {
+            const type = m.enrichment?.entityContext?.type;
+            return type && exportSelectedTypes.includes(type);
+        });
     }
-    if (exportFilterTag !== 'all') {
-        data = data.filter(m => m.tags.includes(exportFilterTag));
+
+    // 2. Filter by Tags (OR logic within tags)
+    // Keep memories that have AT LEAST ONE of the selected tags.
+    if (exportSelectedTags.length > 0) {
+        data = data.filter(m => {
+            return m.tags.some(tag => exportSelectedTags.includes(tag));
+        });
     }
 
     if (data.length === 0) {
@@ -515,66 +525,95 @@ const App: React.FC = () => {
               <X size={20} />
             </button>
             
-            <div className="flex flex-col items-center text-center">
-              <div className="w-16 h-16 bg-gray-700/50 rounded-2xl flex items-center justify-center mb-4 text-gray-300">
-                <Settings size={32} />
+            <div className="flex flex-col text-left">
+              <div className="flex items-center gap-4 mb-6">
+                  <div className="w-12 h-12 bg-gray-700/50 rounded-2xl flex items-center justify-center text-gray-300">
+                    <Settings size={24} />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-white">Settings</h3>
+                    <p className="text-gray-400 text-sm">Manage your data and preferences</p>
+                  </div>
               </div>
               
-              <h3 className="text-xl font-bold text-white mb-6">Settings</h3>
-              
-              <div className="w-full space-y-4">
-                  
-                   {/* Export Section */}
-                   <div className="bg-gray-700/30 p-4 rounded-2xl border border-gray-700">
-                      <div className="flex justify-between items-center mb-3">
-                        <h4 className="text-sm font-bold text-gray-400 uppercase tracking-wider">Export Data</h4>
-                      </div>
+              <div className="space-y-6">
+                   {/* Data Management Section */}
+                   <div className="space-y-3">
+                      <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Data Management</h4>
                       
-                      <div className="grid grid-cols-2 gap-2 mb-3">
-                        <select 
-                            value={exportFilterType} 
-                            onChange={(e) => setExportFilterType(e.target.value)}
-                            className="bg-gray-800 text-white text-sm rounded-lg p-2 border border-gray-600 focus:border-blue-500 outline-none"
-                        >
-                            <option value="all">All Types</option>
-                            {availableTypes.map(t => <option key={t} value={t}>{t}</option>)}
-                        </select>
-                         <select 
-                            value={exportFilterTag} 
-                            onChange={(e) => setExportFilterTag(e.target.value)}
-                            className="bg-gray-800 text-white text-sm rounded-lg p-2 border border-gray-600 focus:border-blue-500 outline-none"
-                        >
-                            <option value="all">All Tags</option>
-                            {availableTags.map(t => <option key={t} value={t}>{t}</option>)}
-                        </select>
+                      <div className="bg-gray-700/30 p-4 rounded-2xl border border-gray-700 space-y-4">
+                          {/* Export */}
+                          <div>
+                              <div className="flex justify-between items-center mb-2">
+                                <span className="text-sm font-semibold text-gray-300">Export Memories</span>
+                              </div>
+                              <div className="grid grid-cols-2 gap-2 mb-3">
+                                <MultiSelect 
+                                  label="Type"
+                                  options={availableTypes}
+                                  selected={exportSelectedTypes}
+                                  onChange={setExportSelectedTypes}
+                                  placeholder="All Types"
+                                />
+                                <MultiSelect 
+                                  label="Tags"
+                                  options={availableTags}
+                                  selected={exportSelectedTags}
+                                  onChange={setExportSelectedTags}
+                                  placeholder="All Tags"
+                                />
+                              </div>
+                              <button
+                                onClick={handleExport}
+                                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-800 hover:bg-gray-750 text-white rounded-xl font-medium transition-colors border border-gray-600 hover:border-blue-500/50 group"
+                              >
+                                <Download size={16} className="text-blue-400 group-hover:text-blue-300" />
+                                <span>Download CSV</span>
+                              </button>
+                          </div>
+
+                          <div className="h-px bg-gray-700/50" />
+
+                          {/* Import */}
+                          <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-semibold text-gray-300">Import Memories</span>
+                                <div className="group relative">
+                                    <HelpCircle size={14} className="text-gray-500 cursor-help" />
+                                    <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-48 p-2 bg-black/90 text-xs text-gray-300 rounded-lg pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity text-center">
+                                        Import memories from a CSV file exported from SaveItForL8r. Useful for sharing with friends & family.
+                                    </div>
+                                </div>
+                              </div>
+                              <button
+                                onClick={handleImportClick}
+                                className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-750 text-white rounded-xl font-medium transition-colors border border-gray-600 hover:border-green-500/50 group text-sm"
+                              >
+                                <Upload size={16} className="text-green-400 group-hover:text-green-300" />
+                                <span>Import CSV</span>
+                              </button>
+                          </div>
                       </div>
+                   </div>
 
+                   {/* Account Section */}
+                   <div className="space-y-3">
+                      <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Account</h4>
                       <button
-                        onClick={handleExport}
-                        className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-colors text-sm"
+                        onClick={clearKey}
+                        className="w-full flex items-center justify-between px-4 py-3 bg-red-900/10 hover:bg-red-900/20 text-red-400 rounded-xl font-medium transition-colors border border-red-900/20 hover:border-red-900/40 group"
                       >
-                        <Download size={16} />
-                        <span>Download CSV</span>
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-red-900/20 rounded-lg group-hover:bg-red-900/30 transition-colors">
+                                <KeyOff size={18} />
+                            </div>
+                            <div className="text-left">
+                                <span className="block text-sm font-bold text-gray-200 group-hover:text-white">Disconnect API Key</span>
+                                <span className="block text-xs text-red-400/70">Removes access from this device</span>
+                            </div>
+                        </div>
                       </button>
-                  </div>
-
-                  <button
-                    onClick={handleImportClick}
-                    className="w-full flex items-center gap-3 px-4 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-xl font-bold transition-colors border border-gray-600"
-                  >
-                    <Upload size={20} className="text-green-400" />
-                    <span>Import Data (CSV)</span>
-                  </button>
-
-                  <div className="h-px bg-gray-700 my-4" />
-
-                  <button
-                    onClick={clearKey}
-                    className="w-full flex items-center gap-3 px-4 py-3 bg-red-900/20 hover:bg-red-900/40 text-red-400 rounded-xl font-bold transition-colors border border-red-900/30"
-                  >
-                    <KeyOff size={20} />
-                    <span>Clear API Key</span>
-                  </button>
+                   </div>
               </div>
             </div>
           </div>

@@ -19,6 +19,12 @@ export const memoriesToCSV = (memories: Memory[]): string => {
     const summary = m.enrichment?.summary || '';
     const date = new Date(m.timestamp).toISOString();
     
+    // Clean enrichment data (remove audit)
+    const cleanEnrichment = m.enrichment ? { ...m.enrichment } : null;
+    if (cleanEnrichment && cleanEnrichment.audit) {
+        delete cleanEnrichment.audit;
+    }
+
     return [
       m.id,
       m.timestamp,
@@ -29,7 +35,7 @@ export const memoriesToCSV = (memories: Memory[]): string => {
       summary,
       JSON.stringify(m.location || null),
       JSON.stringify(m.attachments || []),
-      JSON.stringify(m.enrichment || null)
+      JSON.stringify(cleanEnrichment)
     ].map(escape).join(',');
   });
 
@@ -105,7 +111,12 @@ export const csvToMemories = (csv: string): Memory[] => {
         const tags = cols[5] ? cols[5].split('|').filter(t => t) : [];
         const location = cols[7] && cols[7] !== 'null' ? JSON.parse(cols[7]) : undefined;
         const attachments = cols[8] && cols[8] !== 'null' ? JSON.parse(cols[8]) : undefined;
-        const enrichment = cols[9] && cols[9] !== 'null' ? JSON.parse(cols[9]) : undefined;
+        let enrichment = cols[9] && cols[9] !== 'null' ? JSON.parse(cols[9]) : undefined;
+
+        // Clean imported enrichment too
+        if (enrichment && enrichment.audit) {
+             delete enrichment.audit;
+        }
 
         if (id && !isNaN(timestamp)) {
             memories.push({
