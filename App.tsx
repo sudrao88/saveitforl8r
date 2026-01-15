@@ -1,7 +1,6 @@
 
 import React, { useState } from 'react';
 import { Plus } from 'lucide-react';
-import InputBuffer from './components/InputBuffer';
 import MemoryCard from './components/MemoryCard';
 import ChatInterface from './components/ChatInterface';
 import TopNavigation from './components/TopNavigation';
@@ -9,6 +8,7 @@ import FilterBar from './components/FilterBar';
 import SettingsModal from './components/SettingsModal';
 import LandingPage from './components/LandingPage';
 import EmptyState from './components/EmptyState';
+import NewMemoryPage from './components/NewMemoryPage';
 
 import { useMemories } from './hooks/useMemories';
 import { useSettings } from './hooks/useSettings';
@@ -57,6 +57,18 @@ const App: React.FC = () => {
     );
   }
 
+  // Full Page New Memory View
+  if (isCaptureOpen) {
+    return (
+      <NewMemoryPage 
+        onClose={() => setIsCaptureOpen(false)}
+        onMemoryCreated={() => {
+          refreshMemories();
+        }}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-900 flex flex-col">
       {/* Sticky Header Wrapper */}
@@ -99,20 +111,14 @@ const App: React.FC = () => {
         )}
       </main>
 
-      {/* Floating Action Button */}
+      {/* Floating Action Button (Extended Material Design Style) */}
       <button 
         onClick={() => setIsCaptureOpen(true)}
-        className="fixed bottom-6 right-4 sm:bottom-8 sm:right-8 z-20 w-14 h-14 sm:w-16 sm:h-16 bg-blue-600 text-white rounded-full flex items-center justify-center shadow-2xl hover:bg-blue-700 hover:scale-110 active:scale-95 transition-all duration-300 shadow-blue-900/50"
+        className="fixed bottom-6 right-4 sm:bottom-8 sm:right-8 z-20 h-14 sm:h-16 px-5 sm:px-7 bg-blue-600 text-white rounded-2xl flex items-center gap-3 shadow-2xl hover:bg-blue-700 hover:scale-105 active:scale-95 transition-all duration-300 shadow-blue-900/50"
       >
-        <Plus size={32} strokeWidth={3} />
+        <Plus size={28} strokeWidth={3} />
+        <span className="font-bold text-lg">New</span>
       </button>
-
-      {/* Modals */}
-      <InputBuffer 
-        isOpen={isCaptureOpen} 
-        onClose={() => setIsCaptureOpen(false)} 
-        onMemoryCreated={refreshMemories} 
-      />
 
       {view === ViewMode.RECALL && (
         <ChatInterface 
