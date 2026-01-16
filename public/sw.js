@@ -1,4 +1,4 @@
-const CACHE_NAME = 'saveitforl8r-v2';
+const CACHE_NAME = 'saveitforl8r-v6';
 const SCOPE = '/';
 
 const PRECACHE_ASSETS = [
@@ -9,7 +9,7 @@ const PRECACHE_ASSETS = [
 ];
 
 self.addEventListener('install', (event) => {
-  self.skipWaiting();
+  // Removed self.skipWaiting() to allow user to choose when to update
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
@@ -34,6 +34,12 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
 self.addEventListener('fetch', (event) => {
   // Only handle requests within our scope
   // For root scope, we generally want to handle everything from same origin
@@ -42,6 +48,8 @@ self.addEventListener('fetch', (event) => {
   }
 
   // Navigation requests: Network First, fallback to Cache (App Shell)
+  // This ensures that if the user reloads the page (fresh load), they always get the latest index.html from the server
+  // The update prompt in the UI is a manual intervention for users who have the app open and need to update to the latest version without reloading manually first
   if (event.request.mode === 'navigate') {
     event.respondWith(
       fetch(event.request)

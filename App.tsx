@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Plus } from 'lucide-react';
 import MemoryCard from './components/MemoryCard';
@@ -14,11 +13,14 @@ import { InstallPrompt } from './components/InstallPrompt';
 import { useMemories } from './hooks/useMemories';
 import { useSettings } from './hooks/useSettings';
 import { useMemoryFilters } from './hooks/useMemoryFilters';
+import { useServiceWorker } from './hooks/useServiceWorker';
 import { ViewMode } from './types';
 
 const App: React.FC = () => {
   const [view, setView] = useState<ViewMode>(ViewMode.FEED);
   const [isCaptureOpen, setIsCaptureOpen] = useState(false);
+
+  const { updateAvailable, updateApp } = useServiceWorker();
 
   const {
     memories,
@@ -75,7 +77,9 @@ const App: React.FC = () => {
           <TopNavigation 
             setView={setView} 
             resetFilters={clearFilters} 
-            onSettingsClick={() => setIsSettingsOpen(true)} 
+            onSettingsClick={() => setIsSettingsOpen(true)}
+            updateAvailable={updateAvailable}
+            onUpdateApp={updateApp}
           />
 
           <FilterBar 

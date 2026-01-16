@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Search, Settings } from 'lucide-react';
+import { Search, Settings, RefreshCw } from 'lucide-react';
 import { Logo } from './icons';
 import { ViewMode } from '../types';
 
@@ -8,9 +8,17 @@ interface TopNavigationProps {
   setView: (view: ViewMode) => void;
   resetFilters: () => void;
   onSettingsClick: () => void;
+  updateAvailable?: boolean;
+  onUpdateApp?: () => void;
 }
 
-const TopNavigation: React.FC<TopNavigationProps> = ({ setView, resetFilters, onSettingsClick }) => {
+const TopNavigation: React.FC<TopNavigationProps> = ({ 
+  setView, 
+  resetFilters, 
+  onSettingsClick, 
+  updateAvailable, 
+  onUpdateApp 
+}) => {
   return (
     <nav className="px-4 py-3 sm:px-8 flex justify-center">
       <div className="w-full max-w-4xl flex items-center justify-between gap-4">
@@ -23,6 +31,16 @@ const TopNavigation: React.FC<TopNavigationProps> = ({ setView, resetFilters, on
         </div>
 
         <div className="flex items-center gap-2">
+          {updateAvailable && (
+            <button
+              onClick={onUpdateApp}
+              className="flex items-center gap-2 bg-red-900/20 hover:bg-red-900/30 border border-red-900/50 hover:border-red-800 transition-all rounded-xl px-4 py-2.5 text-red-500 hover:text-red-400 group animate-pulse"
+            >
+              <RefreshCw size={18} className="text-red-500" />
+              <span className="font-bold text-sm">Update</span>
+            </button>
+          )}
+
           <button
             onClick={() => setView(ViewMode.RECALL)}
             className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-gray-600 transition-all rounded-xl px-4 py-2.5 text-gray-400 hover:text-white group"
