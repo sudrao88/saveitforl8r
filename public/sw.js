@@ -1,4 +1,4 @@
-const CACHE_NAME = 'saveitforl8r-v1';
+const CACHE_NAME = 'saveitforl8r-v2';
 const SCOPE = '/';
 
 const PRECACHE_ASSETS = [
@@ -41,14 +41,26 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Navigation requests: return index.html (App Shell)
+  // Navigation requests: Network First, fallback to Cache (App Shell)
   if (event.request.mode === 'navigate') {
     event.respondWith(
-      caches.match(SCOPE + 'index.html').then((response) => {
-        return response || fetch(event.request).catch(() => {
+      fetch(event.request)
+        .then((networkResponse) => {
+          // Check if we received a valid response
+          if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
+            return networkResponse;
+          }
+          
+          const responseToCache = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(SCOPE + 'index.html', responseToCache);
+          });
+          return networkResponse;
+        })
+        .catch(() => {
+           console.log('[SW] Offline, serving cached index.html');
            return caches.match(SCOPE + 'index.html');
-        });
-      })
+        })
     );
     return;
   }

@@ -9,12 +9,31 @@ if (!rootElement) {
   throw new Error("Could not find root element to mount to");
 }
 
-// Unregister service worker to prevent caching issues during development
+// Register service worker
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.getRegistrations().then(function(registrations) {
-    for(let registration of registrations) {
-      registration.unregister();
-    }
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').then((registration) => {
+      console.log('SW registered: ', registration);
+      
+      registration.onupdatefound = () => {
+        const installingWorker = registration.installing;
+        if (installingWorker == null) {
+          return;
+        }
+        installingWorker.onstatechange = () => {
+          if (installingWorker.state === 'installed') {
+            if (navigator.serviceWorker.controller) {
+              console.log('New content is available and will be used when all tabs for this page are closed.');
+              // Execute callback to show toast or notification if needed
+            } else {
+              console.log('Content is cached for offline use.');
+            }
+          }
+        };
+      };
+    }).catch((registrationError) => {
+      console.log('SW registration failed: ', registrationError);
+    });
   });
 }
 
