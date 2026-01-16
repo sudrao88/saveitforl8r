@@ -5,7 +5,6 @@ import { memoriesToCSV, csvToMemories } from '../services/csvService';
 
 export const useExportImport = (onImportSuccess: () => void) => {
   const [exportSelectedTypes, setExportSelectedTypes] = useState<string[]>([]);
-  const [exportSelectedTags, setExportSelectedTags] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleExport = async () => {
@@ -15,12 +14,6 @@ export const useExportImport = (onImportSuccess: () => void) => {
         data = data.filter(m => {
             const type = m.enrichment?.entityContext?.type;
             return type && exportSelectedTypes.includes(type);
-        });
-    }
-
-    if (exportSelectedTags.length > 0) {
-        data = data.filter(m => {
-            return m.tags.some(tag => exportSelectedTags.includes(tag));
         });
     }
 
@@ -83,8 +76,6 @@ export const useExportImport = (onImportSuccess: () => void) => {
   return {
     exportSelectedTypes,
     setExportSelectedTypes,
-    exportSelectedTags,
-    setExportSelectedTags,
     fileInputRef,
     handleExport,
     handleImportClick,

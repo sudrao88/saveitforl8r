@@ -1,14 +1,11 @@
 
 import React from 'react';
-import { Filter, X, Tag, Tv, BookOpen, ShoppingBag, Music, Layers } from 'lucide-react';
+import { Filter, X, Tv, BookOpen, ShoppingBag, Music, Layers } from 'lucide-react';
 
 interface FilterBarProps {
   availableTypes: string[];
-  availableTags: string[];
   filterType: string | null;
-  filterTag: string | null;
   setFilterType: (type: string | null) => void;
-  setFilterTag: (tag: string | null) => void;
   clearFilters: () => void;
 }
 
@@ -23,14 +20,11 @@ const getTypeIcon = (type: string) => {
 
 const FilterBar: React.FC<FilterBarProps> = ({
   availableTypes,
-  availableTags,
   filterType,
-  filterTag,
   setFilterType,
-  setFilterTag,
   clearFilters
 }) => {
-  if (availableTypes.length === 0 && availableTags.length === 0) {
+  if (availableTypes.length === 0) {
       return null;
   }
 
@@ -41,7 +35,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest hidden sm:inline">Filter</span>
        </div>
 
-       {(filterType || filterTag) && (
+       {filterType && (
            <button 
                onClick={clearFilters} 
                className="shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full bg-gray-800 text-gray-400 text-xs font-bold border border-red-900/30 hover:bg-red-900/20 hover:text-red-400 transition-colors"
@@ -62,22 +56,6 @@ const FilterBar: React.FC<FilterBarProps> = ({
                }`}
            >
                {getTypeIcon(t)} {t}
-           </button>
-       ))}
-
-       {/* Tags */}
-       {availableTags.map(t => (
-           <button 
-               key={t} 
-               onClick={() => setFilterTag(filterTag === t ? null : t)}
-               className={`shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${
-                   filterTag === t 
-                   ? 'bg-emerald-600 text-white border-emerald-500 shadow-lg shadow-emerald-900/20' 
-                   : 'bg-gray-800 text-gray-300 border-gray-700 hover:border-gray-500'
-               }`}
-           >
-               <Tag size={10} className={filterTag === t ? 'text-white' : 'text-emerald-500'} />
-               {t}
            </button>
        ))}
     </div>

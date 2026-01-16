@@ -39,10 +39,7 @@ const App: React.FC = () => {
   const {
     filterType,
     setFilterType,
-    filterTag,
-    setFilterTag,
     availableTypes,
-    availableTags,
     filteredMemories,
     clearFilters
   } = useMemoryFilters(memories);
@@ -81,11 +78,8 @@ const App: React.FC = () => {
 
           <FilterBar 
             availableTypes={availableTypes}
-            availableTags={availableTags}
             filterType={filterType}
-            filterTag={filterTag}
             setFilterType={setFilterType}
-            setFilterTag={setFilterTag}
             clearFilters={clearFilters}
           />
       </div>
@@ -133,7 +127,6 @@ const App: React.FC = () => {
             onClose={() => setIsSettingsOpen(false)}
             clearKey={clearKey}
             availableTypes={availableTypes}
-            availableTags={availableTags}
             onImportSuccess={refreshMemories}
         />
       )}

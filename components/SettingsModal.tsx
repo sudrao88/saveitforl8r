@@ -9,7 +9,6 @@ interface SettingsModalProps {
   onClose: () => void;
   clearKey: () => void;
   availableTypes: string[];
-  availableTags: string[];
   onImportSuccess: () => void;
 }
 
@@ -17,14 +16,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     onClose, 
     clearKey, 
     availableTypes, 
-    availableTags,
     onImportSuccess
 }) => {
   const {
     exportSelectedTypes,
     setExportSelectedTypes,
-    exportSelectedTags,
-    setExportSelectedTags,
     fileInputRef,
     handleExport,
     handleImportClick,
@@ -63,20 +59,13 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                           <div className="flex justify-between items-center mb-2">
                             <span className="text-sm font-semibold text-gray-300">Export Memories</span>
                           </div>
-                          <div className="grid grid-cols-2 gap-2 mb-3">
+                          <div className="grid grid-cols-1 gap-2 mb-3">
                             <MultiSelect 
                               label="Type"
                               options={availableTypes}
                               selected={exportSelectedTypes}
                               onChange={setExportSelectedTypes}
                               placeholder="All Types"
-                            />
-                            <MultiSelect 
-                              label="Tags"
-                              options={availableTags}
-                              selected={exportSelectedTags}
-                              onChange={setExportSelectedTags}
-                              placeholder="All Tags"
                             />
                           </div>
                           <button
