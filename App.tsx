@@ -9,6 +9,7 @@ import SettingsModal from './components/SettingsModal';
 import LandingPage from './components/LandingPage';
 import EmptyState from './components/EmptyState';
 import NewMemoryPage from './components/NewMemoryPage';
+import { InstallPrompt } from './components/InstallPrompt';
 
 import { useMemories } from './hooks/useMemories';
 import { useSettings } from './hooks/useSettings';
@@ -68,6 +69,7 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-900 flex flex-col">
+      <InstallPrompt />
       {/* Sticky Header Wrapper */}
       <div className="sticky top-0 z-30 bg-gray-900/90 backdrop-blur-md border-b border-gray-800">
           <TopNavigation 
