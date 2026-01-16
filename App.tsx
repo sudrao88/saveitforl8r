@@ -16,6 +16,7 @@ import { useMemoryFilters } from './hooks/useMemoryFilters';
 import { useServiceWorker } from './hooks/useServiceWorker';
 import { useShareReceiver } from './hooks/useShareReceiver';
 import { ViewMode } from './types';
+import { initGA, logPageView, logEvent } from './services/analytics';
 
 const App: React.FC = () => {
   const [view, setView] = useState<ViewMode>(ViewMode.FEED);
@@ -24,9 +25,15 @@ const App: React.FC = () => {
   const { updateAvailable, updateApp } = useServiceWorker();
   const { shareData, clearShareData } = useShareReceiver();
 
+  useEffect(() => {
+    initGA();
+    logPageView('home');
+  }, []);
+
   // If share data arrives, open the capture modal immediately
   useEffect(() => {
     if (shareData) {
+      logEvent('Share', 'Received', 'External Share');
       setIsCaptureOpen(true);
     }
   }, [shareData]);
@@ -61,7 +68,10 @@ const App: React.FC = () => {
       <LandingPage 
         inputApiKey={inputApiKey} 
         setInputApiKey={setInputApiKey} 
-        saveKey={saveKey} 
+        saveKey={(key) => {
+            saveKey(key);
+            logEvent('Settings', 'API Key Set', 'Onboarding');
+        }} 
       />
     );
   }
@@ -72,10 +82,12 @@ const App: React.FC = () => {
       <NewMemoryPage 
         onClose={() => {
           setIsCaptureOpen(false);
+          logEvent('Memory', 'Capture Cancelled');
           if (shareData) clearShareData(); // Clear share data on close
         }}
         onMemoryCreated={() => {
           refreshMemories();
+          logEvent('Memory', 'Created');
           if (shareData) clearShareData();
         }}
         initialContent={shareData || undefined}
@@ -89,18 +101,36 @@ const App: React.FC = () => {
       {/* Sticky Header Wrapper */}
       <div className="sticky top-0 z-30 bg-gray-900/90 backdrop-blur-md border-b border-gray-800">
           <TopNavigation 
-            setView={setView} 
-            resetFilters={clearFilters} 
-            onSettingsClick={() => setIsSettingsOpen(true)}
+            setView={(newView) => {
+                setView(newView);
+                logEvent('Navigation', 'View Changed', newView);
+            }} 
+            resetFilters={() => {
+                clearFilters();
+                logEvent('Filter', 'Cleared');
+            }} 
+            onSettingsClick={() => {
+                setIsSettingsOpen(true);
+                logEvent('Navigation', 'Settings Opened');
+            }}
             updateAvailable={updateAvailable}
-            onUpdateApp={updateApp}
+            onUpdateApp={() => {
+                updateApp();
+                logEvent('App', 'Updated');
+            }}
           />
 
           <FilterBar 
             availableTypes={availableTypes}
             filterType={filterType}
-            setFilterType={setFilterType}
-            clearFilters={clearFilters}
+            setFilterType={(type) => {
+                setFilterType(type);
+                if (type) logEvent('Filter', 'Applied', type);
+            }}
+            clearFilters={() => {
+                clearFilters();
+                logEvent('Filter', 'Cleared');
+            }}
           />
       </div>
 
@@ -109,7 +139,10 @@ const App: React.FC = () => {
         {filteredMemories.length === 0 ? (
           <EmptyState 
             hasMemories={memories.length > 0} 
-            clearFilters={clearFilters} 
+            clearFilters={() => {
+                clearFilters();
+                logEvent('Filter', 'Cleared from Empty State');
+            }} 
           />
         ) : (
           <div className="columns-1 sm:columns-2 lg:columns-3 xl:columns-4 gap-6">
@@ -117,8 +150,14 @@ const App: React.FC = () => {
               <MemoryCard 
                 key={mem.id} 
                 memory={mem} 
-                onDelete={handleDelete} 
-                onRetry={handleRetry}
+                onDelete={(id) => {
+                    handleDelete(id);
+                    logEvent('Memory', 'Deleted');
+                }} 
+                onRetry={(id) => {
+                    handleRetry(id);
+                    logEvent('Memory', 'Retried');
+                }}
               />
             ))}
           </div>
@@ -127,7 +166,10 @@ const App: React.FC = () => {
 
       {/* Floating Action Button (Extended Material Design Style) */}
       <button 
-        onClick={() => setIsCaptureOpen(true)}
+        onClick={() => {
+            setIsCaptureOpen(true);
+            logEvent('Navigation', 'Capture Opened', 'FAB');
+        }}
         className="fixed bottom-6 right-4 sm:bottom-8 sm:right-8 z-20 h-14 sm:h-16 px-5 sm:px-7 bg-blue-600 text-white rounded-2xl flex items-center gap-3 shadow-2xl hover:bg-blue-700 hover:scale-105 active:scale-95 transition-all duration-300 shadow-blue-900/50"
       >
         <Plus size={28} strokeWidth={3} />
@@ -137,17 +179,29 @@ const App: React.FC = () => {
       {view === ViewMode.RECALL && (
         <ChatInterface 
           memories={filteredMemories.filter(m => !m.isDeleting)} 
-          onClose={() => setView(ViewMode.FEED)} 
+          onClose={() => {
+              setView(ViewMode.FEED);
+              logEvent('Chat', 'Closed');
+          }} 
         />
       )}
 
       {/* Settings Dialog */}
       {isSettingsOpen && (
         <SettingsModal 
-            onClose={() => setIsSettingsOpen(false)}
-            clearKey={clearKey}
+            onClose={() => {
+                setIsSettingsOpen(false);
+                logEvent('Settings', 'Closed');
+            }}
+            clearKey={() => {
+                clearKey();
+                logEvent('Settings', 'API Key Cleared');
+            }}
             availableTypes={availableTypes}
-            onImportSuccess={refreshMemories}
+            onImportSuccess={() => {
+                refreshMemories();
+                logEvent('Data', 'Import Success');
+            }}
         />
       )}
     </div>
