@@ -19,10 +19,16 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose }) => {
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Viewport management for iOS keyboard handling
-  const [viewportStyle, setViewportStyle] = useState<{ height: string; top: number }>({
+  const [viewportStyle, setViewportStyle] = useState<{ height: string; top: number | string }>({
     height: '100dvh', // Default to dynamic viewport height
     top: 0
   });
+
+  const scrollToBottom = () => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  };
 
   useEffect(() => {
     // Lock body scroll to prevent background interaction
@@ -38,14 +44,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose }) => {
         });
         
         // Ensure scrolling to bottom if needed when viewport resizes (e.g., keyboard opens)
-        if (scrollRef.current) {
-          // Small delay to ensure layout is done
-          setTimeout(() => {
-              if (scrollRef.current) {
-                  scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-              }
-          }, 100);
-        }
+        // We use a small timeout to allow layout to settle
+        setTimeout(scrollToBottom, 100);
       }
     };
 
@@ -55,6 +55,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose }) => {
       // Initial set
       handleVisualViewport();
     }
+
+    // Initial scroll to bottom to see the input
+    setTimeout(scrollToBottom, 100);
 
     return () => {
       document.body.style.overflow = originalStyle;
@@ -66,7 +69,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose }) => {
   }, []);
 
   useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    scrollToBottom();
   }, [messages, isLoading]);
 
   const handleSend = async () => {
@@ -76,6 +79,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose }) => {
     setQuery('');
     setIsLoading(true);
     
+    // Keep focus on input for continuous chatting
+    if (inputRef.current) {
+        inputRef.current.focus();
+    }
+    
     try {
       const { answer, sourceIds } = await queryBrain(userMsg.text, memories);
       setMessages(prev => [...prev, { role: 'model', text: answer, sources: sourceIds }]);
@@ -84,10 +92,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose }) => {
       setMessages(prev => [...prev, { role: 'model', text: "Sorry, I encountered an error searching your memories." }]);
     } finally {
       setIsLoading(false);
-      // Refocus input after sending to keep keyboard up for chat flow
-      if (inputRef.current) {
-        inputRef.current.focus();
-      }
+      // Ensure we are scrolled to bottom after response
+      setTimeout(scrollToBottom, 50);
     }
   };
 
@@ -107,14 +113,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose }) => {
         Sits on top of the backdrop.
       */}
       <div 
-        className="fixed left-0 right-0 z-[61] flex flex-col overflow-hidden"
+        className="fixed left-0 right-0 z-[61] flex flex-col overflow-hidden bg-gray-900"
         style={{ 
           height: viewportStyle.height, 
           top: viewportStyle.top,
         }}
       >
         {/* Header */}
-        <div className="flex-none border-b border-gray-800 px-6 py-4 flex items-center justify-between bg-gray-900 z-10">
+        <div className="flex-none border-b border-gray-800 px-6 py-4 flex items-center justify-between bg-gray-900 z-10 shadow-sm">
             <div className="flex items-center gap-2">
                <Bot size={24} className="text-blue-500" />
                <h2 className="text-lg font-bold text-gray-100">Brain Search</h2>
@@ -125,7 +131,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose }) => {
         {/* Messages Area - Flex 1 to take available space */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 md:px-20 lg:px-64 space-y-6 bg-gray-900 overscroll-contain">
           {messages.length === 0 && (
-            <div className="h-full flex flex-col items-center justify-center text-center max-w-sm mx-auto opacity-50 px-4">
+            <div className="flex flex-col items-center justify-center text-center max-w-sm mx-auto opacity-50 px-4 pt-10">
               <Bot size={48} className="text-blue-500 mb-6" />
               <h3 className="text-xl font-bold text-gray-100 mb-2">Neural Retrieval</h3>
               <p className="text-sm text-gray-400 leading-relaxed">Ask questions to your second brain. SaveItForL8r synthesizes answers using only your captured memories.</p>
@@ -175,28 +181,32 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose }) => {
               <span className="text-sm">Synthesizing...</span>
             </div>
           )}
-        </div>
 
-         {/* Input Area - Flex None to stay at bottom */}
-         <div className="flex-none bg-gray-900 border-t border-gray-800 p-3 safe-area-bottom z-30">
-          <div className="max-w-4xl mx-auto flex items-center gap-3 bg-gray-800 px-4 py-2 rounded-2xl border border-gray-700 focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500 transition-all">
-            <input
-              ref={inputRef}
-              autoFocus
-              type="text"
-              className="w-full text-base font-medium focus:outline-none bg-transparent placeholder-gray-500 border-none text-gray-100 py-1"
-              placeholder="Ask your second brain..."
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-            />
-             <button 
-              onClick={handleSend}
-              disabled={!query.trim() || isLoading}
-              className="p-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-            >
-              <Send size={18} />
-            </button>
+          {/* Input Area - Now inside the scroll view */}
+          <div className="w-full pt-4 pb-4">
+            <div className="max-w-4xl mx-auto flex items-center gap-3 bg-gray-800 px-4 py-2 rounded-2xl border border-gray-700 focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500 transition-all shadow-sm">
+              <input
+                ref={inputRef}
+                autoFocus
+                type="text"
+                className="w-full text-base font-medium focus:outline-none bg-transparent placeholder-gray-500 border-none text-gray-100 py-1"
+                placeholder="Ask your second brain..."
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                onFocus={() => {
+                    // Force scroll to bottom when keyboard opens
+                    setTimeout(scrollToBottom, 300);
+                }}
+              />
+               <button 
+                onClick={handleSend}
+                disabled={!query.trim() || isLoading}
+                className="p-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+              >
+                <Send size={18} />
+              </button>
+            </div>
           </div>
         </div>
       </div>
