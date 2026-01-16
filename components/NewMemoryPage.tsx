@@ -7,19 +7,30 @@ import { Memory, Attachment } from '../types';
 interface NewMemoryPageProps {
   onClose: () => void;
   onMemoryCreated: () => void;
+  initialContent?: {
+    text: string;
+    attachments: Attachment[];
+  };
 }
 
 const SUGGESTED_TAGS = ["Book", "Restaurant", "Place to Visit", "Movie", "Podcast", "Stuff"];
 
-const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onMemoryCreated }) => {
-  const [text, setText] = useState('');
-  const [attachments, setAttachments] = useState<Attachment[]>([]);
+const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onMemoryCreated, initialContent }) => {
+  const [text, setText] = useState(initialContent?.text || '');
+  const [attachments, setAttachments] = useState<Attachment[]>(initialContent?.attachments || []);
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (initialContent) {
+        setText(initialContent.text || '');
+        setAttachments(initialContent.attachments || []);
+    }
+  }, [initialContent]);
 
   useEffect(() => {
     if (textAreaRef.current) {

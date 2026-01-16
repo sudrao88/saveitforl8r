@@ -9,7 +9,6 @@ const PRECACHE_ASSETS = [
 ];
 
 self.addEventListener('install', (event) => {
-  // Removed self.skipWaiting() to allow user to choose when to update
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
@@ -40,21 +39,77 @@ self.addEventListener('message', (event) => {
   }
 });
 
+// Helper to save shared data to IndexedDB
+function saveShareData(data) {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open('saveitforl8r-share', 1);
+    request.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('shares')) {
+        db.createObjectStore('shares', { autoIncrement: true });
+      }
+    };
+    request.onsuccess = (e) => {
+      const db = e.target.result;
+      const tx = db.transaction('shares', 'readwrite');
+      const store = tx.objectStore('shares');
+      store.put(data);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    };
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function handleShareTarget(request) {
+  try {
+    const formData = await request.formData();
+    const title = formData.get('title') || '';
+    const text = formData.get('text') || '';
+    const url = formData.get('url') || '';
+    const mediaFiles = formData.getAll('media');
+
+    // Filter out empty files (sometimes sent by Android even if no file selected)
+    const validFiles = mediaFiles.filter(f => f.size > 0);
+
+    const shareData = {
+      title,
+      text,
+      url,
+      timestamp: Date.now(),
+      files: validFiles // We'll store the File objects (Blobs) directly
+    };
+
+    await saveShareData(shareData);
+
+    // Redirect to the app with a query param indicating a share occurred
+    return Response.redirect('/?share-target=true', 303);
+  } catch (err) {
+    console.error('[SW] Share target error:', err);
+    // Fallback to home if something fails
+    return Response.redirect('/', 303);
+  }
+}
+
 self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url);
+
+  // Handle Share Target POST request
+  if (url.pathname === '/share-target/' && event.request.method === 'POST') {
+    event.respondWith(handleShareTarget(event.request));
+    return;
+  }
+
   // Only handle requests within our scope
-  // For root scope, we generally want to handle everything from same origin
   if (!event.request.url.startsWith(self.location.origin)) {
     return;
   }
 
   // Navigation requests: Network First, fallback to Cache (App Shell)
-  // This ensures that if the user reloads the page (fresh load), they always get the latest index.html from the server
-  // The update prompt in the UI is a manual intervention for users who have the app open and need to update to the latest version without reloading manually first
   if (event.request.mode === 'navigate') {
     event.respondWith(
       fetch(event.request)
         .then((networkResponse) => {
-          // Check if we received a valid response
           if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
             return networkResponse;
           }
@@ -80,8 +135,6 @@ self.addEventListener('fetch', (event) => {
         return cachedResponse;
       }
       return fetch(event.request).then((networkResponse) => {
-        // Cache new resources (js, css, images)
-        // Ensure we only cache valid responses and valid types (basic = same origin)
         if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
             const responseToCache = networkResponse.clone();
             caches.open(CACHE_NAME).then((cache) => {

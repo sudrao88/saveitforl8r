@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Plus } from 'lucide-react';
 import MemoryCard from './components/MemoryCard';
 import ChatInterface from './components/ChatInterface';
@@ -14,6 +14,7 @@ import { useMemories } from './hooks/useMemories';
 import { useSettings } from './hooks/useSettings';
 import { useMemoryFilters } from './hooks/useMemoryFilters';
 import { useServiceWorker } from './hooks/useServiceWorker';
+import { useShareReceiver } from './hooks/useShareReceiver';
 import { ViewMode } from './types';
 
 const App: React.FC = () => {
@@ -21,6 +22,14 @@ const App: React.FC = () => {
   const [isCaptureOpen, setIsCaptureOpen] = useState(false);
 
   const { updateAvailable, updateApp } = useServiceWorker();
+  const { shareData, clearShareData } = useShareReceiver();
+
+  // If share data arrives, open the capture modal immediately
+  useEffect(() => {
+    if (shareData) {
+      setIsCaptureOpen(true);
+    }
+  }, [shareData]);
 
   const {
     memories,
@@ -61,10 +70,15 @@ const App: React.FC = () => {
   if (isCaptureOpen) {
     return (
       <NewMemoryPage 
-        onClose={() => setIsCaptureOpen(false)}
+        onClose={() => {
+          setIsCaptureOpen(false);
+          if (shareData) clearShareData(); // Clear share data on close
+        }}
         onMemoryCreated={() => {
           refreshMemories();
+          if (shareData) clearShareData();
         }}
+        initialContent={shareData || undefined}
       />
     );
   }
