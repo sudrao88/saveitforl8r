@@ -37,6 +37,15 @@ self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
+  
+  // Respond to version check
+  if (event.data && event.data.type === 'GET_VERSION') {
+    // Reply to the client who sent the message
+    event.ports[0].postMessage({ 
+        type: 'VERSION', 
+        version: CACHE_NAME 
+    });
+  }
 });
 
 // Helper to save shared data to IndexedDB

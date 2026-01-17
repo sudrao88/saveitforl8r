@@ -22,7 +22,7 @@ const App: React.FC = () => {
   const [view, setView] = useState<ViewMode>(ViewMode.FEED);
   const [isCaptureOpen, setIsCaptureOpen] = useState(false);
 
-  const { updateAvailable, updateApp } = useServiceWorker();
+  const { updateAvailable, updateApp, appVersion } = useServiceWorker();
   const { shareData, clearShareData } = useShareReceiver();
 
   useEffect(() => {
@@ -202,6 +202,7 @@ const App: React.FC = () => {
                 refreshMemories();
                 logEvent('Data', 'Import Success');
             }}
+            appVersion={appVersion}
         />
       )}
     </div>

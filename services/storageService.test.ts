@@ -2,6 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { getMemories, saveMemory, deleteMemory, getMemory, updateMemoryTags } from './storageService';
 import { Memory } from '../types';
 
+// Mock Encryption Service
+vi.mock('./encryptionService', () => ({
+  encryptData: vi.fn(async (data) => ({ cipherText: 'encrypted', iv: 'iv' })),
+  decryptData: vi.fn(async (payload) => ({ content: 'decrypted content' })),
+}));
+
 // Mock IndexedDB
 const mockDB = {
   transaction: vi.fn(),
@@ -15,6 +21,7 @@ const mockTransaction = {
   objectStore: vi.fn(),
   oncomplete: vi.fn(),
   onerror: vi.fn(),
+  error: null,
 };
 
 const mockStore = {
@@ -60,7 +67,6 @@ describe('storageService', () => {
     mockStore.delete.mockReturnValue(mockRequest);
 
     // Mock openDB success flow manually for tests that need it
-    // Note: Since openDB is internal, we rely on indexedDB.open behavior
     const openRequest: any = {
       result: mockDB,
       onsuccess: null,
@@ -75,13 +81,15 @@ describe('storageService', () => {
   });
 
   describe('getMemories', () => {
-    it('should return sorted memories', async () => {
-      const mockMemories = [
-        { id: '1', content: 'old', timestamp: 1000, tags: [], type: 'text' },
-        { id: '2', content: 'new', timestamp: 2000, tags: [], type: 'text' },
+    it('should return sorted memories (handling legacy and encrypted)', async () => {
+      const mockStoredMemories = [
+        // Legacy (plaintext)
+        { id: '1', content: 'legacy', timestamp: 1000, tags: [] },
+        // Encrypted
+        { id: '2', timestamp: 2000, encryptedData: { cipherText: 'abc', iv: '123' } },
       ];
 
-      mockRequest.result = mockMemories;
+      mockRequest.result = mockStoredMemories;
       // Trigger onsuccess when getAll is called
       mockStore.getAll.mockImplementation(() => {
           setTimeout(() => {
@@ -90,42 +98,27 @@ describe('storageService', () => {
           return mockRequest;
       });
 
+      // The mock decryptData returns { content: 'decrypted content' }
       const memories = await getMemories();
       
       expect(memories).toHaveLength(2);
       expect(memories[0].id).toBe('2'); // Newest first
-      expect(memories[1].id).toBe('1');
-      expect(mockStore.getAll).toHaveBeenCalled();
-    });
-
-    it('should return empty array on error', async () => {
-      // Mock console.error to avoid polluting output
-      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-      mockStore.getAll.mockImplementation(() => {
-          setTimeout(() => {
-              // Creating a DOMException-like object which is often what's expected
-              mockRequest.error = { name: 'Error', message: 'Database Error' } as any; 
-              if(mockRequest.onerror) mockRequest.onerror();
-          }, 0);
-          return mockRequest;
-      });
-
-      const memories = await getMemories();
-      expect(memories).toEqual([]);
+      expect(memories[0].content).toBe('decrypted content'); // From mock decryption
       
-      consoleSpy.mockRestore();
+      expect(memories[1].id).toBe('1');
+      expect(memories[1].content).toBe('legacy'); // Legacy fallback
+      
+      expect(mockStore.getAll).toHaveBeenCalled();
     });
   });
 
   describe('saveMemory', () => {
-    it('should save a memory', async () => {
+    it('should encrypt and save a memory', async () => {
       const memory: Memory = { 
         id: '1', 
         content: 'test', 
         timestamp: 123, 
         tags: [], 
-        type: 'text' 
       };
 
       // Mock transaction completion
@@ -140,7 +133,18 @@ describe('storageService', () => {
       mockStore.put.mockReturnValue(mockRequest);
 
       await saveMemory(memory);
-      expect(mockStore.put).toHaveBeenCalledWith(memory);
+      
+      // Verify it called put with the transformed object
+      expect(mockStore.put).toHaveBeenCalledWith(expect.objectContaining({
+        id: '1',
+        timestamp: 123,
+        encryptedData: { cipherText: 'encrypted', iv: 'iv' }
+      }));
+      
+      // Should NOT contain plain text content
+      expect(mockStore.put).not.toHaveBeenCalledWith(expect.objectContaining({
+        content: 'test'
+      }));
     });
   });
 

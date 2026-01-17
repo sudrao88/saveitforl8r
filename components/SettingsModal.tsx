@@ -1,22 +1,27 @@
-import React from 'react';
-import { X, Settings, Download, Upload, HelpCircle } from 'lucide-react';
+import React, { useState } from 'react';
+import { X, Settings, Download, Upload, HelpCircle, ShieldCheck, ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react';
 import MultiSelect from './MultiSelect';
 import { KeyOff } from './icons';
 import { useExportImport } from '../hooks/useExportImport';
+import { useEncryptionSettings } from '../hooks/useEncryptionSettings';
 
 interface SettingsModalProps {
   onClose: () => void;
   clearKey: () => void;
   availableTypes: string[];
   onImportSuccess: () => void;
+  appVersion?: string;
 }
 
 const SettingsModal: React.FC<SettingsModalProps> = ({ 
     onClose, 
     clearKey, 
     availableTypes, 
-    onImportSuccess
+    onImportSuccess,
+    appVersion
 }) => {
+  const [showAdvancedSecurity, setShowAdvancedSecurity] = useState(false);
+
   const {
     exportSelectedTypes,
     setExportSelectedTypes,
@@ -25,6 +30,13 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     handleImportClick,
     handleImportFile
   } = useExportImport(onImportSuccess);
+
+  const {
+      handleDownloadKey,
+      handleRestoreClick,
+      handleRestoreFile,
+      fileInputRef: keyFileInputRef
+  } = useEncryptionSettings();
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
@@ -44,10 +56,66 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
               <div>
                 <h3 className="text-xl font-bold text-white">Settings</h3>
                 <p className="text-gray-400 text-sm">Manage your data and preferences</p>
+                {appVersion && (
+                    <span className="inline-block mt-1 px-2 py-0.5 rounded-md bg-gray-700 text-[10px] font-mono text-gray-400 border border-gray-600">
+                        {appVersion}
+                    </span>
+                )}
               </div>
           </div>
           
           <div className="space-y-6">
+               {/* Security Section */}
+               <div className="space-y-3">
+                 <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Security</h4>
+                 <div className="bg-green-900/10 border border-green-900/30 p-4 rounded-2xl">
+                    <div className="flex gap-3 items-center mb-1">
+                        <ShieldCheck size={20} className="text-green-400 shrink-0" />
+                        <p className="text-sm text-green-200 font-medium">Encrypted Storage Active</p>
+                    </div>
+                    <p className="text-[10px] text-green-400/70 leading-relaxed ml-8">
+                       Your memories are safely encrypted on this device.
+                    </p>
+
+                    {/* Advanced Toggle */}
+                    <button 
+                        onClick={() => setShowAdvancedSecurity(!showAdvancedSecurity)}
+                        className="flex items-center gap-1 text-[10px] text-gray-400 hover:text-white mt-3 ml-8 transition-colors uppercase font-bold tracking-wider"
+                    >
+                        {showAdvancedSecurity ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                        Advanced Options
+                    </button>
+
+                    {/* Advanced Content */}
+                    {showAdvancedSecurity && (
+                        <div className="mt-3 ml-2 pl-4 border-l-2 border-gray-700/50 space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
+                            <div className="bg-gray-900/30 p-3 rounded-lg border border-gray-700/30">
+                                <div className="flex items-start gap-2 mb-2">
+                                    <AlertTriangle size={14} className="text-yellow-500 mt-0.5 shrink-0" />
+                                    <p className="text-xs text-gray-300 leading-relaxed">
+                                        Your encryption key is stored in this browser. If you clear your cache, you will lose access to your data unless you have a backup.
+                                    </p>
+                                </div>
+                                <div className="flex gap-2 mt-3">
+                                    <button 
+                                        onClick={handleDownloadKey}
+                                        className="text-xs bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg border border-gray-600 transition-colors flex items-center gap-1.5 font-medium"
+                                    >
+                                        <Download size={12} /> Backup Key
+                                    </button>
+                                    <button 
+                                        onClick={handleRestoreClick}
+                                        className="text-xs bg-transparent hover:bg-gray-800 text-gray-400 hover:text-gray-200 px-3 py-1.5 rounded-lg border border-gray-700 transition-colors flex items-center gap-1.5"
+                                    >
+                                        <Upload size={12} /> Restore Key
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                 </div>
+               </div>
+
                {/* Data Management Section */}
                <div className="space-y-3">
                   <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Data Management</h4>
@@ -122,13 +190,22 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
       </div>
       
-      {/* Hidden File Input for Import */}
+      {/* Hidden File Input for CSV Import */}
       <input
         type="file"
         ref={fileInputRef}
         onChange={handleImportFile}
         className="hidden"
         accept=".csv"
+      />
+
+       {/* Hidden File Input for Key Restore */}
+       <input
+        type="file"
+        ref={keyFileInputRef}
+        onChange={handleRestoreFile}
+        className="hidden"
+        accept=".json"
       />
     </div>
   );

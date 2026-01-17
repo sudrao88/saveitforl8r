@@ -4,6 +4,7 @@ export const useServiceWorker = () => {
   const [registration, setRegistration] = useState<ServiceWorkerRegistration | null>(null);
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
+  const [appVersion, setAppVersion] = useState<string>('');
 
   useEffect(() => {
     if ('serviceWorker' in navigator) {
@@ -16,6 +17,11 @@ export const useServiceWorker = () => {
         if (reg.waiting) {
             setUpdateAvailable(true);
             setWaitingWorker(reg.waiting);
+        }
+
+        // Check active worker for version
+        if (reg.active) {
+            askForVersion(reg.active);
         }
 
         // Listen for new updates
@@ -57,11 +63,21 @@ export const useServiceWorker = () => {
     }
   }, []);
 
+  const askForVersion = (worker: ServiceWorker) => {
+      const messageChannel = new MessageChannel();
+      messageChannel.port1.onmessage = (event) => {
+          if (event.data.type === 'VERSION') {
+              setAppVersion(event.data.version);
+          }
+      };
+      worker.postMessage({ type: 'GET_VERSION' }, [messageChannel.port2]);
+  };
+
   const updateApp = () => {
       if (waitingWorker) {
           waitingWorker.postMessage({ type: 'SKIP_WAITING' });
       }
   };
 
-  return { registration, updateAvailable, updateApp };
+  return { registration, updateAvailable, updateApp, appVersion };
 };
