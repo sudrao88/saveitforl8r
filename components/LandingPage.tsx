@@ -63,21 +63,21 @@ const LandingPage: React.FC<LandingPageProps> = ({ inputApiKey, setInputApiKey, 
           
           <div className="space-y-4">
              {/* Billing Alert */}
-             <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4">
+             <div className="bg-gray-700/50 border border-gray-600 rounded-xl p-4">
                 <div className="flex gap-3">
-                   <AlertTriangle className="text-yellow-500 shrink-0" size={20} />
+                   <AlertTriangle className="text-gray-400 shrink-0" size={20} />
                    <div className="space-y-1">
-                      <p className="text-sm text-yellow-200 font-bold">Billing Required</p>
-                      <p className="text-xs text-yellow-500/80 leading-relaxed">
+                      <p className="text-sm text-gray-200 font-semibold">Billing Required</p>
+                      <p className="text-xs text-gray-400 leading-relaxed">
                          Your API key must be from a Google Cloud project with billing enabled to use search features.
                       </p>
                       <a 
-                        href="https://ai.google.dev/gemini-api/docs/api-key" 
+                        href="https://aistudio.google.com/app/api-keys" 
                         target="_blank" 
                         rel="noreferrer" 
-                        className="text-xs text-yellow-400 hover:text-yellow-300 underline block mt-2 font-medium"
+                        className="text-xs text-blue-400 hover:text-blue-300 underline block mt-2 font-medium"
                       >
-                         View setup guide →
+                         Get one here
                       </a>
                    </div>
                 </div>
@@ -97,9 +97,6 @@ const LandingPage: React.FC<LandingPageProps> = ({ inputApiKey, setInputApiKey, 
              >
                Connect API Key
              </button>
-             <p className="text-xs text-gray-500 mt-4">
-                Don't have a key? <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">Get one here</a>
-             </p>
           </div>
         </div>
 
