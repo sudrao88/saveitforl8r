@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Zap, Shield } from 'lucide-react';
+import { Zap, Shield, AlertTriangle } from 'lucide-react';
 import { Logo } from './icons';
 
 interface LandingPageProps {
@@ -62,6 +62,27 @@ const LandingPage: React.FC<LandingPageProps> = ({ inputApiKey, setInputApiKey, 
           <p className="text-gray-400 mb-6 text-sm leading-relaxed">Please enter your Gemini API Key to enable multimodal knowledge capture.</p>
           
           <div className="space-y-4">
+             {/* Billing Alert */}
+             <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4">
+                <div className="flex gap-3">
+                   <AlertTriangle className="text-yellow-500 shrink-0" size={20} />
+                   <div className="space-y-1">
+                      <p className="text-sm text-yellow-200 font-bold">Billing Required</p>
+                      <p className="text-xs text-yellow-500/80 leading-relaxed">
+                         Your API key must be from a Google Cloud project with billing enabled to use search features.
+                      </p>
+                      <a 
+                        href="https://ai.google.dev/gemini-api/docs/api-key" 
+                        target="_blank" 
+                        rel="noreferrer" 
+                        className="text-xs text-yellow-400 hover:text-yellow-300 underline block mt-2 font-medium"
+                      >
+                         View setup guide →
+                      </a>
+                   </div>
+                </div>
+             </div>
+
              <input 
                 type="password"
                 value={inputApiKey}
