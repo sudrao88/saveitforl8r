@@ -1,8 +1,7 @@
-const CACHE_NAME = 'saveitforl8r-v7';
+const CACHE_NAME = 'saveitforl8r-v11';
 const SCOPE = '/';
 
 const PRECACHE_ASSETS = [
-  SCOPE,
   SCOPE + 'index.html',
   SCOPE + 'manifest.json',
   SCOPE + 'icon.svg'
@@ -15,6 +14,7 @@ self.addEventListener('install', (event) => {
         console.log('[SW] Pre-caching offline page');
         return cache.addAll(PRECACHE_ASSETS);
       })
+      .then(() => self.skipWaiting()) // Activate immediately to take control
   );
 });
 
@@ -40,7 +40,6 @@ self.addEventListener('message', (event) => {
   
   // Respond to version check
   if (event.data && event.data.type === 'GET_VERSION') {
-    // Reply to the client who sent the message
     event.ports[0].postMessage({ 
         type: 'VERSION', 
         version: CACHE_NAME 
@@ -78,7 +77,7 @@ async function handleShareTarget(request) {
     const url = formData.get('url') || '';
     const mediaFiles = formData.getAll('media');
 
-    // Filter out empty files (sometimes sent by Android even if no file selected)
+    // Filter out empty files
     const validFiles = mediaFiles.filter(f => f.size > 0);
 
     const shareData = {
@@ -86,16 +85,14 @@ async function handleShareTarget(request) {
       text,
       url,
       timestamp: Date.now(),
-      files: validFiles // We'll store the File objects (Blobs) directly
+      files: validFiles
     };
 
     await saveShareData(shareData);
 
-    // Redirect to the app with a query param indicating a share occurred
     return Response.redirect('/?share-target=true', 303);
   } catch (err) {
     console.error('[SW] Share target error:', err);
-    // Fallback to home if something fails
     return Response.redirect('/', 303);
   }
 }
@@ -114,44 +111,86 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Navigation requests: Network First, fallback to Cache (App Shell)
+  // 1. Navigation requests (HTML): Stale-While-Revalidate (App Shell Pattern)
+  // We always serve 'index.html' from cache, while updating it in the background.
   if (event.request.mode === 'navigate') {
     event.respondWith(
-      fetch(event.request)
-        .then((networkResponse) => {
-          if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
+      caches.match(SCOPE + 'index.html').then((cachedResponse) => {
+        const fetchPromise = fetch(event.request)
+          .then((networkResponse) => {
+            // Check if valid response
+            if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
+              return networkResponse;
+            }
+            
+            // Clone ONCE for the cache
+            const responseToCache = networkResponse.clone();
+            
+            caches.open(CACHE_NAME).then((cache) => {
+              // Always update the canonical 'index.html' cache entry.
+              // We do NOT cache the specific request URL (like /settings) because 
+              // in an SPA, all routes serve the same index.html content.
+              // This prevents cache bloat and "Response body already used" errors.
+              cache.put(SCOPE + 'index.html', responseToCache);
+            });
+            
             return networkResponse;
-          }
-          
-          const responseToCache = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(SCOPE + 'index.html', responseToCache);
+          })
+          .catch((err) => {
+             console.log('[SW] Network fetch failed:', err);
+             // CRITICAL: If we have no cached response, we must throw the error 
+             // so the browser can handle the failure (e.g. show offline page/error).
+             if (!cachedResponse) {
+                 throw err;
+             }
+             // If we have a cached response, we swallow the error and return nothing 
+             // (respondWith will use the cachedResponse).
           });
-          return networkResponse;
-        })
-        .catch(() => {
-           console.log('[SW] Offline, serving cached index.html');
-           return caches.match(SCOPE + 'index.html');
-        })
+
+        return cachedResponse || fetchPromise;
+      })
     );
     return;
   }
 
-  // Other requests: Cache First, fallback to Network
-  event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        return cachedResponse;
-      }
-      return fetch(event.request).then((networkResponse) => {
-        if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
+  // 2. Hashed Assets (JS/CSS/Images with hash): Cache First
+  // Vite assets in 'assets/' folder are hashed and immutable.
+  if (url.pathname.includes('/assets/')) {
+    event.respondWith(
+      caches.match(event.request).then((cachedResponse) => {
+        if (cachedResponse) {
+          return cachedResponse;
+        }
+        return fetch(event.request).then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
             const responseToCache = networkResponse.clone();
             caches.open(CACHE_NAME).then((cache) => {
-                cache.put(event.request, responseToCache);
+              cache.put(event.request, responseToCache);
             });
+          }
+          return networkResponse;
+        });
+      })
+    );
+    return;
+  }
+
+  // 3. Mutable Static Assets (manifest, icons, etc.): Stale-While-Revalidate
+  event.respondWith(
+    caches.match(event.request).then((cachedResponse) => {
+      const fetchPromise = fetch(event.request).then((networkResponse) => {
+        if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
+          const responseToCache = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, responseToCache);
+          });
         }
         return networkResponse;
+      }).catch(err => {
+         console.log('[SW] Fetch failed for SWR:', err);
       });
+
+      return cachedResponse || fetchPromise;
     })
   );
 });
