@@ -15,6 +15,7 @@ import { useSettings } from './hooks/useSettings';
 import { useMemoryFilters } from './hooks/useMemoryFilters';
 import { useServiceWorker } from './hooks/useServiceWorker';
 import { useShareReceiver } from './hooks/useShareReceiver';
+import { useSync } from './hooks/useSync';
 import { ViewMode } from './types';
 import { initGA, logPageView, logEvent } from './services/analytics';
 
@@ -25,10 +26,30 @@ const App: React.FC = () => {
 
   const { updateAvailable, updateApp, appVersion } = useServiceWorker();
   const { shareData, clearShareData } = useShareReceiver();
+  const { isLinked, sync, initialize } = useSync();
 
   useEffect(() => {
     initGA();
     logPageView('home');
+    
+    // Auto-sync on load if linked
+    if (isLinked()) {
+        initialize(() => {
+            console.log('Google Drive initialized for auto-sync');
+            sync();
+        });
+        // We also need to request access token if not valid, which initialize/sync handles internally usually, 
+        // but `initialize` sets up the client. 
+        // If we are already linked (localStorage flag), we should try to init and sync.
+        
+        // Setup periodic sync (every 5 minutes)
+        const intervalId = setInterval(() => {
+            console.log('Running periodic sync...');
+            sync();
+        }, 5 * 60 * 1000);
+
+        return () => clearInterval(intervalId);
+    }
   }, []);
 
   // If share data arrives, open the capture modal immediately
@@ -90,6 +111,8 @@ const App: React.FC = () => {
           refreshMemories();
           logEvent('Memory', 'Created');
           if (shareData) clearShareData();
+          // Trigger sync after creation
+          if (isLinked()) sync();
         }}
         initialContent={shareData || undefined}
       />
@@ -154,6 +177,7 @@ const App: React.FC = () => {
                 onDelete={(id) => {
                     handleDelete(id);
                     logEvent('Memory', 'Deleted');
+                    if (isLinked()) sync(); // Sync on delete
                 }} 
                 onRetry={(id) => {
                     handleRetry(id);
@@ -204,6 +228,7 @@ const App: React.FC = () => {
             onImportSuccess={() => {
                 refreshMemories();
                 logEvent('Data', 'Import Success');
+                if (isLinked()) sync(); // Sync after import
             }}
             appVersion={appVersion}
             hasApiKey={apiKeySet}

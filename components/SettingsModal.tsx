@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
-import { X, Settings, Download, Upload, HelpCircle, ShieldCheck, ChevronDown, ChevronRight, AlertTriangle, Key } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Settings, Download, Upload, HelpCircle, ShieldCheck, ChevronDown, ChevronRight, AlertTriangle, Key, Cloud, CloudOff, RefreshCw } from 'lucide-react';
 import MultiSelect from './MultiSelect';
 import { KeyOff } from './icons';
 import { useExportImport } from '../hooks/useExportImport';
 import { useEncryptionSettings } from '../hooks/useEncryptionSettings';
+import { useSync } from '../hooks/useSync';
 
 interface SettingsModalProps {
   onClose: () => void;
@@ -25,6 +26,39 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     onAddApiKey
 }) => {
   const [showAdvancedSecurity, setShowAdvancedSecurity] = useState(false);
+  const { isLinked, initialize, sync, unlink } = useSync();
+  const [isDriveLinked, setIsDriveLinked] = useState(isLinked());
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  useEffect(() => {
+    setIsDriveLinked(isLinked());
+  }, []);
+
+  const handleDriveLink = () => {
+    initialize(() => {
+        setIsDriveLinked(true);
+        // Initial sync
+        handleSync();
+    });
+    // Trigger auth flow
+    import('../services/googleDriveService').then(mod => {
+        mod.requestAccessToken();
+    });
+  };
+
+  const handleSync = async () => {
+    setIsSyncing(true);
+    try {
+        await sync();
+    } finally {
+        setIsSyncing(false);
+    }
+  };
+
+  const handleDriveUnlink = () => {
+    unlink();
+    setIsDriveLinked(false);
+  };
 
   const {
     exportSelectedTypes,
@@ -69,6 +103,48 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
           
           <div className="space-y-6">
+               {/* Sync Section */}
+               <div className="space-y-3">
+                 <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Cloud Sync</h4>
+                 <div className="bg-gray-700/30 p-4 rounded-2xl border border-gray-700 space-y-4">
+                    {isDriveLinked ? (
+                        <div className="flex flex-col gap-3">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2 text-green-400">
+                                    <Cloud size={20} />
+                                    <span className="text-sm font-medium">Google Drive Linked</span>
+                                </div>
+                                <button 
+                                    onClick={handleDriveUnlink}
+                                    className="text-xs text-red-400 hover:text-red-300 underline"
+                                >
+                                    Unlink
+                                </button>
+                            </div>
+                            <button
+                                onClick={handleSync}
+                                disabled={isSyncing}
+                                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-800 hover:bg-gray-750 text-white rounded-xl font-medium transition-colors border border-gray-600 hover:border-blue-500/50 group"
+                            >
+                                <RefreshCw size={16} className={`text-blue-400 group-hover:text-blue-300 ${isSyncing ? 'animate-spin' : ''}`} />
+                                <span>{isSyncing ? 'Syncing...' : 'Sync Now'}</span>
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="flex items-center justify-between">
+                            <span className="text-sm text-gray-300">Sync with Google Drive</span>
+                            <button
+                                onClick={handleDriveLink}
+                                className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-750 text-white rounded-xl font-medium transition-colors border border-gray-600 hover:border-blue-500/50 group text-sm"
+                            >
+                                <Cloud size={16} className="text-blue-400 group-hover:text-blue-300" />
+                                <span>Connect</span>
+                            </button>
+                        </div>
+                    )}
+                 </div>
+               </div>
+
                {/* Security Section */}
                <div className="space-y-3">
                  <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Security</h4>
