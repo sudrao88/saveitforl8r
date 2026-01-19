@@ -97,4 +97,31 @@ describe('useMemories', () => {
     expect(updatedMemory?.isPending).toBe(false);
     expect(updatedMemory?.tags).toContain('new');
   });
+
+  it('should retry failed memories when back online', async () => {
+    const mockMemories = [{ id: '1', content: 'test', timestamp: 123, tags: [], processingError: true }];
+    const mockEnrichment = { suggestedTags: ['new'], locationIsRelevant: false };
+
+    (storageService.getMemories as any).mockResolvedValue(mockMemories);
+    (geminiService.enrichInput as any).mockResolvedValue(mockEnrichment);
+    (storageService.saveMemory as any).mockResolvedValue(undefined);
+
+    const { result } = renderHook(() => useMemories());
+
+    await waitFor(() => {
+        expect(result.current.memories).toEqual(mockMemories);
+    });
+
+    // Simulate online event
+    await act(async () => {
+        window.dispatchEvent(new Event('online'));
+    });
+
+    expect(geminiService.enrichInput).toHaveBeenCalled();
+    expect(storageService.saveMemory).toHaveBeenCalled();
+    
+    const updatedMemory = result.current.memories.find(m => m.id === '1');
+    expect(updatedMemory?.processingError).toBe(false);
+    expect(updatedMemory?.tags).toContain('new');
+  });
 });

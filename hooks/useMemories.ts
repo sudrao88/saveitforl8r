@@ -93,6 +93,20 @@ export const useMemories = () => {
     }
   };
 
+  useEffect(() => {
+    const handleOnline = () => {
+      console.log("App is back online. Retrying failed memories...");
+      memories.forEach(m => {
+        if (m.processingError && !m.isPending) {
+          handleRetry(m.id);
+        }
+      });
+    };
+
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
+  }, [memories]); // Re-bind when memories change so we have the latest list
+
   return {
     memories,
     refreshMemories,
