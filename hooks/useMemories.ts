@@ -3,12 +3,27 @@ import { useState, useEffect, useCallback } from 'react';
 import { getMemories, deleteMemory, saveMemory } from '../services/storageService';
 import { enrichInput } from '../services/geminiService';
 import { Memory, Attachment } from '../types';
+import { SAMPLE_MEMORIES } from '../services/sampleData';
 
 export const useMemories = () => {
   const [memories, setMemories] = useState<Memory[]>([]);
 
   const refreshMemories = useCallback(async () => {
-    const loaded = await getMemories();
+    let loaded = await getMemories();
+
+    // Seed sample data for new users
+    const samplesInitialized = localStorage.getItem('samples_initialized');
+    if (!samplesInitialized && loaded.length === 0) {
+        console.log("Seeding sample memories...");
+        for (const sample of SAMPLE_MEMORIES) {
+            await saveMemory(sample);
+        }
+        localStorage.setItem('samples_initialized', 'true');
+        // Reload to ensure consistent state (or just use samples)
+        // We use samples directly to avoid another DB read immediately, but DB read is safer for consistency
+        loaded = [...SAMPLE_MEMORIES];
+    }
+
     setMemories(loaded);
   }, []);
 
