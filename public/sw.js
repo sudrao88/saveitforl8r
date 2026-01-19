@@ -1,4 +1,4 @@
-const CACHE_NAME = 'saveitforl8r-v6';
+const CACHE_NAME = 'saveitforl8r-v7';
 const SCOPE = '/';
 
 const PRECACHE_ASSETS = [
