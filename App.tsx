@@ -5,9 +5,9 @@ import ChatInterface from './components/ChatInterface';
 import TopNavigation from './components/TopNavigation';
 import FilterBar from './components/FilterBar';
 import SettingsModal from './components/SettingsModal';
-import LandingPage from './components/LandingPage';
 import EmptyState from './components/EmptyState';
 import NewMemoryPage from './components/NewMemoryPage';
+import ApiKeyModal from './components/ApiKeyModal';
 import { InstallPrompt } from './components/InstallPrompt';
 
 import { useMemories } from './hooks/useMemories';
@@ -21,6 +21,7 @@ import { initGA, logPageView, logEvent } from './services/analytics';
 const App: React.FC = () => {
   const [view, setView] = useState<ViewMode>(ViewMode.FEED);
   const [isCaptureOpen, setIsCaptureOpen] = useState(false);
+  const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
 
   const { updateAvailable, updateApp, appVersion } = useServiceWorker();
   const { shareData, clearShareData } = useShareReceiver();
@@ -63,18 +64,18 @@ const App: React.FC = () => {
     clearFilters
   } = useMemoryFilters(memories);
 
-  if (!apiKeySet) {
-    return (
-      <LandingPage 
-        inputApiKey={inputApiKey} 
-        setInputApiKey={setInputApiKey} 
-        saveKey={(key) => {
-            saveKey(key);
-            logEvent('Settings', 'API Key Set', 'Onboarding');
-        }} 
-      />
-    );
-  }
+  const handleSaveApiKey = async (key: string) => {
+    saveKey(key);
+    logEvent('Settings', 'API Key Set', 'Onboarding');
+    setIsApiKeyModalOpen(false);
+    
+    // Automatically retry pending or failed memories
+    const pendingIds = memories.filter(m => m.isPending || m.processingError).map(m => m.id);
+    // We execute them sequentially to avoid overwhelming the browser/network if there are many
+    for (const id of pendingIds) {
+        await handleRetry(id);
+    }
+  };
 
   // Full Page New Memory View
   if (isCaptureOpen) {
@@ -158,6 +159,8 @@ const App: React.FC = () => {
                     handleRetry(id);
                     logEvent('Memory', 'Retried');
                 }}
+                hasApiKey={apiKeySet}
+                onAddApiKey={() => setIsApiKeyModalOpen(true)}
               />
             ))}
           </div>
@@ -203,6 +206,19 @@ const App: React.FC = () => {
                 logEvent('Data', 'Import Success');
             }}
             appVersion={appVersion}
+            hasApiKey={apiKeySet}
+            onAddApiKey={() => {
+                setIsSettingsOpen(false); // Close settings to show API key modal
+                setIsApiKeyModalOpen(true);
+            }}
+        />
+      )}
+
+      {/* API Key Modal */}
+      {isApiKeyModalOpen && (
+        <ApiKeyModal
+            onClose={() => setIsApiKeyModalOpen(false)}
+            onSave={handleSaveApiKey}
         />
       )}
     </div>

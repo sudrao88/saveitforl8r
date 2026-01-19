@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Trash2, MapPin, Loader2, Clock, ExternalLink, X, Check, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, WifiOff, FileText, Paperclip, ChevronDown, ChevronUp, FileCode, MoreVertical, Search, AlertTriangle } from 'lucide-react';
+import { Trash2, MapPin, Loader2, Clock, ExternalLink, X, Check, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, WifiOff, FileText, Paperclip, ChevronDown, ChevronUp, FileCode, MoreVertical, Search, AlertTriangle, Key } from 'lucide-react';
 import { Memory } from '../types.ts';
 
 interface MemoryCardProps {
@@ -7,9 +7,11 @@ interface MemoryCardProps {
   onDelete?: (id: string) => void;
   onRetry?: (id: string) => void;
   isDialog?: boolean;
+  hasApiKey?: boolean;
+  onAddApiKey?: () => void;
 }
 
-const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, isDialog }) => {
+const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, isDialog, hasApiKey = true, onAddApiKey }) => {
   const [isConfirming, setIsConfirming] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -100,29 +102,42 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, isDi
         {showErrorOverlay && (
             <div className="absolute inset-0 z-20 bg-gray-900/95 backdrop-blur-sm flex flex-col items-center justify-center p-4 text-center animate-in fade-in duration-300">
                 <div className="mb-4 p-3 bg-white rounded-full border-2 border-red-500 shadow-lg scale-110">
-                    {isOffline ? <WifiOff size={24} className="text-red-600" /> : <AlertTriangle size={24} className="text-red-600" />}
+                    {!hasApiKey ? <Key size={24} className="text-red-600" /> : isOffline ? <WifiOff size={24} className="text-red-600" /> : <AlertTriangle size={24} className="text-red-600" />}
                 </div>
                 <h3 className="text-gray-100 font-bold text-lg mb-2">
-                    {isOffline ? "Connection Lost" : "Analysis Failed"}
+                    {!hasApiKey ? "API Key Required" : isOffline ? "Connection Lost" : "Analysis Failed"}
                 </h3>
                 <p className="text-gray-400 text-sm mb-6 max-w-[240px] leading-relaxed">
-                    {isOffline 
-                        ? "Internet is required to enrich this memory with AI context." 
-                        : "The AI could not process this memory. Please try again."}
+                    {!hasApiKey
+                        ? "You need a Gemini API Key to analyze and tag your memories."
+                        : isOffline 
+                            ? "Internet is required to enrich this memory with AI context." 
+                            : "The AI could not process this memory. Please try again."}
                 </p>
                 <div className="flex flex-col gap-3 w-full max-w-[200px]">
-                    <button 
-                        onClick={(e) => { e.stopPropagation(); onRetry?.(memory.id); }}
-                        disabled={isOffline}
-                        className={`w-full py-3 px-4 text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg
-                            ${isOffline 
-                                ? 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700' 
-                                : 'bg-red-600 hover:bg-red-500 text-white shadow-red-900/30 hover:scale-[1.02] active:scale-95 border border-red-500'
-                            }`}
-                    >
-                        <RefreshCcw size={16} className={isOffline ? "" : ""} /> 
-                        {isOffline ? "Waiting for Network" : "Retry Analysis"}
-                    </button>
+                    {!hasApiKey ? (
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); onAddApiKey?.(); }}
+                            className="w-full py-3 px-4 text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/30 hover:scale-[1.02] active:scale-95 border border-blue-500"
+                        >
+                            <Key size={16} /> 
+                            Add API Key
+                        </button>
+                    ) : (
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); onRetry?.(memory.id); }}
+                            disabled={isOffline}
+                            className={`w-full py-3 px-4 text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg
+                                ${isOffline 
+                                    ? 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700' 
+                                    : 'bg-red-600 hover:bg-red-500 text-white shadow-red-900/30 hover:scale-[1.02] active:scale-95 border border-red-500'
+                                }`}
+                        >
+                            <RefreshCcw size={16} /> 
+                            {isOffline ? "Waiting for Network" : "Retry Analysis"}
+                        </button>
+                    )}
+                    
                     <button 
                         onClick={(e) => { e.stopPropagation(); setDismissedError(true); }}
                         className="text-gray-500 hover:text-gray-300 text-xs font-semibold py-2 hover:underline decoration-gray-500 underline-offset-4 transition-all"

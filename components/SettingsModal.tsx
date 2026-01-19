@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Settings, Download, Upload, HelpCircle, ShieldCheck, ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react';
+import { X, Settings, Download, Upload, HelpCircle, ShieldCheck, ChevronDown, ChevronRight, AlertTriangle, Key } from 'lucide-react';
 import MultiSelect from './MultiSelect';
 import { KeyOff } from './icons';
 import { useExportImport } from '../hooks/useExportImport';
@@ -11,6 +11,8 @@ interface SettingsModalProps {
   availableTypes: string[];
   onImportSuccess: () => void;
   appVersion?: string;
+  hasApiKey: boolean;
+  onAddApiKey: () => void;
 }
 
 const SettingsModal: React.FC<SettingsModalProps> = ({ 
@@ -18,7 +20,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     clearKey, 
     availableTypes, 
     onImportSuccess,
-    appVersion
+    appVersion,
+    hasApiKey,
+    onAddApiKey
 }) => {
   const [showAdvancedSecurity, setShowAdvancedSecurity] = useState(false);
 
@@ -171,20 +175,38 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                {/* Account Section */}
                <div className="space-y-3">
                   <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Account</h4>
-                  <button
-                    onClick={clearKey}
-                    className="w-full flex items-center justify-between px-4 py-3 bg-red-900/10 hover:bg-red-900/20 text-red-400 rounded-xl font-medium transition-colors border border-red-900/20 hover:border-red-900/40 group"
-                  >
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 bg-red-900/20 rounded-lg group-hover:bg-red-900/30 transition-colors">
-                            <KeyOff size={18} />
+                  
+                  {hasApiKey ? (
+                    <button
+                        onClick={clearKey}
+                        className="w-full flex items-center justify-between px-4 py-3 bg-red-900/10 hover:bg-red-900/20 text-red-400 rounded-xl font-medium transition-colors border border-red-900/20 hover:border-red-900/40 group"
+                    >
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-red-900/20 rounded-lg group-hover:bg-red-900/30 transition-colors">
+                                <KeyOff size={18} />
+                            </div>
+                            <div className="text-left">
+                                <span className="block text-sm font-bold text-gray-200 group-hover:text-white">Disconnect API Key</span>
+                                <span className="block text-xs text-red-400/70">Removes access from this device</span>
+                            </div>
                         </div>
-                        <div className="text-left">
-                            <span className="block text-sm font-bold text-gray-200 group-hover:text-white">Disconnect API Key</span>
-                            <span className="block text-xs text-red-400/70">Removes access from this device</span>
+                    </button>
+                  ) : (
+                    <button
+                        onClick={onAddApiKey}
+                        className="w-full flex items-center justify-between px-4 py-3 bg-blue-900/10 hover:bg-blue-900/20 text-blue-400 rounded-xl font-medium transition-colors border border-blue-900/20 hover:border-blue-900/40 group"
+                    >
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-blue-900/20 rounded-lg group-hover:bg-blue-900/30 transition-colors">
+                                <Key size={18} />
+                            </div>
+                            <div className="text-left">
+                                <span className="block text-sm font-bold text-gray-200 group-hover:text-white">Add API Key</span>
+                                <span className="block text-xs text-blue-400/70">Enable AI analysis</span>
+                            </div>
                         </div>
-                    </div>
-                  </button>
+                    </button>
+                  )}
                </div>
           </div>
         </div>
