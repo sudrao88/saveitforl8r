@@ -1,12 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Image as ImageIcon, FileText, X, Tag as TagIcon, Loader2, ArrowLeft } from 'lucide-react';
-import { saveMemory } from '../services/storageService';
-import { enrichInput } from '../services/geminiService';
-import { Memory, Attachment } from '../types';
+import { Attachment } from '../types';
 
 interface NewMemoryPageProps {
   onClose: () => void;
-  onMemoryCreated: () => void;
+  // Updated prop: takes data, returns Promise (void)
+  onCreate: (
+    text: string, 
+    attachments: Attachment[], 
+    tags: string[], 
+    location?: { latitude: number; longitude: number; accuracy?: number }
+  ) => Promise<void>; 
   initialContent?: {
     text: string;
     attachments: Attachment[];
@@ -15,7 +19,7 @@ interface NewMemoryPageProps {
 
 const SUGGESTED_TAGS = ["Book", "Restaurant", "Place to Visit", "Movie", "Podcast", "Stuff"];
 
-const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onMemoryCreated, initialContent }) => {
+const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, initialContent }) => {
   const [text, setText] = useState(initialContent?.text || '');
   const [attachments, setAttachments] = useState<Attachment[]>(initialContent?.attachments || []);
   const [tags, setTags] = useState<string[]>([]);
@@ -121,50 +125,10 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onMemoryCreated,
         console.warn("Location access denied or unavailable", e);
       }
 
-      // 2. Create Initial Memory Object (Pending State)
-      const memoryId = crypto.randomUUID();
-      const timestamp = Date.now();
+      // 2. Delegate creation to parent (hooks/useMemories)
+      await onCreate(text, attachments, tags, location);
       
-      const newMemory: Memory = {
-        id: memoryId,
-        timestamp,
-        content: text,
-        attachments,
-        tags,
-        location,
-        isPending: true
-      };
-
-      // Save immediately to DB
-      await saveMemory(newMemory);
-      
-      // Close UI immediately for responsiveness
-      onMemoryCreated(); // Trigger refresh in parent
       handleClose();
-
-      // 3. Process Enrichment in Background (Async)
-      enrichInput(text, attachments, location, tags)
-        .then(async (enrichment) => {
-            const allTags = Array.from(new Set([...tags, ...enrichment.suggestedTags]));
-            const updatedMemory: Memory = {
-                ...newMemory,
-                enrichment,
-                tags: allTags,
-                isPending: false
-            };
-            await saveMemory(updatedMemory);
-            onMemoryCreated(); // Refresh again with enriched data
-        })
-        .catch(async (err) => {
-            console.error("Enrichment failed:", err);
-            const failedMemory: Memory = {
-                ...newMemory,
-                isPending: false,
-                processingError: true
-            };
-            await saveMemory(failedMemory);
-            onMemoryCreated();
-        });
 
     } catch (error) {
         console.error("Error creating memory:", error);

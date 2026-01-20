@@ -1,15 +1,22 @@
 
 import { useState, useEffect, useCallback } from 'react';
-import { getMemories, deleteMemory, saveMemory } from '../services/storageService';
+import { getMemories, deleteMemory, saveMemory, getMemory } from '../services/storageService';
 import { enrichInput } from '../services/geminiService';
 import { Memory, Attachment } from '../types';
 import { SAMPLE_MEMORIES } from '../services/sampleData';
+import { useSync } from './useSync';
 
 export const useMemories = () => {
   const [memories, setMemories] = useState<Memory[]>([]);
+  const { sync, isLinked } = useSync();
 
   const refreshMemories = useCallback(async () => {
-    let loaded = await getMemories();
+    console.log('[useMemories] Refreshing memories from DB...');
+    const loaded = await getMemories();
+
+    // Filter out soft-deleted items
+    const activeMemories = loaded.filter(m => !m.isDeleted);
+    console.log(`[useMemories] Loaded ${activeMemories.length} active memories.`);
 
     // Seed sample data for new users
     const samplesInitialized = localStorage.getItem('samples_initialized');
@@ -19,23 +26,47 @@ export const useMemories = () => {
             await saveMemory(sample);
         }
         localStorage.setItem('samples_initialized', 'true');
-        // Reload to ensure consistent state (or just use samples)
-        // We use samples directly to avoid another DB read immediately, but DB read is safer for consistency
-        loaded = [...SAMPLE_MEMORIES];
+        setMemories([...SAMPLE_MEMORIES]);
+        return;
     }
 
-    setMemories(loaded);
+    setMemories(activeMemories);
   }, []);
 
   useEffect(() => {
     refreshMemories();
   }, [refreshMemories]);
 
+  // Helper to trigger sync if linked
+  const trySync = async (reason: string) => {
+      if (isLinked()) {
+          console.log(`[Auto-Sync] Triggering sync due to: ${reason}`);
+          // We don't await this so UI stays responsive
+          sync().catch(err => console.error("Auto-sync failed:", err));
+      }
+  };
+
   const handleDelete = async (id: string) => {
     setMemories(prev => prev.map(m => m.id === id ? { ...m, isDeleting: true } : m));
+    
     try {
-      await deleteMemory(id);
+      const existing = await getMemory(id); 
+      if (existing && !existing.isDeleted) {
+          const tombstone: Memory = { 
+              ...existing, 
+              isDeleted: true, 
+              timestamp: Date.now(),
+              content: '',
+              attachments: [],
+              image: undefined
+          };
+          await saveMemory(tombstone);
+      } else if (!existing) {
+          await deleteMemory(id);
+      }
+
       setMemories(prev => prev.filter(m => m.id !== id));
+      trySync('Delete Memory');
     } catch (error) {
       console.error("Failed to delete memory:", error);
       alert("Could not delete memory. Please try again.");
@@ -80,17 +111,80 @@ export const useMemories = () => {
             isPending: false,
             processingError: false,
             location: finalLocation,
-            attachments: attachments.filter(a => a.id !== 'legacy-img')
+            attachments: attachments.filter(a => a.id !== 'legacy-img'),
+            timestamp: Date.now() 
         };
         
         await saveMemory(updatedMemory);
         setMemories(prev => prev.map(m => m.id === id ? updatedMemory : m));
+        trySync('Retry Success');
     } catch (error) {
         console.error("Retry failed for memory", id, error);
         const failedMemory = { ...memory, isPending: false, processingError: true };
         await saveMemory(failedMemory);
         setMemories(prev => prev.map(m => m.id === id ? failedMemory : m));
     }
+  };
+
+  const createMemory = async (
+    text: string, 
+    attachments: Attachment[], 
+    tags: string[], 
+    location?: { latitude: number; longitude: number; accuracy?: number }
+  ) => {
+      const memoryId = crypto.randomUUID();
+      const timestamp = Date.now();
+      
+      const newMemory: Memory = {
+        id: memoryId,
+        timestamp,
+        content: text,
+        attachments,
+        tags,
+        location,
+        isPending: true
+      };
+
+      await saveMemory(newMemory);
+      setMemories(prev => [newMemory, ...prev]);
+      
+      // Removed initial sync
+
+      enrichInput(text, attachments, location, tags)
+        .then(async (enrichment) => {
+            const current = await getMemory(memoryId);
+            if (!current || current.isDeleted) {
+                console.log("Memory deleted during enrichment, aborting save.");
+                return;
+            }
+
+            const allTags = Array.from(new Set([...tags, ...enrichment.suggestedTags]));
+            const updatedMemory: Memory = {
+                ...newMemory,
+                enrichment,
+                tags: allTags,
+                isPending: false,
+                timestamp: Date.now() 
+            };
+            
+            await saveMemory(updatedMemory);
+            setMemories(prev => prev.map(m => m.id === memoryId ? updatedMemory : m));
+            console.log("Enrichment complete, syncing...");
+            trySync('Enrichment Complete');
+        })
+        .catch(async (err) => {
+            console.error("Enrichment failed:", err);
+            const current = await getMemory(memoryId);
+            if (!current || current.isDeleted) return;
+
+            const failedMemory: Memory = {
+                ...newMemory,
+                isPending: false,
+                processingError: true
+            };
+            await saveMemory(failedMemory);
+            setMemories(prev => prev.map(m => m.id === memoryId ? failedMemory : m));
+        });
   };
 
   useEffect(() => {
@@ -101,16 +195,18 @@ export const useMemories = () => {
           handleRetry(m.id);
         }
       });
+      trySync('Online Status Change');
     };
 
     window.addEventListener('online', handleOnline);
     return () => window.removeEventListener('online', handleOnline);
-  }, [memories]); // Re-bind when memories change so we have the latest list
+  }, [memories]); 
 
   return {
     memories,
     refreshMemories,
     handleDelete,
-    handleRetry
+    handleRetry,
+    createMemory 
   };
 };

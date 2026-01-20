@@ -8,6 +8,7 @@ export const SAMPLE_MEMORIES: Memory[] = [
     timestamp: timestamp,
     content: 'Offline Access',
     tags: ['Offline', 'Device'],
+    isSample: true,
     enrichment: {
       summary: 'Access the memories you save even without an internet connection. Easily view and filter things even in airplane mode!',
       locationIsRelevant: false,
@@ -25,6 +26,7 @@ export const SAMPLE_MEMORIES: Memory[] = [
     timestamp: timestamp - 1000,
     content: 'Privacy First',
     tags: ['Privacy', 'Security', 'Encrypted'],
+    isSample: true,
     enrichment: {
       summary: 'Your memories are stored locally on this device and encrypted. We do not store your data on any cloud server.',
       locationIsRelevant: false,
@@ -42,6 +44,7 @@ export const SAMPLE_MEMORIES: Memory[] = [
     timestamp: timestamp - 2000,
     content: 'AI Powered',
     tags: ['AI', 'Gemini', 'Context'],
+    isSample: true,
     enrichment: {
       summary: 'Gemini AI automatically tags and summarizes your memories, making them easier to find later through chat or search.',
       locationIsRelevant: false,

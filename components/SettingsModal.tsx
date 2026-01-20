@@ -26,7 +26,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     onAddApiKey
 }) => {
   const [showAdvancedSecurity, setShowAdvancedSecurity] = useState(false);
-  const { isLinked, initialize, sync, unlink } = useSync();
+  const { isLinked, initialize, sync, login, unlink } = useSync();
   const [isDriveLinked, setIsDriveLinked] = useState(isLinked());
   const [isSyncing, setIsSyncing] = useState(false);
 
@@ -35,21 +35,30 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   }, []);
 
   const handleDriveLink = () => {
+    // 1. Initialize the Google Auth client
     initialize(() => {
         setIsDriveLinked(true);
-        // Initial sync
+        // 3. Initial sync after successful link
         handleSync();
     });
-    // Trigger auth flow
-    import('../services/googleDriveService').then(mod => {
-        mod.requestAccessToken();
-    });
+
+    // 2. Trigger the login flow (Forces consent prompt to fix scope issues)
+    login();
   };
 
   const handleSync = async () => {
     setIsSyncing(true);
     try {
         await sync();
+    } catch (e: any) {
+        // If we catch the specific "InsufficientScopes" error during a manual sync,
+        // we should prompt the user to re-link.
+        if (e.message === 'InsufficientScopes' || e.message.includes('insufficientScopes')) {
+            console.log("Scope error detected, prompting re-login");
+            login(); // This will trigger the popup to fix permissions
+        } else {
+             console.error("Sync failed:", e);
+        }
     } finally {
         setIsSyncing(false);
     }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, RefreshCw } from 'lucide-react'; // Added RefreshCw icon
 import MemoryCard from './components/MemoryCard';
 import ChatInterface from './components/ChatInterface';
 import TopNavigation from './components/TopNavigation';
@@ -23,34 +23,53 @@ const App: React.FC = () => {
   const [view, setView] = useState<ViewMode>(ViewMode.FEED);
   const [isCaptureOpen, setIsCaptureOpen] = useState(false);
   const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
+  const [syncError, setSyncError] = useState(false); // Track sync errors
 
   const { updateAvailable, updateApp, appVersion } = useServiceWorker();
   const { shareData, clearShareData } = useShareReceiver();
   const { isLinked, sync, initialize } = useSync();
 
+  const {
+    memories,
+    refreshMemories,
+    handleDelete,
+    handleRetry,
+    createMemory 
+  } = useMemories();
+
   useEffect(() => {
     initGA();
     logPageView('home');
     
-    // Auto-sync on load if linked
-    if (isLinked()) {
+    const linked = isLinked();
+    console.log(`[App] Mount check. Linked: ${linked}`);
+
+    if (linked) {
         initialize(() => {
-            console.log('Google Drive initialized for auto-sync');
-            sync();
+            console.log('[App] Auth initialized. Attempting initial sync...');
+            sync().then(() => {
+                console.log('[App] Initial sync success.');
+                refreshMemories();
+                setSyncError(false);
+            }).catch(err => {
+                console.error('[App] Initial sync failed (likely popup blocked):', err);
+                setSyncError(true); // Show manual sync button
+            });
         });
-        // We also need to request access token if not valid, which initialize/sync handles internally usually, 
-        // but `initialize` sets up the client. 
-        // If we are already linked (localStorage flag), we should try to init and sync.
         
-        // Setup periodic sync (every 5 minutes)
         const intervalId = setInterval(() => {
-            console.log('Running periodic sync...');
-            sync();
+            sync().then(() => {
+                refreshMemories();
+                setSyncError(false);
+            }).catch(err => {
+               // Silent fail on periodic sync
+               console.warn('[App] Periodic sync skipped:', err);
+            });
         }, 5 * 60 * 1000);
 
         return () => clearInterval(intervalId);
     }
-  }, []);
+  }, []); 
 
   // If share data arrives, open the capture modal immediately
   useEffect(() => {
@@ -60,12 +79,6 @@ const App: React.FC = () => {
     }
   }, [shareData]);
 
-  const {
-    memories,
-    refreshMemories,
-    handleDelete,
-    handleRetry
-  } = useMemories();
 
   const {
     apiKeySet,
@@ -90,30 +103,36 @@ const App: React.FC = () => {
     logEvent('Settings', 'API Key Set', 'Onboarding');
     setIsApiKeyModalOpen(false);
     
-    // Automatically retry pending or failed memories
     const pendingIds = memories.filter(m => m.isPending || m.processingError).map(m => m.id);
-    // We execute them sequentially to avoid overwhelming the browser/network if there are many
     for (const id of pendingIds) {
         await handleRetry(id);
     }
   };
 
-  // Full Page New Memory View
+  const handleManualSync = () => {
+      setSyncError(false);
+      // Force sync with user gesture
+      sync().then(refreshMemories).catch(e => {
+          console.error("Manual sync error", e);
+          setSyncError(true);
+      });
+  };
+
   if (isCaptureOpen) {
     return (
       <NewMemoryPage 
         onClose={() => {
           setIsCaptureOpen(false);
           logEvent('Memory', 'Capture Cancelled');
-          if (shareData) clearShareData(); // Clear share data on close
-        }}
-        onMemoryCreated={() => {
-          refreshMemories();
-          logEvent('Memory', 'Created');
           if (shareData) clearShareData();
-          // Trigger sync after creation
-          if (isLinked()) sync();
         }}
+        onCreate={async (text, attachments, tags, location) => {
+            await createMemory(text, attachments, tags, location);
+            refreshMemories();
+            logEvent('Memory', 'Created');
+            if (shareData) clearShareData();
+        }}
+        onMemoryCreated={() => {}} 
         initialContent={shareData || undefined}
       />
     );
@@ -122,7 +141,6 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-900 flex flex-col">
       <InstallPrompt />
-      {/* Sticky Header Wrapper */}
       <div className="sticky top-0 z-30 bg-gray-900/90 backdrop-blur-md border-b border-gray-800">
           <TopNavigation 
             setView={(newView) => {
@@ -158,8 +176,18 @@ const App: React.FC = () => {
           />
       </div>
 
-      {/* Grid Content */}
-      <main className="flex-1 p-4 sm:p-8 max-w-7xl mx-auto w-full">
+      <main className="flex-1 p-4 sm:p-8 max-w-7xl mx-auto w-full relative">
+        {/* Sync Error / Manual Trigger Indicator */}
+        {syncError && isLinked() && (
+            <button 
+                onClick={handleManualSync}
+                className="absolute top-0 right-4 -mt-2 z-10 flex items-center gap-2 bg-yellow-900/80 text-yellow-200 px-3 py-1.5 rounded-full text-xs font-medium border border-yellow-700/50 hover:bg-yellow-900 transition-colors animate-in fade-in"
+            >
+                <RefreshCw size={12} />
+                Sync Paused (Tap to Resume)
+            </button>
+        )}
+
         {filteredMemories.length === 0 ? (
           <EmptyState 
             hasMemories={memories.length > 0} 
@@ -177,7 +205,6 @@ const App: React.FC = () => {
                 onDelete={(id) => {
                     handleDelete(id);
                     logEvent('Memory', 'Deleted');
-                    if (isLinked()) sync(); // Sync on delete
                 }} 
                 onRetry={(id) => {
                     handleRetry(id);
@@ -191,7 +218,6 @@ const App: React.FC = () => {
         )}
       </main>
 
-      {/* Floating Action Button (Extended Material Design Style) */}
       <button 
         onClick={() => {
             setIsCaptureOpen(true);
@@ -213,7 +239,6 @@ const App: React.FC = () => {
         />
       )}
 
-      {/* Settings Dialog */}
       {isSettingsOpen && (
         <SettingsModal 
             onClose={() => {
@@ -228,18 +253,17 @@ const App: React.FC = () => {
             onImportSuccess={() => {
                 refreshMemories();
                 logEvent('Data', 'Import Success');
-                if (isLinked()) sync(); // Sync after import
+                if (isLinked()) sync().then(refreshMemories); 
             }}
             appVersion={appVersion}
             hasApiKey={apiKeySet}
             onAddApiKey={() => {
-                setIsSettingsOpen(false); // Close settings to show API key modal
+                setIsSettingsOpen(false); 
                 setIsApiKeyModalOpen(true);
             }}
         />
       )}
 
-      {/* API Key Modal */}
       {isApiKeyModalOpen && (
         <ApiKeyModal
             onClose={() => setIsApiKeyModalOpen(false)}

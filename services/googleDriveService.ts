@@ -1,13 +1,14 @@
 // services/googleDriveService.ts
 
-const G_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '825946890351-40483l56j6k403l21367468164805.apps.googleusercontent.com'; // Replace with real ID if not in env
-const SCOPES = 'https://www.googleapis.com/auth/drive.appdata';
+const G_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '267358862238-5lur0dimfrek6ep3uv8dlj48q7dlh40l.apps.googleusercontent.com';
+const SCOPES = 'https://www.googleapis.com/auth/drive.appdata email profile';
 
 interface DriveFile {
   id: string;
   name: string;
   modifiedTime: string;
   parents?: string[];
+  trashed?: boolean;
 }
 
 interface SyncConfig {
@@ -18,44 +19,176 @@ interface SyncConfig {
 let syncConfig: SyncConfig | null = null;
 let tokenClient: any = null;
 
-// Initialize the Google Identity Services client
-export const initializeGoogleAuth = (onSuccess: () => void) => {
-  if (typeof window === 'undefined' || !(window as any).google) return;
+let tokenRequestPromise: Promise<string> | null = null;
+let tokenResolve: ((token: string) => void) | null = null;
+let tokenReject: ((reason: any) => void) | null = null;
 
-  tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
-    client_id: G_CLIENT_ID,
-    scope: SCOPES,
-    callback: (response: any) => {
-      if (response.error !== undefined) {
-        console.error('Google Auth Error:', response);
-        throw (response);
-      }
-      
-      syncConfig = {
-        accessToken: response.access_token,
-        tokenExpiry: Date.now() + Number(response.expires_in) * 1000,
-      };
-      
-      // Save minimal info to local storage to "remember" the user is linked
-      localStorage.setItem('gdrive_linked', 'true');
-      onSuccess();
-    },
-  });
+const STORAGE_KEY_TOKEN = 'gdrive_token_data';
+
+const saveSyncConfig = (config: SyncConfig) => {
+    localStorage.setItem(STORAGE_KEY_TOKEN, JSON.stringify(config));
+    syncConfig = config;
 };
 
-export const requestAccessToken = () => {
-  if (!tokenClient) {
-    console.error('Google Auth not initialized');
-    return;
-  }
+const loadSyncConfig = () => {
+    const stored = localStorage.getItem(STORAGE_KEY_TOKEN);
+    if (stored) {
+        try {
+            const config = JSON.parse(stored);
+            // Basic validity check
+            if (config.accessToken && config.tokenExpiry) {
+                syncConfig = config;
+            }
+        } catch (e) {
+            console.warn("Failed to parse stored token", e);
+        }
+    }
+};
+
+const waitForGoogle = (): Promise<void> => {
+    return new Promise((resolve) => {
+        if ((window as any).google) return resolve();
+        console.log("[Auth] Waiting for window.google...");
+        let attempts = 0;
+        const interval = setInterval(() => {
+            attempts++;
+            if ((window as any).google) {
+                clearInterval(interval);
+                console.log("[Auth] window.google found.");
+                resolve();
+            }
+            if (attempts > 50) { // 5 seconds
+                console.warn("[Auth] Waiting for Google script timed out (5s).");
+                clearInterval(interval);
+                resolve();
+            }
+        }, 100);
+    });
+};
+
+const fetchAndSaveUserEmail = async (token: string) => {
+    try {
+        const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.ok) {
+            const data = await res.json();
+            if (data.email) {
+                localStorage.setItem('gdrive_email', data.email);
+            }
+        }
+    } catch (e) {
+        console.warn("[Auth] Failed to fetch user info for hint", e);
+    }
+};
+
+export const initializeGoogleAuth = async (onSuccess?: () => void) => {
+  if (typeof window === 'undefined') return;
   
-  // Skip if token is valid (with 5 min buffer)
-  if (syncConfig && Date.now() < syncConfig.tokenExpiry - 5 * 60 * 1000) {
-    return;
+  // Try loading stored token immediately
+  if (!syncConfig) loadSyncConfig();
+
+  await waitForGoogle();
+  
+  if (!(window as any).google) {
+      console.error("[Auth] Google Identity Services script failed to load.");
+      return;
   }
 
-  // Request new token (if user authorized before, this might be silent or a popup)
-  tokenClient.requestAccessToken({ prompt: '' });
+  if (tokenClient) {
+      if (onSuccess) onSuccess();
+      return;
+  }
+
+  try {
+      tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
+        client_id: G_CLIENT_ID,
+        scope: SCOPES,
+        login_hint: localStorage.getItem('gdrive_email') || undefined,
+        callback: (response: any) => {
+          if (response.error !== undefined) {
+            console.error('Google Auth Error:', response);
+            if (tokenReject) {
+                tokenReject(response);
+                tokenReject = null;
+                tokenRequestPromise = null;
+            }
+            return;
+          }
+          
+          const newConfig = {
+            accessToken: response.access_token,
+            tokenExpiry: Date.now() + Number(response.expires_in) * 1000,
+          };
+          
+          saveSyncConfig(newConfig);
+          localStorage.setItem('gdrive_linked', 'true');
+          
+          fetchAndSaveUserEmail(response.access_token);
+          
+          if (tokenResolve) {
+              tokenResolve(response.access_token);
+              tokenResolve = null;
+              tokenReject = null;
+              tokenRequestPromise = null;
+          }
+          
+          if (onSuccess) onSuccess();
+        },
+      });
+      console.log("[Auth] Token Client initialized.");
+  } catch (err) {
+      console.error("[Auth] Failed to initialize token client:", err);
+  }
+};
+
+export const loginToDrive = async () => {
+    if (!tokenClient) await initializeGoogleAuth();
+    if (!tokenClient) return;
+    
+    if (tokenRequestPromise) return tokenRequestPromise;
+
+    tokenRequestPromise = new Promise((resolve, reject) => {
+        tokenResolve = resolve;
+        tokenReject = reject;
+    });
+
+    tokenClient.requestAccessToken({ prompt: 'consent' });
+    
+    return tokenRequestPromise;
+}
+
+export const getAccessToken = async (): Promise<string> => {
+    // 1. Check in-memory or stored config BEFORE initializing client
+    // This allows sync on load to work even if script is slow/blocked, provided we have a valid token.
+    if (!syncConfig) loadSyncConfig();
+    
+    if (syncConfig && Date.now() < syncConfig.tokenExpiry - 60 * 1000) { 
+        // console.log("[Auth] Using valid stored token.");
+        return syncConfig.accessToken;
+    }
+
+    // 2. If no valid token, we MUST initialize client to request one
+    if (!tokenClient) await initializeGoogleAuth();
+    if (!tokenClient) throw new Error("Google Auth not initialized");
+
+    if (tokenRequestPromise) {
+        return tokenRequestPromise;
+    }
+
+    console.log("[Auth] Requesting new Access Token (Silent)...");
+    tokenRequestPromise = new Promise((resolve, reject) => {
+        tokenResolve = resolve;
+        tokenReject = reject;
+    });
+
+    const hint = localStorage.getItem('gdrive_email');
+    tokenClient.requestAccessToken({ 
+        prompt: '',
+        login_hint: hint || undefined
+    });
+
+    return tokenRequestPromise as Promise<string>;
 };
 
 export const isLinked = () => {
@@ -64,52 +197,61 @@ export const isLinked = () => {
 
 export const unlinkDrive = () => {
   if (syncConfig?.accessToken) {
-    (window as any).google.accounts.oauth2.revoke(syncConfig.accessToken, () => {
-      console.log('Access token revoked');
-    });
+    try {
+        (window as any).google.accounts.oauth2.revoke(syncConfig.accessToken, () => {
+            console.log('Access token revoked');
+        });
+    } catch (e) {
+        console.warn('Revocation failed', e);
+    }
   }
   syncConfig = null;
+  localStorage.removeItem(STORAGE_KEY_TOKEN);
   localStorage.removeItem('gdrive_linked');
+  localStorage.removeItem('gdrive_email'); 
 };
 
-// --- Drive API Helpers ---
-
 const driveFetch = async (url: string, options: RequestInit = {}) => {
-  if (!syncConfig?.accessToken) {
-    throw new Error('No access token available');
-  }
+  const token = await getAccessToken();
 
   const headers = {
-    'Authorization': `Bearer ${syncConfig.accessToken}`,
+    'Authorization': `Bearer ${token}`,
     'Content-Type': 'application/json',
     ...options.headers,
   };
 
   const response = await fetch(url, { ...options, headers });
 
-  if (response.status === 401) {
-    // Token expired logic could go here (trigger re-auth)
-    // For now, throw so UI can handle
-    localStorage.removeItem('gdrive_linked'); // Force re-link
-    throw new Error('Unauthorized');
+  if (!response.ok) {
+     const errorText = await response.text();
+     // console.error(`Drive API Error (${response.status}):`, errorText);
+     
+     if (response.status === 401) {
+        // Token invalid/expired. Clear it so next retry gets a new one.
+        syncConfig = null;
+        localStorage.removeItem(STORAGE_KEY_TOKEN);
+        throw new Error('Unauthorized: ' + errorText);
+     }
+     
+     if (response.status === 403 && errorText.includes('insufficientScopes')) {
+         console.error("Insufficient Scopes detected. User needs to re-auth.");
+         throw new Error('InsufficientScopes');
+     }
+     
+     throw new Error(`Drive API Failed: ${errorText}`);
   }
 
   return response;
 };
 
-// --- Sync Logic ---
+// --- Operations ---
 
 export const findFileByName = async (filename: string): Promise<DriveFile | null> => {
   const query = `name = '${filename}' and 'appDataFolder' in parents and trashed = false`;
-  const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id, name, modifiedTime)`;
-
+  const url = `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=${encodeURIComponent(query)}&fields=files(id, name, modifiedTime)`;
   const res = await driveFetch(url);
   const data = await res.json();
-
-  if (data.files && data.files.length > 0) {
-    return data.files[0];
-  }
-  return null;
+  return data.files?.[0] || null;
 };
 
 export const downloadFileContent = async (fileId: string) => {
@@ -137,104 +279,46 @@ export const uploadFile = async (filename: string, content: any, existingFileId?
     method = 'PATCH';
   }
 
-  const res = await driveFetch(url, {
+  const token = await getAccessToken();
+  const res = await fetch(url, {
     method,
     body: formData,
-    headers: {
-       // Boundary is handled automatically by fetch for FormData, 
-       // but we need to NOT set Content-Type to json
-    }
+    headers: { 'Authorization': `Bearer ${token}` }
   });
 
   if (!res.ok) {
-    const err = await res.json();
-    throw new Error(`Upload failed: ${err.error?.message}`);
+    throw new Error(`Upload failed: ${await res.text()}`);
   }
 
   return await res.json();
 };
 
-// Sync a single note
-// Returns true if local was updated from cloud, false if cloud updated or no change
-export const syncNote = async (localNote: any): Promise<{ updatedLocal: any | null }> => {
-  const filename = `${localNote.id}.json`;
-  const remoteFile = await findFileByName(filename);
+export const listAllFiles = async (): Promise<DriveFile[]> => {
+    let allFiles: DriveFile[] = [];
+    let pageToken: string | undefined = undefined;
 
-  if (!remoteFile) {
-    // Does not exist on Drive -> Upload
-    console.log(`Uploading new note ${localNote.id}`);
-    await uploadFile(filename, localNote);
-    return { updatedLocal: null };
-  }
+    do {
+        let url = `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=trashed=false&fields=nextPageToken,files(id, name, modifiedTime)`;
+        if (pageToken) url += `&pageToken=${pageToken}`;
+        
+        // console.log(`[Sync] Listing files from Drive... PageToken: ${!!pageToken}`);
+        const res = await driveFetch(url);
+        const data = await res.json();
+        
+        if (data.files) {
+            allFiles = allFiles.concat(data.files);
+        }
+        pageToken = data.nextPageToken;
+    } while (pageToken);
 
-  const remoteTime = new Date(remoteFile.modifiedTime).getTime();
-  // Using timestamp from the note content itself is safer than file metadata sometimes, 
-  // but drive modifiedTime is good for "last edit".
-  // Let's assume localNote.timestamp is the last edit time.
-  
-  // Note: Drive modifiedTime is when the FILE was uploaded.
-  // Ideally, the JSON content should have a `lastModified` field.
-  // Fallback: If local timestamp > remoteTime (approx), we push.
-  
-  // Let's fetch the remote content to be sure about conflicts
-  const remoteContent = await downloadFileContent(remoteFile.id);
-  
-  if (remoteContent.timestamp > localNote.timestamp) {
-    console.log(`Remote is newer for ${localNote.id}`);
-    return { updatedLocal: remoteContent };
-  } else if (remoteContent.timestamp < localNote.timestamp) {
-    console.log(`Local is newer for ${localNote.id}`);
-    await uploadFile(filename, localNote, remoteFile.id);
-    return { updatedLocal: null };
-  } else {
-    // Timestamps equal, content might be same. Do nothing.
-    return { updatedLocal: null };
-  }
+    return allFiles;
 };
 
 export const deleteRemoteNote = async (noteId: string) => {
-  const filename = `${noteId}.json`;
-  const remoteFile = await findFileByName(filename);
-  
-  if (remoteFile) {
-     await driveFetch(`https://www.googleapis.com/drive/v3/files/${remoteFile.id}`, {
-       method: 'DELETE'
-     });
-  }
-}
-
-// Check for changes on server
-export const listChanges = async (pageToken?: string) => {
-  let url = 'https://www.googleapis.com/drive/v3/changes';
-  const params = new URLSearchParams({
-    spaces: 'appDataFolder',
-    fields: 'changes(file(id, name, modifiedTime, trashed)), newStartPageToken, nextPageToken',
-  });
-  
-  if (pageToken) {
-    params.append('pageToken', pageToken);
-  } else {
-    // If no token, we might want to start from now? 
-    // Or if first sync, list ALL files. 
-    // For "changes", we need a token.
-    // Instead of changes, let's just LIST all files in appDataFolder for the initial sync
-    return listAllFiles();
-  }
-
-  url += `?${params.toString()}`;
-  const res = await driveFetch(url);
-  return await res.json();
+    const file = await findFileByName(`${noteId}.json`);
+    if (file) {
+        await driveFetch(`https://www.googleapis.com/drive/v3/files/${file.id}`, { method: 'DELETE' });
+    }
 };
 
-const listAllFiles = async () => {
-  const url = `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=trashed=false&fields=files(id, name, modifiedTime)`;
-  const res = await driveFetch(url);
-  const data = await res.json();
-  return { files: data.files, newStartPageToken: null }; // Mock structure to match changes
-};
-
-export const getStartPageToken = async () => {
-    const res = await driveFetch('https://www.googleapis.com/drive/v3/changes/startPageToken');
-    const data = await res.json();
-    return data.startPageToken;
-}
+export const requestAccessToken = getAccessToken; 
