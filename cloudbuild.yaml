@@ -1,0 +1,13 @@
+steps:
+- name: 'gcr.io/cloud-builders/docker'
+  args:
+    - 'build'
+    - '--build-arg'
+    - 'VITE_GOOGLE_CLIENT_ID=${_VITE_GOOGLE_CLIENT_ID}'
+    - '--build-arg'
+    - 'VITE_GOOGLE_CLIENT_SECRET=${_VITE_GOOGLE_CLIENT_SECRET}'
+    - '-t'
+    - '${_ARTIFACT_REGION}-docker.pkg.dev/$PROJECT_ID/saveitforl8r-repo/saveitforl8r'
+    - '.'
+images:
+- '${_ARTIFACT_REGION}-docker.pkg.dev/$PROJECT_ID/saveitforl8r-repo/saveitforl8r'

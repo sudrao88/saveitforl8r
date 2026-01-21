@@ -1,15 +1,24 @@
 # Stage 1: Build
 FROM node:20-alpine as build
 WORKDIR /app
+
+# Accept secrets as build arguments
+ARG VITE_GOOGLE_CLIENT_ID
+ARG VITE_GOOGLE_CLIENT_SECRET
+
+# Expose arguments as environment variables for the build process
+ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
+ENV VITE_GOOGLE_CLIENT_SECRET=$VITE_GOOGLE_CLIENT_SECRET
+
 COPY package*.json ./
-# Use npm install instead of ci to tolerate potential lockfile name mismatches after renaming
 RUN npm install
 COPY . .
+# The build command will now use the environment variables
 RUN npm run build
 
 # Stage 2: Serve
 FROM nginx:alpine
-# Copy build output to the root html folder since we are serving from root now
+# Copy build output to the root html folder
 COPY --from=build /app/dist /usr/share/nginx/html
 # Copy custom nginx config
 COPY nginx.conf /etc/nginx/conf.d/default.conf
