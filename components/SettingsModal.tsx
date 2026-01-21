@@ -15,6 +15,7 @@ interface SettingsModalProps {
   hasApiKey: boolean;
   onAddApiKey: () => void;
   syncError?: boolean;
+  onSyncComplete?: () => void; // New callback
 }
 
 const SettingsModal: React.FC<SettingsModalProps> = ({ 
@@ -25,7 +26,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     appVersion,
     hasApiKey,
     onAddApiKey,
-    syncError
+    syncError,
+    onSyncComplete
 }) => {
   const [showAdvancedSecurity, setShowAdvancedSecurity] = useState(false);
   
@@ -38,18 +40,14 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   }, []);
 
   const handleDriveLink = () => {
-    initialize(() => {
-        setIsDriveLinked(true);
-        // Note: Context handles sync call, we just init here
-        sync(); 
-    });
     login();
   };
 
   const handleSync = async () => {
-    // We don't need local syncing state anymore, context handles it
     try {
         await sync();
+        // Refresh memories after sync completes
+        if (onSyncComplete) onSyncComplete();
     } catch (e: any) {
         if (e.message === 'InsufficientScopes' || e.message.includes('insufficientScopes')) {
             login();

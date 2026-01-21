@@ -281,6 +281,7 @@ const AppContent: React.FC = () => {
                 setIsApiKeyModalOpen(true);
             }}
             syncError={syncError}
+            onSyncComplete={refreshMemories} // Added callback
         />
       )}
 
