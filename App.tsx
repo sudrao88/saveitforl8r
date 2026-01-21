@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, RefreshCw } from 'lucide-react'; // Added RefreshCw icon
+import { Plus, RefreshCw } from 'lucide-react'; 
 import MemoryCard from './components/MemoryCard';
 import ChatInterface from './components/ChatInterface';
 import TopNavigation from './components/TopNavigation';
@@ -16,18 +16,22 @@ import { useMemoryFilters } from './hooks/useMemoryFilters';
 import { useServiceWorker } from './hooks/useServiceWorker';
 import { useShareReceiver } from './hooks/useShareReceiver';
 import { useSync } from './hooks/useSync';
+import { SyncProvider } from './context/SyncContext'; // Import Provider
 import { ViewMode } from './types';
 import { initGA, logPageView, logEvent } from './services/analytics';
+import { processAuthCallback } from './services/googleDriveService';
 
-const App: React.FC = () => {
+const AppContent: React.FC = () => {
   const [view, setView] = useState<ViewMode>(ViewMode.FEED);
   const [isCaptureOpen, setIsCaptureOpen] = useState(false);
   const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
-  const [syncError, setSyncError] = useState(false); // Track sync errors
+  const [syncError, setSyncError] = useState(false);
 
   const { updateAvailable, updateApp, appVersion } = useServiceWorker();
   const { shareData, clearShareData } = useShareReceiver();
-  const { isLinked, sync, initialize } = useSync();
+  
+  // Use context hooks
+  const { isLinked, sync, initialize, isSyncing } = useSync();
 
   const {
     memories,
@@ -36,6 +40,26 @@ const App: React.FC = () => {
     handleRetry,
     createMemory 
   } = useMemories();
+
+  // Handle OAuth Callback on Mount
+  useEffect(() => {
+    const handleAuth = async () => {
+        if (window.location.search.includes('code=')) {
+            console.log('[Auth] Processing OAuth callback...');
+            try {
+                await processAuthCallback();
+                console.log('[Auth] Login successful.');
+                // Clear URL
+                window.history.replaceState({}, document.title, window.location.pathname);
+                // Trigger initial sync
+                sync().then(refreshMemories);
+            } catch (e) {
+                console.error('[Auth] Callback processing failed', e);
+            }
+        }
+    };
+    handleAuth();
+  }, []);
 
   useEffect(() => {
     initGA();
@@ -46,28 +70,23 @@ const App: React.FC = () => {
 
     if (linked) {
         initialize(() => {
-            console.log('[App] Auth initialized. Attempting initial sync...');
+            console.log('[App] Google Drive initialized. Triggering initial full sync...');
             sync().then(() => {
-                console.log('[App] Initial sync success.');
+                console.log('[App] Initial sync complete. Refreshing memories.');
                 refreshMemories();
                 setSyncError(false);
             }).catch(err => {
-                console.error('[App] Initial sync failed (likely popup blocked):', err);
-                setSyncError(true); // Show manual sync button
+                console.error('[App] Initial sync failed:', err);
+                setSyncError(true);
             });
         });
         
-        const intervalId = setInterval(() => {
-            sync().then(() => {
-                refreshMemories();
-                setSyncError(false);
-            }).catch(err => {
-               // Silent fail on periodic sync
-               console.warn('[App] Periodic sync skipped:', err);
-            });
-        }, 5 * 60 * 1000);
-
-        return () => clearInterval(intervalId);
+        // Removed periodic full sync for now, or keep it less frequent?
+        // User said "Perform a full sync on the fresh load... and manual clicks".
+        // Implicitly, periodic sync might not be desired if it's expensive, but for consistency it's good.
+        // I will keep it but maybe increase interval or respect user wish strictly.
+        // User instruction: "Perform a full sync on the fresh load of an app, and when the user manually clicks..."
+        // It implies ONLY then. I will remove the interval to be strict.
     }
   }, []); 
 
@@ -111,7 +130,6 @@ const App: React.FC = () => {
 
   const handleManualSync = () => {
       setSyncError(false);
-      // Force sync with user gesture
       sync().then(refreshMemories).catch(e => {
           console.error("Manual sync error", e);
           setSyncError(true);
@@ -160,6 +178,8 @@ const App: React.FC = () => {
                 updateApp();
                 logEvent('App', 'Updated');
             }}
+            syncError={syncError}
+            isSyncing={isSyncing} // Pass syncing state
           />
 
           <FilterBar 
@@ -177,7 +197,6 @@ const App: React.FC = () => {
       </div>
 
       <main className="flex-1 p-4 sm:p-8 max-w-7xl mx-auto w-full relative">
-        {/* Sync Error / Manual Trigger Indicator */}
         {syncError && isLinked() && (
             <button 
                 onClick={handleManualSync}
@@ -261,6 +280,7 @@ const App: React.FC = () => {
                 setIsSettingsOpen(false); 
                 setIsApiKeyModalOpen(true);
             }}
+            syncError={syncError}
         />
       )}
 
@@ -273,5 +293,12 @@ const App: React.FC = () => {
     </div>
   );
 };
+
+// Wrap App with SyncProvider
+const App = () => (
+    <SyncProvider>
+        <AppContent />
+    </SyncProvider>
+);
 
 export default App;

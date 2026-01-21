@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Search, Settings, RefreshCw } from 'lucide-react';
+import { Search, Settings, RefreshCw, AlertCircle } from 'lucide-react';
 import { Logo } from './icons';
 import { ViewMode } from '../types';
 
@@ -10,6 +10,8 @@ interface TopNavigationProps {
   onSettingsClick: () => void;
   updateAvailable?: boolean;
   onUpdateApp?: () => void;
+  syncError?: boolean;
+  isSyncing?: boolean; // New prop
 }
 
 const TopNavigation: React.FC<TopNavigationProps> = ({ 
@@ -17,7 +19,9 @@ const TopNavigation: React.FC<TopNavigationProps> = ({
   resetFilters, 
   onSettingsClick, 
   updateAvailable, 
-  onUpdateApp 
+  onUpdateApp,
+  syncError,
+  isSyncing
 }) => {
   return (
     <nav className="px-4 py-3 sm:px-8 flex justify-center">
@@ -51,10 +55,23 @@ const TopNavigation: React.FC<TopNavigationProps> = ({
 
           <button
             onClick={onSettingsClick}
-            className="flex items-center justify-center bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-gray-600 transition-all rounded-xl p-2.5 text-gray-400 hover:text-white group shrink-0"
+            className="relative flex items-center justify-center bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-gray-600 transition-all rounded-xl p-2.5 text-gray-400 hover:text-white group shrink-0"
             title="Settings"
           >
-            <Settings size={20} className="text-gray-500 group-hover:text-white" />
+            {/* Show Spinner if Syncing, otherwise Gear */}
+            {isSyncing ? (
+                <RefreshCw size={20} className="text-blue-400 animate-spin" />
+            ) : (
+                <Settings size={20} className="text-gray-500 group-hover:text-white" />
+            )}
+            
+            {/* Error Badge overrides normal state */}
+            {syncError && !isSyncing && (
+                <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                </span>
+            )}
           </button>
         </div>
       </div>

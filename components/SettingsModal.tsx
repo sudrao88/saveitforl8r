@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Settings, Download, Upload, HelpCircle, ShieldCheck, ChevronDown, ChevronRight, AlertTriangle, Key, Cloud, CloudOff, RefreshCw } from 'lucide-react';
+import { X, Settings, Download, Upload, HelpCircle, ShieldCheck, ChevronDown, ChevronRight, AlertTriangle, Key, Cloud, CloudOff, RefreshCw, AlertCircle } from 'lucide-react';
 import MultiSelect from './MultiSelect';
 import { KeyOff } from './icons';
 import { useExportImport } from '../hooks/useExportImport';
@@ -14,6 +14,7 @@ interface SettingsModalProps {
   appVersion?: string;
   hasApiKey: boolean;
   onAddApiKey: () => void;
+  syncError?: boolean;
 }
 
 const SettingsModal: React.FC<SettingsModalProps> = ({ 
@@ -23,44 +24,38 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     onImportSuccess,
     appVersion,
     hasApiKey,
-    onAddApiKey
+    onAddApiKey,
+    syncError
 }) => {
   const [showAdvancedSecurity, setShowAdvancedSecurity] = useState(false);
-  const { isLinked, initialize, sync, login, unlink } = useSync();
+  
+  // Use context hooks
+  const { isLinked, initialize, sync, login, unlink, isSyncing } = useSync();
   const [isDriveLinked, setIsDriveLinked] = useState(isLinked());
-  const [isSyncing, setIsSyncing] = useState(false);
 
   useEffect(() => {
     setIsDriveLinked(isLinked());
   }, []);
 
   const handleDriveLink = () => {
-    // 1. Initialize the Google Auth client
     initialize(() => {
         setIsDriveLinked(true);
-        // 3. Initial sync after successful link
-        handleSync();
+        // Note: Context handles sync call, we just init here
+        sync(); 
     });
-
-    // 2. Trigger the login flow (Forces consent prompt to fix scope issues)
     login();
   };
 
   const handleSync = async () => {
-    setIsSyncing(true);
+    // We don't need local syncing state anymore, context handles it
     try {
         await sync();
     } catch (e: any) {
-        // If we catch the specific "InsufficientScopes" error during a manual sync,
-        // we should prompt the user to re-link.
         if (e.message === 'InsufficientScopes' || e.message.includes('insufficientScopes')) {
-            console.log("Scope error detected, prompting re-login");
-            login(); // This will trigger the popup to fix permissions
+            login();
         } else {
              console.error("Sync failed:", e);
         }
-    } finally {
-        setIsSyncing(false);
     }
   };
 
@@ -119,9 +114,18 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                     {isDriveLinked ? (
                         <div className="flex flex-col gap-3">
                             <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2 text-green-400">
-                                    <Cloud size={20} />
-                                    <span className="text-sm font-medium">Google Drive Linked</span>
+                                <div className="flex items-center gap-2">
+                                    {syncError ? (
+                                        <>
+                                            <AlertCircle size={20} className="text-yellow-500" />
+                                            <span className="text-sm font-medium text-yellow-500">Sync Paused</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Cloud size={20} className="text-green-400" />
+                                            <span className="text-sm font-medium text-green-400">Google Drive Linked</span>
+                                        </>
+                                    )}
                                 </div>
                                 <button 
                                     onClick={handleDriveUnlink}
@@ -133,10 +137,14 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                             <button
                                 onClick={handleSync}
                                 disabled={isSyncing}
-                                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-800 hover:bg-gray-750 text-white rounded-xl font-medium transition-colors border border-gray-600 hover:border-blue-500/50 group"
+                                className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-medium transition-colors border group ${
+                                    syncError 
+                                        ? 'bg-yellow-900/20 border-yellow-700 text-yellow-200 hover:bg-yellow-900/40' 
+                                        : 'bg-gray-800 border-gray-600 text-white hover:bg-gray-750 hover:border-blue-500/50'
+                                }`}
                             >
-                                <RefreshCw size={16} className={`text-blue-400 group-hover:text-blue-300 ${isSyncing ? 'animate-spin' : ''}`} />
-                                <span>{isSyncing ? 'Syncing...' : 'Sync Now'}</span>
+                                <RefreshCw size={16} className={`group-hover:text-blue-300 ${isSyncing ? 'animate-spin' : ''}`} />
+                                <span>{isSyncing ? 'Syncing...' : (syncError ? 'Resume Sync' : 'Sync Now')}</span>
                             </button>
                         </div>
                     ) : (

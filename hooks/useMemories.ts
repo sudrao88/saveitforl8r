@@ -8,17 +8,12 @@ import { useSync } from './useSync';
 
 export const useMemories = () => {
   const [memories, setMemories] = useState<Memory[]>([]);
-  const { sync, isLinked } = useSync();
+  const { sync, syncFile, isLinked } = useSync();
 
   const refreshMemories = useCallback(async () => {
-    console.log('[useMemories] Refreshing memories from DB...');
     const loaded = await getMemories();
-
-    // Filter out soft-deleted items
     const activeMemories = loaded.filter(m => !m.isDeleted);
-    console.log(`[useMemories] Loaded ${activeMemories.length} active memories.`);
 
-    // Seed sample data for new users
     const samplesInitialized = localStorage.getItem('samples_initialized');
     if (!samplesInitialized && loaded.length === 0) {
         console.log("Seeding sample memories...");
@@ -37,12 +32,11 @@ export const useMemories = () => {
     refreshMemories();
   }, [refreshMemories]);
 
-  // Helper to trigger sync if linked
-  const trySync = async (reason: string) => {
+  // Helper for single file sync
+  const trySyncFile = async (memory: Memory) => {
       if (isLinked()) {
-          console.log(`[Auto-Sync] Triggering sync due to: ${reason}`);
-          // We don't await this so UI stays responsive
-          sync().catch(err => console.error("Auto-sync failed:", err));
+          console.log(`[Auto-Sync] Triggering single file sync for ${memory.id}`);
+          syncFile(memory).catch(err => console.error("Single file sync failed:", err));
       }
   };
 
@@ -61,12 +55,13 @@ export const useMemories = () => {
               image: undefined
           };
           await saveMemory(tombstone);
+          // Sync just this tombstone
+          trySyncFile(tombstone);
       } else if (!existing) {
           await deleteMemory(id);
       }
 
       setMemories(prev => prev.filter(m => m.id !== id));
-      trySync('Delete Memory');
     } catch (error) {
       console.error("Failed to delete memory:", error);
       alert("Could not delete memory. Please try again.");
@@ -117,7 +112,9 @@ export const useMemories = () => {
         
         await saveMemory(updatedMemory);
         setMemories(prev => prev.map(m => m.id === id ? updatedMemory : m));
-        trySync('Retry Success');
+        
+        // Sync enriched file
+        trySyncFile(updatedMemory);
     } catch (error) {
         console.error("Retry failed for memory", id, error);
         const failedMemory = { ...memory, isPending: false, processingError: true };
@@ -148,7 +145,7 @@ export const useMemories = () => {
       await saveMemory(newMemory);
       setMemories(prev => [newMemory, ...prev]);
       
-      // Removed initial sync
+      // Do NOT sync pending memory (as per requirement)
 
       enrichInput(text, attachments, location, tags)
         .then(async (enrichment) => {
@@ -169,8 +166,10 @@ export const useMemories = () => {
             
             await saveMemory(updatedMemory);
             setMemories(prev => prev.map(m => m.id === memoryId ? updatedMemory : m));
-            console.log("Enrichment complete, syncing...");
-            trySync('Enrichment Complete');
+            console.log("Enrichment complete, syncing single file...");
+            
+            // Sync Enriched File
+            trySyncFile(updatedMemory);
         })
         .catch(async (err) => {
             console.error("Enrichment failed:", err);
@@ -189,18 +188,14 @@ export const useMemories = () => {
 
   useEffect(() => {
     const handleOnline = () => {
-      console.log("App is back online. Retrying failed memories...");
-      memories.forEach(m => {
-        if (m.processingError && !m.isPending) {
-          handleRetry(m.id);
-        }
-      });
-      trySync('Online Status Change');
+      console.log("App is back online.");
+      // Just full sync on online status change is safer
+      if (isLinked()) sync();
     };
 
     window.addEventListener('online', handleOnline);
     return () => window.removeEventListener('online', handleOnline);
-  }, [memories]); 
+  }, [sync, isLinked]); 
 
   return {
     memories,
