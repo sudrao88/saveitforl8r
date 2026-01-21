@@ -12,7 +12,6 @@ interface DriveFile {
   trashed?: boolean;
 }
 
-// Re-export auth functions for UI consumption
 export const loginToDrive = initiateLogin;
 export const processAuthCallback = handleAuthCallback;
 
@@ -23,9 +22,9 @@ export const isLinked = () => {
 export const unlinkDrive = async () => {
   await clearTokens();
   localStorage.removeItem('gdrive_linked');
+  localStorage.removeItem('gdrive_email');
 };
 
-// Use the new authorized fetch
 const driveFetch = async (url: string, options: RequestInit = {}) => {
   try {
       const response = await getAuthorizedFetch(url, options);
@@ -79,7 +78,6 @@ export const uploadFile = async (filename: string, content: any, existingFileId?
     method = 'PATCH';
   }
 
-  // Get raw token for manual fetch (Multipart handling)
   const token = await getValidToken();
   const res = await fetch(url, {
     method,
@@ -121,6 +119,5 @@ export const deleteRemoteNote = async (noteId: string) => {
     }
 };
 
-// Dummy init for compatibility with existing code structure (Auth handled via redirect now)
 export const initializeGoogleAuth = (cb?: () => void) => { if(cb) cb(); };
 export const getAccessToken = getValidToken;

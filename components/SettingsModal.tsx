@@ -15,7 +15,7 @@ interface SettingsModalProps {
   hasApiKey: boolean;
   onAddApiKey: () => void;
   syncError?: boolean;
-  onSyncComplete?: () => void; // New callback
+  onSyncComplete?: () => void;
 }
 
 const SettingsModal: React.FC<SettingsModalProps> = ({ 
@@ -40,13 +40,14 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   }, []);
 
   const handleDriveLink = () => {
+    // Corrected: Just trigger the login redirect. 
     login();
   };
 
   const handleSync = async () => {
     try {
-        await sync();
-        // Refresh memories after sync completes
+        // FORCE FULL SYNC on manual trigger
+        await sync(true);
         if (onSyncComplete) onSyncComplete();
     } catch (e: any) {
         if (e.message === 'InsufficientScopes' || e.message.includes('insufficientScopes')) {
