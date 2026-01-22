@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Plus, RefreshCw } from 'lucide-react'; 
 import MemoryCard from './components/MemoryCard';
@@ -80,13 +81,6 @@ const AppContent: React.FC = () => {
                 setSyncError(true);
             });
         });
-        
-        // Removed periodic full sync for now, or keep it less frequent?
-        // User said "Perform a full sync on the fresh load... and manual clicks".
-        // Implicitly, periodic sync might not be desired if it's expensive, but for consistency it's good.
-        // I will keep it but maybe increase interval or respect user wish strictly.
-        // User instruction: "Perform a full sync on the fresh load of an app, and when the user manually clicks..."
-        // It implies ONLY then. I will remove the interval to be strict.
     }
   }, []); 
 
@@ -136,6 +130,7 @@ const AppContent: React.FC = () => {
       });
   };
 
+  // 1. Capture/New Memory View (Full Screen)
   if (isCaptureOpen) {
     return (
       <NewMemoryPage 
@@ -156,6 +151,22 @@ const AppContent: React.FC = () => {
     );
   }
 
+  // 2. Chat/Recall View (Full Screen)
+  // By rendering this conditionally and exclusively, we ensure no other DOM elements (like MemoryCards)
+  // exist to be seen behind the virtual keyboard on iOS.
+  if (view === ViewMode.RECALL) {
+     return (
+        <ChatInterface 
+          memories={filteredMemories.filter(m => !m.isDeleting)} 
+          onClose={() => {
+              setView(ViewMode.FEED);
+              logEvent('Chat', 'Closed');
+          }} 
+        />
+     );
+  }
+
+  // 3. Main Feed View
   return (
     <div className="min-h-screen bg-gray-900 flex flex-col">
       <InstallPrompt />
@@ -179,7 +190,7 @@ const AppContent: React.FC = () => {
                 logEvent('App', 'Updated');
             }}
             syncError={syncError}
-            isSyncing={isSyncing} // Pass syncing state
+            isSyncing={isSyncing} 
           />
 
           <FilterBar 
@@ -248,16 +259,7 @@ const AppContent: React.FC = () => {
         <span className="font-bold text-lg">New</span>
       </button>
 
-      {view === ViewMode.RECALL && (
-        <ChatInterface 
-          memories={filteredMemories.filter(m => !m.isDeleting)} 
-          onClose={() => {
-              setView(ViewMode.FEED);
-              logEvent('Chat', 'Closed');
-          }} 
-        />
-      )}
-
+      {/* Settings Modal */}
       {isSettingsOpen && (
         <SettingsModal 
             onClose={() => {
@@ -281,10 +283,11 @@ const AppContent: React.FC = () => {
                 setIsApiKeyModalOpen(true);
             }}
             syncError={syncError}
-            onSyncComplete={refreshMemories} // Added callback
+            onSyncComplete={refreshMemories} 
         />
       )}
 
+      {/* API Key Modal */}
       {isApiKeyModalOpen && (
         <ApiKeyModal
             onClose={() => setIsApiKeyModalOpen(false)}
