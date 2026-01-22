@@ -46,9 +46,17 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ onClose, onSave }) => {
                 <Key size={32} />
             </div>
             <h2 className="text-2xl font-bold text-white mb-2">Enter Gemini API Key</h2>
-            <p className="text-gray-400 text-sm max-w-[80%]">
+            <p className="text-gray-400 text-sm max-w-[80%] mb-3">
                 To unlock AI features like auto-tagging and summarization, you need to provide a Google Gemini API Key.
             </p>
+            <a 
+              href="https://aistudio.google.com/app/api-keys" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-blue-400 hover:text-blue-300 text-sm font-medium hover:underline transition-colors"
+            >
+              Get an API Key
+            </a>
         </div>
 
         <div className="space-y-4">
