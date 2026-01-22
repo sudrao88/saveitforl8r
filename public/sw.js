@@ -1,4 +1,4 @@
-const CACHE_NAME = 'saveitforl8r-v15';
+const CACHE_NAME = 'saveitforl8r-v16';
 const SCOPE = '/';
 
 const PRECACHE_ASSETS = [
@@ -111,44 +111,30 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 1. Navigation requests (HTML): Stale-While-Revalidate (App Shell Pattern)
-  // We always serve 'index.html' from cache, while updating it in the background.
+  // 1. Navigation requests (HTML): Network First, falling back to Cache
+  // This prevents the "Blank Page" issue where stale HTML requests deleted assets.
   if (event.request.mode === 'navigate') {
     event.respondWith(
-      caches.match(SCOPE + 'index.html').then((cachedResponse) => {
-        const fetchPromise = fetch(event.request)
-          .then((networkResponse) => {
-            // Check if valid response
-            if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
-              return networkResponse;
-            }
-            
-            // Clone ONCE for the cache
-            const responseToCache = networkResponse.clone();
-            
-            caches.open(CACHE_NAME).then((cache) => {
-              // Always update the canonical 'index.html' cache entry.
-              // We do NOT cache the specific request URL (like /settings) because 
-              // in an SPA, all routes serve the same index.html content.
-              // This prevents cache bloat and "Response body already used" errors.
-              cache.put(SCOPE + 'index.html', responseToCache);
-            });
-            
+      fetch(event.request)
+        .then((networkResponse) => {
+          // Check if valid response
+          if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
             return networkResponse;
-          })
-          .catch((err) => {
-             console.log('[SW] Network fetch failed:', err);
-             // CRITICAL: If we have no cached response, we must throw the error 
-             // so the browser can handle the failure (e.g. show offline page/error).
-             if (!cachedResponse) {
-                 throw err;
-             }
-             // If we have a cached response, we swallow the error and return nothing 
-             // (respondWith will use the cachedResponse).
+          }
+          
+          // Clone and cache the fresh HTML
+          const responseToCache = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(SCOPE + 'index.html', responseToCache);
           });
-
-        return cachedResponse || fetchPromise;
-      })
+          
+          return networkResponse;
+        })
+        .catch((err) => {
+           console.log('[SW] Network fetch failed, falling back to cache:', err);
+           // If network fails, try to serve from cache
+           return caches.match(SCOPE + 'index.html');
+        })
     );
     return;
   }
@@ -176,6 +162,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   // 3. Mutable Static Assets (manifest, icons, etc.): Stale-While-Revalidate
+  // For these, it's okay to show an old version briefly while updating.
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       const fetchPromise = fetch(event.request).then((networkResponse) => {
