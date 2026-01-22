@@ -16,7 +16,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [selectedMemoryId, setSelectedMemoryId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Viewport management for iOS keyboard handling
   const [viewportStyle, setViewportStyle] = useState<{ height: string; top: number | string }>({
@@ -35,16 +35,17 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose }) => {
     const originalStyle = window.getComputedStyle(document.body).overflow;
     document.body.style.overflow = 'hidden';
 
+    // Handler for visual viewport changes (keyboard show/hide, resize)
     const handleVisualViewport = () => {
-      // If visualViewport API is supported (modern mobile browsers)
       if (window.visualViewport) {
+        // We set the height to match the visual viewport exactly.
+        // We set the top to the offsetTop, which pushes the container down if the viewport is pushed down.
         setViewportStyle({
           height: `${window.visualViewport.height}px`,
           top: window.visualViewport.offsetTop
         });
         
         // Ensure scrolling to bottom if needed when viewport resizes (e.g., keyboard opens)
-        // We use a small timeout to allow layout to settle
         setTimeout(scrollToBottom, 100);
       }
     };
@@ -72,6 +73,16 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose }) => {
     scrollToBottom();
   }, [messages, isLoading]);
 
+  // Auto-resize textarea
+  useEffect(() => {
+    if (textareaRef.current) {
+      // Reset height to auto to get the correct scrollHeight
+      textareaRef.current.style.height = 'auto';
+      // Set new height based on scrollHeight, capped at 120px
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
+    }
+  }, [query]);
+
   const handleSend = async () => {
     if (!query.trim() || isLoading) return;
     const userMsg: ChatMessage = { role: 'user', text: query };
@@ -79,9 +90,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose }) => {
     setQuery('');
     setIsLoading(true);
     
-    // Keep focus on input for continuous chatting
-    if (inputRef.current) {
-        inputRef.current.focus();
+    // Reset height immediately
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.focus();
     }
     
     try {
@@ -92,8 +104,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose }) => {
       setMessages(prev => [...prev, { role: 'model', text: "Sorry, I encountered an error searching your memories." }]);
     } finally {
       setIsLoading(false);
-      // Ensure we are scrolled to bottom after response
       setTimeout(scrollToBottom, 50);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
     }
   };
 
@@ -102,15 +120,21 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose }) => {
   return (
     <>
       {/* 
-        Full page cover layer (Backdrop). 
-        Stays fixed and full height to cover memory cards even when keyboard is up.
+        Backdrop:
+        - Fixed 100vh to cover the whole screen regardless of viewport changes.
+        - High z-index but below the chat container.
+        - touch-action: none to prevent scroll propagation on mobile.
       */}
-      <div className="fixed inset-0 z-[60] bg-gray-900" aria-hidden="true" />
+      <div 
+        className="fixed inset-0 z-[60] bg-gray-900" 
+        aria-hidden="true" 
+        style={{ height: '100vh', touchAction: 'none' }} 
+      />
 
       {/* 
-        Chat Interface Container.
-        Resizes and moves based on visualViewport to handle virtual keyboard.
-        Sits on top of the backdrop.
+        Chat Interface Container:
+        - Tracks Visual Viewport for height and top position.
+        - Flex column layout.
       */}
       <div 
         className="fixed left-0 right-0 z-[61] flex flex-col overflow-hidden bg-gray-900"
@@ -120,16 +144,25 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose }) => {
         }}
       >
         {/* Header */}
-        <div className="flex-none border-b border-gray-800 px-6 py-4 flex items-center justify-between bg-gray-900 z-10 shadow-sm">
+        <div className="flex-none border-b border-gray-800 px-4 py-3 flex items-center justify-between bg-gray-900 z-10 shadow-sm shrink-0">
             <div className="flex items-center gap-2">
                <Bot size={24} className="text-blue-500" />
                <h2 className="text-lg font-bold text-gray-100">Brain Search</h2>
             </div>
-          <button onClick={onClose} className="ml-4 p-2 hover:bg-gray-800 rounded-full transition text-gray-400"><X size={24} /></button>
+          <button onClick={onClose} className="p-2 hover:bg-gray-800 rounded-full transition text-gray-400"><X size={24} /></button>
         </div>
 
-        {/* Messages Area - Flex 1 to take available space */}
-        <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 md:px-20 lg:px-64 space-y-6 bg-gray-900 overscroll-contain">
+        {/* 
+          Messages Area:
+          - flex-1: takes all available space between header and footer.
+          - overflow-y-auto: scrolls internally.
+          - overscroll-contain: prevents scroll chaining to body on modern browsers.
+        */}
+        <div 
+          ref={scrollRef} 
+          className="flex-1 overflow-y-auto p-4 md:px-20 lg:px-64 space-y-6 bg-gray-900 overscroll-contain"
+          style={{ overscrollBehaviorY: 'contain' }}
+        >
           {messages.length === 0 && (
             <div className="flex flex-col items-center justify-center text-center max-w-sm mx-auto opacity-50 px-4 pt-10">
               <Bot size={48} className="text-blue-500 mb-6" />
@@ -141,7 +174,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose }) => {
           {messages.map((msg, idx) => (
             <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in`}>
               <div className={`max-w-[90%] sm:max-w-[80%] rounded-2xl px-5 py-3 ${msg.role === 'user' ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-800 border border-gray-700 text-gray-100 shadow-sm'}`}>
-                <div className="whitespace-pre-wrap leading-relaxed font-medium text-sm md:text-base">{msg.text}</div>
+                <div className="whitespace-pre-wrap leading-relaxed font-medium text-sm md:text-base break-words">{msg.text}</div>
                 
                 {msg.sources && msg.sources.length > 0 && (
                   <div className="mt-4 pt-3 border-t border-gray-700/50">
@@ -181,36 +214,48 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose }) => {
               <span className="text-sm">Synthesizing...</span>
             </div>
           )}
+        </div>
 
-          {/* Input Area - Now inside the scroll view */}
-          <div className="w-full pt-4 pb-4">
-            <div className="max-w-4xl mx-auto flex items-center gap-3 bg-gray-800 px-4 py-2 rounded-2xl border border-gray-700 focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500 transition-all shadow-sm">
-              <input
-                ref={inputRef}
+        {/* 
+          Input Area:
+          - Fixed at bottom of flex container.
+          - Includes padding for Safe Area (Home Indicator) on iOS.
+        */}
+        <div 
+          className="flex-none w-full bg-gray-900 border-t border-gray-800 shrink-0 z-20"
+          style={{ 
+            paddingBottom: 'max(1rem, env(safe-area-inset-bottom))',
+            paddingTop: '1rem',
+            paddingLeft: '1rem',
+            paddingRight: '1rem'
+          }}
+        >
+            <div className="max-w-4xl mx-auto flex items-end gap-3 bg-gray-800 px-4 py-2 rounded-2xl border border-gray-700 focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500 transition-all shadow-sm">
+              <textarea
+                ref={textareaRef}
                 autoFocus
-                type="text"
-                className="w-full text-base font-medium focus:outline-none bg-transparent placeholder-gray-500 border-none text-gray-100 py-1"
+                rows={1}
+                className="w-full text-base font-medium focus:outline-none bg-transparent placeholder-gray-500 border-none text-gray-100 py-2 resize-none max-h-32"
                 placeholder="Ask your second brain..."
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                onKeyDown={handleKeyDown}
                 onFocus={() => {
-                    // Force scroll to bottom when keyboard opens
                     setTimeout(scrollToBottom, 300);
                 }}
               />
                <button 
                 onClick={handleSend}
                 disabled={!query.trim() || isLoading}
-                className="p-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                className="mb-1 p-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
               >
                 <Send size={18} />
               </button>
             </div>
-          </div>
         </div>
       </div>
 
+      {/* Memory Detail Modal */}
       {selectedMemory && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md" onClick={() => setSelectedMemoryId(null)}>
           <div className="relative w-full max-w-lg animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
