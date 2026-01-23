@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Image as ImageIcon, FileText, X, Tag as TagIcon, Loader2, ArrowLeft } from 'lucide-react';
+import { Send, Image as ImageIcon, FileText, X, Tag as TagIcon, Loader2, ArrowLeft, Clipboard } from 'lucide-react';
 import { Attachment } from '../types';
 
 interface NewMemoryPageProps {
@@ -14,6 +14,7 @@ interface NewMemoryPageProps {
   initialContent?: {
     text: string;
     attachments: Attachment[];
+    checkClipboard?: boolean;
   };
 }
 
@@ -25,6 +26,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, initia
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [showClipboardDialog, setShowClipboardDialog] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
@@ -33,14 +35,59 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, initia
     if (initialContent) {
         setText(initialContent.text || '');
         setAttachments(initialContent.attachments || []);
+        
+        if (initialContent.checkClipboard) {
+            setShowClipboardDialog(true);
+        }
     }
   }, [initialContent]);
 
   useEffect(() => {
-    if (textAreaRef.current) {
+    if (textAreaRef.current && !showClipboardDialog) {
       setTimeout(() => textAreaRef.current?.focus(), 100);
     }
-  }, []);
+  }, [showClipboardDialog]);
+
+  const handlePasteFromClipboard = async () => {
+    try {
+        setShowClipboardDialog(false);
+        const clipboardItems = await navigator.clipboard.read();
+        
+        const newAttachments: Attachment[] = [];
+
+        for (const item of clipboardItems) {
+            // Prefer image types if available
+            const imageType = item.types.find(type => type.startsWith('image/'));
+            
+            if (imageType) {
+                const blob = await item.getType(imageType);
+                const reader = new FileReader();
+                const result = await new Promise<string>((resolve) => {
+                    reader.onload = (evt) => resolve(evt.target?.result as string);
+                    reader.readAsDataURL(blob);
+                });
+
+                newAttachments.push({
+                    id: crypto.randomUUID(),
+                    type: 'image',
+                    mimeType: blob.type,
+                    data: result,
+                    name: 'Clipboard Image'
+                });
+            }
+        }
+
+        if (newAttachments.length > 0) {
+            setAttachments(prev => [...prev, ...newAttachments]);
+        } else {
+            alert('No images found on clipboard.');
+        }
+
+    } catch (err) {
+        console.error('Failed to read clipboard contents: ', err);
+        alert('Could not access clipboard. Please ensure you have granted permission.');
+    }
+  };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -287,6 +334,37 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, initia
                 </button>
             </div>
         </main>
+        
+         {/* Clipboard Permission Dialog */}
+        {showClipboardDialog && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                <div className="bg-gray-800 border border-gray-700 rounded-2xl p-6 max-w-sm w-full shadow-2xl space-y-4">
+                    <div className="w-12 h-12 bg-blue-500/20 text-blue-400 rounded-full flex items-center justify-center mx-auto">
+                        <Clipboard size={24} />
+                    </div>
+                    <div className="text-center space-y-2">
+                        <h3 className="text-xl font-bold text-gray-100">Paste Image?</h3>
+                        <p className="text-gray-400 text-sm leading-relaxed">
+                            An image was shared. Tap below to paste it from your clipboard.
+                        </p>
+                    </div>
+                    <div className="flex flex-col gap-3 pt-2">
+                         <button 
+                            onClick={handlePasteFromClipboard}
+                            className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-colors"
+                        >
+                            Allow Paste
+                        </button>
+                        <button 
+                            onClick={() => setShowClipboardDialog(false)}
+                            className="w-full py-3 bg-gray-700 hover:bg-gray-600 text-gray-300 font-medium rounded-xl transition-colors"
+                        >
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
     </div>
   );
 };
