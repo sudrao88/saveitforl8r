@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Plus, RefreshCw } from 'lucide-react'; 
 import MemoryCard from './components/MemoryCard';
@@ -9,6 +8,7 @@ import SettingsModal from './components/SettingsModal';
 import EmptyState from './components/EmptyState';
 import NewMemoryPage from './components/NewMemoryPage';
 import ApiKeyModal from './components/ApiKeyModal';
+import ShareOnboardingModal from './components/ShareOnboardingModal'; // Updated import
 import { InstallPrompt } from './components/InstallPrompt';
 
 import { useMemories } from './hooks/useMemories';
@@ -26,6 +26,7 @@ const AppContent: React.FC = () => {
   const [view, setView] = useState<ViewMode>(ViewMode.FEED);
   const [isCaptureOpen, setIsCaptureOpen] = useState(false);
   const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
+  const [isShareOnboardingOpen, setIsShareOnboardingOpen] = useState(false); // State for onboarding
   const [syncError, setSyncError] = useState(false);
 
   const { updateAvailable, updateApp, appVersion } = useServiceWorker();
@@ -41,6 +42,28 @@ const AppContent: React.FC = () => {
     handleRetry,
     createMemory 
   } = useMemories();
+
+  // Check if user has seen onboarding
+  useEffect(() => {
+    const hasSeenOnboarding = localStorage.getItem('hasSeenShareOnboarding');
+    const isMobile = /iPad|iPhone|iPod|Android/.test(navigator.userAgent);
+    
+    // Logic: If mobile, has memories, and hasn't seen onboarding yet
+    if (isMobile && memories.length > 0 && !hasSeenOnboarding) {
+        // We only show it once a memory is successfully enriched/created to not block initial usage
+        // Let's check if any memory has enrichment data
+        const hasEnrichedMemory = memories.some(m => m.enrichment);
+        if (hasEnrichedMemory) {
+            setIsShareOnboardingOpen(true);
+        }
+    }
+  }, [memories]);
+
+  const handleCloseOnboarding = () => {
+      setIsShareOnboardingOpen(false);
+      localStorage.setItem('hasSeenShareOnboarding', 'true');
+      logEvent('Onboarding', 'Share Modal Dismissed');
+  };
 
   // Handle OAuth Callback on Mount
   useEffect(() => {
@@ -137,23 +160,20 @@ const AppContent: React.FC = () => {
         onClose={() => {
           setIsCaptureOpen(false);
           logEvent('Memory', 'Capture Cancelled');
-          if (shareData) clearShareData();
+          clearShareData();
         }}
         onCreate={async (text, attachments, tags, location) => {
             await createMemory(text, attachments, tags, location);
             refreshMemories();
             logEvent('Memory', 'Created');
-            if (shareData) clearShareData();
+            clearShareData();
         }}
-        onMemoryCreated={() => {}} 
         initialContent={shareData || undefined}
       />
     );
   }
 
   // 2. Chat/Recall View (Full Screen)
-  // By rendering this conditionally and exclusively, we ensure no other DOM elements (like MemoryCards)
-  // exist to be seen behind the virtual keyboard on iOS.
   if (view === ViewMode.RECALL) {
      return (
         <ChatInterface 
@@ -293,6 +313,11 @@ const AppContent: React.FC = () => {
             onClose={() => setIsApiKeyModalOpen(false)}
             onSave={handleSaveApiKey}
         />
+      )}
+
+      {/* Share Onboarding Modal */}
+      {isShareOnboardingOpen && (
+          <ShareOnboardingModal onClose={handleCloseOnboarding} />
       )}
     </div>
   );

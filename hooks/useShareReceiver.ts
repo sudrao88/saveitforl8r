@@ -12,33 +12,54 @@ export const useShareReceiver = () => {
 
   // Core logic to check URL and process shares
   const checkForShare = useCallback(async () => {
+    // 1. Clean up URL immediately if it matches our params to avoid loops
+    // We capture the values first, then clear.
     const searchParams = new URLSearchParams(window.location.search);
-    
+    const hasText = searchParams.has('share_text');
+    const hasClipboard = searchParams.has('share_image_clipboard');
+    const hasShareTarget = searchParams.has('share-target');
+
+    console.log('[ShareReceiver] Checking URL:', window.location.href);
+
     // --- 1. iOS / Direct URL Text Share ---
-    if (searchParams.has('share_text')) {
-        const text = searchParams.get('share_text') || '';
-        console.log('[ShareReceiver] Detected text share');
+    if (hasText) {
+        let text = searchParams.get('share_text') || '';
         
+        // ROBUST DECODING FALLBACK
+        // Sometimes URLSearchParams fails on specific encodings or partials on iOS.
+        // We manually extract the string from the raw search string.
+        try {
+            const rawSearch = window.location.search;
+            // Regex looks for ?share_text=VALUE or &share_text=VALUE, stops at & or end of string
+            const match = rawSearch.match(/[?&]share_text=([^&]*)/);
+            if (match && match[1]) {
+                const rawValue = match[1];
+                // Decode manually. replace + with space first.
+                text = decodeURIComponent(rawValue.replace(/\+/g, ' '));
+                console.log('[ShareReceiver] Manual decode result:', text);
+            }
+        } catch (e) {
+            console.warn('[ShareReceiver] Manual decode failed, using standard param:', e);
+        }
+
+        console.log('[ShareReceiver] Final text detected:', text);
         setShareData({ text, attachments: [] });
         
-        // Clean URL immediately to prevent re-processing
         window.history.replaceState({}, '', '/');
         return;
     }
 
     // --- 2. iOS / Direct URL Clipboard Share ---
-    if (searchParams.has('share_image_clipboard')) {
+    if (hasClipboard) {
         console.log('[ShareReceiver] Detected clipboard share');
-        
         setShareData({ text: '', attachments: [], checkClipboard: true });
         
-        // Clean URL immediately
         window.history.replaceState({}, '', '/');
         return;
     }
 
     // --- 3. Android Web Share Target (IndexedDB) ---
-    if (searchParams.has('share-target')) {
+    if (hasShareTarget) {
         console.log('[ShareReceiver] Detected Android share target');
         
         try {
@@ -55,7 +76,6 @@ export const useShareReceiver = () => {
             });
 
             if (!db.objectStoreNames.contains('shares')) {
-                 // Even if invalid, clean URL to escape loop
                  window.history.replaceState({}, '', '/');
                  return;
             }
@@ -67,7 +87,6 @@ export const useShareReceiver = () => {
             getAllReq.onsuccess = async () => {
                 const shares = getAllReq.result;
                 if (shares && shares.length > 0) {
-                    // Process the most recent share
                     const latestShare = shares[shares.length - 1];
                     
                     let text = latestShare.text || '';
@@ -98,20 +117,17 @@ export const useShareReceiver = () => {
                              });
                         }
                     }
-
+                    
                     setShareData({ text: text.trim(), attachments });
-
-                    // Clear IDB
+                    
                     const clearTx = db.transaction('shares', 'readwrite');
                     clearTx.objectStore('shares').clear();
                 }
-                // Clean URL after processing
                 window.history.replaceState({}, '', '/');
             };
             
             getAllReq.onerror = () => {
-                console.error('[ShareReceiver] Error reading shares');
-                window.history.replaceState({}, '', '/');
+                 window.history.replaceState({}, '', '/');
             };
 
         } catch (e) {
@@ -122,18 +138,14 @@ export const useShareReceiver = () => {
   }, []);
 
   useEffect(() => {
-    // 1. Check immediately on mount
     checkForShare();
 
-    // 2. Listener for PWA coming to foreground (iOS specific robustness)
     const handleVisibilityChange = () => {
         if (document.visibilityState === 'visible') {
-            // Slight delay to allow the browser to update window.location from the deep link
             setTimeout(checkForShare, 100);
         }
     };
 
-    // 3. Listener for Window Focus (Desktop/Android robustness)
     const handleFocus = () => {
         setTimeout(checkForShare, 100);
     };

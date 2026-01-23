@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Image as ImageIcon, FileText, X, Tag as TagIcon, Loader2, ArrowLeft, Clipboard } from 'lucide-react';
+import { Send, Image as ImageIcon, FileText, X, Tag as TagIcon, Loader2, ArrowLeft } from 'lucide-react';
 import { Attachment } from '../types';
 
 interface NewMemoryPageProps {
@@ -26,7 +26,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, initia
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [showClipboardDialog, setShowClipboardDialog] = useState(false);
+  const [isWaitingForPaste, setIsWaitingForPaste] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
@@ -36,29 +36,64 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, initia
         setText(initialContent.text || '');
         setAttachments(initialContent.attachments || []);
         
+        // If checking clipboard, set special state instead of showing dialog
         if (initialContent.checkClipboard) {
-            setShowClipboardDialog(true);
+            setIsWaitingForPaste(true);
         }
     }
   }, [initialContent]);
 
   useEffect(() => {
-    if (textAreaRef.current && !showClipboardDialog) {
-      setTimeout(() => textAreaRef.current?.focus(), 100);
+    if (textAreaRef.current) {
+      setTimeout(() => textAreaRef.current?.focus(), 300);
     }
-  }, [showClipboardDialog]);
+  }, []);
 
-  const handlePasteFromClipboard = async () => {
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    // 1. Handle Files (Images)
+    const items = e.clipboardData.items;
+    let hasHandledFile = false;
+
+    for (const item of items) {
+        if (item.type.startsWith('image/')) {
+            const blob = item.getAsFile();
+            if (blob) {
+                hasHandledFile = true;
+                const reader = new FileReader();
+                reader.onload = (evt) => {
+                    setAttachments(prev => [...prev, {
+                        id: crypto.randomUUID(),
+                        type: 'image',
+                        mimeType: blob.type,
+                        data: evt.target?.result as string,
+                        name: 'Pasted Image'
+                    }]);
+                    
+                    // Turn off the "Waiting for paste" prompt once an image is detected
+                    setIsWaitingForPaste(false);
+                };
+                reader.readAsDataURL(blob);
+            }
+        }
+    }
+
+    // If we successfully handled a file, we can reset the placeholder state
+    if (hasHandledFile) {
+        setIsWaitingForPaste(false);
+    }
+  };
+
+  // Attempt to programmatically read clipboard on tap if we are waiting for a paste.
+  // This utilizes the user gesture (tap) to trigger the permission prompt directly.
+  const handleTextareaClick = async () => {
+    if (!isWaitingForPaste) return;
+
     try {
-        setShowClipboardDialog(false);
         const clipboardItems = await navigator.clipboard.read();
-        
         const newAttachments: Attachment[] = [];
 
         for (const item of clipboardItems) {
-            // Prefer image types if available
             const imageType = item.types.find(type => type.startsWith('image/'));
-            
             if (imageType) {
                 const blob = await item.getType(imageType);
                 const reader = new FileReader();
@@ -79,13 +114,12 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, initia
 
         if (newAttachments.length > 0) {
             setAttachments(prev => [...prev, ...newAttachments]);
-        } else {
-            alert('No images found on clipboard.');
+            setIsWaitingForPaste(false);
         }
-
-    } catch (err) {
-        console.error('Failed to read clipboard contents: ', err);
-        alert('Could not access clipboard. Please ensure you have granted permission.');
+    } catch (e) {
+        // If this fails (e.g. permission denied or not supported), 
+        // we silently ignore it and let the user use the native Paste menu (fallback).
+        console.log("Auto-read clipboard failed, falling back to native menu:", e);
     }
   };
 
@@ -95,7 +129,6 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, initia
       const newAttachments: Attachment[] = [];
 
       for (const file of files) {
-        // Simple Base64 conversion
         const reader = new FileReader();
         const result = await new Promise<string>((resolve) => {
           reader.onload = (evt) => resolve(evt.target?.result as string);
@@ -148,11 +181,9 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, initia
     setIsProcessing(true);
     
     try {
-      // 1. Get Location (if available)
       let location: { latitude: number; longitude: number; accuracy?: number } | undefined;
       try {
         if (navigator.geolocation) {
-            // Add a timeout to geolocation to prevent hanging
             const pos = await Promise.race([
                 new Promise<GeolocationPosition>((resolve, reject) => {
                     navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
@@ -172,9 +203,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, initia
         console.warn("Location access denied or unavailable", e);
       }
 
-      // 2. Delegate creation to parent (hooks/useMemories)
       await onCreate(text, attachments, tags, location);
-      
       handleClose();
 
     } catch (error) {
@@ -210,13 +239,22 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, initia
 
         <main className="flex-1 p-4 sm:p-8 max-w-3xl mx-auto w-full space-y-6">
             {/* Text Input */}
-            <div className="space-y-2">
+            <div className="space-y-2 relative">
                 <textarea
                     ref={textAreaRef}
                     value={text}
-                    onChange={(e) => setText(e.target.value)}
-                    placeholder="Capture a thought, idea, or observation..."
-                    className="w-full min-h-[200px] bg-transparent text-lg text-white placeholder-gray-500 resize-y focus:outline-none leading-relaxed"
+                    onChange={(e) => {
+                        setText(e.target.value);
+                        // If user types, we assume they might not be pasting an image anymore, 
+                        // or at least we shouldn't show the "Tap to paste" message aggressively.
+                        if (isWaitingForPaste && e.target.value.length > 0) {
+                            setIsWaitingForPaste(false);
+                        }
+                    }}
+                    placeholder={isWaitingForPaste ? "Tap here to paste your image..." : "Capture a thought, idea, or observation..."}
+                    className={`w-full min-h-[200px] bg-transparent text-lg text-white placeholder-gray-500 resize-y focus:outline-none leading-relaxed transition-all duration-300 ${isWaitingForPaste ? 'placeholder-blue-400 font-medium' : ''}`}
+                    onPaste={handlePaste}
+                    onClick={handleTextareaClick}
                 />
             </div>
 
@@ -334,37 +372,6 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, initia
                 </button>
             </div>
         </main>
-        
-         {/* Clipboard Permission Dialog */}
-        {showClipboardDialog && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-                <div className="bg-gray-800 border border-gray-700 rounded-2xl p-6 max-w-sm w-full shadow-2xl space-y-4">
-                    <div className="w-12 h-12 bg-blue-500/20 text-blue-400 rounded-full flex items-center justify-center mx-auto">
-                        <Clipboard size={24} />
-                    </div>
-                    <div className="text-center space-y-2">
-                        <h3 className="text-xl font-bold text-gray-100">Paste Image?</h3>
-                        <p className="text-gray-400 text-sm leading-relaxed">
-                            An image was shared. Tap below to paste it from your clipboard.
-                        </p>
-                    </div>
-                    <div className="flex flex-col gap-3 pt-2">
-                         <button 
-                            onClick={handlePasteFromClipboard}
-                            className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-colors"
-                        >
-                            Allow Paste
-                        </button>
-                        <button 
-                            onClick={() => setShowClipboardDialog(false)}
-                            className="w-full py-3 bg-gray-700 hover:bg-gray-600 text-gray-300 font-medium rounded-xl transition-colors"
-                        >
-                            Cancel
-                        </button>
-                    </div>
-                </div>
-            </div>
-        )}
     </div>
   );
 };
