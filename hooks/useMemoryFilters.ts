@@ -1,5 +1,5 @@
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { Memory } from '../types';
 
 export const useMemoryFilters = (memories: Memory[]) => {
@@ -29,13 +29,17 @@ export const useMemoryFilters = (memories: Memory[]) => {
     };
   }, [memories, filterType]);
 
-  const clearFilters = () => {
+  const clearFilters = useCallback(() => {
       setFilterType(null);
-  };
+  }, []);
+
+  const handleSetFilterType = useCallback((type: string | null) => {
+    setFilterType(type);
+  }, []);
 
   return {
     filterType,
-    setFilterType,
+    setFilterType: handleSetFilterType,
     availableTypes,
     filteredMemories,
     clearFilters

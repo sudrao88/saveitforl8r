@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 export const useSettings = () => {
   const [apiKeySet, setApiKeySet] = useState(false);
@@ -16,20 +16,20 @@ export const useSettings = () => {
     checkKey();
   }, []);
 
-  const saveKey = (key: string) => {
+  const saveKey = useCallback((key: string) => {
     if (key.trim()) {
         localStorage.setItem('gemini_api_key', key.trim());
         setApiKeySet(true);
     }
-  };
+  }, []);
 
-  const clearKey = () => {
+  const clearKey = useCallback(() => {
     localStorage.removeItem('gemini_api_key');
     localStorage.removeItem('saveitforl8r_access');
     setApiKeySet(false);
     setInputApiKey('');
     setIsSettingsOpen(false);
-  };
+  }, []);
 
   return {
     apiKeySet,

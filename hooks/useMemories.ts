@@ -32,15 +32,15 @@ export const useMemories = () => {
     refreshMemories();
   }, [refreshMemories]);
 
-  // Helper for single file sync
-  const trySyncFile = async (memory: Memory) => {
+  // Helper for single file sync - Memoized
+  const trySyncFile = useCallback(async (memory: Memory) => {
       if (isLinked()) {
           console.log(`[Auto-Sync] Triggering single file sync for ${memory.id}`);
           syncFile(memory).catch(err => console.error("Single file sync failed:", err));
       }
-  };
+  }, [isLinked, syncFile]);
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = useCallback(async (id: string) => {
     setMemories(prev => prev.map(m => m.id === id ? { ...m, isDeleting: true } : m));
     
     try {
@@ -56,7 +56,7 @@ export const useMemories = () => {
           };
           await saveMemory(tombstone);
           // Sync just this tombstone
-          trySyncFile(tombstone);
+          await trySyncFile(tombstone);
       } else if (!existing) {
           await deleteMemory(id);
       }
@@ -67,9 +67,9 @@ export const useMemories = () => {
       alert("Could not delete memory. Please try again.");
       await refreshMemories();
     }
-  };
+  }, [refreshMemories, trySyncFile]);
 
-  const handleRetry = async (id: string) => {
+  const handleRetry = useCallback(async (id: string) => {
     setMemories(prev => prev.map(m => m.id === id ? { ...m, isPending: true, processingError: false } : m));
     const memory = memories.find(m => m.id === id);
     if (!memory) return;
@@ -114,16 +114,16 @@ export const useMemories = () => {
         setMemories(prev => prev.map(m => m.id === id ? updatedMemory : m));
         
         // Sync enriched file
-        trySyncFile(updatedMemory);
+        await trySyncFile(updatedMemory);
     } catch (error) {
         console.error("Retry failed for memory", id, error);
         const failedMemory = { ...memory, isPending: false, processingError: true };
         await saveMemory(failedMemory);
         setMemories(prev => prev.map(m => m.id === id ? failedMemory : m));
     }
-  };
+  }, [memories, trySyncFile]);
 
-  const createMemory = async (
+  const createMemory = useCallback(async (
     text: string, 
     attachments: Attachment[], 
     tags: string[], 
@@ -169,7 +169,7 @@ export const useMemories = () => {
             console.log("Enrichment complete, syncing single file...");
             
             // Sync Enriched File
-            trySyncFile(updatedMemory);
+            await trySyncFile(updatedMemory);
         })
         .catch(async (err) => {
             console.error("Enrichment failed:", err);
@@ -184,7 +184,7 @@ export const useMemories = () => {
             await saveMemory(failedMemory);
             setMemories(prev => prev.map(m => m.id === memoryId ? failedMemory : m));
         });
-  };
+  }, [trySyncFile]);
 
   useEffect(() => {
     const handleOnline = () => {

@@ -8,7 +8,7 @@ import {
     findFileByName,
     initializeGoogleAuth, 
     loginToDrive, 
-    isLinked, 
+    isLinked as checkIsLinked, 
     unlinkDrive,
     getAccessToken
 } from '../services/googleDriveService';
@@ -33,7 +33,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [isSyncing, setIsSyncing] = useState(false);
 
   // Internal helper to sync a single file without state checks (for use inside sync loop)
-  const syncFileInternal = async (memory: Memory) => {
+  const syncFileInternal = useCallback(async (memory: Memory) => {
       if (memory.isSample || memory.isPending || memory.processingError) return;
       
       try {
@@ -52,33 +52,37 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           console.error(`[Sync] Internal sync failed for ${memory.id}:`, e);
           // We don't throw here to avoid stopping the entire batch
       }
-  };
+  }, []);
 
-  const performSync = useCallback(async (forceFull = false) => {
-    if (isSyncing || !isLinked()) return;
-    setIsSyncing(true);
-    
-    try {
-        await getAccessToken(); // Ensure token is valid
-        const previousSnapshotJSON = localStorage.getItem(SNAPSHOT_KEY);
+  const saveSnapshot = useCallback((remoteFiles: any[]) => {
+      const snapshot = Object.fromEntries(remoteFiles.map(f => [f.name.replace('.json', ''), f.modifiedTime]));
+      localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snapshot));
+      localStorage.setItem(LAST_SYNC_KEY, Date.now().toString());
+  }, []);
 
-        if (forceFull || !previousSnapshotJSON) {
-            console.log('--- [Sync] Mode: FULL ---');
-            await doFullSync();
-        } else {
-            console.log('--- [Sync] Mode: DELTA (Snapshot Diff) ---');
-            await doDeltaSync(JSON.parse(previousSnapshotJSON));
+  const reconcileItem = useCallback(async (id: string, local: Memory | undefined, remoteFile: any | undefined) => {
+      if (local?.isSample || (!local && id.startsWith('sample-')) || (local && (local.isPending || local.processingError))) return;
+      try {
+        if (local && !remoteFile) {
+            await uploadFile(`${id}.json`, local);
+        } else if (!local && remoteFile) {
+            const content = await downloadFileContent(remoteFile.id);
+            if (!content.isDeleted) await saveMemory(content);
+        } else if (local && remoteFile) {
+            const remoteContent = await downloadFileContent(remoteFile.id);
+            if (remoteContent.timestamp > local.timestamp) {
+                if (remoteContent.isDeleted) await deleteMemory(id);
+                else await saveMemory(remoteContent);
+            } else if (local.timestamp > remoteContent.timestamp) {
+                await uploadFile(`${id}.json`, local, remoteFile.id);
+            }
         }
-        
-    } catch (e) {
-        console.error('[Sync] Sync process failed:', e);
-        throw e;
-    } finally {
-        setIsSyncing(false);
-    }
-  }, [isSyncing]);
+      } catch (e) {
+          console.error(`[Sync] Error reconciling ${id}`, e);
+      }
+  }, []);
 
-  const doFullSync = async () => {
+  const doFullSync = useCallback(async () => {
     const localMemories = await getMemories();
     const localMap = new Map(localMemories.map(m => [m.id, m]));
     
@@ -93,9 +97,9 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     saveSnapshot(remoteFiles);
     console.log('--- [Sync] Full Sync Complete ---');
-  };
+  }, [reconcileItem, saveSnapshot]);
 
-  const doDeltaSync = async (previousSnapshot: Record<string, string>) => {
+  const doDeltaSync = useCallback(async (previousSnapshot: Record<string, string>) => {
     // 1. Get current remote state
     const currentRemoteFiles = await listAllFiles();
     const currentRemoteMap = new Map(currentRemoteFiles.map(f => [f.name.replace('.json', ''), f]));
@@ -133,39 +137,35 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     // 4. Save new state
     saveSnapshot(currentRemoteFiles);
     console.log('--- [Sync] Delta Sync Complete ---');
-  };
+  }, [reconcileItem, syncFileInternal, saveSnapshot]);
 
-  const reconcileItem = async (id: string, local: Memory | undefined, remoteFile: any | undefined) => {
-      if (local?.isSample || (!local && id.startsWith('sample-')) || (local && (local.isPending || local.processingError))) return;
-      try {
-        if (local && !remoteFile) {
-            await uploadFile(`${id}.json`, local);
-        } else if (!local && remoteFile) {
-            const content = await downloadFileContent(remoteFile.id);
-            if (!content.isDeleted) await saveMemory(content);
-        } else if (local && remoteFile) {
-            const remoteContent = await downloadFileContent(remoteFile.id);
-            if (remoteContent.timestamp > local.timestamp) {
-                if (remoteContent.isDeleted) await deleteMemory(id);
-                else await saveMemory(remoteContent);
-            } else if (local.timestamp > remoteContent.timestamp) {
-                await uploadFile(`${id}.json`, local, remoteFile.id);
-            }
+  const performSync = useCallback(async (forceFull = false) => {
+    if (isSyncing || !checkIsLinked()) return;
+    setIsSyncing(true);
+    
+    try {
+        await getAccessToken(); // Ensure token is valid
+        const previousSnapshotJSON = localStorage.getItem(SNAPSHOT_KEY);
+
+        if (forceFull || !previousSnapshotJSON) {
+            console.log('--- [Sync] Mode: FULL ---');
+            await doFullSync();
+        } else {
+            console.log('--- [Sync] Mode: DELTA (Snapshot Diff) ---');
+            await doDeltaSync(JSON.parse(previousSnapshotJSON));
         }
-      } catch (e) {
-          console.error(`[Sync] Error reconciling ${id}`, e);
-      }
-  };
-  
-  const saveSnapshot = (remoteFiles: any[]) => {
-      const snapshot = Object.fromEntries(remoteFiles.map(f => [f.name.replace('.json', ''), f.modifiedTime]));
-      localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snapshot));
-      localStorage.setItem(LAST_SYNC_KEY, Date.now().toString());
-  };
+        
+    } catch (e) {
+        console.error('[Sync] Sync process failed:', e);
+        throw e;
+    } finally {
+        setIsSyncing(false);
+    }
+  }, [isSyncing, doFullSync, doDeltaSync]);
 
   // External trigger for single file sync (guards against parallel sync)
   const performSingleSync = useCallback(async (memory: Memory) => {
-      if (isSyncing || !isLinked()) return;
+      if (isSyncing || !checkIsLinked()) return;
       setIsSyncing(true); 
       try {
           await getAccessToken();
@@ -176,17 +176,33 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       } finally {
           setIsSyncing(false);
       }
-  }, [isSyncing]);
+  }, [isSyncing, syncFileInternal]);
+  
+  const handleInitialize = useCallback((cb?: () => void) => {
+    initializeGoogleAuth(cb);
+  }, []);
+
+  const handleLogin = useCallback(async () => {
+    await loginToDrive();
+  }, []);
+
+  const handleIsLinked = useCallback(() => {
+    return checkIsLinked();
+  }, []);
+
+  const handleUnlink = useCallback(() => {
+    unlinkDrive();
+  }, []);
 
   return (
     <SyncContext.Provider value={{
         isSyncing,
         sync: performSync,
         syncFile: performSingleSync, 
-        initialize: initializeGoogleAuth,
-        login: loginToDrive,
-        isLinked,
-        unlink: unlinkDrive
+        initialize: handleInitialize,
+        login: handleLogin,
+        isLinked: handleIsLinked,
+        unlink: handleUnlink
     }}>
       {children}
     </SyncContext.Provider>
