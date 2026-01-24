@@ -4,10 +4,11 @@ import React from 'react';
 export const Logo = ({ className }: { className?: string }) => (
   <div className={`${className} shrink-0`}>
     <svg viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
-      <rect width="512" height="512" rx="128" fill="#2563eb"/>
-      <path d="M356.5 125.5C373.069 108.931 399.931 108.931 416.5 125.5C433.069 142.069 433.069 168.931 416.5 185.5L206.5 395.5L100 420L124.5 313.5L334.5 103.5L356.5 125.5Z" stroke="white" strokeWidth="36" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M312 170L372 230" stroke="white" strokeWidth="36" strokeLinecap="round"/>
-      <path d="M100 420L180 440" stroke="white" strokeWidth="36" strokeLinecap="round" strokeOpacity="0.5"/>
+      <path d="M80 48H400L464 112V432C464 449.673 449.673 464 432 464H80C62.327 464 48 449.673 48 432V80C48 62.327 62.327 48 80 48Z" fill="#2563eb"/>
+      <rect x="156" y="48" width="200" height="140" rx="8" fill="#e6e6ff" fillOpacity="1"/>
+      <rect x="272" y="80" width="60" height="80" rx="4" fill="#2563eb" fillOpacity="0.3"/>
+      <rect x="96" y="240" width="320" height="192" rx="8" fill="white"/>
+      <text x="256" y="395" textAnchor="middle" fontFamily="Arial, sans-serif" fontWeight="bolder" fontSize="160" fill="#2563eb" letterSpacing="0" stroke="#2563eb" strokeWidth="5">L8R</text>
     </svg>
   </div>
 );

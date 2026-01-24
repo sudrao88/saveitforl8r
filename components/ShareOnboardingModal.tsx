@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Share, Download, ExternalLink } from 'lucide-react';
+import { X, Share, Download } from 'lucide-react';
 
 interface ShareOnboardingModalProps {
   onClose: () => void;
@@ -11,26 +11,26 @@ const ShareOnboardingModal: React.FC<ShareOnboardingModalProps> = ({ onClose }) 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
       <div className="bg-gray-800 border border-gray-700 rounded-2xl max-w-sm w-full shadow-2xl overflow-hidden flex flex-col">
-        
         {/* Header */}
         <div className="bg-gray-900/50 p-4 flex justify-between items-center border-b border-gray-700">
-            <h3 className="text-lg font-bold text-gray-100 flex items-center gap-2">
-                <Share size={20} className="text-blue-400" />
-                Easy Sharing
-            </h3>
-            <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
-                <X size={20} />
-            </button>
+           <h3 className="text-lg font-bold text-gray-100 flex items-center gap-2">
+               <Share size={20} className="text-blue-400" />
+               Easy Sharing
+           </h3>
+           <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
+               <X size={20} />
+           </button>
         </div>
 
         {/* Content */}
         <div className="p-6 space-y-6">
             <div className="space-y-2">
                 <p className="text-gray-300 leading-relaxed">
-                    Did you know? You can share images, text, and links directly to <b>SaveItForL8r</b> from other apps.
+                    Did you know? You can share images, text, and links directly to <b>SaveItForL8R</b> from other apps.
                 </p>
             </div>
 
+            {/* iOS Specific Instructions */}
             {isIOS && (
                 <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4 space-y-3">
                     <div className="flex items-start gap-3">
@@ -44,10 +44,9 @@ const ShareOnboardingModal: React.FC<ShareOnboardingModalProps> = ({ onClose }) 
                             </p>
                         </div>
                     </div>
-                    
                     <a 
-                        href="https://www.icloud.com/shortcuts/170db1a6c6be402c8d8c18ee8473ee87"
-                        target="_blank"
+                        href="https://www.icloud.com/shortcuts/170db1a6c6be402c8d8c18ee8473ee87" 
+                        target="_blank" 
                         rel="noopener noreferrer"
                         className="flex items-center justify-center gap-2 w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold py-2.5 rounded-lg transition-colors"
                     >
@@ -71,5 +70,25 @@ const ShareOnboardingModal: React.FC<ShareOnboardingModalProps> = ({ onClose }) 
     </div>
   );
 };
+
+// Simple External Link Icon component to avoid adding another import if not present
+const ExternalLink = ({ size = 16, className = "" }) => (
+    <svg 
+        xmlns="http://www.w3.org/2000/svg" 
+        width={size} 
+        height={size} 
+        viewBox="0 0 24 24" 
+        fill="none" 
+        stroke="currentColor" 
+        strokeWidth="2" 
+        strokeLinecap="round" 
+        strokeLinejoin="round" 
+        className={className}
+    >
+        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+        <polyline points="15 3 21 3 21 9"></polyline>
+        <line x1="10" y1="14" x2="21" y2="3"></line>
+    </svg>
+);
 
 export default ShareOnboardingModal;

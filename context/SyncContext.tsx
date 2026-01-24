@@ -32,6 +32,28 @@ const LAST_SYNC_KEY = 'gdrive_last_sync_time';
 export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [isSyncing, setIsSyncing] = useState(false);
 
+  // Internal helper to sync a single file without state checks (for use inside sync loop)
+  const syncFileInternal = async (memory: Memory) => {
+      if (memory.isSample || memory.isPending || memory.processingError) return;
+      
+      try {
+          const filename = `${memory.id}.json`;
+          const remoteFile = await findFileByName(filename);
+          await uploadFile(filename, memory, remoteFile?.id);
+          
+          // Update snapshot immediately
+          const updatedFile = await findFileByName(filename);
+          if (updatedFile) {
+              const snapshot = JSON.parse(localStorage.getItem(SNAPSHOT_KEY) || '{}');
+              snapshot[memory.id] = updatedFile.modifiedTime;
+              localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snapshot));
+          }
+      } catch (e) {
+          console.error(`[Sync] Internal sync failed for ${memory.id}:`, e);
+          // We don't throw here to avoid stopping the entire batch
+      }
+  };
+
   const performSync = useCallback(async (forceFull = false) => {
     if (isSyncing || !isLinked()) return;
     setIsSyncing(true);
@@ -104,7 +126,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     if (unsyncedLocals.length > 0) {
         console.log(`[Sync-Delta] Found ${unsyncedLocals.length} potentially unsynced local changes.`);
         for (const local of unsyncedLocals) {
-            await performSingleSync(local);
+            await syncFileInternal(local);
         }
     }
 
@@ -141,23 +163,13 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       localStorage.setItem(LAST_SYNC_KEY, Date.now().toString());
   };
 
+  // External trigger for single file sync (guards against parallel sync)
   const performSingleSync = useCallback(async (memory: Memory) => {
       if (isSyncing || !isLinked()) return;
-      if (memory.isSample || memory.isPending || memory.processingError) return;
       setIsSyncing(true); 
       try {
           await getAccessToken();
-          const filename = `${memory.id}.json`;
-          const remoteFile = await findFileByName(filename);
-          await uploadFile(filename, memory, remoteFile?.id);
-          // After a single sync, we need to update the snapshot to include this file
-          // to avoid delta sync thinking it's a new remote file next time.
-          const updatedFile = await findFileByName(filename);
-          if (updatedFile) {
-              const snapshot = JSON.parse(localStorage.getItem(SNAPSHOT_KEY) || '{}');
-              snapshot[memory.id] = updatedFile.modifiedTime;
-              localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snapshot));
-          }
+          await syncFileInternal(memory);
       } catch (e) {
           console.error(`[Sync] Single sync failed for ${memory.id}:`, e);
           throw e;

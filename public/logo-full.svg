@@ -1,0 +1,15 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Floppy Disk Body with smaller top-right cut and 3 rounded corners -->
+  <path d="M80 48H400L464 112V432C464 449.673 449.673 464 432 464H80C62.327 464 48 449.673 48 432V80C48 62.327 62.327 48 80 48Z" fill="#2563eb"/>
+  
+  <!-- Top Shutter Mechanism (Color changed to #e6e6ff) -->
+  <rect x="156" y="48" width="200" height="140" rx="8" fill="#e6e6ff" fill-opacity="1"/>
+  <!-- Slider detail -->
+  <rect x="272" y="80" width="60" height="80" rx="4" fill="#2563eb" fill-opacity="0.3"/>
+  
+  <!-- Label Area -->
+  <rect x="96" y="240" width="320" height="192" rx="8" fill="white"/>
+  
+  <!-- Text on Label -->
+  <text x="256" y="395" text-anchor="middle" font-family="Arial, sans-serif" font-weight="bolder" font-size="160" fill="#2563eb" letter-spacing="0" stroke="#2563eb" stroke-width="5">L8R</text>
+</svg>
