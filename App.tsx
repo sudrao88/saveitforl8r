@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Plus, RefreshCw } from 'lucide-react'; 
 import MemoryCard from './components/MemoryCard';
 import ChatInterface from './components/ChatInterface';
@@ -8,7 +8,7 @@ import SettingsModal from './components/SettingsModal';
 import EmptyState from './components/EmptyState';
 import NewMemoryPage from './components/NewMemoryPage';
 import ApiKeyModal from './components/ApiKeyModal';
-import ShareOnboardingModal from './components/ShareOnboardingModal'; // Updated import
+import ShareOnboardingModal from './components/ShareOnboardingModal';
 import { InstallPrompt } from './components/InstallPrompt';
 
 import { useMemories } from './hooks/useMemories';
@@ -17,16 +17,17 @@ import { useMemoryFilters } from './hooks/useMemoryFilters';
 import { useServiceWorker } from './hooks/useServiceWorker';
 import { useShareReceiver } from './hooks/useShareReceiver';
 import { useSync } from './hooks/useSync';
-import { SyncProvider } from './context/SyncContext'; // Import Provider
-import { ViewMode } from './types';
+import { useOnboarding } from './hooks/useOnboarding';
+import { SyncProvider } from './context/SyncContext';
+import { ViewMode, Memory } from './types';
 import { initGA, logPageView, logEvent } from './services/analytics';
 import { processAuthCallback } from './services/googleDriveService';
+import { ANALYTICS_EVENTS } from './constants';
 
 const AppContent: React.FC = () => {
   const [view, setView] = useState<ViewMode>(ViewMode.FEED);
   const [isCaptureOpen, setIsCaptureOpen] = useState(false);
   const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
-  const [isShareOnboardingOpen, setIsShareOnboardingOpen] = useState(false); // State for onboarding
   const [syncError, setSyncError] = useState(false);
 
   const { updateAvailable, updateApp, appVersion } = useServiceWorker();
@@ -43,47 +44,30 @@ const AppContent: React.FC = () => {
     createMemory 
   } = useMemories();
 
-  // Check if user has seen onboarding
-  useEffect(() => {
-    const hasSeenOnboarding = localStorage.getItem('hasSeenShareOnboarding');
-    const isMobile = /iPad|iPhone|iPod|Android/.test(navigator.userAgent);
-    
-    // Logic: If mobile, has memories, and hasn't seen onboarding yet
-    if (isMobile && memories.length > 0 && !hasSeenOnboarding) {
-        // We only show it once a memory is successfully enriched/created to not block initial usage
-        // Let's check if any memory has enrichment data
-        const hasEnrichedMemory = memories.some(m => m.enrichment);
-        if (hasEnrichedMemory) {
-            setIsShareOnboardingOpen(true);
-        }
-    }
-  }, [memories]);
-
-  const handleCloseOnboarding = () => {
-      setIsShareOnboardingOpen(false);
-      localStorage.setItem('hasSeenShareOnboarding', 'true');
-      logEvent('Onboarding', 'Share Modal Dismissed');
-  };
+  // Use the new custom hook for onboarding logic
+  const { isShareOnboardingOpen, closeOnboarding } = useOnboarding({ memories });
 
   // Handle OAuth Callback on Mount
   useEffect(() => {
-    const handleAuth = async () => {
+    const handleAuth = async (): Promise<void> => {
         if (window.location.search.includes('code=')) {
             console.log('[Auth] Processing OAuth callback...');
             try {
                 await processAuthCallback();
-                console.log('[Auth] Login successful.');
+                console.log(`[Auth] ${ANALYTICS_EVENTS.AUTH.ACTION_LOGIN_SUCCESS}`);
                 // Clear URL
                 window.history.replaceState({}, document.title, window.location.pathname);
                 // Trigger initial sync
-                sync().then(refreshMemories);
+                await sync();
+                await refreshMemories();
             } catch (e) {
-                console.error('[Auth] Callback processing failed', e);
+                console.error(`[Auth] ${ANALYTICS_EVENTS.AUTH.ACTION_CALLBACK_FAILED}`, e);
+                setSyncError(true);
             }
         }
     };
     handleAuth();
-  }, []);
+  }, [sync, refreshMemories]);
 
   useEffect(() => {
     initGA();
@@ -105,12 +89,12 @@ const AppContent: React.FC = () => {
             });
         });
     }
-  }, []); 
+  }, [isLinked, initialize, sync, refreshMemories]); 
 
   // If share data arrives, open the capture modal immediately
   useEffect(() => {
     if (shareData) {
-      logEvent('Share', 'Received', 'External Share');
+      logEvent(ANALYTICS_EVENTS.SHARE.CATEGORY, ANALYTICS_EVENTS.SHARE.ACTION_RECEIVED, ANALYTICS_EVENTS.SHARE.LABEL_EXTERNAL);
       setIsCaptureOpen(true);
     }
   }, [shareData]);
@@ -134,40 +118,128 @@ const AppContent: React.FC = () => {
     clearFilters
   } = useMemoryFilters(memories);
 
-  const handleSaveApiKey = async (key: string) => {
+  const handleSaveApiKey = useCallback(async (key: string): Promise<void> => {
     saveKey(key);
-    logEvent('Settings', 'API Key Set', 'Onboarding');
+    logEvent(ANALYTICS_EVENTS.SETTINGS.CATEGORY, ANALYTICS_EVENTS.SETTINGS.ACTION_API_KEY_SET, 'Onboarding');
     setIsApiKeyModalOpen(false);
     
     const pendingIds = memories.filter(m => m.isPending || m.processingError).map(m => m.id);
-    for (const id of pendingIds) {
-        await handleRetry(id);
-    }
-  };
+    
+    const retryPromises = pendingIds.map(async (id) => {
+        try {
+            await handleRetry(id);
+        } catch (error) {
+            console.error(`Failed to retry memory ${id}:`, error);
+        }
+    });
 
-  const handleManualSync = () => {
+    await Promise.allSettled(retryPromises);
+  }, [saveKey, memories, handleRetry]);
+
+  const handleManualSync = useCallback((): void => {
       setSyncError(false);
       sync().then(refreshMemories).catch(e => {
           console.error("Manual sync error", e);
           setSyncError(true);
       });
-  };
+  }, [sync, refreshMemories]);
+
+  // Memoized handlers
+  const handleCaptureClose = useCallback(() => {
+    setIsCaptureOpen(false);
+    logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_CAPTURE_CANCELLED);
+    clearShareData();
+  }, [clearShareData]);
+
+  const handleCreateMemory = useCallback(async (text: string, attachments: File[], tags: string[], location?: { latitude: number; longitude: number }) => {
+    await createMemory(text, attachments, tags, location);
+    refreshMemories();
+    logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_CREATED);
+    clearShareData();
+  }, [createMemory, refreshMemories, clearShareData]);
+
+  const handleChatClose = useCallback(() => {
+    setView(ViewMode.FEED);
+    logEvent(ANALYTICS_EVENTS.CHAT.CATEGORY, ANALYTICS_EVENTS.CHAT.ACTION_CLOSED);
+  }, []);
+
+  const handleSetView = useCallback((newView: ViewMode) => {
+    setView(newView);
+    logEvent(ANALYTICS_EVENTS.NAVIGATION.CATEGORY, ANALYTICS_EVENTS.NAVIGATION.ACTION_VIEW_CHANGED, newView);
+  }, []);
+
+  const handleResetFilters = useCallback(() => {
+    clearFilters();
+    logEvent(ANALYTICS_EVENTS.FILTER.CATEGORY, ANALYTICS_EVENTS.FILTER.ACTION_CLEARED);
+  }, [clearFilters]);
+
+  const handleSettingsClick = useCallback(() => {
+    setIsSettingsOpen(true);
+    logEvent(ANALYTICS_EVENTS.NAVIGATION.CATEGORY, ANALYTICS_EVENTS.NAVIGATION.ACTION_SETTINGS_OPENED);
+  }, [setIsSettingsOpen]);
+
+  const handleUpdateApp = useCallback(() => {
+    updateApp();
+    logEvent(ANALYTICS_EVENTS.APP.CATEGORY, ANALYTICS_EVENTS.APP.ACTION_UPDATED);
+  }, [updateApp]);
+
+  const handleSetFilterType = useCallback((type: string | null) => {
+    setFilterType(type);
+    if (type) logEvent(ANALYTICS_EVENTS.FILTER.CATEGORY, ANALYTICS_EVENTS.FILTER.ACTION_APPLIED, type);
+  }, [setFilterType]);
+
+  const handleClearFiltersEmptyState = useCallback(() => {
+    clearFilters();
+    logEvent(ANALYTICS_EVENTS.FILTER.CATEGORY, ANALYTICS_EVENTS.FILTER.ACTION_CLEARED_EMPTY);
+  }, [clearFilters]);
+
+  const handleDeleteMemory = useCallback((id: string) => {
+    handleDelete(id);
+    logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_DELETED);
+  }, [handleDelete]);
+
+  const handleRetryMemory = useCallback((id: string) => {
+    handleRetry(id);
+    logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_RETRIED);
+  }, [handleRetry]);
+
+  const handleOpenCapture = useCallback(() => {
+    setIsCaptureOpen(true);
+    logEvent(ANALYTICS_EVENTS.NAVIGATION.CATEGORY, ANALYTICS_EVENTS.NAVIGATION.ACTION_CAPTURE_OPENED, 'FAB');
+  }, []);
+
+  const handleSettingsClose = useCallback(() => {
+    setIsSettingsOpen(false);
+    logEvent(ANALYTICS_EVENTS.SETTINGS.CATEGORY, ANALYTICS_EVENTS.SETTINGS.ACTION_CLOSED);
+  }, [setIsSettingsOpen]);
+
+  const handleClearKey = useCallback(() => {
+    clearKey();
+    logEvent(ANALYTICS_EVENTS.SETTINGS.CATEGORY, ANALYTICS_EVENTS.SETTINGS.ACTION_API_KEY_CLEARED);
+  }, [clearKey]);
+
+  const handleImportSuccess = useCallback(() => {
+    refreshMemories();
+    logEvent(ANALYTICS_EVENTS.DATA.CATEGORY, ANALYTICS_EVENTS.DATA.ACTION_IMPORT_SUCCESS);
+    if (isLinked()) sync().then(refreshMemories); 
+  }, [refreshMemories, isLinked, sync]);
+
+  const handleAddApiKey = useCallback(() => {
+    setIsSettingsOpen(false); 
+    setIsApiKeyModalOpen(true);
+  }, [setIsSettingsOpen]);
+
+  // Performance Optimization: Memoize displayMemories
+  const displayMemories = useMemo(() => {
+    return filteredMemories.filter(m => !m.isDeleting);
+  }, [filteredMemories]);
 
   // 1. Capture/New Memory View (Full Screen)
   if (isCaptureOpen) {
     return (
       <NewMemoryPage 
-        onClose={() => {
-          setIsCaptureOpen(false);
-          logEvent('Memory', 'Capture Cancelled');
-          clearShareData();
-        }}
-        onCreate={async (text, attachments, tags, location) => {
-            await createMemory(text, attachments, tags, location);
-            refreshMemories();
-            logEvent('Memory', 'Created');
-            clearShareData();
-        }}
+        onClose={handleCaptureClose}
+        onCreate={handleCreateMemory}
         initialContent={shareData || undefined}
       />
     );
@@ -177,11 +249,8 @@ const AppContent: React.FC = () => {
   if (view === ViewMode.RECALL) {
      return (
         <ChatInterface 
-          memories={filteredMemories.filter(m => !m.isDeleting)} 
-          onClose={() => {
-              setView(ViewMode.FEED);
-              logEvent('Chat', 'Closed');
-          }} 
+          memories={displayMemories} 
+          onClose={handleChatClose} 
         />
      );
   }
@@ -192,23 +261,11 @@ const AppContent: React.FC = () => {
       <InstallPrompt />
       <div className="sticky top-0 z-30 bg-gray-900/90 backdrop-blur-md border-b border-gray-800">
           <TopNavigation 
-            setView={(newView) => {
-                setView(newView);
-                logEvent('Navigation', 'View Changed', newView);
-            }} 
-            resetFilters={() => {
-                clearFilters();
-                logEvent('Filter', 'Cleared');
-            }} 
-            onSettingsClick={() => {
-                setIsSettingsOpen(true);
-                logEvent('Navigation', 'Settings Opened');
-            }}
+            setView={handleSetView} 
+            resetFilters={handleResetFilters} 
+            onSettingsClick={handleSettingsClick}
             updateAvailable={updateAvailable}
-            onUpdateApp={() => {
-                updateApp();
-                logEvent('App', 'Updated');
-            }}
+            onUpdateApp={handleUpdateApp}
             syncError={syncError}
             isSyncing={isSyncing} 
           />
@@ -216,14 +273,8 @@ const AppContent: React.FC = () => {
           <FilterBar 
             availableTypes={availableTypes}
             filterType={filterType}
-            setFilterType={(type) => {
-                setFilterType(type);
-                if (type) logEvent('Filter', 'Applied', type);
-            }}
-            clearFilters={() => {
-                clearFilters();
-                logEvent('Filter', 'Cleared');
-            }}
+            setFilterType={handleSetFilterType}
+            clearFilters={handleResetFilters}
           />
       </div>
 
@@ -241,10 +292,7 @@ const AppContent: React.FC = () => {
         {filteredMemories.length === 0 ? (
           <EmptyState 
             hasMemories={memories.length > 0} 
-            clearFilters={() => {
-                clearFilters();
-                logEvent('Filter', 'Cleared from Empty State');
-            }} 
+            clearFilters={handleClearFiltersEmptyState} 
           />
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -252,16 +300,10 @@ const AppContent: React.FC = () => {
               <MemoryCard 
                 key={mem.id} 
                 memory={mem} 
-                onDelete={(id) => {
-                    handleDelete(id);
-                    logEvent('Memory', 'Deleted');
-                }} 
-                onRetry={(id) => {
-                    handleRetry(id);
-                    logEvent('Memory', 'Retried');
-                }}
+                onDelete={handleDeleteMemory} 
+                onRetry={handleRetryMemory}
                 hasApiKey={apiKeySet}
-                onAddApiKey={() => setIsApiKeyModalOpen(true)}
+                onAddApiKey={handleAddApiKey}
               />
             ))}
           </div>
@@ -269,10 +311,7 @@ const AppContent: React.FC = () => {
       </main>
 
       <button 
-        onClick={() => {
-            setIsCaptureOpen(true);
-            logEvent('Navigation', 'Capture Opened', 'FAB');
-        }}
+        onClick={handleOpenCapture}
         className="fixed bottom-6 right-4 sm:bottom-8 sm:right-8 z-20 h-14 sm:h-16 px-5 sm:px-7 bg-blue-600 text-white rounded-2xl flex items-center gap-3 shadow-2xl hover:bg-blue-700 hover:scale-105 active:scale-95 transition-all duration-300 shadow-blue-900/50"
       >
         <Plus size={28} strokeWidth={3} />
@@ -282,26 +321,13 @@ const AppContent: React.FC = () => {
       {/* Settings Modal */}
       {isSettingsOpen && (
         <SettingsModal 
-            onClose={() => {
-                setIsSettingsOpen(false);
-                logEvent('Settings', 'Closed');
-            }}
-            clearKey={() => {
-                clearKey();
-                logEvent('Settings', 'API Key Cleared');
-            }}
+            onClose={handleSettingsClose}
+            clearKey={handleClearKey}
             availableTypes={availableTypes}
-            onImportSuccess={() => {
-                refreshMemories();
-                logEvent('Data', 'Import Success');
-                if (isLinked()) sync().then(refreshMemories); 
-            }}
+            onImportSuccess={handleImportSuccess}
             appVersion={appVersion}
             hasApiKey={apiKeySet}
-            onAddApiKey={() => {
-                setIsSettingsOpen(false); 
-                setIsApiKeyModalOpen(true);
-            }}
+            onAddApiKey={handleAddApiKey}
             syncError={syncError}
             onSyncComplete={refreshMemories} 
         />
@@ -317,7 +343,7 @@ const AppContent: React.FC = () => {
 
       {/* Share Onboarding Modal */}
       {isShareOnboardingOpen && (
-          <ShareOnboardingModal onClose={handleCloseOnboarding} />
+          <ShareOnboardingModal onClose={closeOnboarding} />
       )}
     </div>
   );
