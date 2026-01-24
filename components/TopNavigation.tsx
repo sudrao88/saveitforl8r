@@ -1,5 +1,5 @@
 import React from 'react';
-import { Settings, Search, RefreshCw, Upload } from 'lucide-react';
+import { Settings, Search, RefreshCw, AlertCircle } from 'lucide-react';
 import { Logo } from './icons';
 import { ViewMode } from '../types';
 
@@ -62,6 +62,8 @@ const TopNavigation: React.FC<TopNavigationProps> = ({
           >
             {isSyncing ? (
                 <RefreshCw size={20} className="text-blue-400 animate-spin" />
+            ) : syncError ? (
+                <AlertCircle size={20} className="text-red-500" />
             ) : (
                 <Settings size={20} className="text-gray-500 group-hover:text-white" />
             )}

@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { X, Key, Trash2, Download, Upload, Info, RefreshCw, Cloud, AlertTriangle, ShieldCheck, Database, LogOut, Settings } from 'lucide-react';
+import { X, Key, Download, Upload, Info, RefreshCw, Cloud, AlertTriangle, ShieldCheck, LogOut, Settings } from 'lucide-react';
 import { useExportImport } from '../hooks/useExportImport';
 import { useEncryptionSettings } from '../hooks/useEncryptionSettings';
 import MultiSelect from './MultiSelect';
 import { useSync } from '../hooks/useSync';
+import { useAuth } from '../hooks/useAuth';
 
 interface SettingsModalProps {
   onClose: () => void;
@@ -29,12 +30,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     onSyncComplete
 }) => {
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const { isLinked, initialize, sync, login, unlink, isSyncing } = useSync();
-  const [gdriveLinked, setGdriveLinked] = useState(isLinked());
-
-  useEffect(() => {
-      setGdriveLinked(isLinked());
-  }, []);
+  const { sync, isSyncing } = useSync();
+  const { authStatus, login, unlink } = useAuth();
 
   const handleLinkDrive = () => {
       login();
@@ -45,17 +42,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
           await sync(true); // Force full sync check
           if (onSyncComplete) onSyncComplete();
       } catch (e: any) {
-          if (e.message === "InsufficientScopes" || e.message.includes("insufficientScopes")) {
-              login(); // Re-trigger login to get scopes
-          } else {
-              console.error("Sync failed:", e);
-          }
+          console.error("Sync failed:", e);
       }
   };
 
   const handleUnlink = () => {
       unlink();
-      setGdriveLinked(false);
   };
 
   const {
@@ -104,7 +96,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                 <div className="space-y-3">
                     <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Cloud Sync</h4>
                     <div className="bg-gray-700/30 p-4 rounded-2xl border border-gray-700 space-y-4">
-                        {gdriveLinked ? (
+                        {authStatus === 'linked' ? (
                             <div className="flex flex-col gap-3">
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
@@ -141,10 +133,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                                 <span className="text-sm text-gray-300">Sync with Google Drive</span>
                                 <button 
                                     onClick={handleLinkDrive}
-                                    className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-750 text-white rounded-xl font-medium transition-colors border border-gray-600 hover:border-blue-500/50 group text-sm"
+                                    disabled={authStatus === 'authenticating'}
+                                    className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-750 text-white rounded-xl font-medium transition-colors border border-gray-600 hover:border-blue-500/50 group text-sm disabled:opacity-50"
                                 >
                                     <Cloud size={16} className="text-blue-400 group-hover:text-blue-300" />
-                                    <span>Connect</span>
+                                    <span>{authStatus === 'authenticating' ? 'Connecting...' : 'Connect'}</span>
                                 </button>
                             </div>
                         )}

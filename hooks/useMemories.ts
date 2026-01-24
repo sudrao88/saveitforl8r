@@ -1,14 +1,17 @@
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { getMemories, deleteMemory, saveMemory, getMemory } from '../services/storageService';
 import { enrichInput } from '../services/geminiService';
 import { Memory, Attachment } from '../types';
 import { SAMPLE_MEMORIES } from '../services/sampleData';
 import { useSync } from './useSync';
+import { useAuth } from './useAuth';
 
 export const useMemories = () => {
   const [memories, setMemories] = useState<Memory[]>([]);
-  const { sync, syncFile, isLinked } = useSync();
+  const { sync, syncFile } = useSync();
+  const { authStatus } = useAuth();
+  const mounted = useRef(false);
 
   const refreshMemories = useCallback(async () => {
     const loaded = await getMemories();
@@ -28,17 +31,21 @@ export const useMemories = () => {
     setMemories(activeMemories);
   }, []);
 
+  // Initial load only
   useEffect(() => {
-    refreshMemories();
+    if (!mounted.current) {
+        refreshMemories();
+        mounted.current = true;
+    }
   }, [refreshMemories]);
 
   // Helper for single file sync - Memoized
   const trySyncFile = useCallback(async (memory: Memory) => {
-      if (isLinked()) {
+      if (authStatus === 'linked') {
           console.log(`[Auto-Sync] Triggering single file sync for ${memory.id}`);
           syncFile(memory).catch(err => console.error("Single file sync failed:", err));
       }
-  }, [isLinked, syncFile]);
+  }, [authStatus, syncFile]);
 
   const handleDelete = useCallback(async (id: string) => {
     setMemories(prev => prev.map(m => m.id === id ? { ...m, isDeleting: true } : m));
@@ -94,18 +101,13 @@ export const useMemories = () => {
         );
 
         const allTags = Array.from(new Set([...memory.tags, ...enrichment.suggestedTags]));
-        let finalLocation = memory.location; 
-        if (enrichment.locationIsRelevant && memory.location) {
-             finalLocation = memory.location;
-        }
-        
         const updatedMemory: Memory = {
             ...memory,
             enrichment,
             tags: allTags,
             isPending: false,
             processingError: false,
-            location: finalLocation,
+            location: memory.location, // Keep original location if enrichment doesn't override or just keep as is
             attachments: attachments.filter(a => a.id !== 'legacy-img'),
             timestamp: Date.now() 
         };
@@ -145,57 +147,59 @@ export const useMemories = () => {
       await saveMemory(newMemory);
       setMemories(prev => [newMemory, ...prev]);
       
-      // Do NOT sync pending memory (as per requirement)
+      // Do NOT sync pending memory
 
-      enrichInput(text, attachments, location, tags)
-        .then(async (enrichment) => {
-            const current = await getMemory(memoryId);
-            if (!current || current.isDeleted) {
-                console.log("Memory deleted during enrichment, aborting save.");
-                return;
-            }
+      try {
+        const enrichment = await enrichInput(text, attachments, location, tags);
+        const current = await getMemory(memoryId);
+        
+        // Check if deleted while processing
+        if (!current || current.isDeleted) {
+            console.log("Memory deleted during enrichment, aborting save.");
+            return;
+        }
 
-            const allTags = Array.from(new Set([...tags, ...enrichment.suggestedTags]));
-            const updatedMemory: Memory = {
-                ...newMemory,
-                enrichment,
-                tags: allTags,
-                isPending: false,
-                timestamp: Date.now() 
-            };
-            
-            await saveMemory(updatedMemory);
-            setMemories(prev => prev.map(m => m.id === memoryId ? updatedMemory : m));
-            console.log("Enrichment complete, syncing single file...");
-            
-            // Sync Enriched File
-            await trySyncFile(updatedMemory);
-        })
-        .catch(async (err) => {
-            console.error("Enrichment failed:", err);
-            const current = await getMemory(memoryId);
-            if (!current || current.isDeleted) return;
+        const allTags = Array.from(new Set([...tags, ...enrichment.suggestedTags]));
+        const updatedMemory: Memory = {
+            ...newMemory,
+            enrichment,
+            tags: allTags,
+            isPending: false,
+            timestamp: Date.now() 
+        };
+        
+        await saveMemory(updatedMemory);
+        setMemories(prev => prev.map(m => m.id === memoryId ? updatedMemory : m));
+        console.log("Enrichment complete, syncing single file...");
+        
+        // Sync Enriched File
+        await trySyncFile(updatedMemory);
 
-            const failedMemory: Memory = {
-                ...newMemory,
-                isPending: false,
-                processingError: true
-            };
-            await saveMemory(failedMemory);
-            setMemories(prev => prev.map(m => m.id === memoryId ? failedMemory : m));
-        });
+      } catch (err) {
+          console.error("Enrichment failed:", err);
+          const current = await getMemory(memoryId);
+          if (!current || current.isDeleted) return;
+
+          const failedMemory: Memory = {
+              ...newMemory,
+              isPending: false,
+              processingError: true
+          };
+          await saveMemory(failedMemory);
+          setMemories(prev => prev.map(m => m.id === memoryId ? failedMemory : m));
+      }
   }, [trySyncFile]);
 
   useEffect(() => {
     const handleOnline = () => {
       console.log("App is back online.");
-      // Just full sync on online status change is safer
-      if (isLinked()) sync();
+      // Trigger sync if linked
+      if (authStatus === 'linked') sync();
     };
 
     window.addEventListener('online', handleOnline);
     return () => window.removeEventListener('online', handleOnline);
-  }, [sync, isLinked]); 
+  }, [sync, authStatus]); 
 
   return {
     memories,
