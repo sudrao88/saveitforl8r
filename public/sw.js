@@ -1,4 +1,5 @@
-const CACHE_NAME = 'saveitforl8r-v19';
+// public/sw.js
+const CACHE_NAME = 'saveitforl8r-v20'; // Increment version to force update
 const SCOPE = '/';
 
 const PRECACHE_ASSETS = [
@@ -14,7 +15,7 @@ self.addEventListener('install', (event) => {
         console.log('[SW] Pre-caching offline page');
         return cache.addAll(PRECACHE_ASSETS);
       })
-      .then(() => self.skipWaiting()) // Activate immediately to take control
+      .then(() => self.skipWaiting())
   );
 });
 
@@ -38,7 +39,6 @@ self.addEventListener('message', (event) => {
     self.skipWaiting();
   }
   
-  // Respond to version check
   if (event.data && event.data.type === 'GET_VERSION') {
     event.ports[0].postMessage({ 
         type: 'VERSION', 
@@ -47,7 +47,6 @@ self.addEventListener('message', (event) => {
   }
 });
 
-// Helper to save shared data to IndexedDB
 function saveShareData(data) {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open('saveitforl8r-share', 1);
@@ -77,7 +76,6 @@ async function handleShareTarget(request) {
     const url = formData.get('url') || '';
     const mediaFiles = formData.getAll('media');
 
-    // Filter out empty files
     const validFiles = mediaFiles.filter(f => f.size > 0);
 
     const shareData = {
@@ -97,50 +95,58 @@ async function handleShareTarget(request) {
   }
 }
 
+// Background Sync Logic
+self.addEventListener('sync', (event) => {
+  if (event.tag === 'enrich-memory') {
+    event.waitUntil(processEnrichQueue());
+  }
+});
+
+// Mock function to process queue - in a real PWA this would read from IndexedDB
+// and call the API. Since the actual enrichment logic is in the React app (Gemini Service),
+// we can't easily move it all to SW without duplicating a lot of code/dependencies.
+// However, standard browser behavior will keep the Promise in createMemory alive 
+// for a short while even if backgrounded. True background execution requires 
+// Background Sync API + moving logic here, which is complex for this architecture.
+async function processEnrichQueue() {
+   console.log('[SW] Background sync triggered (placeholder)');
+   // Real implementation would require moving geminiService logic here
+}
+
+
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Handle Share Target POST request
   if (url.pathname === '/share-target/' && event.request.method === 'POST') {
     event.respondWith(handleShareTarget(event.request));
     return;
   }
 
-  // Only handle requests within our scope
   if (!event.request.url.startsWith(self.location.origin)) {
     return;
   }
 
-  // 1. Navigation requests (HTML): Network First, falling back to Cache
-  // This prevents the "Blank Page" issue where stale HTML requests deleted assets.
   if (event.request.mode === 'navigate') {
     event.respondWith(
       fetch(event.request)
         .then((networkResponse) => {
-          // Check if valid response
           if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
             return networkResponse;
           }
-          
-          // Clone and cache the fresh HTML
           const responseToCache = networkResponse.clone();
           caches.open(CACHE_NAME).then((cache) => {
             cache.put(SCOPE + 'index.html', responseToCache);
           });
-          
           return networkResponse;
         })
         .catch((err) => {
            console.log('[SW] Network fetch failed, falling back to cache:', err);
-           // If network fails, try to serve from cache
            return caches.match(SCOPE + 'index.html');
         })
     );
     return;
   }
 
-  // 2. Hashed Assets (JS/CSS/Images with hash): Cache First
-  // Vite assets in 'assets/' folder are hashed and immutable.
   if (url.pathname.includes('/assets/')) {
     event.respondWith(
       caches.match(event.request).then((cachedResponse) => {
@@ -161,8 +167,6 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 3. Mutable Static Assets (manifest, icons, etc.): Stale-While-Revalidate
-  // For these, it's okay to show an old version briefly while updating.
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       const fetchPromise = fetch(event.request).then((networkResponse) => {

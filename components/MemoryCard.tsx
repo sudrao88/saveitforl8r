@@ -211,7 +211,11 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, isDi
              </div>
              
              {/* Status Indicators */}
-             {memory.isPending && <span className="flex h-2 w-2 rounded-full bg-blue-500 animate-pulse" title="Processing" />}
+             {memory.isPending && (
+                <span className="text-xs font-medium text-blue-400">
+                    Enriching<span className="animate-pulse [animation-duration:1.5s]">.</span><span className="animate-pulse [animation-duration:1.5s] [animation-delay:250ms]">.</span><span className="animate-pulse [animation-duration:1.5s] [animation-delay:500ms]">.</span>
+                </span>
+             )}
              {memory.processingError && <WifiOff size={12} className="text-amber-500" />}
           </div>
 

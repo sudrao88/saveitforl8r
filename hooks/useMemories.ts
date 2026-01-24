@@ -125,7 +125,7 @@ export const useMemories = () => {
     }
   }, [memories, trySyncFile]);
 
-  const createMemory = useCallback(async (
+  const createMemory = useCallback((
     text: string, 
     attachments: Attachment[], 
     tags: string[], 
@@ -134,6 +134,9 @@ export const useMemories = () => {
       const memoryId = crypto.randomUUID();
       const timestamp = Date.now();
       
+      const apiKey = localStorage.getItem('gemini_api_key');
+      const hasKey = !!apiKey && apiKey.trim().length > 0;
+
       const newMemory: Memory = {
         id: memoryId,
         timestamp,
@@ -141,53 +144,60 @@ export const useMemories = () => {
         attachments,
         tags,
         location,
-        isPending: true
+        isPending: hasKey,
+        processingError: !hasKey
       };
 
-      await saveMemory(newMemory);
+      // 1. Immediately update UI and save local "pending" state
       setMemories(prev => [newMemory, ...prev]);
+      saveMemory(newMemory).catch(err => console.error("Failed to save pending memory", err));
       
-      // Do NOT sync pending memory
-
-      try {
-        const enrichment = await enrichInput(text, attachments, location, tags);
-        const current = await getMemory(memoryId);
-        
-        // Check if deleted while processing
-        if (!current || current.isDeleted) {
-            console.log("Memory deleted during enrichment, aborting save.");
-            return;
-        }
-
-        const allTags = Array.from(new Set([...tags, ...enrichment.suggestedTags]));
-        const updatedMemory: Memory = {
-            ...newMemory,
-            enrichment,
-            tags: allTags,
-            isPending: false,
-            timestamp: Date.now() 
-        };
-        
-        await saveMemory(updatedMemory);
-        setMemories(prev => prev.map(m => m.id === memoryId ? updatedMemory : m));
-        console.log("Enrichment complete, syncing single file...");
-        
-        // Sync Enriched File
-        await trySyncFile(updatedMemory);
-
-      } catch (err) {
-          console.error("Enrichment failed:", err);
-          const current = await getMemory(memoryId);
-          if (!current || current.isDeleted) return;
-
-          const failedMemory: Memory = {
-              ...newMemory,
-              isPending: false,
-              processingError: true
-          };
-          await saveMemory(failedMemory);
-          setMemories(prev => prev.map(m => m.id === memoryId ? failedMemory : m));
+      if (!hasKey) {
+        return Promise.resolve();
       }
+
+      // 2. Start enrichment in background (do NOT await)
+      enrichInput(text, attachments, location, tags)
+        .then(async (enrichment) => {
+            // Check if memory still exists (wasn't deleted while enriching)
+            const current = await getMemory(memoryId);
+            if (!current || current.isDeleted) {
+                console.log("Memory deleted during enrichment, aborting save.");
+                return;
+            }
+
+            const allTags = Array.from(new Set([...tags, ...enrichment.suggestedTags]));
+            const updatedMemory: Memory = {
+                ...newMemory,
+                enrichment,
+                tags: allTags,
+                isPending: false,
+                timestamp: Date.now() 
+            };
+            
+            await saveMemory(updatedMemory);
+            setMemories(prev => prev.map(m => m.id === memoryId ? updatedMemory : m));
+            console.log("Enrichment complete, syncing single file...");
+            
+            // Sync Enriched File
+            await trySyncFile(updatedMemory);
+        })
+        .catch(async (err) => {
+            console.error("Enrichment failed:", err);
+            const current = await getMemory(memoryId);
+            if (!current || current.isDeleted) return;
+
+            const failedMemory: Memory = {
+                ...newMemory,
+                isPending: false,
+                processingError: true
+            };
+            await saveMemory(failedMemory);
+            setMemories(prev => prev.map(m => m.id === memoryId ? failedMemory : m));
+        });
+      
+      // Return immediately so UI doesn't block
+      return Promise.resolve();
   }, [trySyncFile]);
 
   useEffect(() => {
@@ -195,11 +205,21 @@ export const useMemories = () => {
       console.log("App is back online.");
       // Trigger sync if linked
       if (authStatus === 'linked') sync();
+
+      // Auto-retry enrichment for failed memories if API key exists
+      const apiKey = localStorage.getItem('gemini_api_key');
+      if (apiKey && apiKey.trim().length > 0) {
+          const failures = memories.filter(m => m.processingError);
+          if (failures.length > 0) {
+              console.log(`[Auto-Retry] Retrying ${failures.length} items...`);
+              failures.forEach(m => handleRetry(m.id));
+          }
+      }
     };
 
     window.addEventListener('online', handleOnline);
     return () => window.removeEventListener('online', handleOnline);
-  }, [sync, authStatus]); 
+  }, [sync, authStatus, memories, handleRetry]); 
 
   return {
     memories,

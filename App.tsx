@@ -123,11 +123,12 @@ const AppContent: React.FC = () => {
   }, [clearShareData]);
 
   const handleCreateMemory = useCallback(async (text: string, attachments: File[], tags: string[], location?: { latitude: number; longitude: number }) => {
+    setIsCaptureOpen(false); // Close modal first
     await createMemory(text, attachments, tags, location);
-    refreshMemories();
+    // Remove refreshMemories() call as createMemory now updates state locally
     logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_CREATED);
     clearShareData();
-  }, [createMemory, refreshMemories, clearShareData]);
+  }, [createMemory, clearShareData]);
 
   const handleChatClose = useCallback(() => {
     setView(ViewMode.FEED);
@@ -250,17 +251,7 @@ const AppContent: React.FC = () => {
       </div>
 
       <main className="flex-1 p-4 sm:p-8 max-w-7xl mx-auto w-full relative">
-        {syncError && authStatus === 'linked' && (
-            <button 
-                onClick={handleManualSync}
-                className="absolute top-0 right-4 -mt-2 z-10 flex items-center gap-2 bg-red-900/80 text-red-200 px-3 py-1.5 rounded-full text-xs font-medium border border-red-700/50 hover:bg-red-900 transition-colors animate-in fade-in"
-                title={syncError}
-            >
-                <AlertTriangle size={12} />
-                Sync Error: {syncError} (Tap to Retry)
-            </button>
-        )}
-
+        {/* Sync Error Banner Removed - relying on Settings Icon Dot */}
         {filteredMemories.length === 0 ? (
           <EmptyState 
             hasMemories={memories.length > 0} 
