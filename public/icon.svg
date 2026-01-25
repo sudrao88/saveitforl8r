@@ -19,6 +19,8 @@
       </feMerge>
     </filter>
   </defs>
+  <rect width="512" height="512" fill="#111827"/>
+  <g transform="translate(256 256) scale(0.80) translate(-256 -256)">
 
   <!-- Floppy Body -->
   <path d="M80 48H400L464 112V432C464 449.673 449.673 464 432 464H80C62.327 464 48 449.673 48 432V80C48 62.327 62.327 48 80 48Z" fill="#2563eb" filter="url(#shadow)"/>
@@ -43,4 +45,5 @@
     >
       L8R
     </text>
-</svg>
+
+  </g></svg>
