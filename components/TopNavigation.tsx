@@ -26,14 +26,16 @@ const TopNavigation: React.FC<TopNavigationProps> = ({
     <nav className="px-4 py-3 sm:px-8 flex justify-center">
       <div className="w-full max-w-4xl flex items-center justify-between gap-4">
         <div 
-            className="flex items-center gap-3 text-blue-500 font-black text-xl tracking-tighter shrink-0 cursor-pointer"
+            className="flex items-center gap-3 text-blue-500 shrink-0 cursor-pointer group"
             onClick={() => {
                 resetFilters();
                 setView(ViewMode.FEED);
             }}
         >
-          <Logo className="w-8 h-8 rounded-lg shadow-sm" />
-          <span className="hidden sm:inline">SaveItForL8R</span>
+          <Logo className="w-8 h-8 rounded-lg shadow-sm group-hover:scale-105 transition-transform" />
+          <span className="hidden sm:inline font-brand text-xl font-bold tracking-tight text-gray-100">
+            SaveItFor<span className="text-blue-500">L8R</span>
+          </span>
         </div>
 
         <div className="flex items-center gap-2">

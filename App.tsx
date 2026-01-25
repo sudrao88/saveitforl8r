@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Plus, RefreshCw, AlertTriangle } from 'lucide-react'; 
 import MemoryCard from './components/MemoryCard';
 import ChatInterface from './components/ChatInterface';
@@ -11,6 +11,7 @@ import NewMemoryPage from './components/NewMemoryPage';
 import ApiKeyModal from './components/ApiKeyModal';
 import ShareOnboardingModal from './components/ShareOnboardingModal';
 import { InstallPrompt } from './components/InstallPrompt';
+import { Logo } from './components/icons';
 
 import { useMemories } from './hooks/useMemories';
 import { useSettings } from './hooks/useSettings';
@@ -44,8 +45,19 @@ const AppContent: React.FC = () => {
     refreshMemories,
     handleDelete,
     handleRetry,
-    createMemory 
+    createMemory,
+    isLoading
   } = useMemories();
+
+  // Create stable refs for sync and refreshMemories to avoid circular dependencies
+  const syncRef = useRef(sync);
+  const refreshRef = useRef(refreshMemories);
+
+  // Keep refs updated with latest functions
+  useEffect(() => {
+    syncRef.current = sync;
+    refreshRef.current = refreshMemories;
+  }, [sync, refreshMemories]);
 
   // Use the new custom hook for onboarding logic
   const { isShareOnboardingOpen, closeOnboarding } = useOnboarding({ memories });
@@ -57,14 +69,14 @@ const AppContent: React.FC = () => {
     // Initial sync if linked
     if (authStatus === 'linked') {
         console.log('[App] Linked. Triggering initial sync...');
-        sync().then(() => {
+        syncRef.current().then(() => {
             console.log('[App] Initial sync complete. Refreshing memories.');
-            refreshMemories();
+            refreshRef.current();
         }).catch(err => {
             console.error('[App] Initial sync failed:', err);
         });
     }
-  }, [authStatus, sync, refreshMemories]); 
+  }, [authStatus]); // ✅ Only authStatus - primitive value
 
   // If share data arrives, open the capture modal immediately
   useEffect(() => {
@@ -110,10 +122,10 @@ const AppContent: React.FC = () => {
   }, [saveKey, memories, handleRetry]);
 
   const handleManualSync = useCallback((): void => {
-      sync().then(refreshMemories).catch(e => {
+      syncRef.current().then(() => refreshRef.current()).catch(e => {
           console.error("Manual sync error", e);
       });
-  }, [sync, refreshMemories]);
+  }, []); // ✅ Empty dependency array - uses refs
 
   // Memoized handlers
   const handleCaptureClose = useCallback(() => {
@@ -123,8 +135,8 @@ const AppContent: React.FC = () => {
   }, [clearShareData]);
 
   const handleCreateMemory = useCallback(async (text: string, attachments: File[], tags: string[], location?: { latitude: number; longitude: number }) => {
-    setIsCaptureOpen(false); // Close modal first
     await createMemory(text, attachments, tags, location);
+    setIsCaptureOpen(false); // Close modal after memory creation is initiated
     // Remove refreshMemories() call as createMemory now updates state locally
     logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_CREATED);
     clearShareData();
@@ -191,10 +203,12 @@ const AppContent: React.FC = () => {
   }, [clearKey]);
 
   const handleImportSuccess = useCallback(() => {
-    refreshMemories();
+    refreshRef.current();
     logEvent(ANALYTICS_EVENTS.DATA.CATEGORY, ANALYTICS_EVENTS.DATA.ACTION_IMPORT_SUCCESS);
-    if (authStatus === 'linked') sync().then(refreshMemories); 
-  }, [refreshMemories, authStatus, sync]);
+    if (authStatus === 'linked') {
+        syncRef.current().then(() => refreshRef.current());
+    } 
+  }, [authStatus]); // ✅ Only authStatus
 
   const handleAddApiKey = useCallback(() => {
     setIsSettingsOpen(false); 
@@ -205,6 +219,20 @@ const AppContent: React.FC = () => {
   const displayMemories = useMemo(() => {
     return filteredMemories.filter(m => !m.isDeleting);
   }, [filteredMemories]);
+
+  // 0. React Splash Screen (Initial Loading)
+  if (isLoading) {
+    return (
+        <div className="fixed inset-0 bg-gray-900 z-[9999] flex flex-col items-center justify-center">
+            <Logo className="w-20 h-20 mb-6 animate-pulse" />
+            <div className="flex gap-1.5 items-center">
+                <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></div>
+            </div>
+        </div>
+    );
+  }
 
   // 1. Capture/New Memory View (Full Screen)
   if (isCaptureOpen) {

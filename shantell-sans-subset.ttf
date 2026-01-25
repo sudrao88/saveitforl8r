@@ -1,0 +1,6 @@
+@font-face {
+  font-family: 'Shantell Sans';
+  font-style: normal;
+  font-weight: 800;
+  src: url(https://fonts.gstatic.com/l/font?kit=FeUaS0pCoLIo-lcdY7kjvNoQqWVWB0qWpl29ajppTuUTu_kJKmHesPOL-maYi4xZeHCNQ09eBlmv2QcUzJ39-rAISYT8TGi20PQJvw5_TjBTlaAxzZ4&skey=bb27144b79335f7b&v=v13) format('truetype');
+}

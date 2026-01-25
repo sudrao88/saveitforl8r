@@ -1,6 +1,77 @@
 @import "tailwindcss";
 
+:root {
+  color-scheme: dark;
+}
+
 body {
-  @apply bg-gray-900 text-gray-100;
-  font-family: 'Inter', sans-serif;
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #111827;
+  color: #f3f4f6;
+  overscroll-behavior-y: none; /* Prevent pull-to-refresh on mobile */
+}
+
+/* Custom scrollbar for webkit */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1f2937; 
+}
+
+::-webkit-scrollbar-thumb {
+  background: #374151; 
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #4b5563; 
+}
+
+/* Hide scrollbar for clean horizontal scrolling areas */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Gradient Masks */
+.mask-gradient {
+    -webkit-mask-image: linear-gradient(to right, transparent, black 10px, black 90%, transparent);
+    mask-image: linear-gradient(to right, transparent, black 10px, black 90%, transparent);
+}
+
+.mask-gradient-b {
+    -webkit-mask-image: linear-gradient(to bottom, black 80%, transparent);
+    mask-image: linear-gradient(to bottom, black 80%, transparent);
+}
+
+/* Safe Area Utility for Mobile */
+.pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Animations */
+@keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.animate-fade-in {
+    animation: fade-in 0.3s ease-out forwards;
+}
+
+/* Brand Font */
+.font-brand {
+    font-family: 'Shantell Sans', cursive, sans-serif;
+    font-variation-settings: "BNCE" 10, "INFM" 0, "SPAC" 0;
 }

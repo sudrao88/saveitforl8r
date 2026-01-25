@@ -9,26 +9,33 @@ import { useAuth } from './useAuth';
 
 export const useMemories = () => {
   const [memories, setMemories] = useState<Memory[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const { sync, syncFile } = useSync();
   const { authStatus } = useAuth();
   const mounted = useRef(false);
 
   const refreshMemories = useCallback(async () => {
-    const loaded = await getMemories();
-    const activeMemories = loaded.filter(m => !m.isDeleted);
+    try {
+        const loaded = await getMemories();
+        const activeMemories = loaded.filter(m => !m.isDeleted);
 
-    const samplesInitialized = localStorage.getItem('samples_initialized');
-    if (!samplesInitialized && loaded.length === 0) {
-        console.log("Seeding sample memories...");
-        for (const sample of SAMPLE_MEMORIES) {
-            await saveMemory(sample);
+        const samplesInitialized = localStorage.getItem('samples_initialized');
+        if (!samplesInitialized && loaded.length === 0) {
+            console.log("Seeding sample memories...");
+            for (const sample of SAMPLE_MEMORIES) {
+                await saveMemory(sample);
+            }
+            localStorage.setItem('samples_initialized', 'true');
+            setMemories([...SAMPLE_MEMORIES]);
+            return;
         }
-        localStorage.setItem('samples_initialized', 'true');
-        setMemories([...SAMPLE_MEMORIES]);
-        return;
-    }
 
-    setMemories(activeMemories);
+        setMemories(activeMemories);
+    } catch (error) {
+        console.error("Failed to refresh memories:", error);
+    } finally {
+        setIsLoading(false);
+    }
   }, []);
 
   // Initial load only
@@ -131,6 +138,7 @@ export const useMemories = () => {
     tags: string[], 
     location?: { latitude: number; longitude: number; accuracy?: number }
   ) => {
+      // 1. Prepare initial memory object
       const memoryId = crypto.randomUUID();
       const timestamp = Date.now();
       
@@ -148,55 +156,61 @@ export const useMemories = () => {
         processingError: !hasKey
       };
 
-      // 1. Immediately update UI and save local "pending" state
+      // 2. Schedule background API call (if key exists)
+      const enrichmentPromise = hasKey 
+          ? enrichInput(text, attachments, location, tags)
+          : Promise.resolve(null);
+
+      // 3. Update UI immediately (showing loading state) and save local pending state
       setMemories(prev => [newMemory, ...prev]);
       saveMemory(newMemory).catch(err => console.error("Failed to save pending memory", err));
-      
-      if (!hasKey) {
-        return Promise.resolve();
+
+      // 4. Handle Enrichment Result (asynchronously)
+      if (hasKey) {
+          enrichmentPromise
+            .then(async (enrichment) => {
+                if (!enrichment) return; // Should not happen given hasKey check
+
+                // Check if memory still exists (wasn't deleted while enriching)
+                const current = await getMemory(memoryId);
+                if (!current || current.isDeleted) {
+                    console.log("Memory deleted during enrichment, aborting save.");
+                    return;
+                }
+
+                const allTags = Array.from(new Set([...tags, ...enrichment.suggestedTags]));
+                const updatedMemory: Memory = {
+                    ...newMemory,
+                    enrichment,
+                    tags: allTags,
+                    isPending: false,
+                    timestamp: Date.now() 
+                };
+                
+                // Save and update UI with enriched data
+                await saveMemory(updatedMemory);
+                setMemories(prev => prev.map(m => m.id === memoryId ? updatedMemory : m));
+                console.log("Enrichment complete, syncing single file...");
+                
+                // Sync Enriched File
+                await trySyncFile(updatedMemory);
+            })
+            .catch(async (err) => {
+                console.error("Enrichment failed:", err);
+                const current = await getMemory(memoryId);
+                if (!current || current.isDeleted) return;
+
+                const failedMemory: Memory = {
+                    ...newMemory,
+                    isPending: false,
+                    processingError: true
+                };
+                await saveMemory(failedMemory);
+                setMemories(prev => prev.map(m => m.id === memoryId ? failedMemory : m));
+            });
       }
-
-      // 2. Start enrichment in background (do NOT await)
-      enrichInput(text, attachments, location, tags)
-        .then(async (enrichment) => {
-            // Check if memory still exists (wasn't deleted while enriching)
-            const current = await getMemory(memoryId);
-            if (!current || current.isDeleted) {
-                console.log("Memory deleted during enrichment, aborting save.");
-                return;
-            }
-
-            const allTags = Array.from(new Set([...tags, ...enrichment.suggestedTags]));
-            const updatedMemory: Memory = {
-                ...newMemory,
-                enrichment,
-                tags: allTags,
-                isPending: false,
-                timestamp: Date.now() 
-            };
-            
-            await saveMemory(updatedMemory);
-            setMemories(prev => prev.map(m => m.id === memoryId ? updatedMemory : m));
-            console.log("Enrichment complete, syncing single file...");
-            
-            // Sync Enriched File
-            await trySyncFile(updatedMemory);
-        })
-        .catch(async (err) => {
-            console.error("Enrichment failed:", err);
-            const current = await getMemory(memoryId);
-            if (!current || current.isDeleted) return;
-
-            const failedMemory: Memory = {
-                ...newMemory,
-                isPending: false,
-                processingError: true
-            };
-            await saveMemory(failedMemory);
-            setMemories(prev => prev.map(m => m.id === memoryId ? failedMemory : m));
-        });
       
-      // Return immediately so UI doesn't block
+      // Return immediately so the modal can close
       return Promise.resolve();
   }, [trySyncFile]);
 
@@ -226,6 +240,7 @@ export const useMemories = () => {
     refreshMemories,
     handleDelete,
     handleRetry,
-    createMemory 
+    createMemory,
+    isLoading
   };
 };
