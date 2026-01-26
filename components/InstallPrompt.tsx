@@ -86,7 +86,7 @@ export const InstallPrompt = () => {
             <button onClick={dismiss} className="text-gray-400 hover:text-white p-1 -ml-1">
                 <X size={18} />
             </button>
-            <div className="shrink-0 w-10 h-10 rounded-lg overflow-hidden bg-blue-600 flex items-center justify-center">
+            <div className="shrink-0 w-10 h-10 rounded-lg overflow-hidden bg-gray-900 flex items-center justify-center">
                 <Logo className="w-full h-full" />
             </div>
             <div className="flex-1 min-w-0 flex flex-col justify-center">
