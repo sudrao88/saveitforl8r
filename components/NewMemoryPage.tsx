@@ -295,10 +295,10 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, initia
             </div>
         </div>
 
-        <main className="flex-1 p-4 sm:p-8 max-w-3xl mx-auto w-full space-y-6 flex flex-col">
+        <main className="flex-1 p-4 sm:p-8 max-w-3xl mx-auto w-full flex flex-col">
             
             {/* Editor Area */}
-            <div className="min-h-[200px] relative text-left order-1" dir="ltr">
+            <div className="min-h-[200px] relative text-left order-1 mb-6" dir="ltr">
                 {isChecklistMode ? (
                     <div className="space-y-2">
                         {checklistItems.map((item, index) => (
@@ -365,8 +365,34 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, initia
                 )}
             </div>
 
-            {/* Toolbar Area */}
-            <div className="flex flex-col gap-4 border-t border-gray-800 pt-6 order-2">
+            {/* Attachments Preview - MOVED ABOVE TOOLBAR */}
+            {attachments.length > 0 && (
+                <div className="flex gap-3 flex-wrap order-2 mb-4">
+                    {attachments.map((att) => (
+                        <div key={att.id} className="relative group animate-in zoom-in-90 duration-200">
+                            {att.type === 'image' ? (
+                                <div className="w-24 h-24 rounded-xl overflow-hidden border border-gray-700 bg-black/50">
+                                    <img src={att.data} alt="preview" className="w-full h-full object-cover" />
+                                </div>
+                            ) : (
+                                <div className="w-24 h-24 rounded-xl border border-gray-700 bg-gray-800/50 flex flex-col items-center justify-center p-2 text-center">
+                                    <FileText size={24} className="text-gray-400 mb-2" />
+                                    <span className="text-[10px] text-gray-400 w-full truncate px-1">{att.name}</span>
+                                </div>
+                            )}
+                            <button 
+                                onClick={() => removeAttachment(att.id)}
+                                className="absolute -top-2 -right-2 bg-gray-800 text-gray-400 hover:text-red-400 border border-gray-600 rounded-full p-1.5 shadow-lg transition-colors"
+                            >
+                                <X size={14} />
+                            </button>
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {/* Toolbar Area - order-3 */}
+            <div className="flex flex-col gap-4 border-gray-800 pt-0 order-3">
                  {/* Combined Toolbar */}
                  <div className="flex flex-wrap items-center gap-2 bg-gray-800/30 p-2 rounded-xl border border-gray-700/50">
                     {/* Attachments Button */}
@@ -441,35 +467,9 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, initia
                     </button>
                  </div>
             </div>
-
-            {/* Attachments Preview */}
-            {attachments.length > 0 && (
-                <div className="flex gap-3 flex-wrap order-3">
-                    {attachments.map((att) => (
-                        <div key={att.id} className="relative group animate-in zoom-in-90 duration-200">
-                            {att.type === 'image' ? (
-                                <div className="w-24 h-24 rounded-xl overflow-hidden border border-gray-700 bg-black/50">
-                                    <img src={att.data} alt="preview" className="w-full h-full object-cover" />
-                                </div>
-                            ) : (
-                                <div className="w-24 h-24 rounded-xl border border-gray-700 bg-gray-800/50 flex flex-col items-center justify-center p-2 text-center">
-                                    <FileText size={24} className="text-gray-400 mb-2" />
-                                    <span className="text-[10px] text-gray-400 w-full truncate px-1">{att.name}</span>
-                                </div>
-                            )}
-                            <button 
-                                onClick={() => removeAttachment(att.id)}
-                                className="absolute -top-2 -right-2 bg-gray-800 text-gray-400 hover:text-red-400 border border-gray-600 rounded-full p-1.5 shadow-lg transition-colors"
-                            >
-                                <X size={14} />
-                            </button>
-                        </div>
-                    ))}
-                </div>
-            )}
             
             <div className="pt-4 order-4">
-               <hr className="border-gray-800 my-6" />
+               <hr className="border-gray-800 mb-6" />
 
                {/* Tags Interface */}
                <div className="space-y-4">

@@ -1,33 +1,32 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Trash2, MapPin, Loader2, Clock, ExternalLink, X, Check, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, WifiOff, FileText, Paperclip, ChevronDown, ChevronUp, FileCode, MoreVertical, Search, AlertTriangle, Key, Square, CheckSquare, Maximize2 } from 'lucide-react';
-import { Memory } from '../types.ts';
+import { Trash2, MapPin, Loader2, Clock, ExternalLink, X, Check, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, WifiOff, FileText, Paperclip, ChevronDown, ChevronUp, FileCode, MoreVertical, Search, AlertTriangle, Key, Square, CheckSquare, Maximize2, Eye } from 'lucide-react';
+import { Memory, Attachment } from '../types.ts';
 
 interface MemoryCardProps {
   memory: Memory;
   onDelete?: (id: string) => void;
   onRetry?: (id: string) => void;
   onUpdate?: (id: string, content: string) => void;
-  onExpand?: (memory: Memory) => void; // Added for full-screen view
+  onExpand?: (memory: Memory) => void;
+  onViewAttachment?: (attachment: Attachment) => void;
   isDialog?: boolean;
   hasApiKey?: boolean;
   onAddApiKey?: () => void;
 }
 
-const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUpdate, onExpand, isDialog, hasApiKey = true, onAddApiKey }) => {
+const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUpdate, onExpand, onViewAttachment, isDialog, hasApiKey = true, onAddApiKey }) => {
   const [isConfirming, setIsConfirming] = useState(false);
-  const [isExpanded, setIsExpanded] = useState(false); // Used for AI text truncation
+  const [isExpanded, setIsExpanded] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [dismissedError, setDismissedError] = useState(false);
   
-  // Truncation state for user content
   const [isTruncated, setIsTruncated] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Check if content exceeds height limit (only in feed mode)
     if (!isDialog && contentRef.current) {
-      const hasOverflow = contentRef.current.scrollHeight > 300; // 300px threshold
+      const hasOverflow = contentRef.current.scrollHeight > 300;
       setIsTruncated(hasOverflow);
     }
   }, [memory.content, isDialog]);
@@ -89,9 +88,11 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
 
   const userAttachments = memory.attachments?.filter(a => a.type === 'image') || [];
   const hasLegacyImage = !memory.attachments && memory.image;
+  
   const displayImages = userAttachments.length > 0 
     ? userAttachments 
-    : (hasLegacyImage ? [{ data: memory.image!, name: 'Image', type: 'image' }] : []);
+    : (hasLegacyImage ? [{ id: 'legacy', data: memory.image!, name: 'Image', type: 'image', mimeType: 'image/jpeg' } as Attachment] : []);
+  
   const documents = memory.attachments?.filter(a => a.type === 'file') || [];
   
   const aiText = entity?.description || memory.enrichment?.summary;
@@ -173,74 +174,20 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
         ${showErrorOverlay ? 'min-h-[350px]' : ''}
         `}
       >
-        {/* Overlays */}
-        {showErrorOverlay && (
-            <div className="absolute inset-0 z-20 bg-gray-900/95 backdrop-blur-sm flex flex-col items-center justify-center p-4 text-center animate-in fade-in duration-300">
-                <div className="mb-4 p-3 bg-white rounded-full border-2 border-red-500 shadow-lg scale-110">
-                    {!hasApiKey ? <Key size={24} className="text-red-600" /> : isOffline ? <WifiOff size={24} className="text-red-600" /> : <AlertTriangle size={24} className="text-red-600" />}
-                </div>
-                <h3 className="text-gray-100 font-bold text-lg mb-2">
-                    {!hasApiKey ? "API Key Required" : isOffline ? "Connection Lost" : "Analysis Failed"}
-                </h3>
-                 <div className="flex flex-col gap-3 w-full max-w-[200px]">
-                    {!hasApiKey ? (
-                        <button 
-                            onClick={(e) => { e.stopPropagation(); onAddApiKey?.(); }}
-                            className="w-full py-3 px-4 text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/30 hover:scale-[1.02] active:scale-95 border border-blue-500"
-                        >
-                            <Key size={16} /> Add Key
-                        </button>
-                    ) : (
-                        <button 
-                            onClick={(e) => { e.stopPropagation(); onRetry?.(memory.id); }}
-                            disabled={isOffline}
-                            className={`w-full py-3 px-4 text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg
-                                ${isOffline 
-                                    ? 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700' 
-                                    : 'bg-red-600 hover:bg-red-500 text-white shadow-red-900/30 hover:scale-[1.02] active:scale-95 border border-red-500'
-                                }`}
-                        >
-                            <RefreshCcw size={16} /> {isOffline ? "Waiting" : "Retry"}
-                        </button>
-                    )}
-                    <button 
-                        onClick={(e) => { e.stopPropagation(); setDismissedError(true); }}
-                        className="text-gray-500 hover:text-gray-300 text-xs font-semibold py-2 hover:underline transition-all"
-                    >
-                        View Raw Note
-                    </button>
-                </div>
-            </div>
-        )}
-
-        {memory.isDeleting && (
-          <div className="absolute inset-0 z-30 bg-gray-900/80 backdrop-blur-[1px] flex items-center justify-center rounded-xl animate-in fade-in">
-             <Loader2 className="animate-spin text-red-500" size={20} />
-          </div>
-        )}
-
-        {isConfirming && (
-           <div className="absolute inset-0 z-40 bg-gray-900/95 backdrop-blur-sm flex flex-col items-center justify-center p-6 rounded-xl animate-in fade-in duration-200 text-center" onClick={(e) => e.stopPropagation()}>
-               <div className="w-12 h-12 bg-red-500/10 rounded-full flex items-center justify-center mb-3">
-                   <Trash2 size={24} className="text-red-500" />
-               </div>
-               <h3 className="text-gray-100 font-bold text-lg mb-1">Delete Memory?</h3>
-               <p className="text-gray-400 text-sm mb-6">This action cannot be undone.</p>
-               <div className="flex gap-3 w-full">
-                   <button onClick={cancelDelete} className="flex-1 py-2 bg-gray-800 text-gray-300 font-bold rounded-xl text-xs hover:bg-gray-700 transition-colors border border-gray-700">Cancel</button>
-                   <button onClick={confirmDelete} className="flex-1 py-2 bg-red-600 text-white font-bold rounded-xl text-xs hover:bg-red-700 transition-colors shadow-lg">Delete</button>
-               </div>
-           </div>
-        )}
-
-        {/* Image */}
+        {/* Image Preview */}
         {displayImages.length > 0 && (
-            <div className={`relative overflow-hidden rounded-t-xl bg-gray-900/50 group/image ${isDialog ? 'max-h-[50vh]' : 'aspect-video sm:aspect-[2/1]'}`}>
+            <div 
+                className={`relative overflow-hidden rounded-t-xl bg-gray-900/50 group/image cursor-zoom-in ${isDialog ? 'max-h-[50vh]' : 'aspect-video sm:aspect-[2/1]'}`}
+                onClick={(e) => { e.stopPropagation(); onViewAttachment?.(displayImages[0]); }}
+            >
                 <img 
                     src={displayImages[0].data} 
                     alt="User content" 
                     className="w-full h-full object-cover transition-transform duration-700 group-hover/image:scale-105"
                 />
+                <div className="absolute inset-0 bg-black/20 opacity-0 group-hover/image:opacity-100 transition-opacity flex items-center justify-center">
+                    <Maximize2 className="text-white" size={24} />
+                </div>
                 {displayImages.length > 1 && (
                   <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] font-medium px-2 py-0.5 rounded-full backdrop-blur-md">
                       +{displayImages.length - 1}
@@ -267,33 +214,34 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
           </div>
 
           <div className="space-y-3 flex-1 flex flex-col">
-            {/* User Content with Truncation */}
+            {/* User Content with Mask-based Fade */}
             {memory.content && (
                 <div className="relative">
                     <div 
                         ref={contentRef}
                         className={`transition-all duration-300 ${!isDialog && isTruncated ? 'max-h-[300px] overflow-hidden' : ''}`}
+                        style={!isDialog && isTruncated ? {
+                            WebkitMaskImage: 'linear-gradient(to bottom, black 150px, transparent 300px)',
+                            maskImage: 'linear-gradient(to bottom, black 150px, transparent 300px)'
+                        } : {}}
                     >
                         {renderContent()}
                     </div>
                     
                     {!isDialog && isTruncated && (
-                        <>
-                            <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-gray-900 via-gray-900/80 to-transparent pointer-events-none" />
-                            <div className="absolute bottom-0 left-0 right-0 flex justify-center pb-2">
-                                <button 
-                                    onClick={(e) => { e.stopPropagation(); onExpand?.(memory); }}
-                                    className="flex items-center gap-2 px-4 py-1.5 bg-gray-800/90 backdrop-blur-md border border-gray-700 rounded-full text-[10px] font-bold text-blue-400 hover:text-blue-300 hover:bg-gray-700 transition-all shadow-lg"
-                                >
-                                    <Maximize2 size={12} /> READ FULL MEMORY
-                                </button>
-                            </div>
-                        </>
+                        <div className="absolute bottom-0 left-0 right-0 flex justify-center pb-2">
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); onExpand?.(memory); }}
+                                className="flex items-center gap-2 px-4 py-1.5 bg-gray-800/90 backdrop-blur-md border border-gray-700 rounded-full text-[10px] font-bold text-blue-400 hover:text-blue-300 hover:bg-gray-700 transition-all shadow-lg"
+                            >
+                                <Maximize2 size={12} /> READ FULL MEMORY
+                            </button>
+                        </div>
                     )}
                 </div>
             )}
 
-            {/* AI Summary / Entity Info */}
+            {/* AI Summary */}
             <div className="space-y-3 mt-auto">
                 {(entity?.title) && (
                     <div className="pt-1">
@@ -333,12 +281,24 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
             {documents.length > 0 && (
                 <div className="flex flex-col gap-1.5 pt-1">
                     {documents.map((doc, idx) => (
-                        <div key={idx} className="flex items-center gap-2 p-2 rounded-lg bg-gray-900/30 border border-gray-700/30">
-                            <FileText size={14} className="text-gray-500" />
-                            <span className="text-xs text-gray-300 truncate flex-1">{doc.name}</span>
-                            <a href={doc.data} download={doc.name} onClick={e => e.stopPropagation()} className="text-gray-500 hover:text-white transition-colors">
-                                <Paperclip size={12} />
-                            </a>
+                        <div 
+                            key={idx} 
+                            onClick={(e) => { e.stopPropagation(); onViewAttachment?.(doc); }}
+                            className="flex items-center gap-2 p-2 rounded-lg bg-gray-900/30 border border-gray-700/30 hover:bg-gray-700/50 transition-colors cursor-pointer group/doc"
+                        >
+                            <FileText size={14} className="text-gray-500 group-hover/doc:text-blue-400" />
+                            <span className="text-xs text-gray-300 truncate flex-1 group-hover/doc:text-white">{doc.name}</span>
+                            <div className="flex items-center gap-2">
+                                <Eye size={12} className="text-gray-500 opacity-0 group-hover/doc:opacity-100" />
+                                <a 
+                                    href={doc.data} 
+                                    download={doc.name} 
+                                    onClick={e => e.stopPropagation()} 
+                                    className="p-1 text-gray-500 hover:text-white transition-colors"
+                                >
+                                    <Paperclip size={12} />
+                                </a>
+                            </div>
                         </div>
                     ))}
                 </div>

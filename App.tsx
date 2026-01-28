@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Plus, RefreshCw, AlertTriangle, X } from 'lucide-react'; 
+import { Plus, RefreshCw, AlertTriangle, X, Download, Maximize, Minimize } from 'lucide-react'; 
 import MemoryCard from './components/MemoryCard';
 import ChatInterface from './components/ChatInterface';
 import TopNavigation from './components/TopNavigation';
@@ -21,7 +21,7 @@ import { useSync } from './hooks/useSync';
 import { useAuth } from './hooks/useAuth';
 import { useOnboarding } from './hooks/useOnboarding';
 import { SyncProvider } from './context/SyncContext';
-import { ViewMode, Memory } from './types';
+import { ViewMode, Memory, Attachment } from './types';
 import { initGA, logPageView, logEvent } from './services/analytics';
 import { ANALYTICS_EVENTS } from './constants';
 
@@ -30,6 +30,7 @@ const AppContent: React.FC = () => {
   const [isCaptureOpen, setIsCaptureOpen] = useState(false);
   const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
   const [expandedMemory, setExpandedMemory] = useState<Memory | null>(null);
+  const [viewingAttachment, setViewingAttachment] = useState<Attachment | null>(null);
   
   const { updateAvailable, updateApp, appVersion } = useServiceWorker();
   const { shareData, clearShareData } = useShareReceiver();
@@ -279,6 +280,7 @@ const AppContent: React.FC = () => {
                 onRetry={handleRetryMemory}
                 onUpdate={updateMemoryContent}
                 onExpand={setExpandedMemory}
+                onViewAttachment={setViewingAttachment}
                 hasApiKey={apiKeySet}
                 onAddApiKey={handleAddApiKey}
               />
@@ -295,7 +297,7 @@ const AppContent: React.FC = () => {
         <span className="font-bold text-lg">New</span>
       </button>
 
-      {/* Full-Screen Memory View Overlay */}
+      {/* Full-Screen Memory Detail */}
       {expandedMemory && (
         <div className="fixed inset-0 z-[100] bg-gray-950/90 backdrop-blur-md flex flex-col animate-in fade-in duration-300">
           <div className="sticky top-0 z-10 px-4 py-3 border-b border-gray-800 flex items-center justify-between bg-gray-950/50 backdrop-blur-xl">
@@ -314,12 +316,67 @@ const AppContent: React.FC = () => {
                     onDelete={handleDeleteMemory} 
                     onRetry={handleRetryMemory}
                     onUpdate={updateMemoryContent}
-                    isDialog={true} // Forces full rendering
+                    onViewAttachment={setViewingAttachment}
+                    isDialog={true}
                     hasApiKey={apiKeySet}
                     onAddApiKey={handleAddApiKey}
                 />
              </div>
           </div>
+        </div>
+      )}
+
+      {/* Attachment Viewer Overlay */}
+      {viewingAttachment && (
+        <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-md flex flex-col animate-in fade-in zoom-in-95 duration-200">
+           <div className="flex items-center justify-between px-4 py-3 bg-black/50 border-b border-white/10">
+              <div className="flex items-center gap-3">
+                 <button onClick={() => setViewingAttachment(null)} className="p-2 -ml-2 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition-colors">
+                    <X size={24} />
+                 </button>
+                 <span className="text-sm font-medium text-gray-200 truncate max-w-[200px] sm:max-w-md">{viewingAttachment.name}</span>
+              </div>
+              <a 
+                href={viewingAttachment.data} 
+                download={viewingAttachment.name}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all"
+              >
+                 <Download size={14} /> Download
+              </a>
+           </div>
+           
+           <div className="flex-1 flex items-center justify-center p-4 overflow-hidden">
+              {viewingAttachment.type === 'image' ? (
+                 <img 
+                    src={viewingAttachment.data} 
+                    alt={viewingAttachment.name} 
+                    className="max-w-full max-h-full object-contain shadow-2xl rounded-lg animate-in zoom-in-90 duration-300"
+                 />
+              ) : viewingAttachment.mimeType === 'application/pdf' ? (
+                 <iframe 
+                    src={viewingAttachment.data} 
+                    className="w-full h-full rounded-lg bg-white shadow-2xl border-none"
+                    title={viewingAttachment.name}
+                 />
+              ) : (
+                 <div className="bg-gray-900 border border-gray-800 p-8 rounded-2xl flex flex-col items-center gap-4 text-center max-w-sm">
+                    <div className="w-16 h-16 bg-gray-800 rounded-2xl flex items-center justify-center">
+                       <FileText size={32} className="text-blue-400" />
+                    </div>
+                    <div>
+                       <h3 className="text-gray-100 font-bold mb-1">{viewingAttachment.name}</h3>
+                       <p className="text-gray-400 text-xs">Preview not available for this file type.</p>
+                    </div>
+                    <a 
+                        href={viewingAttachment.data} 
+                        download={viewingAttachment.name}
+                        className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold transition-all shadow-lg"
+                    >
+                        Download to View
+                    </a>
+                 </div>
+              )}
+           </div>
         </div>
       )}
 
