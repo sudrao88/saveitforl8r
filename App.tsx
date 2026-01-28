@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Plus, RefreshCw, AlertTriangle } from 'lucide-react'; 
+import { Plus, RefreshCw, AlertTriangle, X } from 'lucide-react'; 
 import MemoryCard from './components/MemoryCard';
 import ChatInterface from './components/ChatInterface';
 import TopNavigation from './components/TopNavigation';
@@ -22,7 +21,7 @@ import { useSync } from './hooks/useSync';
 import { useAuth } from './hooks/useAuth';
 import { useOnboarding } from './hooks/useOnboarding';
 import { SyncProvider } from './context/SyncContext';
-import { ViewMode } from './types';
+import { ViewMode, Memory } from './types';
 import { initGA, logPageView, logEvent } from './services/analytics';
 import { ANALYTICS_EVENTS } from './constants';
 
@@ -30,13 +29,11 @@ const AppContent: React.FC = () => {
   const [view, setView] = useState<ViewMode>(ViewMode.FEED);
   const [isCaptureOpen, setIsCaptureOpen] = useState(false);
   const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
-  // Moved syncError handling to SyncContext, but we might keep local UI state if needed
-  // Using context state now
-
+  const [expandedMemory, setExpandedMemory] = useState<Memory | null>(null);
+  
   const { updateAvailable, updateApp, appVersion } = useServiceWorker();
   const { shareData, clearShareData } = useShareReceiver();
   
-  // Use context hooks
   const { sync, isSyncing, syncError } = useSync();
   const { authStatus, login, unlink } = useAuth();
 
@@ -46,39 +43,33 @@ const AppContent: React.FC = () => {
     handleDelete,
     handleRetry,
     createMemory,
+    updateMemoryContent,
     isLoading
   } = useMemories();
 
-  // Create stable refs for sync and refreshMemories to avoid circular dependencies
   const syncRef = useRef(sync);
   const refreshRef = useRef(refreshMemories);
 
-  // Keep refs updated with latest functions
   useEffect(() => {
     syncRef.current = sync;
     refreshRef.current = refreshMemories;
   }, [sync, refreshMemories]);
 
-  // Use the new custom hook for onboarding logic
   const { isShareOnboardingOpen, closeOnboarding } = useOnboarding({ memories });
 
   useEffect(() => {
     initGA();
     logPageView('home');
     
-    // Initial sync if linked
     if (authStatus === 'linked') {
-        console.log('[App] Linked. Triggering initial sync...');
         syncRef.current().then(() => {
-            console.log('[App] Initial sync complete. Refreshing memories.');
             refreshRef.current();
         }).catch(err => {
             console.error('[App] Initial sync failed:', err);
         });
     }
-  }, [authStatus]); // ✅ Only authStatus - primitive value
+  }, [authStatus]);
 
-  // If share data arrives, open the capture modal immediately
   useEffect(() => {
     if (shareData) {
       logEvent(ANALYTICS_EVENTS.SHARE.CATEGORY, ANALYTICS_EVENTS.SHARE.ACTION_RECEIVED, ANALYTICS_EVENTS.SHARE.LABEL_EXTERNAL);
@@ -125,19 +116,17 @@ const AppContent: React.FC = () => {
       syncRef.current().then(() => refreshRef.current()).catch(e => {
           console.error("Manual sync error", e);
       });
-  }, []); // ✅ Empty dependency array - uses refs
+  }, []);
 
-  // Memoized handlers
   const handleCaptureClose = useCallback(() => {
     setIsCaptureOpen(false);
     logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_CAPTURE_CANCELLED);
     clearShareData();
   }, [clearShareData]);
 
-  const handleCreateMemory = useCallback(async (text: string, attachments: File[], tags: string[], location?: { latitude: number; longitude: number }) => {
+  const handleCreateMemory = useCallback(async (text: string, attachments: any[], tags: string[], location?: { latitude: number; longitude: number }) => {
     await createMemory(text, attachments, tags, location);
-    setIsCaptureOpen(false); // Close modal after memory creation is initiated
-    // Remove refreshMemories() call as createMemory now updates state locally
+    setIsCaptureOpen(false);
     logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_CREATED);
     clearShareData();
   }, [createMemory, clearShareData]);
@@ -180,7 +169,8 @@ const AppContent: React.FC = () => {
   const handleDeleteMemory = useCallback((id: string) => {
     handleDelete(id);
     logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_DELETED);
-  }, [handleDelete]);
+    if (expandedMemory?.id === id) setExpandedMemory(null);
+  }, [handleDelete, expandedMemory]);
 
   const handleRetryMemory = useCallback((id: string) => {
     handleRetry(id);
@@ -208,19 +198,17 @@ const AppContent: React.FC = () => {
     if (authStatus === 'linked') {
         syncRef.current().then(() => refreshRef.current());
     } 
-  }, [authStatus]); // ✅ Only authStatus
+  }, [authStatus]);
 
   const handleAddApiKey = useCallback(() => {
     setIsSettingsOpen(false); 
     setIsApiKeyModalOpen(true);
   }, [setIsSettingsOpen]);
 
-  // Performance Optimization: Memoize displayMemories
   const displayMemories = useMemo(() => {
     return filteredMemories.filter(m => !m.isDeleting);
   }, [filteredMemories]);
 
-  // 0. React Splash Screen (Initial Loading)
   if (isLoading) {
     return (
         <div className="fixed inset-0 bg-gray-900 z-[9999] flex flex-col items-center justify-center">
@@ -234,7 +222,6 @@ const AppContent: React.FC = () => {
     );
   }
 
-  // 1. Capture/New Memory View (Full Screen)
   if (isCaptureOpen) {
     return (
       <NewMemoryPage 
@@ -245,7 +232,6 @@ const AppContent: React.FC = () => {
     );
   }
 
-  // 2. Chat/Recall View (Full Screen)
   if (view === ViewMode.RECALL) {
      return (
         <ChatInterface 
@@ -255,7 +241,6 @@ const AppContent: React.FC = () => {
      );
   }
 
-  // 3. Main Feed View
   return (
     <div className="min-h-screen bg-gray-900 flex flex-col">
       <InstallPrompt />
@@ -279,7 +264,6 @@ const AppContent: React.FC = () => {
       </div>
 
       <main className="flex-1 p-4 sm:p-8 max-w-7xl mx-auto w-full relative">
-        {/* Sync Error Banner Removed - relying on Settings Icon Dot */}
         {filteredMemories.length === 0 ? (
           <EmptyState 
             hasMemories={memories.length > 0} 
@@ -293,6 +277,8 @@ const AppContent: React.FC = () => {
                 memory={mem} 
                 onDelete={handleDeleteMemory} 
                 onRetry={handleRetryMemory}
+                onUpdate={updateMemoryContent}
+                onExpand={setExpandedMemory}
                 hasApiKey={apiKeySet}
                 onAddApiKey={handleAddApiKey}
               />
@@ -308,6 +294,34 @@ const AppContent: React.FC = () => {
         <Plus size={28} strokeWidth={3} />
         <span className="font-bold text-lg">New</span>
       </button>
+
+      {/* Full-Screen Memory View Overlay */}
+      {expandedMemory && (
+        <div className="fixed inset-0 z-[100] bg-gray-950/90 backdrop-blur-md flex flex-col animate-in fade-in duration-300">
+          <div className="sticky top-0 z-10 px-4 py-3 border-b border-gray-800 flex items-center justify-between bg-gray-950/50 backdrop-blur-xl">
+             <div className="flex items-center gap-3">
+                <button onClick={() => setExpandedMemory(null)} className="p-2 -ml-2 rounded-full hover:bg-gray-800 text-gray-400 hover:text-white transition-colors">
+                    <X size={24} />
+                </button>
+                <h2 className="text-lg font-bold text-gray-100 truncate max-w-[200px] sm:max-w-md">Memory Detail</h2>
+             </div>
+             <Logo className="w-8 h-8 text-blue-500 opacity-50" />
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 sm:p-8">
+             <div className="max-w-2xl mx-auto pb-20">
+                <MemoryCard 
+                    memory={expandedMemory} 
+                    onDelete={handleDeleteMemory} 
+                    onRetry={handleRetryMemory}
+                    onUpdate={updateMemoryContent}
+                    isDialog={true} // Forces full rendering
+                    hasApiKey={apiKeySet}
+                    onAddApiKey={handleAddApiKey}
+                />
+             </div>
+          </div>
+        </div>
+      )}
 
       {/* Settings Modal */}
       {isSettingsOpen && (
@@ -332,7 +346,6 @@ const AppContent: React.FC = () => {
         />
       )}
 
-      {/* Share Onboarding Modal */}
       {isShareOnboardingOpen && (
           <ShareOnboardingModal onClose={closeOnboarding} />
       )}
@@ -340,7 +353,6 @@ const AppContent: React.FC = () => {
   );
 };
 
-// Wrap App with SyncProvider
 const App = () => (
     <SyncProvider>
         <AppContent />

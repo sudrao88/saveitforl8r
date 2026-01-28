@@ -214,6 +214,21 @@ export const useMemories = () => {
       return Promise.resolve();
   }, [trySyncFile]);
 
+  const updateMemoryContent = useCallback(async (id: string, newContent: string) => {
+      setMemories(prev => prev.map(m => m.id === id ? { ...m, content: newContent } : m));
+      
+      try {
+          const current = await getMemory(id);
+          if (current) {
+            const updated = { ...current, content: newContent, timestamp: Date.now() };
+            await saveMemory(updated);
+            await trySyncFile(updated);
+          }
+      } catch (e) {
+          console.error("Update failed", e);
+      }
+  }, [trySyncFile]);
+
   useEffect(() => {
     const handleOnline = () => {
       console.log("App is back online.");
@@ -241,6 +256,7 @@ export const useMemories = () => {
     handleDelete,
     handleRetry,
     createMemory,
+    updateMemoryContent,
     isLoading
   };
 };

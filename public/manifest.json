@@ -7,16 +7,22 @@
   "theme_color": "#111827",
   "icons": [
     {
-      "src": "icon.svg",
+      "src": "logo-full.svg",
       "type": "image/svg+xml",
       "sizes": "512x512",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "logo-full.svg",
+      "type": "image/svg+xml",
+      "sizes": "192x192",
+      "purpose": "any"
     },
     {
       "src": "icon.svg",
       "type": "image/svg+xml",
-      "sizes": "192x192",
-      "purpose": "any maskable"
+      "sizes": "512x512",
+      "purpose": "maskable"
     }
   ],
   "share_target": {

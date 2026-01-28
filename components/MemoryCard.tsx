@@ -1,23 +1,37 @@
-import React, { useState, useEffect } from 'react';
-import { Trash2, MapPin, Loader2, Clock, ExternalLink, X, Check, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, WifiOff, FileText, Paperclip, ChevronDown, ChevronUp, FileCode, MoreVertical, Search, AlertTriangle, Key } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Trash2, MapPin, Loader2, Clock, ExternalLink, X, Check, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, WifiOff, FileText, Paperclip, ChevronDown, ChevronUp, FileCode, MoreVertical, Search, AlertTriangle, Key, Square, CheckSquare, Maximize2 } from 'lucide-react';
 import { Memory } from '../types.ts';
 
 interface MemoryCardProps {
   memory: Memory;
   onDelete?: (id: string) => void;
   onRetry?: (id: string) => void;
+  onUpdate?: (id: string, content: string) => void;
+  onExpand?: (memory: Memory) => void; // Added for full-screen view
   isDialog?: boolean;
   hasApiKey?: boolean;
   onAddApiKey?: () => void;
 }
 
-const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, isDialog, hasApiKey = true, onAddApiKey }) => {
+const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUpdate, onExpand, isDialog, hasApiKey = true, onAddApiKey }) => {
   const [isConfirming, setIsConfirming] = useState(false);
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false); // Used for AI text truncation
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [dismissedError, setDismissedError] = useState(false);
   
+  // Truncation state for user content
+  const [isTruncated, setIsTruncated] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // Check if content exceeds height limit (only in feed mode)
+    if (!isDialog && contentRef.current) {
+      const hasOverflow = contentRef.current.scrollHeight > 300; // 300px threshold
+      setIsTruncated(hasOverflow);
+    }
+  }, [memory.content, isDialog]);
+
   useEffect(() => {
     const handleOnline = () => setIsOffline(false);
     const handleOffline = () => setIsOffline(true);
@@ -33,11 +47,9 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, isDi
     month: 'short', day: 'numeric', year: 'numeric'
   });
 
-  // Calculate Target URI (Maps or Search)
   const locationContext = memory.enrichment?.locationContext;
   let targetUri = locationContext?.mapsUri;
   
-  // If no direct Maps URI from AI, but we have a name and coords, construct one.
   if (!targetUri && locationContext?.name) {
      const lat = memory.location?.latitude;
      const lng = memory.location?.longitude;
@@ -51,7 +63,6 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, isDi
 
   const entity = memory.enrichment?.entityContext;
 
-  // Fallback to Search if no Maps URI
   if (!targetUri) {
       const query = entity?.title || memory.enrichment?.summary;
       if (query) {
@@ -84,21 +95,85 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, isDi
   const documents = memory.attachments?.filter(a => a.type === 'file') || [];
   
   const aiText = entity?.description || memory.enrichment?.summary;
-  const shouldTruncate = aiText && aiText.length > 120;
+  const shouldTruncateAI = aiText && aiText.length > 120;
 
   const showErrorOverlay = memory.processingError && onRetry && !dismissedError;
+
+  const isChecklist = memory.content.startsWith('<ul class="checklist">');
+  
+  const handleToggleCheck = (index: number) => {
+      if (!onUpdate) return;
+      
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(memory.content, 'text/html');
+      const items = doc.querySelectorAll('li');
+      
+      if (items[index]) {
+          const current = items[index].getAttribute('data-checked') === 'true';
+          items[index].setAttribute('data-checked', String(!current));
+          
+          const listItems = Array.from(items).map(li => 
+              `<li data-checked="${li.getAttribute('data-checked')}">${li.innerHTML}</li>`
+          ).join('');
+          const newContent = `<ul class="checklist">${listItems}</ul>`;
+          
+          onUpdate(memory.id, newContent);
+      }
+  };
+
+  const renderContent = () => {
+      if (isChecklist) {
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(memory.content, 'text/html');
+          const items = Array.from(doc.querySelectorAll('li'));
+          
+          return (
+              <div className="space-y-2 mt-2">
+                  {items.map((item, idx) => {
+                      const checked = item.getAttribute('data-checked') === 'true';
+                      const text = item.textContent || '';
+                      
+                      return (
+                        <div 
+                            key={idx} 
+                            className="flex items-start gap-3 group/item cursor-pointer"
+                            onClick={(e) => { e.stopPropagation(); handleToggleCheck(idx); }}
+                        >
+                            <div className={`mt-0.5 transition-colors ${checked ? 'text-blue-500' : 'text-gray-500 group-hover/item:text-gray-400'}`}>
+                                {checked ? <CheckSquare size={18} /> : <Square size={18} />}
+                            </div>
+                            <span className={`text-sm leading-relaxed transition-all ${checked ? 'text-gray-500 line-through decoration-gray-600' : 'text-gray-200'}`}>
+                                {text}
+                            </span>
+                        </div>
+                      );
+                  })}
+              </div>
+          );
+      }
+      
+      return (
+          <div 
+            className={`prose prose-invert prose-sm max-w-none text-gray-200 font-normal leading-relaxed break-words 
+                prose-p:my-1 prose-headings:mb-1 prose-headings:mt-3 prose-headings:text-gray-100 prose-ul:my-1
+                ${memory.content.length < 80 ? 'text-base' : 'text-sm'}
+            `}
+            dangerouslySetInnerHTML={{ __html: memory.content }}
+          />
+      );
+  };
 
   return (
     <>
       <div 
-        className={`group relative w-full mb-6 rounded-xl transition-all duration-300 overflow-hidden
+        className={`group relative w-full mb-6 rounded-xl transition-all duration-300 overflow-hidden flex flex-col
         ${isDialog ? 'bg-gray-900 border border-gray-800' : 'bg-gray-800/40 border border-gray-700/30 hover:bg-gray-800/60 hover:border-gray-600/50 hover:shadow-lg'}
         ${memory.isPending ? 'opacity-70 border-blue-900/30' : ''}
         ${memory.processingError ? 'border-amber-900/30 bg-amber-900/5' : ''}
         ${showErrorOverlay ? 'min-h-[350px]' : ''}
         `}
       >
-        {/* Error / Retry Overlay */}
+        {/* Overlays */}
         {showErrorOverlay && (
             <div className="absolute inset-0 z-20 bg-gray-900/95 backdrop-blur-sm flex flex-col items-center justify-center p-4 text-center animate-in fade-in duration-300">
                 <div className="mb-4 p-3 bg-white rounded-full border-2 border-red-500 shadow-lg scale-110">
@@ -107,21 +182,13 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, isDi
                 <h3 className="text-gray-100 font-bold text-lg mb-2">
                     {!hasApiKey ? "API Key Required" : isOffline ? "Connection Lost" : "Analysis Failed"}
                 </h3>
-                <p className="text-gray-400 text-sm mb-6 max-w-[240px] leading-relaxed">
-                    {!hasApiKey
-                        ? "You need a Gemini API Key to analyze and tag your memories."
-                        : isOffline 
-                            ? "Internet is required to enrich this memory with AI context." 
-                            : "The AI could not process this memory. Please try again."}
-                </p>
-                <div className="flex flex-col gap-3 w-full max-w-[200px]">
+                 <div className="flex flex-col gap-3 w-full max-w-[200px]">
                     {!hasApiKey ? (
                         <button 
                             onClick={(e) => { e.stopPropagation(); onAddApiKey?.(); }}
                             className="w-full py-3 px-4 text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/30 hover:scale-[1.02] active:scale-95 border border-blue-500"
                         >
-                            <Key size={16} /> 
-                            Add API Key
+                            <Key size={16} /> Add Key
                         </button>
                     ) : (
                         <button 
@@ -133,14 +200,12 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, isDi
                                     : 'bg-red-600 hover:bg-red-500 text-white shadow-red-900/30 hover:scale-[1.02] active:scale-95 border border-red-500'
                                 }`}
                         >
-                            <RefreshCcw size={16} /> 
-                            {isOffline ? "Waiting for Network" : "Retry Analysis"}
+                            <RefreshCcw size={16} /> {isOffline ? "Waiting" : "Retry"}
                         </button>
                     )}
-                    
                     <button 
                         onClick={(e) => { e.stopPropagation(); setDismissedError(true); }}
-                        className="text-gray-500 hover:text-gray-300 text-xs font-semibold py-2 hover:underline decoration-gray-500 underline-offset-4 transition-all"
+                        className="text-gray-500 hover:text-gray-300 text-xs font-semibold py-2 hover:underline transition-all"
                     >
                         View Raw Note
                     </button>
@@ -148,14 +213,12 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, isDi
             </div>
         )}
 
-        {/* Loading Overlay */}
         {memory.isDeleting && (
           <div className="absolute inset-0 z-30 bg-gray-900/80 backdrop-blur-[1px] flex items-center justify-center rounded-xl animate-in fade-in">
              <Loader2 className="animate-spin text-red-500" size={20} />
           </div>
         )}
 
-        {/* Delete Confirmation Overlay */}
         {isConfirming && (
            <div className="absolute inset-0 z-40 bg-gray-900/95 backdrop-blur-sm flex flex-col items-center justify-center p-6 rounded-xl animate-in fade-in duration-200 text-center" onClick={(e) => e.stopPropagation()}>
                <div className="w-12 h-12 bg-red-500/10 rounded-full flex items-center justify-center mb-3">
@@ -164,25 +227,15 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, isDi
                <h3 className="text-gray-100 font-bold text-lg mb-1">Delete Memory?</h3>
                <p className="text-gray-400 text-sm mb-6">This action cannot be undone.</p>
                <div className="flex gap-3 w-full">
-                   <button 
-                       onClick={cancelDelete}
-                       className="flex-1 py-2 bg-gray-800 text-gray-300 font-bold rounded-xl text-xs hover:bg-gray-700 transition-colors border border-gray-700"
-                   >
-                       Cancel
-                   </button>
-                   <button 
-                       onClick={confirmDelete}
-                       className="flex-1 py-2 bg-red-600 text-white font-bold rounded-xl text-xs hover:bg-red-700 transition-colors shadow-lg shadow-red-900/20"
-                   >
-                       Delete
-                   </button>
+                   <button onClick={cancelDelete} className="flex-1 py-2 bg-gray-800 text-gray-300 font-bold rounded-xl text-xs hover:bg-gray-700 transition-colors border border-gray-700">Cancel</button>
+                   <button onClick={confirmDelete} className="flex-1 py-2 bg-red-600 text-white font-bold rounded-xl text-xs hover:bg-red-700 transition-colors shadow-lg">Delete</button>
                </div>
            </div>
         )}
 
-        {/* Image - Edge to edge on top */}
+        {/* Image */}
         {displayImages.length > 0 && (
-            <div className="relative overflow-hidden rounded-t-xl bg-gray-900/50 aspect-video sm:aspect-[2/1] group/image">
+            <div className={`relative overflow-hidden rounded-t-xl bg-gray-900/50 group/image ${isDialog ? 'max-h-[50vh]' : 'aspect-video sm:aspect-[2/1]'}`}>
                 <img 
                     src={displayImages[0].data} 
                     alt="User content" 
@@ -196,8 +249,8 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, isDi
             </div>
         )}
         
-        <div className="p-5">
-          {/* Header Row: Type Icon & Date (Visual Hierarchy) */}
+        <div className="p-5 flex-1 flex flex-col">
+          {/* Header */}
           <div className="flex items-center justify-between mb-3">
              <div className="flex items-center gap-2">
                  {entity?.type && (
@@ -209,71 +262,78 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, isDi
                  {!entity?.type && <Clock size={12} className="text-gray-600" />}
                  <span className="text-[10px] text-gray-600 font-medium">{dateStr}</span>
              </div>
-             
-             {/* Status Indicators */}
-             {memory.isPending && (
-                <span className="text-xs font-medium text-blue-400">
-                    Enriching<span className="animate-pulse [animation-duration:1.5s]">.</span><span className="animate-pulse [animation-duration:1.5s] [animation-delay:250ms]">.</span><span className="animate-pulse [animation-duration:1.5s] [animation-delay:500ms]">.</span>
-                </span>
-             )}
+             {memory.isPending && <span className="text-xs font-medium text-blue-400">Enriching...</span>}
              {memory.processingError && <WifiOff size={12} className="text-amber-500" />}
           </div>
 
-          <div className="space-y-3">
-            {/* User Content */}
+          <div className="space-y-3 flex-1 flex flex-col">
+            {/* User Content with Truncation */}
             {memory.content && (
-                <p className={`text-gray-200 font-normal leading-relaxed whitespace-pre-wrap ${memory.content.length < 80 ? 'text-base' : 'text-sm'}`}>
-                {memory.content}
-                </p>
+                <div className="relative">
+                    <div 
+                        ref={contentRef}
+                        className={`transition-all duration-300 ${!isDialog && isTruncated ? 'max-h-[300px] overflow-hidden' : ''}`}
+                    >
+                        {renderContent()}
+                    </div>
+                    
+                    {!isDialog && isTruncated && (
+                        <>
+                            <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-gray-900 via-gray-900/80 to-transparent pointer-events-none" />
+                            <div className="absolute bottom-0 left-0 right-0 flex justify-center pb-2">
+                                <button 
+                                    onClick={(e) => { e.stopPropagation(); onExpand?.(memory); }}
+                                    className="flex items-center gap-2 px-4 py-1.5 bg-gray-800/90 backdrop-blur-md border border-gray-700 rounded-full text-[10px] font-bold text-blue-400 hover:text-blue-300 hover:bg-gray-700 transition-all shadow-lg"
+                                >
+                                    <Maximize2 size={12} /> READ FULL MEMORY
+                                </button>
+                            </div>
+                        </>
+                    )}
+                </div>
             )}
 
-            {/* Entity Title & Subtitle - Hyperlinked Title */}
-            {(entity?.title) && (
-                <div className="pt-1">
-                    {targetUri ? (
-                        <a href={targetUri} target="_blank" rel="noopener noreferrer" className="group/link inline-flex items-start gap-2 active:opacity-70 transition-all">
-                            <h3 className="text-lg font-bold text-blue-400 leading-tight underline decoration-blue-500/30 underline-offset-4 decoration-2">
-                                {entity.title}
-                            </h3>
-                            <ExternalLink size={16} className="mt-0.5 text-blue-500/70 shrink-0" />
-                        </a>
-                    ) : (
-                        <h3 className="text-lg font-semibold text-gray-100 leading-tight">{entity.title}</h3>
-                    )}
-                    
-                    <div className="flex items-center gap-2 mt-1">
-                        {entity.subtitle && <span className="text-xs text-gray-400">{entity.subtitle}</span>}
-                        {entity.rating && (
-                            <span className="text-[10px] px-1.5 py-0.5 bg-yellow-500/10 text-yellow-500 rounded font-medium">
-                                ★ {entity.rating}
-                            </span>
+            {/* AI Summary / Entity Info */}
+            <div className="space-y-3 mt-auto">
+                {(entity?.title) && (
+                    <div className="pt-1">
+                        {targetUri ? (
+                            <a href={targetUri} target="_blank" rel="noopener noreferrer" className="group/link inline-flex items-start gap-2 active:opacity-70 transition-all">
+                                <h3 className="text-lg font-bold text-blue-400 leading-tight underline decoration-blue-500/30 underline-offset-4 decoration-2">
+                                    {entity.title}
+                                </h3>
+                                <ExternalLink size={16} className="mt-0.5 text-blue-500/70 shrink-0" />
+                            </a>
+                        ) : (
+                            <h3 className="text-lg font-semibold text-gray-100 leading-tight">{entity.title}</h3>
+                        )}
+                        <div className="flex items-center gap-2 mt-1">
+                            {entity.subtitle && <span className="text-xs text-gray-400">{entity.subtitle}</span>}
+                            {entity.rating && <span className="text-[10px] px-1.5 py-0.5 bg-yellow-500/10 text-yellow-500 rounded font-medium">★ {entity.rating}</span>}
+                        </div>
+                    </div>
+                )}
+
+                {aiText && (
+                    <div className="text-sm text-gray-400 font-light leading-relaxed">
+                        <span className={(!isExpanded && shouldTruncateAI) ? 'line-clamp-2' : ''}>{aiText}</span>
+                        {shouldTruncateAI && (
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); setIsExpanded(!isExpanded); }}
+                                className="text-[10px] font-bold text-gray-500 hover:text-blue-400 uppercase tracking-wide mt-1"
+                            >
+                                {isExpanded ? 'Show Less' : 'Read More'}
+                            </button>
                         )}
                     </div>
-                </div>
-            )}
-
-            {/* AI Summary / Description */}
-            {aiText && (
-                <div className="text-sm text-gray-400 font-light leading-relaxed">
-                    <span className={(!isExpanded && shouldTruncate) ? 'line-clamp-2' : ''}>
-                        {aiText}
-                    </span>
-                    {shouldTruncate && (
-                        <button 
-                        onClick={(e) => { e.stopPropagation(); setIsExpanded(!isExpanded); }}
-                        className="text-[10px] font-bold text-gray-500 hover:text-blue-400 uppercase tracking-wide mt-1"
-                        >
-                        {isExpanded ? 'Show Less' : 'Read More'}
-                        </button>
-                    )}
-                </div>
-            )}
+                )}
+            </div>
 
             {/* Documents */}
             {documents.length > 0 && (
                 <div className="flex flex-col gap-1.5 pt-1">
                     {documents.map((doc, idx) => (
-                        <div key={idx} className="flex items-center gap-2 p-2 rounded-lg bg-gray-900/30 border border-gray-700/30 group/doc">
+                        <div key={idx} className="flex items-center gap-2 p-2 rounded-lg bg-gray-900/30 border border-gray-700/30">
                             <FileText size={14} className="text-gray-500" />
                             <span className="text-xs text-gray-300 truncate flex-1">{doc.name}</span>
                             <a href={doc.data} download={doc.name} onClick={e => e.stopPropagation()} className="text-gray-500 hover:text-white transition-colors">
@@ -284,25 +344,19 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, isDi
                 </div>
             )}
 
-            {/* Footer Information: Tags Only (Location moved to links) */}
+            {/* Footer */}
             <div className="flex flex-wrap items-center gap-y-2 gap-x-4 pt-2 border-t border-gray-700/20 mt-2">
-                
-                {/* Tags - Minimal */}
                 <div className="flex flex-wrap gap-1.5 flex-1">
                     {memory.tags.map((tag, idx) => (
-                        <span key={idx} className="text-[10px] text-gray-500 hover:text-gray-300 transition-colors">#{tag}</span>
+                        <span key={idx} className="text-[10px] text-gray-500 hover:text-gray-300">#{tag}</span>
                     ))}
                 </div>
-
-                {/* Actions Menu Area */}
                 <div className="flex items-center gap-2 ml-auto relative">
-                    
                     {onRetry && memory.processingError && (
                         <button onClick={() => onRetry(memory.id)} className="text-amber-500 hover:text-amber-400 transition-colors">
                             <RefreshCcw size={14} />
                         </button>
                     )}
-
                     <div className="relative">
                         <button 
                             onClick={(e) => { e.stopPropagation(); setIsMenuOpen(!isMenuOpen); }} 
@@ -310,18 +364,13 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, isDi
                         >
                             <MoreVertical size={16} />
                         </button>
-
                         {isMenuOpen && (
                             <>
                             <div className="fixed inset-0 z-10 cursor-default" onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); }} />
                             <div className="absolute bottom-full right-0 mb-1 w-32 bg-gray-900 border border-gray-700 rounded-xl shadow-xl z-20 overflow-hidden animate-in slide-in-from-bottom-2 fade-in duration-200">
                                 {onDelete && (
-                                        <button 
-                                        onClick={startDelete} 
-                                        className="w-full px-3 py-2.5 text-left text-xs font-medium text-red-400 hover:bg-red-900/10 hover:text-red-300 flex items-center gap-2"
-                                    >
-                                        <Trash2 size={14} />
-                                        Delete
+                                        <button onClick={startDelete} className="w-full px-3 py-2.5 text-left text-xs font-medium text-red-400 hover:bg-red-900/10 hover:text-red-300 flex items-center gap-2">
+                                            <Trash2 size={14} /> Delete
                                         </button>
                                 )}
                             </div>

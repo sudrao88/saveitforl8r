@@ -1,10 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Image as ImageIcon, FileText, X, Tag as TagIcon, Loader2, ArrowLeft } from 'lucide-react';
+import { Send, Paperclip, FileText, X, Tag as TagIcon, Loader2, ArrowLeft, Bold, Italic, Underline, Heading1, Heading2, CheckSquare, Plus } from 'lucide-react';
 import { Attachment } from '../types';
 
 interface NewMemoryPageProps {
   onClose: () => void;
-  // Updated prop: takes data, returns Promise (void)
   onCreate: (
     text: string, 
     attachments: Attachment[], 
@@ -21,44 +20,59 @@ interface NewMemoryPageProps {
 const SUGGESTED_TAGS = ["Book", "Restaurant", "Place to Visit", "Movie", "Podcast", "Stuff"];
 
 const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, initialContent }) => {
-  const [text, setText] = useState(initialContent?.text || '');
   const [attachments, setAttachments] = useState<Attachment[]>(initialContent?.attachments || []);
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isWaitingForPaste, setIsWaitingForPaste] = useState(false);
   
+  // Editor States
+  const [isChecklistMode, setIsChecklistMode] = useState(false);
+  const [activeFormats, setActiveFormats] = useState<string[]>([]);
+  const [isEmpty, setIsEmpty] = useState(true);
+  
+  // For Rich Text Mode
+  const editorRef = useRef<HTMLDivElement>(null);
+  const isInitialized = useRef(false);
+
+  // For Checklist Mode
+  interface ChecklistItem {
+    id: string;
+    text: string;
+    checked: boolean;
+  }
+  const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([]);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const textAreaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Initialize content ONLY once
   useEffect(() => {
-    if (initialContent) {
-        setText(initialContent.text || '');
-        setAttachments(initialContent.attachments || []);
-        
-        // If checking clipboard, set special state instead of showing dialog
-        if (initialContent.checkClipboard) {
-            setIsWaitingForPaste(true);
+    if (!isChecklistMode && editorRef.current && !isInitialized.current) {
+        let initialText = '';
+        if (initialContent?.text) {
+            initialText = initialContent.text.replace(/\n/g, '<br>');
         }
+        editorRef.current.innerHTML = initialText;
+        setIsEmpty(!initialText);
+        isInitialized.current = true;
     }
-  }, [initialContent]);
+  }, [isChecklistMode, initialContent]);
 
+  // Focus editor on mount
   useEffect(() => {
-    if (textAreaRef.current) {
-      setTimeout(() => textAreaRef.current?.focus(), 300);
+    if (!isChecklistMode && editorRef.current) {
+        setTimeout(() => {
+            editorRef.current?.focus();
+        }, 100);
     }
-  }, []);
+  }, [isChecklistMode]);
 
-  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    // 1. Handle Files (Images)
+  const handlePaste = (e: React.ClipboardEvent) => {
     const items = e.clipboardData.items;
-    let hasHandledFile = false;
-
     for (const item of items) {
         if (item.type.startsWith('image/')) {
             const blob = item.getAsFile();
             if (blob) {
-                hasHandledFile = true;
+                e.preventDefault(); 
                 const reader = new FileReader();
                 reader.onload = (evt) => {
                     setAttachments(prev => [...prev, {
@@ -68,58 +82,10 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, initia
                         data: evt.target?.result as string,
                         name: 'Pasted Image'
                     }]);
-                    
-                    // Turn off the "Waiting for paste" prompt once an image is detected
-                    setIsWaitingForPaste(false);
                 };
                 reader.readAsDataURL(blob);
             }
         }
-    }
-
-    // If we successfully handled a file, we can reset the placeholder state
-    if (hasHandledFile) {
-        setIsWaitingForPaste(false);
-    }
-  };
-
-  // Attempt to programmatically read clipboard on tap if we are waiting for a paste.
-  // This utilizes the user gesture (tap) to trigger the permission prompt directly.
-  const handleTextareaClick = async () => {
-    if (!isWaitingForPaste) return;
-
-    try {
-        const clipboardItems = await navigator.clipboard.read();
-        const newAttachments: Attachment[] = [];
-
-        for (const item of clipboardItems) {
-            const imageType = item.types.find(type => type.startsWith('image/'));
-            if (imageType) {
-                const blob = await item.getType(imageType);
-                const reader = new FileReader();
-                const result = await new Promise<string>((resolve) => {
-                    reader.onload = (evt) => resolve(evt.target?.result as string);
-                    reader.readAsDataURL(blob);
-                });
-
-                newAttachments.push({
-                    id: crypto.randomUUID(),
-                    type: 'image',
-                    mimeType: blob.type,
-                    data: result,
-                    name: 'Clipboard Image'
-                });
-            }
-        }
-
-        if (newAttachments.length > 0) {
-            setAttachments(prev => [...prev, ...newAttachments]);
-            setIsWaitingForPaste(false);
-        }
-    } catch (e) {
-        // If this fails (e.g. permission denied or not supported), 
-        // we silently ignore it and let the user use the native Paste menu (fallback).
-        console.log("Auto-read clipboard failed, falling back to native menu:", e);
     }
   };
 
@@ -147,7 +113,6 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, initia
       }
       
       setAttachments(prev => [...prev, ...newAttachments]);
-      // Reset input so same file can be selected again if needed
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
@@ -175,8 +140,102 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, initia
     setTags(tags.filter(t => t !== tag));
   };
 
+  // Rich Text Formatting
+  const execFormat = (command: string, value?: string) => {
+      if (command === 'formatBlock') {
+          const currentBlock = document.queryCommandValue('formatBlock');
+          if (currentBlock.toLowerCase() === value?.toLowerCase()) {
+              document.execCommand('formatBlock', false, 'p');
+          } else {
+              document.execCommand(command, false, value);
+          }
+      } else {
+          document.execCommand(command, false, value);
+      }
+      editorRef.current?.focus();
+      checkFormats();
+  };
+
+  const checkFormats = () => {
+      const formats: string[] = [];
+      if (document.queryCommandState('bold')) formats.push('bold');
+      if (document.queryCommandState('italic')) formats.push('italic');
+      if (document.queryCommandState('underline')) formats.push('underline');
+      
+      const block = document.queryCommandValue('formatBlock');
+      if (block === 'h1') formats.push('H1');
+      if (block === 'h2') formats.push('H2');
+      
+      setActiveFormats(formats);
+      
+      if (editorRef.current) {
+          setIsEmpty(!editorRef.current.innerText.trim());
+      }
+  };
+
+  const isFormatActive = (format: string) => activeFormats.includes(format);
+
+  // Toggle Checklist Mode
+  const toggleChecklistMode = () => {
+      if (isChecklistMode) {
+          const text = checklistItems.map(item => item.text).join('<br>');
+          setIsChecklistMode(false);
+          setTimeout(() => {
+              if (editorRef.current) {
+                  editorRef.current.innerHTML = text;
+                  setIsEmpty(!text);
+              }
+          }, 0);
+      } else {
+          const text = editorRef.current?.innerText || '';
+          const lines = text.split('\n').filter(l => l.trim().length > 0);
+          
+          if (lines.length === 0) {
+              setChecklistItems([{ id: crypto.randomUUID(), text: '', checked: false }]);
+          } else {
+              setChecklistItems(lines.map(line => ({
+                  id: crypto.randomUUID(),
+                  text: line,
+                  checked: false
+              })));
+          }
+          setIsChecklistMode(true);
+      }
+  };
+
+  const updateChecklistItem = (id: string, text: string) => {
+      setChecklistItems(prev => prev.map(item => item.id === id ? { ...item, text } : item));
+  };
+
+  const addChecklistItem = (afterId: string) => {
+      setChecklistItems(prev => {
+          const index = prev.findIndex(item => item.id === afterId);
+          const newItem = { id: crypto.randomUUID(), text: '', checked: false };
+          if (index === -1) return [...prev, newItem];
+          const newItems = [...prev];
+          newItems.splice(index + 1, 0, newItem);
+          return newItems;
+      });
+  };
+  
+  const removeChecklistItem = (id: string) => {
+      if (checklistItems.length <= 1) return;
+      setChecklistItems(prev => prev.filter(item => item.id !== id));
+  };
+
   const handleSubmit = async () => {
-    if ((!text.trim() && attachments.length === 0) || isProcessing) return;
+    let finalContent = '';
+    
+    if (isChecklistMode) {
+        const listItems = checklistItems.map(item => 
+            `<li data-checked="${item.checked}">${item.text}</li>`
+        ).join('');
+        finalContent = `<ul class="checklist">${listItems}</ul>`;
+    } else {
+        finalContent = editorRef.current?.innerHTML || '';
+    }
+
+    if ((!finalContent.trim() && attachments.length === 0) || isProcessing) return;
 
     setIsProcessing(true);
     
@@ -203,7 +262,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, initia
         console.warn("Location access denied or unavailable", e);
       }
 
-      await onCreate(text, attachments, tags, location);
+      await onCreate(finalContent, attachments, tags, location);
       handleClose();
 
     } catch (error) {
@@ -214,8 +273,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, initia
   };
 
   const handleClose = () => {
-    setText('');
-    setAttachments([]);
+    setChecklistItems([]);
     setTags([]);
     setTagInput('');
     setIsProcessing(false);
@@ -223,7 +281,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, initia
   };
 
   return (
-    <div className="min-h-screen bg-gray-900 flex flex-col">
+    <div className="min-h-screen bg-gray-900 flex flex-col" dir="ltr">
         {/* Header */}
         <div className="sticky top-0 z-30 bg-gray-900/90 backdrop-blur-md border-b border-gray-800 px-4 py-3 flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -237,30 +295,156 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, initia
             </div>
         </div>
 
-        <main className="flex-1 p-4 sm:p-8 max-w-3xl mx-auto w-full space-y-6">
-            {/* Text Input */}
-            <div className="space-y-2 relative">
-                <textarea
-                    ref={textAreaRef}
-                    value={text}
-                    onChange={(e) => {
-                        setText(e.target.value);
-                        // If user types, we assume they might not be pasting an image anymore, 
-                        // or at least we shouldn't show the "Tap to paste" message aggressively.
-                        if (isWaitingForPaste && e.target.value.length > 0) {
-                            setIsWaitingForPaste(false);
-                        }
-                    }}
-                    placeholder={isWaitingForPaste ? "Tap here to paste your image..." : "Capture a thought, idea, or observation..."}
-                    className={`w-full min-h-[200px] bg-transparent text-lg text-white placeholder-gray-500 resize-y focus:outline-none leading-relaxed transition-all duration-300 ${isWaitingForPaste ? 'placeholder-blue-400 font-medium' : ''}`}
-                    onPaste={handlePaste}
-                    onClick={handleTextareaClick}
-                />
+        <main className="flex-1 p-4 sm:p-8 max-w-3xl mx-auto w-full space-y-6 flex flex-col">
+            
+            {/* Editor Area */}
+            <div className="min-h-[200px] relative text-left order-1" dir="ltr">
+                {isChecklistMode ? (
+                    <div className="space-y-2">
+                        {checklistItems.map((item, index) => (
+                            <div key={item.id} className="flex items-start gap-3 animate-in fade-in slide-in-from-left-2 duration-200">
+                                <div 
+                                    className="mt-1.5 text-gray-500 cursor-pointer"
+                                    onClick={() => setChecklistItems(prev => prev.map(i => i.id === item.id ? { ...i, checked: !i.checked } : i))}
+                                >
+                                    <div className={`w-5 h-5 border-2 rounded flex items-center justify-center transition-colors ${item.checked ? 'border-blue-500 bg-blue-500/20' : 'border-gray-600'}`}>
+                                        {item.checked && <div className="w-2.5 h-2.5 bg-blue-500 rounded-sm" />}
+                                    </div>
+                                </div>
+                                <input
+                                    type="text"
+                                    value={item.text}
+                                    onChange={(e) => updateChecklistItem(item.id, e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            addChecklistItem(item.id);
+                                        }
+                                        if (e.key === 'Backspace' && item.text === '' && checklistItems.length > 1) {
+                                            e.preventDefault();
+                                            removeChecklistItem(item.id);
+                                        }
+                                    }}
+                                    autoFocus={index === checklistItems.length - 1} 
+                                    placeholder="List item..."
+                                    className={`flex-1 bg-transparent text-lg text-white placeholder-gray-600 focus:outline-none border-b border-transparent focus:border-gray-700/50 pb-1 transition-all text-left ${item.checked ? 'line-through text-gray-500' : ''}`}
+                                    dir="ltr"
+                                />
+                            </div>
+                        ))}
+                        <button 
+                            onClick={() => addChecklistItem(checklistItems[checklistItems.length - 1]?.id)}
+                            className="flex items-center gap-2 text-gray-500 hover:text-blue-400 mt-2 pl-1 transition-colors text-sm font-medium"
+                        >
+                            <Plus size={16} /> Add Item
+                        </button>
+                    </div>
+                ) : (
+                    <>
+                        <div
+                            ref={editorRef}
+                            contentEditable
+                            className="w-full min-h-[200px] bg-transparent text-lg text-white focus:outline-none prose prose-invert max-w-none 
+                            prose-p:my-2 prose-ul:my-2 prose-li:my-0
+                            [&_h1]:text-3xl [&_h1]:font-bold [&_h1]:mt-4 [&_h1]:mb-2 [&_h1]:text-white
+                            [&_h2]:text-2xl [&_h2]:font-bold [&_h2]:mt-3 [&_h2]:mb-2 [&_h2]:text-gray-100
+                            text-left"
+                            dir="ltr"
+                            onKeyUp={checkFormats}
+                            onMouseUp={checkFormats}
+                            onInput={() => setIsEmpty(!editorRef.current?.innerText.trim())}
+                            onPaste={handlePaste}
+                            suppressContentEditableWarning={true}
+                        />
+                        {isEmpty && (
+                            <div className="absolute top-0 left-0 pointer-events-none text-gray-500 text-lg">
+                                Capture a thought, idea, or observation...
+                            </div>
+                        )}
+                    </>
+                )}
+            </div>
+
+            {/* Toolbar Area */}
+            <div className="flex flex-col gap-4 border-t border-gray-800 pt-6 order-2">
+                 {/* Combined Toolbar */}
+                 <div className="flex flex-wrap items-center gap-2 bg-gray-800/30 p-2 rounded-xl border border-gray-700/50">
+                    {/* Attachments Button */}
+                    <button 
+                        onClick={() => fileInputRef.current?.click()}
+                        className="p-2 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors"
+                        title="Add Attachment"
+                    >
+                        <Paperclip size={18} />
+                    </button>
+                    <input 
+                        type="file" 
+                        ref={fileInputRef} 
+                        onChange={handleFileSelect} 
+                        className="hidden" 
+                        multiple 
+                        accept="image/*,.pdf,.txt,.md"
+                    />
+
+                    <div className="w-px h-6 bg-gray-700/50 mx-1"></div>
+
+                    {/* Formatting Controls (Only in Normal Mode) */}
+                    {!isChecklistMode && (
+                        <>
+                            <button 
+                                onClick={() => execFormat('bold')} 
+                                className={`p-2 rounded-lg transition-colors ${isFormatActive('bold') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`} 
+                                title="Bold"
+                            >
+                                <Bold size={18} />
+                            </button>
+                            <button 
+                                onClick={() => execFormat('italic')} 
+                                className={`p-2 rounded-lg transition-colors ${isFormatActive('italic') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`} 
+                                title="Italic"
+                            >
+                                <Italic size={18} />
+                            </button>
+                            <button 
+                                onClick={() => execFormat('underline')} 
+                                className={`p-2 rounded-lg transition-colors ${isFormatActive('underline') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`} 
+                                title="Underline"
+                            >
+                                <Underline size={18} />
+                            </button>
+                            <div className="w-px h-6 bg-gray-700/50 mx-1"></div>
+                            <button 
+                                onClick={() => execFormat('formatBlock', 'H1')} 
+                                className={`p-2 rounded-lg transition-colors ${isFormatActive('H1') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`} 
+                                title="Heading 1"
+                            >
+                                <Heading1 size={18} />
+                            </button>
+                            <button 
+                                onClick={() => execFormat('formatBlock', 'H2')} 
+                                className={`p-2 rounded-lg transition-colors ${isFormatActive('H2') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`} 
+                                title="Heading 2"
+                            >
+                                <Heading2 size={18} />
+                            </button>
+                            <div className="w-px h-6 bg-gray-700/50 mx-1"></div>
+                        </>
+                    )}
+
+                    {/* Checklist Toggle */}
+                    <button
+                        onClick={toggleChecklistMode}
+                        className={`p-2 rounded-lg transition-colors ${isChecklistMode ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`}
+                        title="Checklist Mode"
+                    >
+                        <CheckSquare size={18} />
+                    </button>
+                 </div>
             </div>
 
             {/* Attachments Preview */}
             {attachments.length > 0 && (
-                <div className="flex gap-3 flex-wrap">
+                <div className="flex gap-3 flex-wrap order-3">
                     {attachments.map((att) => (
                         <div key={att.id} className="relative group animate-in zoom-in-90 duration-200">
                             {att.type === 'image' ? (
@@ -283,93 +467,72 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, initia
                     ))}
                 </div>
             )}
+            
+            <div className="pt-4 order-4">
+               <hr className="border-gray-800 my-6" />
 
-            {/* Actions: Image Button */}
-            <div className="flex items-center gap-2 pt-2">
-                <button 
-                    onClick={() => fileInputRef.current?.click()}
-                    className="flex items-center gap-2 px-4 py-2.5 text-gray-300 bg-gray-800 hover:bg-gray-700 hover:text-white rounded-xl transition-colors border border-gray-700"
-                >
-                    <ImageIcon size={20} />
-                    <span>Add Attachment</span>
-                </button>
-                <input 
-                    type="file" 
-                    ref={fileInputRef} 
-                    onChange={handleFileSelect} 
-                    className="hidden" 
-                    multiple 
-                    accept="image/*,.pdf,.txt,.md"
-                />
-            </div>
+               {/* Tags Interface */}
+               <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Tags</h3>
+                  <div className="flex flex-wrap items-center gap-2">
+                      {tags.map(tag => (
+                          <span key={tag} className="bg-blue-500/10 text-blue-400 border border-blue-500/20 px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-2 animate-in fade-in">
+                              #{tag}
+                              <button onClick={() => removeTag(tag)} className="hover:text-blue-200"><X size={14} /></button>
+                          </span>
+                      ))}
+                      <div className="flex items-center gap-2 bg-gray-800/50 px-3 py-1.5 rounded-xl border border-gray-700/50 focus-within:border-blue-500/50 focus-within:bg-gray-800 transition-all">
+                          <TagIcon size={16} className="text-gray-500" />
+                          <input 
+                              type="text" 
+                              value={tagInput}
+                              onChange={(e) => setTagInput(e.target.value)}
+                              onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                      e.preventDefault();
+                                      handleAddTag();
+                                  }
+                              }}
+                              onBlur={handleAddTag} 
+                              placeholder="Add custom tag..."
+                              className="bg-transparent text-sm text-white placeholder-gray-500 focus:outline-none min-w-[120px]"
+                          />
+                      </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                      {SUGGESTED_TAGS.map(tag => {
+                          const isSelected = tags.includes(tag);
+                          if (isSelected) return null;
+                          return (
+                              <button
+                                  key={tag}
+                                  onClick={() => toggleTag(tag)}
+                                  className="px-3 py-1.5 rounded-full text-xs font-bold bg-gray-800 text-gray-400 border border-gray-700 hover:border-gray-500 hover:text-gray-200 transition-all"
+                              >
+                                  + {tag}
+                              </button>
+                          );
+                      })}
+                  </div>
+               </div>
 
-            <hr className="border-gray-800 my-6" />
+               <hr className="border-gray-800 my-6" />
 
-            {/* Tags Interface */}
-            <div className="space-y-4">
-                <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Tags</h3>
-                
-                {/* Active Tags & Input */}
-                <div className="flex flex-wrap items-center gap-2">
-                    {tags.map(tag => (
-                        <span key={tag} className="bg-blue-500/10 text-blue-400 border border-blue-500/20 px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-2 animate-in fade-in">
-                            #{tag}
-                            <button onClick={() => removeTag(tag)} className="hover:text-blue-200"><X size={14} /></button>
-                        </span>
-                    ))}
-                    <div className="flex items-center gap-2 bg-gray-800/50 px-3 py-1.5 rounded-xl border border-gray-700/50 focus-within:border-blue-500/50 focus-within:bg-gray-800 transition-all">
-                        <TagIcon size={16} className="text-gray-500" />
-                        <input 
-                            type="text" 
-                            value={tagInput}
-                            onChange={(e) => setTagInput(e.target.value)}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                    e.preventDefault();
-                                    handleAddTag();
-                                }
-                            }}
-                            onBlur={handleAddTag} 
-                            placeholder="Add custom tag..."
-                            className="bg-transparent text-sm text-white placeholder-gray-500 focus:outline-none min-w-[120px]"
-                        />
-                    </div>
-                </div>
-
-                {/* Suggested Tags */}
-                <div className="flex flex-wrap gap-2">
-                    {SUGGESTED_TAGS.map(tag => {
-                        const isSelected = tags.includes(tag);
-                        if (isSelected) return null; // Hide if already selected
-                        return (
-                            <button
-                                key={tag}
-                                onClick={() => toggleTag(tag)}
-                                className="px-3 py-1.5 rounded-full text-xs font-bold bg-gray-800 text-gray-400 border border-gray-700 hover:border-gray-500 hover:text-gray-200 transition-all"
-                            >
-                                + {tag}
-                            </button>
-                        );
-                    })}
-                </div>
-            </div>
-
-            <hr className="border-gray-800 my-6" />
-
-            {/* Save Button - Moved to bottom */}
-            <div className="flex justify-end pt-2 pb-6">
-                <button 
-                    onClick={handleSubmit}
-                    disabled={(!text.trim() && attachments.length === 0) || isProcessing}
-                    className={`flex items-center justify-center gap-2 px-8 py-3 rounded-xl font-bold transition-all shadow-lg w-full sm:w-auto
-                        ${(!text.trim() && attachments.length === 0) || isProcessing 
-                            ? 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700' 
-                            : 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-900/20 hover:scale-[1.02] active:scale-95'
-                        }`}
-                >
-                    {isProcessing ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
-                    {isProcessing ? 'Saving...' : 'Save Memory'}
-                </button>
+               {/* Save Button */}
+               <div className="flex justify-end pt-2 pb-6">
+                  <button 
+                      onClick={handleSubmit}
+                      disabled={isProcessing}
+                      className={`flex items-center justify-center gap-2 px-8 py-3 rounded-xl font-bold transition-all shadow-lg w-full sm:w-auto
+                          ${isProcessing 
+                              ? 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700' 
+                              : 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-900/20 hover:scale-[1.02] active:scale-95'
+                          }`}
+                  >
+                      {isProcessing ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
+                      {isProcessing ? 'Saving...' : 'Save Memory'}
+                  </button>
+               </div>
             </div>
         </main>
     </div>
