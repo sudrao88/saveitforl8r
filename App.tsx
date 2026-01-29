@@ -45,6 +45,7 @@ const AppContent: React.FC = () => {
     handleRetry,
     createMemory,
     updateMemoryContent,
+    togglePin,
     isLoading
   } = useMemories();
 
@@ -178,6 +179,11 @@ const AppContent: React.FC = () => {
     logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_RETRIED);
   }, [handleRetry]);
 
+  const handleTogglePin = useCallback((id: string, isPinned: boolean) => {
+    togglePin(id, isPinned);
+    // You might want to log an event for pinning/unpinning here
+  }, [togglePin]);
+
   const handleOpenCapture = useCallback(() => {
     setIsCaptureOpen(true);
     logEvent(ANALYTICS_EVENTS.NAVIGATION.CATEGORY, ANALYTICS_EVENTS.NAVIGATION.ACTION_CAPTURE_OPENED, 'FAB');
@@ -207,7 +213,16 @@ const AppContent: React.FC = () => {
   }, [setIsSettingsOpen]);
 
   const displayMemories = useMemo(() => {
-    return filteredMemories.filter(m => !m.isDeleting);
+    const active = filteredMemories.filter(m => !m.isDeleting);
+    return active.sort((a, b) => {
+      // Pinned memories first
+      if (a.isPinned && !b.isPinned) return -1;
+      if (!a.isPinned && b.isPinned) return 1;
+      // Then sort by timestamp (descending) - assuming the list is already sorted by timestamp or we rely on default order
+      // If default order isn't guaranteed, we should sort by timestamp here too:
+      // return b.timestamp - a.timestamp;
+      return 0; // Keep existing order for non-pinned items (usually timestamp desc)
+    });
   }, [filteredMemories]);
 
   if (isLoading) {
@@ -272,7 +287,7 @@ const AppContent: React.FC = () => {
           />
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {filteredMemories.map(mem => (
+            {displayMemories.map(mem => (
               <MemoryCard 
                 key={mem.id} 
                 memory={mem} 
@@ -281,6 +296,7 @@ const AppContent: React.FC = () => {
                 onUpdate={updateMemoryContent}
                 onExpand={setExpandedMemory}
                 onViewAttachment={setViewingAttachment}
+                onTogglePin={handleTogglePin}
                 hasApiKey={apiKeySet}
                 onAddApiKey={handleAddApiKey}
               />
@@ -317,6 +333,7 @@ const AppContent: React.FC = () => {
                     onRetry={handleRetryMemory}
                     onUpdate={updateMemoryContent}
                     onViewAttachment={setViewingAttachment}
+                    onTogglePin={handleTogglePin}
                     isDialog={true}
                     hasApiKey={apiKeySet}
                     onAddApiKey={handleAddApiKey}

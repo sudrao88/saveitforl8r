@@ -56,6 +56,7 @@ export interface Memory {
   processingError?: boolean;
   isDeleted?: boolean; // Persistent soft-delete flag for sync
   isSample?: boolean; // Flag to exclude from sync
+  isPinned?: boolean;
 }
 
 export interface ChatMessage {
