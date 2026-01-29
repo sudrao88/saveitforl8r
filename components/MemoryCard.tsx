@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Trash2, MapPin, Loader2, Clock, ExternalLink, X, Check, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, WifiOff, FileText, Paperclip, ChevronDown, ChevronUp, FileCode, MoreVertical, Search, AlertTriangle, Key, Square, CheckSquare, Maximize2, Eye } from 'lucide-react';
+import { Trash2, MapPin, Loader2, Clock, ExternalLink, X, Check, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, WifiOff, FileText, Paperclip, ChevronDown, ChevronUp, FileCode, MoreVertical, Search, AlertTriangle, Key, Square, CheckSquare, Maximize2, Eye, Pin } from 'lucide-react';
 import { Memory, Attachment } from '../types.ts';
 
 interface MemoryCardProps {
@@ -9,12 +9,13 @@ interface MemoryCardProps {
   onUpdate?: (id: string, content: string) => void;
   onExpand?: (memory: Memory) => void;
   onViewAttachment?: (attachment: Attachment) => void;
+  onTogglePin?: (id: string, isPinned: boolean) => void;
   isDialog?: boolean;
   hasApiKey?: boolean;
   onAddApiKey?: () => void;
 }
 
-const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUpdate, onExpand, onViewAttachment, isDialog, hasApiKey = true, onAddApiKey }) => {
+const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUpdate, onExpand, onViewAttachment, onTogglePin, isDialog, hasApiKey = true, onAddApiKey }) => {
   const [isConfirming, setIsConfirming] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -77,6 +78,12 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
   
   const cancelDelete = (e: React.MouseEvent) => { e.stopPropagation(); setIsConfirming(false); };
   const confirmDelete = (e: React.MouseEvent) => { e.stopPropagation(); onDelete?.(memory.id); };
+
+  const handlePin = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onTogglePin?.(memory.id, !memory.isPinned);
+    setIsMenuOpen(false);
+  };
 
   const getEntityIcon = (type?: string) => {
     const t = type?.toLowerCase() || '';
@@ -200,6 +207,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
           {/* Header */}
           <div className="flex items-center justify-between mb-3">
              <div className="flex items-center gap-2">
+                 {memory.isPinned && <Pin size={12} className="text-blue-400 rotate-45" />}
                  {entity?.type && (
                     <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-500">
                         {getEntityIcon(entity.type)}
@@ -328,10 +336,16 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                             <>
                             <div className="fixed inset-0 z-10 cursor-default" onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); }} />
                             <div className="absolute bottom-full right-0 mb-1 w-32 bg-gray-900 border border-gray-700 rounded-xl shadow-xl z-20 overflow-hidden animate-in slide-in-from-bottom-2 fade-in duration-200">
+                                {onTogglePin && (
+                                    <button onClick={handlePin} className="w-full px-3 py-2.5 text-left text-xs font-medium text-gray-300 hover:bg-gray-800 hover:text-white flex items-center gap-2">
+                                        <Pin size={14} className={memory.isPinned ? "fill-current" : ""} /> 
+                                        {memory.isPinned ? 'Unpin' : 'Pin'}
+                                    </button>
+                                )}
                                 {onDelete && (
-                                        <button onClick={startDelete} className="w-full px-3 py-2.5 text-left text-xs font-medium text-red-400 hover:bg-red-900/10 hover:text-red-300 flex items-center gap-2">
-                                            <Trash2 size={14} /> Delete
-                                        </button>
+                                    <button onClick={startDelete} className="w-full px-3 py-2.5 text-left text-xs font-medium text-red-400 hover:bg-red-900/10 hover:text-red-300 flex items-center gap-2 border-t border-gray-800">
+                                        <Trash2 size={14} /> Delete
+                                    </button>
                                 )}
                             </div>
                             </>
@@ -339,6 +353,22 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                     </div>
                 </div>
             </div>
+            {/* Confirmation Dialog */}
+            {isConfirming && (
+                <div className="absolute inset-0 z-30 bg-gray-900/95 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-200">
+                    <AlertTriangle size={32} className="text-amber-500 mb-3" />
+                    <h4 className="text-gray-100 font-bold mb-1">Delete Memory?</h4>
+                    <p className="text-xs text-gray-400 mb-4">This action cannot be undone.</p>
+                    <div className="flex gap-2 w-full">
+                        <button onClick={cancelDelete} className="flex-1 py-2 text-xs font-medium text-gray-300 bg-gray-800 rounded-lg hover:bg-gray-700 transition-colors">
+                            Cancel
+                        </button>
+                        <button onClick={confirmDelete} className="flex-1 py-2 text-xs font-bold text-white bg-red-500 rounded-lg hover:bg-red-600 transition-colors shadow-lg shadow-red-500/20">
+                            Delete
+                        </button>
+                    </div>
+                </div>
+            )}
           </div>
         </div>
       </div>

@@ -229,6 +229,22 @@ export const useMemories = () => {
       }
   }, [trySyncFile]);
 
+  const togglePin = useCallback(async (id: string, isPinned: boolean) => {
+    setMemories(prev => prev.map(m => m.id === id ? { ...m, isPinned } : m));
+    try {
+        const current = await getMemory(id);
+        if (current) {
+            const updated = { ...current, isPinned };
+            await saveMemory(updated);
+            await trySyncFile(updated);
+        }
+    } catch (e) {
+        console.error("Failed to toggle pin", e);
+        // Revert on error
+        setMemories(prev => prev.map(m => m.id === id ? { ...m, isPinned: !isPinned } : m));
+    }
+  }, [trySyncFile]);
+
   useEffect(() => {
     const handleOnline = () => {
       console.log("App is back online.");
@@ -257,6 +273,7 @@ export const useMemories = () => {
     handleRetry,
     createMemory,
     updateMemoryContent,
+    togglePin,
     isLoading
   };
 };
