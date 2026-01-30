@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { X, Key, Download, Upload, Info, RefreshCw, Cloud, AlertTriangle, ShieldCheck, LogOut, Settings } from 'lucide-react';
+import { X, Key, Download, Upload, Info, RefreshCw, Cloud, AlertTriangle, ShieldCheck, LogOut, Settings, Cpu, CheckCircle2, Loader2, Database } from 'lucide-react';
 import { useExportImport } from '../hooks/useExportImport';
 import { useEncryptionSettings } from '../hooks/useEncryptionSettings';
 import MultiSelect from './MultiSelect';
 import { useSync } from '../hooks/useSync';
 import { useAuth } from '../hooks/useAuth';
+import { ModelStatus, EmbeddingStats } from '../hooks/useAdaptiveSearch';
 
 interface SettingsModalProps {
   onClose: () => void;
@@ -16,6 +17,11 @@ interface SettingsModalProps {
   onAddApiKey: () => void;
   syncError: boolean;
   onSyncComplete?: () => void;
+  modelStatus: ModelStatus;
+  downloadProgress?: any;
+  retryDownload: () => void;
+  embeddingStats?: EmbeddingStats;
+  retryFailedEmbeddings?: () => void;
 }
 
 const SettingsModal: React.FC<SettingsModalProps> = ({ 
@@ -27,7 +33,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     hasApiKey,
     onAddApiKey,
     syncError,
-    onSyncComplete
+    onSyncComplete,
+    modelStatus,
+    downloadProgress,
+    retryDownload,
+    embeddingStats,
+    retryFailedEmbeddings
 }) => {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const { sync, isSyncing } = useSync();
@@ -91,6 +102,108 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
 
             <div className="space-y-6">
+
+                {/* Local AI Model Status */}
+                <div className="space-y-3">
+                    <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Offline AI</h4>
+                    <div className="bg-gray-700/30 p-4 rounded-2xl border border-gray-700 space-y-4">
+                         <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <Cpu size={20} className={modelStatus === 'ready' ? "text-green-400" : "text-gray-400"} />
+                                <span className="text-sm font-medium text-gray-200">Local Search Model</span>
+                            </div>
+                            {modelStatus === 'ready' && (
+                                <CheckCircle2 size={18} className="text-green-400" />
+                            )}
+                         </div>
+
+                         {modelStatus === 'downloading' && (
+                             <div className="space-y-2">
+                                <div className="flex justify-between text-xs text-gray-400">
+                                    <span>Downloading...</span>
+                                    <span>{downloadProgress ? Math.round(downloadProgress.progress || 0) : 0}%</span>
+                                </div>
+                                <div className="h-1.5 w-full bg-gray-700 rounded-full overflow-hidden">
+                                    <div 
+                                        className="h-full bg-blue-500 rounded-full transition-all duration-300" 
+                                        style={{ width: `${downloadProgress ? downloadProgress.progress : 0}%` }}
+                                    ></div>
+                                </div>
+                             </div>
+                         )}
+
+                         {modelStatus === 'error' && (
+                             <div className="flex items-center justify-between">
+                                 <span className="text-xs text-red-400 flex items-center gap-1">
+                                     <AlertTriangle size={12} /> Download Failed
+                                 </span>
+                                 <button 
+                                    onClick={retryDownload}
+                                    className="text-xs px-2 py-1 bg-red-900/20 text-red-400 hover:text-red-300 border border-red-900/50 rounded-lg"
+                                 >
+                                     Retry
+                                 </button>
+                             </div>
+                         )}
+                         
+                         {modelStatus === 'idle' && (
+                             <div className="text-xs text-gray-500">
+                                 Initializing...
+                             </div>
+                         )}
+                         
+                         {/* Embedding Stats Section */}
+                         {modelStatus === 'ready' && embeddingStats && (
+                             <div className="pt-3 border-t border-gray-700/50 space-y-2">
+                                 <div className="flex items-center gap-2 mb-2">
+                                     <Database size={14} className="text-gray-400" />
+                                     <span className="text-xs font-bold text-gray-300 uppercase tracking-wide">Embedding Status</span>
+                                 </div>
+                                 
+                                 <div className="grid grid-cols-3 gap-2">
+                                     <div className="bg-gray-800/50 p-2 rounded-lg border border-gray-700/50 flex flex-col items-center">
+                                         <span className="text-lg font-bold text-green-400">{embeddingStats.completed}</span>
+                                         <span className="text-[10px] text-gray-500 uppercase">Ready</span>
+                                     </div>
+                                     <div className="bg-gray-800/50 p-2 rounded-lg border border-gray-700/50 flex flex-col items-center relative overflow-hidden">
+                                         {embeddingStats.pending > 0 && (
+                                             <div className="absolute inset-0 bg-blue-500/10 animate-pulse"></div>
+                                         )}
+                                         <span className={`text-lg font-bold ${embeddingStats.pending > 0 ? 'text-blue-400' : 'text-gray-400'}`}>
+                                             {embeddingStats.pending}
+                                         </span>
+                                         <span className="text-[10px] text-gray-500 uppercase flex items-center gap-1">
+                                             {embeddingStats.pending > 0 && <Loader2 size={8} className="animate-spin" />}
+                                             Pending
+                                         </span>
+                                     </div>
+                                     <div className="bg-gray-800/50 p-2 rounded-lg border border-gray-700/50 flex flex-col items-center">
+                                         <span className={`text-lg font-bold ${embeddingStats.failed > 0 ? 'text-red-400' : 'text-gray-400'}`}>
+                                             {embeddingStats.failed}
+                                         </span>
+                                         <span className="text-[10px] text-gray-500 uppercase">Failed</span>
+                                     </div>
+                                 </div>
+
+                                 {embeddingStats.failed > 0 && retryFailedEmbeddings && (
+                                     <button 
+                                        onClick={retryFailedEmbeddings}
+                                        className="w-full mt-2 flex items-center justify-center gap-2 text-xs py-1.5 bg-red-900/20 hover:bg-red-900/30 text-red-400 border border-red-900/50 rounded-lg transition-colors"
+                                     >
+                                         <RefreshCw size={12} /> Retry Failed Items
+                                     </button>
+                                 )}
+
+                                 {embeddingStats.pending === 0 && embeddingStats.failed === 0 && embeddingStats.completed > 0 && (
+                                     <div className="flex items-center gap-1.5 text-[10px] text-green-500/80 justify-center bg-green-900/10 py-1 rounded-md">
+                                         <CheckCircle2 size={10} />
+                                         All memories indexed
+                                     </div>
+                                 )}
+                             </div>
+                         )}
+                    </div>
+                </div>
                 
                 {/* Cloud Sync Section */}
                 <div className="space-y-3">

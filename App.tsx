@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Plus, RefreshCw, AlertTriangle, X, Download, Maximize, Minimize } from 'lucide-react'; 
+import { Plus, RefreshCw, AlertTriangle, X, Download, Maximize, Minimize, FileText } from 'lucide-react'; 
 import MemoryCard from './components/MemoryCard';
 import ChatInterface from './components/ChatInterface';
 import TopNavigation from './components/TopNavigation';
@@ -20,7 +20,9 @@ import { useShareReceiver } from './hooks/useShareReceiver';
 import { useSync } from './hooks/useSync';
 import { useAuth } from './hooks/useAuth';
 import { useOnboarding } from './hooks/useOnboarding';
+import { useAdaptiveSearch } from './hooks/useAdaptiveSearch';
 import { SyncProvider } from './context/SyncContext';
+import { reconcileEmbeddings } from './services/storageService';
 import { ViewMode, Memory, Attachment } from './types';
 import { initGA, logPageView, logEvent } from './services/analytics';
 import { ANALYTICS_EVENTS } from './constants';
@@ -38,6 +40,8 @@ const AppContent: React.FC = () => {
   const { sync, isSyncing, syncError } = useSync();
   const { authStatus, login, unlink } = useAuth();
 
+  const { modelStatus, downloadProgress, retryDownload, search, embeddingStats, retryFailedEmbeddings } = useAdaptiveSearch();
+
   const {
     memories,
     refreshMemories,
@@ -49,19 +53,29 @@ const AppContent: React.FC = () => {
     isLoading
   } = useMemories();
 
+  // Wrap refresh to also reconcile embeddings
+  const handleFullRefresh = useCallback(async () => {
+      await refreshMemories();
+      // Run reconciliation in background
+      reconcileEmbeddings().catch(err => console.error("Reconciliation error", err));
+  }, [refreshMemories]);
+
   const syncRef = useRef(sync);
-  const refreshRef = useRef(refreshMemories);
+  const refreshRef = useRef(handleFullRefresh);
 
   useEffect(() => {
     syncRef.current = sync;
-    refreshRef.current = refreshMemories;
-  }, [sync, refreshMemories]);
+    refreshRef.current = handleFullRefresh;
+  }, [sync, handleFullRefresh]);
 
   const { isShareOnboardingOpen, closeOnboarding } = useOnboarding({ memories });
 
   useEffect(() => {
     initGA();
     logPageView('home');
+    
+    // Initial load reconciliation
+    reconcileEmbeddings().catch(console.error);
     
     if (authStatus === 'linked') {
         syncRef.current().then(() => {
@@ -253,6 +267,7 @@ const AppContent: React.FC = () => {
         <ChatInterface 
           memories={displayMemories} 
           onClose={handleChatClose} 
+          searchFunction={search}
         />
      );
   }
@@ -269,6 +284,7 @@ const AppContent: React.FC = () => {
             onUpdateApp={handleUpdateApp}
             syncError={!!syncError}
             isSyncing={isSyncing} 
+            modelStatus={modelStatus}
           />
 
           <FilterBar 
@@ -408,7 +424,12 @@ const AppContent: React.FC = () => {
             hasApiKey={apiKeySet}
             onAddApiKey={handleAddApiKey}
             syncError={!!syncError}
-            onSyncComplete={refreshMemories} 
+            onSyncComplete={handleFullRefresh} 
+            modelStatus={modelStatus}
+            downloadProgress={downloadProgress}
+            retryDownload={retryDownload}
+            embeddingStats={embeddingStats}
+            retryFailedEmbeddings={retryFailedEmbeddings}
         />
       )}
 
