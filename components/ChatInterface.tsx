@@ -1,21 +1,22 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Send, BrainCircuit, ExternalLink, Bot, Sparkles } from 'lucide-react';
+import { X, Send, BrainCircuit, ExternalLink, Bot, Sparkles, WifiOff } from 'lucide-react';
 import { Memory } from '../types';
-import { queryBrain } from '../services/geminiService';
 import MemoryCard from './MemoryCard';
 
 interface ChatInterfaceProps {
   memories: Memory[];
   onClose: () => void;
+  searchFunction: (query: string, memories: Memory[]) => Promise<{ mode: string; result: any; error?: any }>;
 }
 
 interface Message {
   role: 'user' | 'model';
   text: string;
   sources?: string[]; // IDs of memories used
+  isOffline?: boolean;
 }
 
-const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose }) => {
+const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, searchFunction }) => {
   const [query, setQuery] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
@@ -90,8 +91,32 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose }) => {
     }
 
     try {
-      const { answer, sourceIds } = await queryBrain(userMsg.text, memories);
-      setMessages(prev => [...prev, { role: 'model', text: answer, sources: sourceIds }]);
+      const response = await searchFunction(userMsg.text, memories);
+      
+      if (response.mode === 'online') {
+          const { answer, sourceIds } = response.result;
+          setMessages(prev => [...prev, { role: 'model', text: answer, sources: sourceIds }]);
+      } else if (response.mode === 'offline') {
+          const items = response.result;
+          const text = items.length > 0 
+              ? "I found these relevant notes in your offline database:" 
+              : "I couldn't find any relevant notes in your offline database.";
+          
+          // Extract unique IDs from metadata.originalId or id
+          const sourceIds = Array.from(new Set(items.map((item: any) => 
+            item.metadata?.originalId || item.id
+          ))) as string[];
+
+          setMessages(prev => [...prev, { 
+              role: 'model', 
+              text, 
+              sources: sourceIds,
+              isOffline: true
+          }]);
+      } else {
+           setMessages(prev => [...prev, { role: 'model', text: "Sorry, I encountered an error searching your memories." }]);
+      }
+
     } catch (error) {
       console.error('Search error:', error);
       setMessages(prev => [...prev, { role: 'model', text: "Sorry, I encountered an error searching your memories." }]);
@@ -152,6 +177,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose }) => {
                 ? 'bg-blue-600 text-white shadow-md' 
                 : 'bg-gray-800 border border-gray-700 text-gray-100 shadow-sm'
             }`}>
+              <div className="flex items-center justify-between mb-1">
+                 {msg.isOffline && (
+                     <span className="flex items-center gap-1 text-[10px] uppercase font-bold text-yellow-500/80 mb-1">
+                        <WifiOff size={10} /> Offline Mode
+                     </span>
+                 )}
+              </div>
               <div className="whitespace-pre-wrap leading-relaxed font-medium text-sm md:text-base break-words">
                   {msg.text}
               </div>
@@ -159,7 +191,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose }) => {
               {/* Citations */}
               {msg.sources && msg.sources.length > 0 && (
                 <div className="mt-4 pt-3 border-t border-gray-700/50">
-                    <p className="text-[10px] font-black uppercase text-gray-500 mb-2 tracking-widest">Sources</p>
+                    <p className="text-[10px] font-black uppercase text-gray-500 mb-2 tracking-widest">
+                        {msg.isOffline ? 'Relevant Notes' : 'Sources'}
+                    </p>
                     <div className="grid grid-cols-1 gap-2">
                         {msg.sources.map(id => {
                             const mem = memories.find(m => m.id === id);
