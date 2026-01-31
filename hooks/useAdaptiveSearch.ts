@@ -85,8 +85,11 @@ export const useAdaptiveSearch = () => {
 
     setIsSearching(true);
 
+    const apiKey = localStorage.getItem('gemini_api_key');
+    const hasKey = !!apiKey;
+
     try {
-      if (isOnline) {
+      if (isOnline && hasKey) {
         const result = await queryBrain(query, memories);
         setIsSearching(false);
         return { mode: 'online', result };
@@ -110,7 +113,12 @@ export const useAdaptiveSearch = () => {
 
         const results = await promise;
         setIsSearching(false);
-        return { mode: 'offline', result: results };
+        
+        // Return distinct mode if falling back due to missing key
+        return { 
+            mode: (isOnline && !hasKey) ? 'offline_no_key' : 'offline', 
+            result: results 
+        };
       }
     } catch (e) {
       console.error("Search failed", e);

@@ -178,29 +178,6 @@ const handleEmbedding = async (item: ProcessingQueueItem) => {
     const chunks = text.match(new RegExp(`.{1,${MAX_CHARS}}`, 'g')) || [text];
 
     // Remove existing vectors for this note from Orama (in-memory) to prevent duplicates
-    // Dexie overwrite handles persistence, but Orama throws on duplicate ID.
-    // Since we chunk, IDs are noteId_0, noteId_1.
-    // If we re-embed, we might have fewer or more chunks.
-    // It's safer to try removing possible existing chunks first or just catching the error?
-    // Orama remove requires ID.
-    // Since we don't know exactly how many chunks existed before in Orama (it's in-memory),
-    // and we just reloaded from Dexie... 
-    // Actually, `queueMemoriesForEmbedding` in storageService clears Dexie vectors.
-    // But `initOrama` loads from Dexie.
-    // If `handleEmbedding` runs, it means we are processing a queue item.
-    // If `storageService` cleared Dexie, then `initOrama` won't load them on NEXT init.
-    // But if `initOrama` was ALREADY initialized, it still has the old vectors in memory!
-    // We MUST remove them from Orama index too.
-    
-    // We can use `remove` by ID. But we need to know the IDs.
-    // We can search by `originalId` if Orama supports where clause in remove (it usually requires ID).
-    // Alternatively, we iterate and try remove `noteId_0`, `noteId_1`... until failure?
-    // Or we simply catch the insert error and ignore (if it exists, maybe it's fine? No, content might have changed).
-    // If content changed, we want to update.
-    // Orama `insert` throws if ID exists. `update` or `upsert` might be available?
-    // `insert` is strict.
-    // I will use a loop to try removing potential old chunks `noteId_0` to `noteId_100` (safe upper bound or until error).
-    
     for (let j = 0; j < 50; j++) { // Heuristic cleanup
         try {
             await remove(odb, `${item.noteId}_${j}`);
@@ -225,8 +202,6 @@ const handleEmbedding = async (item: ProcessingQueueItem) => {
         });
 
         // Insert into Orama (In-Memory Search)
-        // Check if exists to be safe? (Race condition if we didn't remove above)
-        // If we removed above, we should be fine.
         try {
             await insert(odb, {
                 id: vectorId,
@@ -270,7 +245,8 @@ self.onmessage = async (e) => {
         const odb = await initOrama();
         
         const searchResult = await search(odb, {
-            mode: 'vector',
+            mode: 'hybrid', // Hybrid search: Vector + Full Text
+            term: query,    // Full Text Keyword
             vector: {
                 value: queryEmbedding,
                 property: 'embedding'

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Send, BrainCircuit, ExternalLink, Bot, Sparkles, WifiOff } from 'lucide-react';
+import { X, Send, BrainCircuit, ExternalLink, Bot, Sparkles, WifiOff, Key } from 'lucide-react';
 import { Memory } from '../types';
 import MemoryCard from './MemoryCard';
 
@@ -14,6 +14,7 @@ interface Message {
   text: string;
   sources?: string[]; // IDs of memories used
   isOffline?: boolean;
+  missingKey?: boolean;
 }
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, searchFunction }) => {
@@ -96,11 +97,17 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
       if (response.mode === 'online') {
           const { answer, sourceIds } = response.result;
           setMessages(prev => [...prev, { role: 'model', text: answer, sources: sourceIds }]);
-      } else if (response.mode === 'offline') {
+      } else if (response.mode === 'offline' || response.mode === 'offline_no_key') {
           const items = response.result;
-          const text = items.length > 0 
+          let text = items.length > 0 
               ? "I found these relevant notes in your offline database:" 
               : "I couldn't find any relevant notes in your offline database.";
+          
+          if (response.mode === 'offline_no_key') {
+              text = items.length > 0
+                  ? "I found these notes using local search. For smarter AI answers, please add your Gemini API Key in Settings."
+                  : "I couldn't find any notes. Add your Gemini API Key in Settings for smarter search.";
+          }
           
           // Extract unique IDs from metadata.originalId or id
           const sourceIds = Array.from(new Set(items.map((item: any) => 
@@ -111,7 +118,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
               role: 'model', 
               text, 
               sources: sourceIds,
-              isOffline: true
+              isOffline: true,
+              missingKey: response.mode === 'offline_no_key'
           }]);
       } else {
            setMessages(prev => [...prev, { role: 'model', text: "Sorry, I encountered an error searching your memories." }]);
@@ -178,9 +186,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
                 : 'bg-gray-800 border border-gray-700 text-gray-100 shadow-sm'
             }`}>
               <div className="flex items-center justify-between mb-1">
-                 {msg.isOffline && (
+                 {msg.isOffline && !msg.missingKey && (
                      <span className="flex items-center gap-1 text-[10px] uppercase font-bold text-yellow-500/80 mb-1">
                         <WifiOff size={10} /> Offline Mode
+                     </span>
+                 )}
+                 {msg.missingKey && (
+                     <span className="flex items-center gap-1 text-[10px] uppercase font-bold text-blue-400/80 mb-1">
+                        <Key size={10} /> Setup Required
                      </span>
                  )}
               </div>
