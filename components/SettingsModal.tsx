@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Key, Download, Upload, Info, RefreshCw, Cloud, AlertTriangle, ShieldCheck, LogOut, Settings, Cpu, CheckCircle2, Loader2, Database } from 'lucide-react';
+import { X, Key, Download, Upload, Info, RefreshCw, Cloud, AlertTriangle, ShieldCheck, LogOut, Settings, Cpu, CheckCircle2, Loader2, Database, FileQuestion } from 'lucide-react';
 import { useExportImport } from '../hooks/useExportImport';
 import { useEncryptionSettings } from '../hooks/useEncryptionSettings';
 import MultiSelect from './MultiSelect';
@@ -22,6 +22,7 @@ interface SettingsModalProps {
   retryDownload: () => void;
   embeddingStats?: EmbeddingStats;
   retryFailedEmbeddings?: () => void;
+  totalMemories: number;
 }
 
 const SettingsModal: React.FC<SettingsModalProps> = ({ 
@@ -38,7 +39,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     downloadProgress,
     retryDownload,
     embeddingStats,
-    retryFailedEmbeddings
+    retryFailedEmbeddings,
+    totalMemories
 }) => {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const { sync, isSyncing } = useSync();
@@ -76,6 +78,13 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     handleRestoreFile,
     fileInputRef: keyInputRef
   } = useEncryptionSettings();
+
+  // Calculate Waiting/Not Enriched count
+  const statsReady = embeddingStats?.completed || 0;
+  const statsPending = embeddingStats?.pending || 0;
+  const statsFailed = embeddingStats?.failed || 0;
+  // Ensure non-negative
+  const waitingForEnrichment = Math.max(0, totalMemories - (statsReady + statsPending + statsFailed));
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
@@ -155,37 +164,48 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                          {/* Embedding Stats Section */}
                          {modelStatus === 'ready' && embeddingStats && (
                              <div className="pt-3 border-t border-gray-700/50 space-y-2">
-                                 <div className="flex items-center gap-2 mb-2">
-                                     <Database size={14} className="text-gray-400" />
-                                     <span className="text-xs font-bold text-gray-300 uppercase tracking-wide">Embedding Status</span>
+                                 <div className="flex items-center justify-between mb-2">
+                                     <div className="flex items-center gap-2">
+                                        <Database size={14} className="text-gray-400" />
+                                        <span className="text-xs font-bold text-gray-300 uppercase tracking-wide">Index Status</span>
+                                     </div>
+                                     <span className="text-[10px] text-gray-500">
+                                         {totalMemories} Total Notes
+                                     </span>
                                  </div>
                                  
-                                 <div className="grid grid-cols-3 gap-2">
+                                 <div className="grid grid-cols-4 gap-2">
                                      <div className="bg-gray-800/50 p-2 rounded-lg border border-gray-700/50 flex flex-col items-center">
-                                         <span className="text-lg font-bold text-green-400">{embeddingStats.completed}</span>
-                                         <span className="text-[10px] text-gray-500 uppercase">Ready</span>
+                                         <span className="text-lg font-bold text-green-400">{statsReady}</span>
+                                         <span className="text-[9px] text-gray-500 uppercase">Ready</span>
                                      </div>
                                      <div className="bg-gray-800/50 p-2 rounded-lg border border-gray-700/50 flex flex-col items-center relative overflow-hidden">
-                                         {embeddingStats.pending > 0 && (
+                                         {statsPending > 0 && (
                                              <div className="absolute inset-0 bg-blue-500/10 animate-pulse"></div>
                                          )}
-                                         <span className={`text-lg font-bold ${embeddingStats.pending > 0 ? 'text-blue-400' : 'text-gray-400'}`}>
-                                             {embeddingStats.pending}
+                                         <span className={`text-lg font-bold ${statsPending > 0 ? 'text-blue-400' : 'text-gray-400'}`}>
+                                             {statsPending}
                                          </span>
-                                         <span className="text-[10px] text-gray-500 uppercase flex items-center gap-1">
-                                             {embeddingStats.pending > 0 && <Loader2 size={8} className="animate-spin" />}
-                                             Pending
+                                         <span className="text-[9px] text-gray-500 uppercase flex items-center gap-1">
+                                             {statsPending > 0 && <Loader2 size={8} className="animate-spin" />}
+                                             Queue
                                          </span>
                                      </div>
                                      <div className="bg-gray-800/50 p-2 rounded-lg border border-gray-700/50 flex flex-col items-center">
-                                         <span className={`text-lg font-bold ${embeddingStats.failed > 0 ? 'text-red-400' : 'text-gray-400'}`}>
-                                             {embeddingStats.failed}
+                                         <span className={`text-lg font-bold ${statsFailed > 0 ? 'text-red-400' : 'text-gray-400'}`}>
+                                             {statsFailed}
                                          </span>
-                                         <span className="text-[10px] text-gray-500 uppercase">Failed</span>
+                                         <span className="text-[9px] text-gray-500 uppercase">Failed</span>
+                                     </div>
+                                     <div className="bg-gray-800/50 p-2 rounded-lg border border-gray-700/50 flex flex-col items-center" title="Waiting for Enrichment">
+                                         <span className="text-lg font-bold text-gray-500">{waitingForEnrichment}</span>
+                                         <span className="text-[9px] text-gray-600 uppercase flex items-center gap-1">
+                                             <FileQuestion size={8} /> Wait
+                                         </span>
                                      </div>
                                  </div>
 
-                                 {embeddingStats.failed > 0 && retryFailedEmbeddings && (
+                                 {statsFailed > 0 && retryFailedEmbeddings && (
                                      <button 
                                         onClick={retryFailedEmbeddings}
                                         className="w-full mt-2 flex items-center justify-center gap-2 text-xs py-1.5 bg-red-900/20 hover:bg-red-900/30 text-red-400 border border-red-900/50 rounded-lg transition-colors"
@@ -194,7 +214,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                                      </button>
                                  )}
 
-                                 {embeddingStats.pending === 0 && embeddingStats.failed === 0 && embeddingStats.completed > 0 && (
+                                 {statsPending === 0 && statsFailed === 0 && waitingForEnrichment === 0 && statsReady > 0 && (
                                      <div className="flex items-center gap-1.5 text-[10px] text-green-500/80 justify-center bg-green-900/10 py-1 rounded-md">
                                          <CheckCircle2 size={10} />
                                          All memories indexed

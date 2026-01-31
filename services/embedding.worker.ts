@@ -1,7 +1,7 @@
 import { pipeline, env } from '@xenova/transformers';
 import { db, ProcessingQueueItem } from './db';
 import { extractTextFromPDF, extractTextFromImage } from './fileProcessor';
-import { create, insert, search, SearchResult } from '@orama/orama';
+import { create, insert, search, remove, SearchResult } from '@orama/orama';
 
 // Declare self for TypeScript in Worker environment
 declare const self: DedicatedWorkerGlobalScope;
@@ -17,8 +17,8 @@ const getPipeline = async () => {
     // Notify start of download
     self.postMessage({ type: 'MODEL_STATUS', payload: 'downloading' });
     try {
-        // Switched to bge-small-en-v1.5 for better accuracy (~30-40MB)
-        embeddingPipeline = await pipeline('feature-extraction', 'Xenova/bge-small-en-v1.5', {
+        // Switched to bge-base-en-v1.5 (~110MB) for superior accuracy
+        embeddingPipeline = await pipeline('feature-extraction', 'Xenova/bge-base-en-v1.5', {
             progress_callback: (data: any) => {
                 if (data.status === 'progress') {
                     self.postMessage({ type: 'MODEL_DOWNLOAD_PROGRESS', payload: data });
@@ -43,19 +43,34 @@ const initOrama = async () => {
       schema: {
         id: 'string',
         text: 'string',
-        embedding: 'vector[384]', // bge-small-en-v1.5 also uses 384 dimensions
-        metadata: 'json'
+        embedding: 'vector[768]', // bge-base-en-v1.5 uses 768 dimensions
+        originalId: 'string',
+        chunkIndex: 'number'
       }
     });
     // Load existing vectors from Dexie into Orama on startup
     const vectors = await db.vectors.toArray();
+    const invalidIds: string[] = [];
+    
     for (const v of vectors) {
-        await insert(oramaDb, {
-            id: v.id,
-            text: v.extractedText,
-            embedding: v.vector,
-            metadata: v.metadata
-        });
+        if (v.vector.length === 768) {
+             await insert(oramaDb, {
+                id: v.id,
+                text: v.extractedText,
+                embedding: v.vector,
+                originalId: v.metadata?.originalId || v.originalId || "", 
+                chunkIndex: v.metadata?.chunkIndex || 0
+            });
+        } else {
+            // Detected old/incompatible vector dimension
+            invalidIds.push(v.id);
+        }
+    }
+    
+    // Auto-cleanup incompatible vectors
+    if (invalidIds.length > 0) {
+        console.log(`[RAG] Removing ${invalidIds.length} incompatible vectors (wrong dimension).`);
+        await db.vectors.bulkDelete(invalidIds);
     }
   }
   return oramaDb;
@@ -71,8 +86,6 @@ const broadcastStats = async () => {
         .count();
         
     // Count actual embedded notes (unique by originalId)
-    // Dexie's uniqueKeys returns an array of primary keys or index keys. 
-    // uniqueKeys() on an index returns unique values of that index.
     const uniqueIds = await db.vectors.orderBy('originalId').uniqueKeys();
     const completed = uniqueIds.length;
 
@@ -164,14 +177,47 @@ const handleEmbedding = async (item: ProcessingQueueItem) => {
     const MAX_CHARS = 1000; 
     const chunks = text.match(new RegExp(`.{1,${MAX_CHARS}}`, 'g')) || [text];
 
+    // Remove existing vectors for this note from Orama (in-memory) to prevent duplicates
+    // Dexie overwrite handles persistence, but Orama throws on duplicate ID.
+    // Since we chunk, IDs are noteId_0, noteId_1.
+    // If we re-embed, we might have fewer or more chunks.
+    // It's safer to try removing possible existing chunks first or just catching the error?
+    // Orama remove requires ID.
+    // Since we don't know exactly how many chunks existed before in Orama (it's in-memory),
+    // and we just reloaded from Dexie... 
+    // Actually, `queueMemoriesForEmbedding` in storageService clears Dexie vectors.
+    // But `initOrama` loads from Dexie.
+    // If `handleEmbedding` runs, it means we are processing a queue item.
+    // If `storageService` cleared Dexie, then `initOrama` won't load them on NEXT init.
+    // But if `initOrama` was ALREADY initialized, it still has the old vectors in memory!
+    // We MUST remove them from Orama index too.
+    
+    // We can use `remove` by ID. But we need to know the IDs.
+    // We can search by `originalId` if Orama supports where clause in remove (it usually requires ID).
+    // Alternatively, we iterate and try remove `noteId_0`, `noteId_1`... until failure?
+    // Or we simply catch the insert error and ignore (if it exists, maybe it's fine? No, content might have changed).
+    // If content changed, we want to update.
+    // Orama `insert` throws if ID exists. `update` or `upsert` might be available?
+    // `insert` is strict.
+    // I will use a loop to try removing potential old chunks `noteId_0` to `noteId_100` (safe upper bound or until error).
+    
+    for (let j = 0; j < 50; j++) { // Heuristic cleanup
+        try {
+            await remove(odb, `${item.noteId}_${j}`);
+        } catch (e) {
+            // Ignore if not found
+        }
+    }
+
     for (let i = 0; i < chunks.length; i++) {
         const chunk = chunks[i];
         const output = await pipe(chunk, { pooling: 'mean', normalize: true });
         const embedding = Array.from(output.data) as number[];
+        const vectorId = `${item.noteId}_${i}`;
 
         // Store in Dexie (Persistent)
         await db.vectors.put({
-            id: `${item.noteId}_${i}`,
+            id: vectorId,
             originalId: item.noteId,
             vector: embedding,
             extractedText: chunk,
@@ -179,12 +225,31 @@ const handleEmbedding = async (item: ProcessingQueueItem) => {
         });
 
         // Insert into Orama (In-Memory Search)
-        await insert(odb, {
-            id: `${item.noteId}_${i}`,
-            text: chunk,
-            embedding: embedding,
-            metadata: { originalId: item.noteId, chunkIndex: i }
-        });
+        // Check if exists to be safe? (Race condition if we didn't remove above)
+        // If we removed above, we should be fine.
+        try {
+            await insert(odb, {
+                id: vectorId,
+                text: chunk,
+                embedding: embedding,
+                originalId: item.noteId,
+                chunkIndex: i
+            });
+        } catch (e: any) {
+             // If duplicate, try removing and inserting again (Upsert logic)
+             if (e.message?.includes('already exists')) {
+                 await remove(odb, vectorId);
+                 await insert(odb, {
+                    id: vectorId,
+                    text: chunk,
+                    embedding: embedding,
+                    originalId: item.noteId,
+                    chunkIndex: i
+                });
+             } else {
+                 throw e;
+             }
+        }
     }
 
     await db.processingQueue.update(item.id!, { status: 'completed' });
@@ -218,7 +283,10 @@ self.onmessage = async (e) => {
             id: hit.id,
             text: hit.document.text,
             score: hit.score,
-            metadata: hit.document.metadata
+            metadata: {
+                originalId: hit.document.originalId,
+                chunkIndex: hit.document.chunkIndex
+            }
         }));
 
         self.postMessage({ type: 'SEARCH_RESULTS', payload: results, queryId: queryId });

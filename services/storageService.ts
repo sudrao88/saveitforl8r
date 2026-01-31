@@ -52,10 +52,6 @@ const rehydrateMemory = async (stored: StoredMemory): Promise<Memory> => {
         timestamp: stored.timestamp,
         ...decrypted // Spread decrypted fields (content, tags, etc.)
       };
-      
-      // Check if embedded (async check might be too heavy here for list views, 
-      // typically we load this flag separately or rely on UI to not show it in list)
-      // For now, we won't block rehydration on DB check.
       return mem;
     } catch (e) {
       console.error(`Failed to decrypt memory ${stored.id}`, e);
@@ -92,12 +88,44 @@ const queueMemoriesForEmbedding = async (memories: Memory[]) => {
             console.error(`[RAG] Error clearing vectors for ${memory.id}`, e);
         }
 
-        // Text Content
+        // Construct Rich Text Payload for Context Embedding
+        let textPayload = "";
+        
+        // 1. User Content
         if (memory.content) {
+            textPayload += `CONTENT: ${memory.content}\n`;
+        }
+        
+        // 2. Enrichment Data
+        if (memory.enrichment) {
+            if (memory.enrichment.summary) {
+                textPayload += `SUMMARY: ${memory.enrichment.summary}\n`;
+            }
+            if (memory.enrichment.visualDescription) {
+                textPayload += `VISUAL DESCRIPTION: ${memory.enrichment.visualDescription}\n`;
+            }
+            if (memory.enrichment.suggestedTags && memory.enrichment.suggestedTags.length > 0) {
+                textPayload += `TAGS: ${memory.enrichment.suggestedTags.join(', ')}\n`;
+            }
+            if (memory.enrichment.locationContext?.name) {
+                textPayload += `LOCATION: ${memory.enrichment.locationContext.name}\n`;
+            }
+            if (memory.enrichment.entityContext?.title) {
+                textPayload += `ENTITY: ${memory.enrichment.entityContext.title}\n`;
+            }
+        }
+        
+        // 3. User Tags
+        if (memory.tags && memory.tags.length > 0) {
+             textPayload += `USER TAGS: ${memory.tags.join(', ')}\n`;
+        }
+
+        // Queue the rich text payload
+        if (textPayload.trim().length > 0) {
             queueItems.push({
                 noteId: memory.id,
                 type: 'text',
-                contentOrPath: memory.content,
+                contentOrPath: textPayload.trim(),
                 retryCount: 0,
                 status: 'pending_embedding',
                 timestamp: Date.now()
@@ -183,12 +211,6 @@ export const saveMemory = async (memory: Memory): Promise<void> => {
 
   // RAG Integration: Queue ONLY if enriched
   if (sensitiveData.enrichment) {
-      // We pass the full memory because queueMemoriesForEmbedding expects it
-      // But we need to make sure we don't accidentally pass stale data. 
-      // 'memory' arg is the latest state.
-      // Fire and forget the queueing to not block UI save? 
-      // Better to await to ensure data integrity or catch errors.
-      // But we wrap in try/catch in helper.
       await queueMemoriesForEmbedding([memory]);
   }
   
@@ -257,16 +279,6 @@ export const reconcileEmbeddings = async () => {
     const embeddedIds = new Set(await db.vectors.orderBy('originalId').uniqueKeys());
 
     // Get all IDs currently in queue (pending OR failed)
-    // If failed, we might want to retry automatically during reconciliation?
-    // The requirement says: "attempt to do the embeddings if it had failed previously"
-    // So if it is in queue but 'failed', we should probably re-queue it (or reset status).
-    // But queueMemoriesForEmbedding adds NEW items. 
-    // If we simply re-add, we might have duplicates in queue?
-    // queueMemoriesForEmbedding doesn't check if already in queue.
-    
-    // Let's check which ones are NOT embedded AND NOT in pending queue.
-    // If it is in 'failed' state in queue, we should probably pick it up too?
-    // Let's get IDs of items that are 'pending_...'.
     const pendingIds = new Set(
         await db.processingQueue
             .where('status').anyOf('pending_extraction', 'pending_embedding')
@@ -294,9 +306,7 @@ export const reconcileEmbeddings = async () => {
     
     if (toQueue.length > 0) {
         console.log(`[RAG] Reconciling: Found ${toQueue.length} notes needing embedding.`);
-        // We should first clear any 'failed' or stale queue items for these notes to avoid duplicates?
-        // queueMemoriesForEmbedding just appends.
-        // Let's clean up queue for these IDs first.
+        // Clean up queue for these IDs first.
         const idsToQueue = toQueue.map(m => m.id);
         await db.processingQueue.where('noteId').anyOf(idsToQueue).delete();
         

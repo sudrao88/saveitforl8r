@@ -240,6 +240,9 @@ const AppContent: React.FC = () => {
     });
   }, [filteredMemories]);
 
+  // Calculate active memories count for stats
+  const activeMemoryCount = useMemo(() => memories.filter(m => !m.isDeleted).length, [memories]);
+
   if (isLoading) {
     return (
         <div className="fixed inset-0 bg-gray-900 z-[9999] flex flex-col items-center justify-center">
@@ -281,7 +284,7 @@ const AppContent: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-900 flex flex-col">
       <InstallPrompt />
-      <div className="sticky top-0 z-30 bg-gray-900/90 backdrop-blur-md border-b border-gray-800">
+      <div className="sticky top-0 z-30 bg-gray-900/90 backdrop-blur-md border-b border-gray-800 pt-[env(safe-area-inset-top)]">
           <TopNavigation 
             setView={handleSetView} 
             resetFilters={handleResetFilters} 
@@ -338,7 +341,7 @@ const AppContent: React.FC = () => {
       {/* Full-Screen Memory Detail */}
       {expandedMemory && (
         <div className="fixed inset-0 z-[100] bg-gray-950/90 backdrop-blur-md flex flex-col animate-in fade-in duration-300">
-          <div className="sticky top-0 z-10 px-4 py-3 border-b border-gray-800 flex items-center justify-between bg-gray-950/50 backdrop-blur-xl">
+          <div className="sticky top-0 z-10 px-4 py-3 border-b border-gray-800 flex items-center justify-between bg-gray-950/50 backdrop-blur-xl pt-[env(safe-area-inset-top)]">
              <div className="flex items-center gap-3">
                 <button onClick={() => setExpandedMemory(null)} className="p-2 -ml-2 rounded-full hover:bg-gray-800 text-gray-400 hover:text-white transition-colors">
                     <X size={24} />
@@ -368,7 +371,7 @@ const AppContent: React.FC = () => {
       {/* Attachment Viewer Overlay */}
       {viewingAttachment && (
         <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-md flex flex-col animate-in fade-in zoom-in-95 duration-200">
-           <div className="flex items-center justify-between px-4 py-3 bg-black/50 border-b border-white/10">
+           <div className="flex items-center justify-between px-4 py-3 bg-black/50 border-b border-white/10 pt-[env(safe-area-inset-top)]">
               <div className="flex items-center gap-3">
                  <button onClick={() => setViewingAttachment(null)} className="p-2 -ml-2 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition-colors">
                     <X size={24} />
@@ -436,6 +439,7 @@ const AppContent: React.FC = () => {
             retryDownload={retryDownload}
             embeddingStats={embeddingStats}
             retryFailedEmbeddings={retryFailedEmbeddings}
+            totalMemories={activeMemoryCount} // Pass the count
         />
       )}
 
