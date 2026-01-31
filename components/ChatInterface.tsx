@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Send, BrainCircuit, ExternalLink, Bot, Sparkles, WifiOff, Key } from 'lucide-react';
+import { X, Send, BrainCircuit, ExternalLink, Bot, Sparkles, WifiOff, Key, Download, FileText } from 'lucide-react';
 import { Memory, Attachment } from '../types';
 import MemoryCard from './MemoryCard';
 
@@ -7,7 +7,6 @@ interface ChatInterfaceProps {
   memories: Memory[];
   onClose: () => void;
   searchFunction: (query: string, memories: Memory[]) => Promise<{ mode: string; result: any; error?: any }>;
-  onViewAttachment?: (attachment: Attachment) => void;
 }
 
 interface Message {
@@ -18,11 +17,12 @@ interface Message {
   missingKey?: boolean;
 }
 
-const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, searchFunction, onViewAttachment }) => {
+const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, searchFunction }) => {
   const [query, setQuery] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const [previewMemoryId, setPreviewMemoryId] = useState<string | null>(null);
+  const [viewingAttachment, setViewingAttachment] = useState<Attachment | null>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -110,7 +110,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
                   : "I couldn't find any notes. Add your Gemini API Key in Settings for smarter search.";
           }
           
-          // Extract unique IDs from metadata.originalId or id
           const sourceIds = Array.from(new Set(items.map((item: any) => 
             item.metadata?.originalId || item.id
           ))) as string[];
@@ -290,7 +289,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
                   <MemoryCard 
                     memory={previewMemory} 
                     isDialog={true} 
-                    onViewAttachment={onViewAttachment} 
+                    onViewAttachment={setViewingAttachment} 
                   />
                   <button 
                     onClick={() => setPreviewMemoryId(null)}
@@ -300,6 +299,60 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
                   </button>
               </div>
           </div>
+      )}
+
+      {/* Attachment Viewer */}
+      {viewingAttachment && (
+        <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-md flex flex-col animate-in fade-in zoom-in-95 duration-200">
+           <div className="flex items-center justify-between px-4 py-3 bg-black/50 border-b border-white/10 pt-[env(safe-area-inset-top)]">
+              <div className="flex items-center gap-3">
+                 <button onClick={() => setViewingAttachment(null)} className="p-2 -ml-2 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition-colors">
+                    <X size={24} />
+                 </button>
+                 <span className="text-sm font-medium text-gray-200 truncate max-w-[200px] sm:max-w-md">{viewingAttachment.name}</span>
+              </div>
+              <a 
+                href={viewingAttachment.data} 
+                download={viewingAttachment.name}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all"
+              >
+                 <Download size={14} /> Download
+              </a>
+           </div>
+           
+           <div className="flex-1 flex items-center justify-center p-4 overflow-hidden">
+              {viewingAttachment.type === 'image' ? (
+                 <img 
+                    src={viewingAttachment.data} 
+                    alt={viewingAttachment.name} 
+                    className="max-w-full max-h-full object-contain shadow-2xl rounded-lg animate-in zoom-in-90 duration-300"
+                 />
+              ) : viewingAttachment.mimeType === 'application/pdf' ? (
+                 <iframe 
+                    src={viewingAttachment.data} 
+                    className="w-full h-full rounded-lg bg-white shadow-2xl border-none"
+                    title={viewingAttachment.name}
+                 />
+              ) : (
+                 <div className="bg-gray-900 border border-gray-800 p-8 rounded-2xl flex flex-col items-center gap-4 text-center max-w-sm">
+                    <div className="w-16 h-16 bg-gray-800 rounded-2xl flex items-center justify-center">
+                       <FileText size={32} className="text-blue-400" />
+                    </div>
+                    <div>
+                       <h3 className="text-gray-100 font-bold mb-1">{viewingAttachment.name}</h3>
+                       <p className="text-gray-400 text-xs">Preview not available for this file type.</p>
+                    </div>
+                    <a 
+                        href={viewingAttachment.data} 
+                        download={viewingAttachment.name}
+                        className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold transition-all shadow-lg"
+                    >
+                        Download to View
+                    </a>
+                 </div>
+              )}
+           </div>
+        </div>
       )}
     </div>
     </>

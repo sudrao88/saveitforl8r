@@ -4,6 +4,24 @@ const timestamp = Date.now();
 
 export const SAMPLE_MEMORIES: Memory[] = [
   {
+    id: 'sample-ai',
+    timestamp: timestamp - 2000,
+    content: 'AI Powered',
+    tags: ['AI', 'Gemini', 'Context'],
+    isSample: true,
+    enrichment: {
+      summary: 'AI adds context to your memories and helps you find them later by searching in natural language.',
+      locationIsRelevant: false,
+      suggestedTags: ['AI', 'Gemini'],
+      entityContext: {
+        type: 'Sample',
+        title: 'Contextual Recall',
+        subtitle: 'Powered by Gemini',
+        description: 'AI adds context to your memories, making them richer. It also helps you find memories from the past by asking questions in natural language.'
+      }
+    }
+  },
+  {
     id: 'sample-offline',
     timestamp: timestamp,
     content: 'Offline Access',
@@ -36,24 +54,6 @@ export const SAMPLE_MEMORIES: Memory[] = [
         title: 'Private & Secure',
         subtitle: 'Encrypted Local Storage',
         description: 'Your data lives in your browser. We use advanced encryption to ensure only you can access your memories. Clear your cache only if you have a backup!'
-      }
-    }
-  },
-  {
-    id: 'sample-ai',
-    timestamp: timestamp - 2000,
-    content: 'AI Powered',
-    tags: ['AI', 'Gemini', 'Context'],
-    isSample: true,
-    enrichment: {
-      summary: 'Gemini AI automatically tags and summarizes your memories, making them easier to find later through chat or search.',
-      locationIsRelevant: false,
-      suggestedTags: ['AI', 'Gemini'],
-      entityContext: {
-        type: 'Sample',
-        title: 'Contextual Recall',
-        subtitle: 'Powered by Gemini',
-        description: 'Don\'t just search for keywords. Chat with your memories! Ask "What book did I want to buy?" and let the AI find the answer for you.'
       }
     }
   }
