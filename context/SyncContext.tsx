@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useState, useCallback, ReactNode, useRef, useEffect } from 'react';
-import { getMemories, saveMemory, deleteMemory } from '../services/storageService';
+import { getMemories, saveMemory, deleteMemory, reconcileEmbeddings } from '../services/storageService';
 import { 
     listAllFiles, 
     downloadFileContent, 
@@ -194,6 +194,10 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                     console.log('--- [Sync] Mode: DELTA (Snapshot Diff) ---');
                     await doDeltaSync(JSON.parse(previousSnapshotJSON));
                 }
+                
+                // Trigger RAG reconciliation after any successful sync
+                reconcileEmbeddings().catch(e => console.error("[Sync] RAG Reconciliation failed:", e));
+                
                 resolve();
             } catch (e: any) {
                 console.error('[Sync] Sync process failed:', e);
