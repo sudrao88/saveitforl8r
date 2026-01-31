@@ -21,6 +21,7 @@ import { useSync } from './hooks/useSync';
 import { useAuth } from './hooks/useAuth';
 import { useOnboarding } from './hooks/useOnboarding';
 import { useAdaptiveSearch } from './hooks/useAdaptiveSearch';
+import { useHotkeys } from './hooks/useHotkeys';
 import { SyncProvider } from './context/SyncContext';
 import { reconcileEmbeddings, ReconcileReport } from './services/storageService';
 import { ViewMode, Memory, Attachment } from './types';
@@ -218,6 +219,12 @@ const AppContent: React.FC = () => {
     setIsSettingsOpen(false); 
     setIsApiKeyModalOpen(true);
   }, [setIsSettingsOpen]);
+
+  useHotkeys({
+    'Mod+k': () => setIsCaptureOpen(true),
+    'Mod+f': () => setView(ViewMode.RECALL),
+    'Mod+,': () => setIsSettingsOpen(true),
+  });
 
   const displayMemories = useMemo(() => {
     const active = filteredMemories.filter(m => !m.isDeleting);
