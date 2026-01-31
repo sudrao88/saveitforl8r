@@ -41,7 +41,7 @@ const AppContent: React.FC = () => {
   const { sync, isSyncing, syncError } = useSync();
   const { authStatus, login, unlink } = useAuth();
 
-  const { modelStatus, downloadProgress, retryDownload, search, embeddingStats, retryFailedEmbeddings } = useAdaptiveSearch();
+  const { modelStatus, downloadProgress, retryDownload, search, embeddingStats, retryFailedEmbeddings, deleteNoteFromIndex, lastError } = useAdaptiveSearch();
 
   const {
     memories,
@@ -185,9 +185,10 @@ const AppContent: React.FC = () => {
 
   const handleDeleteMemory = useCallback((id: string) => {
     handleDelete(id);
+    deleteNoteFromIndex(id); // Notify RAG worker
     logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_DELETED);
     if (expandedMemory?.id === id) setExpandedMemory(null);
-  }, [handleDelete, expandedMemory]);
+  }, [handleDelete, expandedMemory, deleteNoteFromIndex]);
 
   const handleRetryMemory = useCallback((id: string) => {
     handleRetry(id);
@@ -276,6 +277,7 @@ const AppContent: React.FC = () => {
             memories={displayMemories}
             onClose={handleChatClose}
             searchFunction={search}
+            onViewAttachment={setViewingAttachment}
           />
         </ErrorBoundary>
      );
@@ -439,7 +441,8 @@ const AppContent: React.FC = () => {
             retryDownload={retryDownload}
             embeddingStats={embeddingStats}
             retryFailedEmbeddings={retryFailedEmbeddings}
-            totalMemories={activeMemoryCount} // Pass the count
+            totalMemories={activeMemoryCount}
+            lastError={lastError}
         />
       )}
 

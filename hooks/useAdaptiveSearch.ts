@@ -25,6 +25,7 @@ export const useAdaptiveSearch = () => {
   const [modelStatus, setModelStatus] = useState<ModelStatus>('idle');
   const [downloadProgress, setDownloadProgress] = useState<any>(null);
   const [embeddingStats, setEmbeddingStats] = useState<EmbeddingStats>({ pending: 0, failed: 0, completed: 0 });
+  const [lastError, setLastError] = useState<string | null>(null);
   
   const workerRef = useRef<Worker | null>(null);
   const searchResolvers = useRef<Map<string, (results: any) => void>>(new Map());
@@ -36,11 +37,21 @@ export const useAdaptiveSearch = () => {
         type: 'module'
       });
 
+      // Handle Worker Errors (e.g. initialization failure, OOM)
+      workerRef.current.onerror = (err) => {
+          console.error("Worker Error:", err);
+          setModelStatus('error');
+          setLastError(err.message || "Unknown Worker Error");
+      };
+
       workerRef.current.onmessage = (e) => {
         const { type, payload, queryId, error } = e.data;
 
         if (type === 'MODEL_STATUS') {
           setModelStatus(payload);
+          if (payload === 'error' && error) {
+              setLastError(error.message || String(error));
+          }
         } else if (type === 'MODEL_DOWNLOAD_PROGRESS') {
           setDownloadProgress(payload);
         } else if (type === 'STATS_UPDATE') {
@@ -114,7 +125,6 @@ export const useAdaptiveSearch = () => {
         const results = await promise;
         setIsSearching(false);
         
-        // Return distinct mode if falling back due to missing key
         return { 
             mode: (isOnline && !hasKey) ? 'offline_no_key' : 'offline', 
             result: results 
@@ -128,11 +138,16 @@ export const useAdaptiveSearch = () => {
   }, [isOnline, modelStatus]);
 
   const retryDownload = () => {
+       setLastError(null); // Clear error on retry
        workerRef.current?.postMessage({ type: 'CHECK_MODEL_STATUS' });
   };
 
   const retryFailedEmbeddings = () => {
        workerRef.current?.postMessage({ type: 'RETRY_FAILED' });
+  };
+
+  const deleteNoteFromIndex = (noteId: string) => {
+       workerRef.current?.postMessage({ type: 'DELETE_NOTE', payload: { noteId } });
   };
 
   return {
@@ -143,6 +158,8 @@ export const useAdaptiveSearch = () => {
     downloadProgress,
     retryDownload,
     embeddingStats,
-    retryFailedEmbeddings
+    retryFailedEmbeddings,
+    deleteNoteFromIndex,
+    lastError
   };
 };

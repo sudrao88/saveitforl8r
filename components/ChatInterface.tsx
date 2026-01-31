@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Send, BrainCircuit, ExternalLink, Bot, Sparkles, WifiOff, Key } from 'lucide-react';
-import { Memory } from '../types';
+import { Memory, Attachment } from '../types';
 import MemoryCard from './MemoryCard';
 
 interface ChatInterfaceProps {
   memories: Memory[];
   onClose: () => void;
   searchFunction: (query: string, memories: Memory[]) => Promise<{ mode: string; result: any; error?: any }>;
+  onViewAttachment?: (attachment: Attachment) => void;
 }
 
 interface Message {
@@ -17,7 +18,7 @@ interface Message {
   missingKey?: boolean;
 }
 
-const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, searchFunction }) => {
+const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, searchFunction, onViewAttachment }) => {
   const [query, setQuery] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
@@ -286,7 +287,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
             onClick={() => setPreviewMemoryId(null)}
           >
               <div className="relative w-full max-w-lg animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
-                  <MemoryCard memory={previewMemory} isDialog={true} />
+                  <MemoryCard 
+                    memory={previewMemory} 
+                    isDialog={true} 
+                    onViewAttachment={onViewAttachment} 
+                  />
                   <button 
                     onClick={() => setPreviewMemoryId(null)}
                     className="mt-4 w-full py-3 bg-gray-800 text-white rounded-xl font-bold shadow-xl border border-gray-700 text-sm"
