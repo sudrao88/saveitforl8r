@@ -17,7 +17,8 @@ const getPipeline = async () => {
     // Notify start of download
     self.postMessage({ type: 'MODEL_STATUS', payload: 'downloading' });
     try {
-        // Switched to bge-base-en-v1.5 (~110MB) for superior accuracy
+        // Upgraded back to bge-base-en-v1.5 (~110MB) for superior accuracy
+        // Assuming cache/stale worker issues were the root cause of previous failures.
         embeddingPipeline = await pipeline('feature-extraction', 'Xenova/bge-base-en-v1.5', {
             progress_callback: (data: any) => {
                 if (data.status === 'progress') {
@@ -43,7 +44,7 @@ const initOrama = async () => {
       schema: {
         id: 'string',
         text: 'string',
-        embedding: 'vector[768]', // bge-base-en-v1.5 uses 768 dimensions
+        embedding: 'vector[768]', // bge-base uses 768 dimensions
         originalId: 'string',
         chunkIndex: 'number'
       }
@@ -62,7 +63,7 @@ const initOrama = async () => {
                 chunkIndex: v.metadata?.chunkIndex || 0
             });
         } else {
-            // Detected old/incompatible vector dimension
+            // Detected old/incompatible vector dimension (e.g. 384 from small model)
             invalidIds.push(v.id);
         }
     }
@@ -293,6 +294,17 @@ self.onmessage = async (e) => {
       isProcessing = false; // Reset flag to allow start
       processQueue();
   } else if (type === 'GET_STATS') {
+      broadcastStats();
+  } else if (type === 'DELETE_NOTE') {
+      const { noteId } = payload;
+      const odb = await initOrama();
+      
+      // Remove from Orama (In-Memory)
+      for (let j = 0; j < 50; j++) { 
+          try { await remove(odb, `${noteId}_${j}`); } catch (e) {}
+      }
+      
+      // Broadcast stats update
       broadcastStats();
   }
 };

@@ -171,9 +171,14 @@ export const queryBrain = async (query: string, memories: Memory[]): Promise<{ a
   const ai = getAiClient();
   const contextBlock = memories.filter(m => !m.isPending && !m.processingError).map(m => `
     [ID: ${m.id}] [DATE: ${new Date(m.timestamp).toLocaleDateString()}]
-    [CONTENT]: ${m.content} [SUMMARY]: ${m.enrichment?.summary}
+    [CONTENT]: ${m.content} 
+    [SUMMARY]: ${m.enrichment?.summary}
+    [VISUAL DESCRIPTION]: ${m.enrichment?.visualDescription || "N/A"}
+    [TAGS]: ${(m.tags || []).concat(m.enrichment?.suggestedTags || []).join(', ')}
     [PLACE]: ${m.enrichment?.locationContext?.name || "N/A"}
     [ENTITY]: ${m.enrichment?.entityContext?.title || "N/A"} (${m.enrichment?.entityContext?.type || ""})
+    [SUBTITLE]: ${m.enrichment?.entityContext?.subtitle || "N/A"}
+    [DESCRIPTION]: ${m.enrichment?.entityContext?.description || "N/A"}
     [ATTACHMENTS]: ${(m.attachments || []).map(a => a.name).join(', ')}
   `).join("\n---\n");
 

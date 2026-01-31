@@ -25,8 +25,9 @@ export class AppDatabase extends Dexie {
 
   constructor() {
     super('SaveItForL8rRAG');
-    this.version(1).stores({
-      vectors: 'id, originalId', // Index originalId
+    // Bump version to 2 to ensure originalId index is created on existing clients
+    this.version(2).stores({
+      vectors: 'id, originalId', 
       processingQueue: '++id, noteId, status, timestamp'
     });
   }

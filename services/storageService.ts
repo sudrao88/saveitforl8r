@@ -110,8 +110,21 @@ const queueMemoriesForEmbedding = async (memories: Memory[]) => {
             if (memory.enrichment.locationContext?.name) {
                 textPayload += `LOCATION: ${memory.enrichment.locationContext.name}\n`;
             }
-            if (memory.enrichment.entityContext?.title) {
-                textPayload += `ENTITY: ${memory.enrichment.entityContext.title}\n`;
+            
+            // Comprehensive Entity Context
+            if (memory.enrichment.entityContext) {
+                if (memory.enrichment.entityContext.type) {
+                    textPayload += `TYPE: ${memory.enrichment.entityContext.type}\n`;
+                }
+                if (memory.enrichment.entityContext.title) {
+                    textPayload += `ENTITY: ${memory.enrichment.entityContext.title}\n`;
+                }
+                if (memory.enrichment.entityContext.subtitle) {
+                    textPayload += `SUBTITLE: ${memory.enrichment.entityContext.subtitle}\n`;
+                }
+                if (memory.enrichment.entityContext.description) {
+                    textPayload += `DESCRIPTION: ${memory.enrichment.entityContext.description}\n`;
+                }
             }
         }
         
@@ -318,4 +331,99 @@ export const reconcileEmbeddings = async () => {
   } catch (error) {
       console.error("[RAG] Reconciliation failed:", error);
   }
+};
+
+export const factoryReset = async () => {
+    try {
+        console.log("Starting Factory Reset...");
+        
+        // 0. Close Dexie connection to release locks
+        try {
+            db.close();
+        } catch (e) { console.error("Error closing DB", e); }
+
+        // 1. Unregister Service Workers
+        if ('serviceWorker' in navigator) {
+            const registrations = await navigator.serviceWorker.getRegistrations();
+            for (const registration of registrations) {
+                await registration.unregister();
+            }
+        }
+
+        // 2. Clear Cache Storage (Crucial for removing stale assets/workers)
+        if ('caches' in window) {
+            const keys = await caches.keys();
+            await Promise.all(keys.map(key => caches.delete(key)));
+        }
+
+        // 3. Clear LocalStorage
+        localStorage.clear();
+
+        // 4. Delete IndexedDBs with "Clear Store" fallback
+        const dbsToReset = [
+            { name: 'SaveItForL8rDB', stores: ['memories'] },
+            { name: 'SaveItForL8rRAG', stores: ['vectors', 'processingQueue'] },
+            { name: 'auth_db', stores: ['tokens'] },
+            { name: 'saveitforl8r-share', stores: ['shares'] }
+        ];
+
+        for (const dbConfig of dbsToReset) {
+            const dbName = dbConfig.name;
+            try {
+                // Try clearing stores first (doesn't require exclusive lock)
+                const reqOpen = indexedDB.open(dbName);
+                await new Promise((resolve) => {
+                    reqOpen.onsuccess = (e) => {
+                        const dbConn = (e.target as IDBOpenDBRequest).result;
+                        const existingStores = Array.from(dbConn.objectStoreNames);
+                        if (existingStores.length > 0) {
+                            try {
+                                const tx = dbConn.transaction(existingStores, 'readwrite');
+                                tx.oncomplete = () => {
+                                    dbConn.close();
+                                    resolve(null);
+                                };
+                                tx.onerror = () => {
+                                    dbConn.close();
+                                    resolve(null);
+                                };
+                                existingStores.forEach(store => {
+                                    if (dbConfig.stores.includes(store)) {
+                                        tx.objectStore(store).clear();
+                                    }
+                                });
+                            } catch (err) {
+                                dbConn.close();
+                                resolve(null);
+                            }
+                        } else {
+                            dbConn.close();
+                            resolve(null);
+                        }
+                    };
+                    reqOpen.onerror = () => resolve(null);
+                });
+
+                // Then try deleting the DB
+                const reqDelete = indexedDB.deleteDatabase(dbName);
+                await new Promise((resolve) => {
+                    reqDelete.onsuccess = resolve;
+                    reqDelete.onerror = resolve; 
+                    reqDelete.onblocked = () => {
+                        console.warn(`DB deletion blocked: ${dbName}. Stores cleared as fallback.`);
+                        resolve(null);
+                    };
+                });
+            } catch (e) {
+                console.error(`Failed to reset DB ${dbName}`, e);
+            }
+        }
+
+        // 5. Force Reload with Cache Busting
+        console.log("Reset complete. Reloading...");
+        window.location.href = window.location.origin + '/?reset=' + Date.now();
+    } catch (error) {
+        console.error("Factory Reset Failed:", error);
+        alert("Reset failed. Please clear browser data manually.");
+    }
 };
