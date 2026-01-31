@@ -150,6 +150,10 @@ export const useAdaptiveSearch = () => {
        workerRef.current?.postMessage({ type: 'DELETE_NOTE', payload: { noteId } });
   };
 
+  const closeWorkerDB = () => {
+       workerRef.current?.postMessage({ type: 'CLOSE_DB' });
+  };
+
   return {
     search,
     isOnline,
@@ -160,6 +164,7 @@ export const useAdaptiveSearch = () => {
     embeddingStats,
     retryFailedEmbeddings,
     deleteNoteFromIndex,
+    closeWorkerDB,
     lastError
   };
 };

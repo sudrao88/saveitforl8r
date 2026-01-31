@@ -17,9 +17,8 @@ const getPipeline = async () => {
     // Notify start of download
     self.postMessage({ type: 'MODEL_STATUS', payload: 'downloading' });
     try {
-        // Upgraded back to bge-base-en-v1.5 (~110MB) for superior accuracy
-        // Assuming cache/stale worker issues were the root cause of previous failures.
-        embeddingPipeline = await pipeline('feature-extraction', 'Xenova/bge-base-en-v1.5', {
+        // Switched to bge-small-en-v1.5 (~33MB) for iOS stability
+        embeddingPipeline = await pipeline('feature-extraction', 'Xenova/bge-small-en-v1.5', {
             progress_callback: (data: any) => {
                 if (data.status === 'progress') {
                     self.postMessage({ type: 'MODEL_DOWNLOAD_PROGRESS', payload: data });
@@ -44,7 +43,7 @@ const initOrama = async () => {
       schema: {
         id: 'string',
         text: 'string',
-        embedding: 'vector[768]', // bge-base uses 768 dimensions
+        embedding: 'vector[384]', // bge-small uses 384 dimensions
         originalId: 'string',
         chunkIndex: 'number'
       }
@@ -54,7 +53,7 @@ const initOrama = async () => {
     const invalidIds: string[] = [];
     
     for (const v of vectors) {
-        if (v.vector.length === 768) {
+        if (v.vector.length === 384) {
              await insert(oramaDb, {
                 id: v.id,
                 text: v.extractedText,
@@ -63,14 +62,14 @@ const initOrama = async () => {
                 chunkIndex: v.metadata?.chunkIndex || 0
             });
         } else {
-            // Detected old/incompatible vector dimension (e.g. 384 from small model)
+            // Detected old/incompatible vector dimension
             invalidIds.push(v.id);
         }
     }
     
     // Auto-cleanup incompatible vectors
     if (invalidIds.length > 0) {
-        console.log(`[RAG] Removing ${invalidIds.length} incompatible vectors (wrong dimension).`);
+        console.log(`[RAG] Removing ${invalidIds.length} incompatible vectors.`);
         await db.vectors.bulkDelete(invalidIds);
     }
   }
@@ -78,22 +77,25 @@ const initOrama = async () => {
 };
 
 const broadcastStats = async () => {
-    const pending = await db.processingQueue
-        .where('status').anyOf('pending_extraction', 'pending_embedding')
-        .count();
-    
-    const failed = await db.processingQueue
-        .where('status').equals('failed')
-        .count();
+    try {
+        const pending = await db.processingQueue
+            .where('status').anyOf('pending_extraction', 'pending_embedding')
+            .count();
         
-    // Count actual embedded notes (unique by originalId)
-    const uniqueIds = await db.vectors.orderBy('originalId').uniqueKeys();
-    const completed = uniqueIds.length;
+        const failed = await db.processingQueue
+            .where('status').equals('failed')
+            .count();
+            
+        const uniqueIds = await db.vectors.orderBy('originalId').uniqueKeys();
+        const completed = uniqueIds.length;
 
-    self.postMessage({
-        type: 'STATS_UPDATE',
-        payload: { pending, failed, completed }
-    });
+        self.postMessage({
+            type: 'STATS_UPDATE',
+            payload: { pending, failed, completed }
+        });
+    } catch (e) {
+        console.error("[Worker] Stats broadcast failed", e);
+    }
 };
 
 let queueTimeout: any = null;
@@ -115,7 +117,7 @@ const processQueue = async () => {
 
     if (pendingItems.length === 0) {
         isProcessing = false;
-        queueTimeout = setTimeout(processQueue, 5000); // Poll every 5s if empty
+        queueTimeout = setTimeout(processQueue, 5000); 
         return;
     }
 
@@ -123,23 +125,22 @@ const processQueue = async () => {
 
     try {
         if (item.status === 'pending_extraction') {
-        await handleExtraction(item);
+            await handleExtraction(item);
         } else if (item.status === 'pending_embedding') {
-        await handleEmbedding(item);
+            await handleEmbedding(item);
         }
     } catch (error: any) {
         console.error(`Error processing item ${item.noteId}:`, error);
         await db.processingQueue.update(item.id!, {
-        retryCount: (item.retryCount || 0) + 1,
-        error: error.message
+            retryCount: (item.retryCount || 0) + 1,
+            error: error.message
         });
 
         if ((item.retryCount || 0) >= 3) {
-        await db.processingQueue.update(item.id!, { status: 'failed' });
+            await db.processingQueue.update(item.id!, { status: 'failed' });
         }
     }
 
-    // Process next immediately
     isProcessing = false;
     queueTimeout = setTimeout(processQueue, 100);
 
@@ -173,18 +174,15 @@ const handleEmbedding = async (item: ProcessingQueueItem) => {
     const odb = await initOrama();
     
     const text = item.contentOrPath as string;
-    
-    // Chunking if necessary
-    const MAX_CHARS = 1000; 
-    const chunks = text.match(new RegExp(`.{1,${MAX_CHARS}}`, 'g')) || [text];
+    const chunks = text.match(new RegExp(`.{1,1000}`, 'g')) || [text];
 
-    // Remove existing vectors for this note from Orama (in-memory) to prevent duplicates
-    for (let j = 0; j < 50; j++) { // Heuristic cleanup
+    // Optimized cleanup: stop at first missing chunk
+    let j = 0;
+    while (j < 50) {
         try {
             await remove(odb, `${item.noteId}_${j}`);
-        } catch (e) {
-            // Ignore if not found
-        }
+            j++;
+        } catch (e) { break; }
     }
 
     for (let i = 0; i < chunks.length; i++) {
@@ -193,7 +191,6 @@ const handleEmbedding = async (item: ProcessingQueueItem) => {
         const embedding = Array.from(output.data) as number[];
         const vectorId = `${item.noteId}_${i}`;
 
-        // Store in Dexie (Persistent)
         await db.vectors.put({
             id: vectorId,
             originalId: item.noteId,
@@ -202,7 +199,6 @@ const handleEmbedding = async (item: ProcessingQueueItem) => {
             metadata: { originalId: item.noteId, chunkIndex: i }
         });
 
-        // Insert into Orama (In-Memory Search)
         try {
             await insert(odb, {
                 id: vectorId,
@@ -212,19 +208,10 @@ const handleEmbedding = async (item: ProcessingQueueItem) => {
                 chunkIndex: i
             });
         } catch (e: any) {
-             // If duplicate, try removing and inserting again (Upsert logic)
              if (e.message?.includes('already exists')) {
                  await remove(odb, vectorId);
-                 await insert(odb, {
-                    id: vectorId,
-                    text: chunk,
-                    embedding: embedding,
-                    originalId: item.noteId,
-                    chunkIndex: i
-                });
-             } else {
-                 throw e;
-             }
+                 await insert(odb, { id: vectorId, text: chunk, embedding, originalId: item.noteId, chunkIndex: i });
+             } else { throw e; }
         }
     }
 
@@ -242,16 +229,12 @@ self.onmessage = async (e) => {
         const pipe = await getPipeline();
         const output = await pipe(query, { pooling: 'mean', normalize: true });
         const queryEmbedding = Array.from(output.data) as number[];
-        
         const odb = await initOrama();
         
         const searchResult = await search(odb, {
-            mode: 'hybrid', // Hybrid search: Vector + Full Text
-            term: query,    // Full Text Keyword
-            vector: {
-                value: queryEmbedding,
-                property: 'embedding'
-            },
+            mode: 'hybrid', 
+            term: query,
+            vector: { value: queryEmbedding, property: 'embedding' },
             similarity: threshold, 
             limit: limit
         });
@@ -260,52 +243,36 @@ self.onmessage = async (e) => {
             id: hit.id,
             text: hit.document.text,
             score: hit.score,
-            metadata: {
-                originalId: hit.document.originalId,
-                chunkIndex: hit.document.chunkIndex
-            }
+            metadata: { originalId: hit.document.originalId, chunkIndex: hit.document.chunkIndex }
         }));
-
         self.postMessage({ type: 'SEARCH_RESULTS', payload: results, queryId: queryId });
-
     } catch (err) {
-        console.error("Search error", err);
         self.postMessage({ type: 'SEARCH_ERROR', error: err, queryId: queryId });
     }
   } else if (type === 'CHECK_MODEL_STATUS') {
-      if (embeddingPipeline) {
-          self.postMessage({ type: 'MODEL_STATUS', payload: 'ready' });
-      } else {
-          // Trigger load
-          getPipeline().catch(() => {});
-      }
+      if (embeddingPipeline) self.postMessage({ type: 'MODEL_STATUS', payload: 'ready' });
+      else getPipeline().catch(() => {});
   } else if (type === 'RETRY_FAILED') {
       await db.processingQueue.where('status').equals('failed').modify((item: any) => {
           item.retryCount = 0;
-          // Determine status based on type and content
-          if (item.type !== 'text' && item.contentOrPath instanceof Blob) {
-             item.status = 'pending_extraction';
-          } else {
-             item.status = 'pending_embedding';
-          }
+          item.status = (item.type !== 'text' && item.contentOrPath instanceof Blob) ? 'pending_extraction' : 'pending_embedding';
       });
-      // Force wake up
       if (queueTimeout) clearTimeout(queueTimeout);
-      isProcessing = false; // Reset flag to allow start
+      isProcessing = false;
       processQueue();
   } else if (type === 'GET_STATS') {
       broadcastStats();
   } else if (type === 'DELETE_NOTE') {
       const { noteId } = payload;
       const odb = await initOrama();
-      
-      // Remove from Orama (In-Memory)
-      for (let j = 0; j < 50; j++) { 
-          try { await remove(odb, `${noteId}_${j}`); } catch (e) {}
+      let j = 0;
+      while (j < 50) {
+          try { await remove(odb, `${noteId}_${j}`); j++; } catch (e) { break; }
       }
-      
-      // Broadcast stats update
       broadcastStats();
+  } else if (type === 'CLOSE_DB') {
+      db.close();
+      self.postMessage({ type: 'DB_CLOSED' });
   }
 };
 
