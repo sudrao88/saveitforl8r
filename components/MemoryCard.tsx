@@ -15,6 +15,25 @@ interface MemoryCardProps {
   onAddApiKey?: () => void;
 }
 
+// Convert plain-text URLs into clickable <a> tags, skipping URLs already inside anchors.
+const linkifyHtml = (html: string): string => {
+    const urlRegex = /(https?:\/\/[^\s<>"')\]]+)/g;
+    const parts = html.split(/(<[^>]+>)/g);
+
+    let insideAnchor = false;
+    return parts.map(part => {
+        if (part.startsWith('<')) {
+            if (/^<a[\s>]/i.test(part)) insideAnchor = true;
+            if (/^<\/a>/i.test(part)) insideAnchor = false;
+            return part;
+        }
+        if (insideAnchor) return part;
+        return part.replace(urlRegex,
+            '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-blue-400 underline break-all">$1</a>'
+        );
+    }).join('');
+};
+
 const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUpdate, onExpand, onViewAttachment, onTogglePin, isDialog, hasApiKey = true, onAddApiKey }) => {
   const [isConfirming, setIsConfirming] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -167,7 +186,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                 prose-p:my-1 prose-headings:mb-1 prose-headings:mt-3 prose-headings:text-gray-100 prose-ul:my-1
                 ${memory.content.length < 80 ? 'text-base' : 'text-sm'}
             `}
-            dangerouslySetInnerHTML={{ __html: memory.content }}
+            dangerouslySetInnerHTML={{ __html: linkifyHtml(memory.content) }}
           />
       );
   };
