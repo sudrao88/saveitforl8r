@@ -6,7 +6,8 @@ import {
     downloadFileContent, 
     uploadFile, 
     findFileByName,
-    isLinked as checkIsLinked
+    isLinked as checkIsLinked,
+    deleteRemoteNote // Added for remote deletion
 } from '../services/googleDriveService';
 import { Memory } from '../types';
 import { useAuth } from '../hooks/useAuth';
@@ -65,27 +66,52 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, []);
 
   const reconcileItem = useCallback(async (id: string, local: Memory | undefined, remoteFile: any | undefined) => {
+      // Skip sample memories or memories pending/erroring with AI processing
       if (local?.isSample || (!local && id.startsWith('sample-')) || (local && (local.isPending || local.processingError))) return;
+
       try {
-        if (local && !remoteFile) {
-            await uploadFile(`${id}.json`, local);
-        } else if (!local && remoteFile) {
-            const content = await downloadFileContent(remoteFile.id);
-            if (!content.isDeleted) await saveMemory(content);
-        } else if (local && remoteFile) {
-            const remoteContent = await downloadFileContent(remoteFile.id);
-            if (remoteContent.timestamp > local.timestamp) {
-                if (remoteContent.isDeleted) await deleteMemory(id);
-                else await saveMemory(remoteContent);
-            } else if (local.timestamp > remoteContent.timestamp) {
-                await uploadFile(`${id}.json`, local, remoteFile.id);
-            }
-        }
+          // --- NEW LOGIC: Handle local tombstones first ---
+          if (local?.isDeleted) {
+              console.log(`[Sync] Local tombstone detected for ${id}.`);
+              if (remoteFile) {
+                  // If a remote file exists, delete it from Google Drive
+                  console.log(`[Sync] Deleting remote file for local tombstone: ${id}`);
+                  await deleteRemoteNote(remoteFile.id);
+              }
+              // Always hard delete the local tombstone after attempting remote deletion
+              console.log(`[Sync] Hard deleting local tombstone: ${id}`);
+              await deleteMemory(id);
+              return; // Exit as deletion is handled
+          }
+          // --- END NEW LOGIC ---
+
+          if (local && !remoteFile) {
+              // Local exists, remote doesn't. Upload local (it's new or was modified offline).
+              await uploadFile(`${id}.json`, local);
+          } else if (!local && remoteFile) {
+              // Remote exists, local doesn't. Download remote.
+              const content = await downloadFileContent(remoteFile.id);
+              // Only save if the remote content itself isn't a tombstone (already remotely deleted)
+              if (!content.isDeleted) await saveMemory(content);
+          } else if (local && remoteFile) {
+              // Both exist. Compare timestamps for conflicts.
+              const remoteContent = await downloadFileContent(remoteFile.id);
+              if (remoteContent.timestamp > local.timestamp) {
+                  // Remote is newer. If remote is deleted, delete local. Else, update local.
+                  if (remoteContent.isDeleted) await deleteMemory(id);
+                  else await saveMemory(remoteContent);
+              } else if (local.timestamp > remoteContent.timestamp) {
+                  // Local is newer. Upload local. (Local isDeleted case already handled at the start)
+                  await uploadFile(`${id}.json`, local, remoteFile.id);
+              }
+              // If timestamps are equal, do nothing (assume they are identical or handled by previous snapshot logic)
+          }
       } catch (e) {
-          console.error(`[Sync] Error reconciling ${id}`, e);
+          console.error(`[Sync] Error reconciling item ${id}:`, e);
+          // Re-throw to allow higher-level sync process to catch and report errors
           throw e;
       }
-  }, []);
+  }, [deleteMemory, saveMemory, uploadFile, downloadFileContent, deleteRemoteNote]); // Added deleteRemoteNote to dependencies
 
   const doFullSync = useCallback(async () => {
     const localMemories = await getMemories();
@@ -120,13 +146,13 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const errors: string[] = [];
 
-    // 1. Remote changes
+    // 1. Remote changes (and new remote files)
     for (const [noteId, remoteFile] of currentRemoteMap.entries()) {
         if (!previousSnapshot[noteId] || previousSnapshot[noteId] !== remoteFile.modifiedTime) {
             try {
                 console.log(`[Sync-Delta] Remote change detected for ${noteId}`);
                 const local = await getMemories().then(m => m.find(mem => mem.id === noteId));
-                await reconcileItem(noteId, local, remoteFile);
+                await reconcileItem(noteId, local, remoteFile); // reconcileItem will handle if remote is a deletion
             } catch (e) {
                 errors.push(noteId);
             }
@@ -138,23 +164,31 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             try {
                 console.log(`[Sync-Delta] Remote deletion detected for ${noteId}`);
                 const local = await getMemories().then(m => m.find(mem => mem.id === noteId));
-                if (local) await deleteMemory(noteId);
+                // If local exists, it's either an active memory or a tombstone. 
+                // reconcileItem will handle the deletion if local isn't a tombstone, 
+                // or hard delete local if local IS a tombstone (and remote is gone).
+                await reconcileItem(noteId, local, undefined); 
             } catch (e) {
                 errors.push(noteId);
             }
         }
     }
 
-    // 3. Local changes
+    // 3. Local changes (new locals or local modifications)
+    // This will also catch local tombstones as they have updated timestamps and isDeleted=true
     const lastSyncTime = parseInt(localStorage.getItem(LAST_SYNC_KEY) || '0');
     const localMemories = await getMemories();
-    const unsyncedLocals = localMemories.filter(m => m.timestamp > lastSyncTime);
+    const unsyncedLocals = localMemories.filter(m => m.timestamp > lastSyncTime || m.isDeleted); // Ensure tombstones are included
     
     if (unsyncedLocals.length > 0) {
-        console.log(`[Sync-Delta] Found ${unsyncedLocals.length} potentially unsynced local changes.`);
+        console.log(`[Sync-Delta] Found ${unsyncedLocals.length} potentially unsynced local changes/deletions.`);
         for (const local of unsyncedLocals) {
             try {
-                await syncFileInternal(local);
+                // syncFileInternal will upload, reconcileItem will handle if it's a tombstone and needs remote deletion
+                // However, for tombstones, reconcileItem is more appropriate here as it performs remote deletion
+                // Let's modify this to use reconcileItem directly for better consistency.
+                const remoteFile = currentRemoteMap.get(local.id);
+                await reconcileItem(local.id, local, remoteFile);
             } catch (e) {
                  errors.push(local.id);
             }
@@ -167,7 +201,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     saveSnapshot(currentRemoteFiles);
     console.log('--- [Sync] Delta Sync Complete ---');
-  }, [reconcileItem, syncFileInternal, saveSnapshot]);
+  }, [reconcileItem, saveSnapshot]);
 
   const performSync = useCallback(async (forceFull = false) => {
     if (isSyncingRef.current || !checkIsLinked()) return;
@@ -225,7 +259,13 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       isSyncingRef.current = true; 
       try {
           await getAccessToken();
-          await syncFileInternal(memory);
+          // For single sync, if the memory is a tombstone, use reconcileItem to handle remote deletion
+          if (memory.isDeleted) {
+              const remoteFile = await findFileByName(`${memory.id}.json`);
+              await reconcileItem(memory.id, memory, remoteFile); 
+          } else {
+              await syncFileInternal(memory); // Existing logic for uploading/updating
+          }
       } catch (e: any) {
           console.error(`[Sync] Single sync failed for ${memory.id}:`, e);
           setSyncError('Failed to save changes to Drive.');
@@ -234,7 +274,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           setIsSyncing(false);
           isSyncingRef.current = false;
       }
-  }, [syncFileInternal, getAccessToken]);
+  }, [syncFileInternal, getAccessToken, reconcileItem]); // Added reconcileItem to dependencies
 
   // Clean up timer on unmount
   useEffect(() => {
