@@ -265,9 +265,12 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         throw new Error(`Failed to reconcile ${errors.length} items`);
     }
 
-    // Snapshot is only saved after a fully successful sync to avoid
-    // partial state that could cause data loss on the next sync.
-    saveSnapshot(remoteFiles);
+    // Re-fetch remote file listing AFTER plan execution so the snapshot
+    // reflects updated modifiedTime values for any files we uploaded/created.
+    // Without this, the snapshot is stale and the next sync re-downloads
+    // every file that was uploaded during this sync.
+    const updatedRemoteFiles = await listAllFiles();
+    saveSnapshot(updatedRemoteFiles);
     console.log('--- [Sync] Full Sync Complete ---');
   }, [saveSnapshot]);
 
@@ -364,7 +367,9 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         throw new Error(`Failed to sync ${errors.length} items`);
     }
 
-    saveSnapshot(remoteFiles);
+    // Re-fetch remote files for an accurate snapshot (same reasoning as doFullSync).
+    const updatedRemoteFiles = await listAllFiles();
+    saveSnapshot(updatedRemoteFiles);
     console.log('--- [Sync] Delta Sync Complete ---');
   }, [saveSnapshot]);
 
