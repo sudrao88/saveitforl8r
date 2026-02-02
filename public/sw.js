@@ -1,5 +1,5 @@
 // public/sw.js
-const CACHE_NAME = 'saveitforl8r-v20'; // Increment version to force update
+const CACHE_NAME = 'saveitforl8r-v22'; // Increment version to force update
 const SCOPE = '/';
 
 const PRECACHE_ASSETS = [

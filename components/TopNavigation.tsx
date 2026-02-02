@@ -1,7 +1,8 @@
 import React from 'react';
-import { Settings, Search, RefreshCw, AlertCircle } from 'lucide-react';
+import { Settings, Search, RefreshCw, AlertCircle, Download, AlertTriangle, Loader2 } from 'lucide-react';
 import { Logo } from './icons';
 import { ViewMode } from '../types';
+import { ModelStatus } from '../hooks/useAdaptiveSearch';
 
 interface TopNavigationProps {
   setView: (view: ViewMode) => void;
@@ -11,6 +12,7 @@ interface TopNavigationProps {
   onUpdateApp: () => void;
   syncError: boolean;
   isSyncing: boolean;
+  modelStatus: ModelStatus;
 }
 
 const TopNavigation: React.FC<TopNavigationProps> = ({ 
@@ -20,7 +22,8 @@ const TopNavigation: React.FC<TopNavigationProps> = ({
     updateAvailable,
     onUpdateApp,
     syncError,
-    isSyncing
+    isSyncing,
+    modelStatus
 }) => {
   return (
     <nav className="px-4 py-3 sm:px-8 flex justify-center">
@@ -64,13 +67,17 @@ const TopNavigation: React.FC<TopNavigationProps> = ({
           >
             {isSyncing ? (
                 <RefreshCw size={20} className="text-blue-400 animate-spin" />
+            ) : modelStatus === 'downloading' ? (
+                <Loader2 size={20} className="text-blue-400 animate-spin" />
             ) : syncError ? (
                 <AlertCircle size={20} className="text-red-500" />
+            ) : modelStatus === 'error' ? (
+                <AlertTriangle size={20} className="text-red-500" />
             ) : (
                 <Settings size={20} className="text-gray-500 group-hover:text-white" />
             )}
             
-            {syncError && !isSyncing && (
+            {(syncError || modelStatus === 'error') && !isSyncing && modelStatus !== 'downloading' && (
                 <span className="absolute -top-1 -right-1 flex h-3 w-3">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                     <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>

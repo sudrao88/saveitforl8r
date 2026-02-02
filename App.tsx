@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Plus, RefreshCw, AlertTriangle, X, Download, Maximize, Minimize } from 'lucide-react'; 
+import { Plus, RefreshCw, AlertTriangle, X, Download, Maximize, Minimize, FileText } from 'lucide-react'; 
 import MemoryCard from './components/MemoryCard';
 import ChatInterface from './components/ChatInterface';
 import TopNavigation from './components/TopNavigation';
@@ -10,6 +10,7 @@ import NewMemoryPage from './components/NewMemoryPage';
 import ApiKeyModal from './components/ApiKeyModal';
 import ShareOnboardingModal from './components/ShareOnboardingModal';
 import { InstallPrompt } from './components/InstallPrompt';
+import ErrorBoundary from './components/ErrorBoundary';
 import { Logo } from './components/icons';
 
 import { useMemories } from './hooks/useMemories';
@@ -20,7 +21,10 @@ import { useShareReceiver } from './hooks/useShareReceiver';
 import { useSync } from './hooks/useSync';
 import { useAuth } from './hooks/useAuth';
 import { useOnboarding } from './hooks/useOnboarding';
+import { useAdaptiveSearch } from './hooks/useAdaptiveSearch';
+import { useHotkeys } from './hooks/useHotkeys';
 import { SyncProvider } from './context/SyncContext';
+import { reconcileEmbeddings, ReconcileReport } from './services/storageService';
 import { ViewMode, Memory, Attachment } from './types';
 import { initGA, logPageView, logEvent } from './services/analytics';
 import { ANALYTICS_EVENTS } from './constants';
@@ -31,12 +35,15 @@ const AppContent: React.FC = () => {
   const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
   const [expandedMemory, setExpandedMemory] = useState<Memory | null>(null);
   const [viewingAttachment, setViewingAttachment] = useState<Attachment | null>(null);
+  const [reconcileReport, setReconcileReport] = useState<ReconcileReport | null>(null);
   
   const { updateAvailable, updateApp, appVersion } = useServiceWorker();
   const { shareData, clearShareData } = useShareReceiver();
   
   const { sync, isSyncing, syncError } = useSync();
   const { authStatus, login, unlink } = useAuth();
+
+  const { modelStatus, downloadProgress, retryDownload, search, embeddingStats, retryFailedEmbeddings, deleteNoteFromIndex, lastError, closeWorkerDB } = useAdaptiveSearch();
 
   const {
     memories,
@@ -45,22 +52,31 @@ const AppContent: React.FC = () => {
     handleRetry,
     createMemory,
     updateMemoryContent,
+    togglePin,
     isLoading
   } = useMemories();
 
+  const handleFullRefresh = useCallback(async () => {
+      await refreshMemories();
+      const report = await reconcileEmbeddings();
+      setReconcileReport(report);
+  }, [refreshMemories]);
+
   const syncRef = useRef(sync);
-  const refreshRef = useRef(refreshMemories);
+  const refreshRef = useRef(handleFullRefresh);
 
   useEffect(() => {
     syncRef.current = sync;
-    refreshRef.current = refreshMemories;
-  }, [sync, refreshMemories]);
+    refreshRef.current = handleFullRefresh;
+  }, [sync, handleFullRefresh]);
 
   const { isShareOnboardingOpen, closeOnboarding } = useOnboarding({ memories });
 
   useEffect(() => {
     initGA();
     logPageView('home');
+    
+    reconcileEmbeddings().then(setReconcileReport).catch(console.error);
     
     if (authStatus === 'linked') {
         syncRef.current().then(() => {
@@ -113,12 +129,6 @@ const AppContent: React.FC = () => {
     await Promise.allSettled(retryPromises);
   }, [saveKey, memories, handleRetry]);
 
-  const handleManualSync = useCallback((): void => {
-      syncRef.current().then(() => refreshRef.current()).catch(e => {
-          console.error("Manual sync error", e);
-      });
-  }, []);
-
   const handleCaptureClose = useCallback(() => {
     setIsCaptureOpen(false);
     logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_CAPTURE_CANCELLED);
@@ -169,14 +179,19 @@ const AppContent: React.FC = () => {
 
   const handleDeleteMemory = useCallback((id: string) => {
     handleDelete(id);
+    deleteNoteFromIndex(id); 
     logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_DELETED);
     if (expandedMemory?.id === id) setExpandedMemory(null);
-  }, [handleDelete, expandedMemory]);
+  }, [handleDelete, expandedMemory, deleteNoteFromIndex]);
 
   const handleRetryMemory = useCallback((id: string) => {
     handleRetry(id);
     logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_RETRIED);
   }, [handleRetry]);
+
+  const handleTogglePin = useCallback((id: string, isPinned: boolean) => {
+    togglePin(id, isPinned);
+  }, [togglePin]);
 
   const handleOpenCapture = useCallback(() => {
     setIsCaptureOpen(true);
@@ -194,21 +209,34 @@ const AppContent: React.FC = () => {
   }, [clearKey]);
 
   const handleImportSuccess = useCallback(() => {
-    refreshRef.current();
+    handleFullRefresh();
     logEvent(ANALYTICS_EVENTS.DATA.CATEGORY, ANALYTICS_EVENTS.DATA.ACTION_IMPORT_SUCCESS);
     if (authStatus === 'linked') {
-        syncRef.current().then(() => refreshRef.current());
+        syncRef.current().then(() => handleFullRefresh());
     } 
-  }, [authStatus]);
+  }, [authStatus, handleFullRefresh]);
 
   const handleAddApiKey = useCallback(() => {
     setIsSettingsOpen(false); 
     setIsApiKeyModalOpen(true);
   }, [setIsSettingsOpen]);
 
+  useHotkeys({
+    'Mod+k': () => setIsCaptureOpen(true),
+    'Mod+f': () => setView(ViewMode.RECALL),
+    'Mod+,': () => setIsSettingsOpen(true),
+  });
+
   const displayMemories = useMemo(() => {
-    return filteredMemories.filter(m => !m.isDeleting);
+    const active = filteredMemories.filter(m => !m.isDeleting);
+    return active.sort((a, b) => {
+      if (a.isPinned && !b.isPinned) return -1;
+      if (!a.isPinned && b.isPinned) return 1;
+      return 0; 
+    });
   }, [filteredMemories]);
+
+  const activeMemoryCount = useMemo(() => memories.filter(m => !m.isDeleted).length, [memories]);
 
   if (isLoading) {
     return (
@@ -235,17 +263,24 @@ const AppContent: React.FC = () => {
 
   if (view === ViewMode.RECALL) {
      return (
-        <ChatInterface 
-          memories={displayMemories} 
-          onClose={handleChatClose} 
-        />
+        <ErrorBoundary
+          fallbackTitle="Brain Search encountered an error"
+          fallbackMessage="The AI search feature hit an unexpected issue. Your memories are safe — try reloading."
+        >
+          <ChatInterface
+            memories={displayMemories}
+            onClose={handleChatClose}
+            searchFunction={search}
+            onViewAttachment={setViewingAttachment}
+          />
+        </ErrorBoundary>
      );
   }
 
   return (
     <div className="min-h-screen bg-gray-900 flex flex-col">
       <InstallPrompt />
-      <div className="sticky top-0 z-30 bg-gray-900/90 backdrop-blur-md border-b border-gray-800">
+      <div className="sticky top-0 z-30 bg-gray-900/90 backdrop-blur-md border-b border-gray-800 pt-[env(safe-area-inset-top)]">
           <TopNavigation 
             setView={handleSetView} 
             resetFilters={handleResetFilters} 
@@ -254,6 +289,7 @@ const AppContent: React.FC = () => {
             onUpdateApp={handleUpdateApp}
             syncError={!!syncError}
             isSyncing={isSyncing} 
+            modelStatus={modelStatus}
           />
 
           <FilterBar 
@@ -272,7 +308,7 @@ const AppContent: React.FC = () => {
           />
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {filteredMemories.map(mem => (
+            {displayMemories.map(mem => (
               <MemoryCard 
                 key={mem.id} 
                 memory={mem} 
@@ -281,6 +317,7 @@ const AppContent: React.FC = () => {
                 onUpdate={updateMemoryContent}
                 onExpand={setExpandedMemory}
                 onViewAttachment={setViewingAttachment}
+                onTogglePin={handleTogglePin}
                 hasApiKey={apiKeySet}
                 onAddApiKey={handleAddApiKey}
               />
@@ -297,10 +334,9 @@ const AppContent: React.FC = () => {
         <span className="font-bold text-lg">New</span>
       </button>
 
-      {/* Full-Screen Memory Detail */}
       {expandedMemory && (
         <div className="fixed inset-0 z-[100] bg-gray-950/90 backdrop-blur-md flex flex-col animate-in fade-in duration-300">
-          <div className="sticky top-0 z-10 px-4 py-3 border-b border-gray-800 flex items-center justify-between bg-gray-950/50 backdrop-blur-xl">
+          <div className="sticky top-0 z-10 px-4 py-3 border-b border-gray-800 flex items-center justify-between bg-gray-950/50 backdrop-blur-xl pt-[env(safe-area-inset-top)]">
              <div className="flex items-center gap-3">
                 <button onClick={() => setExpandedMemory(null)} className="p-2 -ml-2 rounded-full hover:bg-gray-800 text-gray-400 hover:text-white transition-colors">
                     <X size={24} />
@@ -317,6 +353,7 @@ const AppContent: React.FC = () => {
                     onRetry={handleRetryMemory}
                     onUpdate={updateMemoryContent}
                     onViewAttachment={setViewingAttachment}
+                    onTogglePin={handleTogglePin}
                     isDialog={true}
                     hasApiKey={apiKeySet}
                     onAddApiKey={handleAddApiKey}
@@ -326,10 +363,9 @@ const AppContent: React.FC = () => {
         </div>
       )}
 
-      {/* Attachment Viewer Overlay */}
       {viewingAttachment && (
         <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-md flex flex-col animate-in fade-in zoom-in-95 duration-200">
-           <div className="flex items-center justify-between px-4 py-3 bg-black/50 border-b border-white/10">
+           <div className="flex items-center justify-between px-4 py-3 bg-black/50 border-b border-white/10 pt-[env(safe-area-inset-top)]">
               <div className="flex items-center gap-3">
                  <button onClick={() => setViewingAttachment(null)} className="p-2 -ml-2 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition-colors">
                     <X size={24} />
@@ -380,7 +416,6 @@ const AppContent: React.FC = () => {
         </div>
       )}
 
-      {/* Settings Modal */}
       {isSettingsOpen && (
         <SettingsModal 
             onClose={handleSettingsClose}
@@ -390,12 +425,20 @@ const AppContent: React.FC = () => {
             appVersion={appVersion}
             hasApiKey={apiKeySet}
             onAddApiKey={handleAddApiKey}
-            syncError={!!syncError}
-            onSyncComplete={refreshMemories} 
+            syncError={syncError}
+            onSyncComplete={handleFullRefresh} 
+            modelStatus={modelStatus}
+            downloadProgress={downloadProgress}
+            retryDownload={retryDownload}
+            embeddingStats={embeddingStats}
+            retryFailedEmbeddings={retryFailedEmbeddings}
+            totalMemories={activeMemoryCount}
+            lastError={lastError}
+            closeWorkerDB={closeWorkerDB}
+            reconcileReport={reconcileReport}
         />
       )}
 
-      {/* API Key Modal */}
       {isApiKeyModalOpen && (
         <ApiKeyModal
             onClose={() => setIsApiKeyModalOpen(false)}
@@ -411,9 +454,11 @@ const AppContent: React.FC = () => {
 };
 
 const App = () => (
-    <SyncProvider>
-        <AppContent />
-    </SyncProvider>
+    <ErrorBoundary>
+      <SyncProvider>
+          <AppContent />
+      </SyncProvider>
+    </ErrorBoundary>
 );
 
 export default App;

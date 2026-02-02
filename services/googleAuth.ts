@@ -2,8 +2,12 @@
 import { generateCodeVerifier, generateCodeChallenge } from './pkce';
 import { storeTokens, getStoredToken, clearTokens } from './tokenService';
 
-const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '267358862238-5lur0dimfrek6ep3uv8dlj48q7dlh40l.apps.googleusercontent.com';
-const CLIENT_SECRET = import.meta.env.VITE_GOOGLE_CLIENT_SECRET; 
+const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+const CLIENT_SECRET = import.meta.env.VITE_GOOGLE_CLIENT_SECRET;
+
+if (!CLIENT_ID) {
+  console.warn('[Auth] VITE_GOOGLE_CLIENT_ID is not set. Google Drive sync will not work.');
+}
 const REDIRECT_URI = window.location.origin; 
 // Removed email and profile scopes as they are not needed for Refresh Token flow
 const SCOPES = 'https://www.googleapis.com/auth/drive.appdata'; 
