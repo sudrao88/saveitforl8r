@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Plus, RefreshCw, AlertTriangle, X, Download, Maximize, Minimize, FileText } from 'lucide-react'; 
+import { App as CapacitorApp } from '@capacitor/app';
+import { isNative } from './services/platform';
 import MemoryCard from './components/MemoryCard';
 import ChatInterface from './components/ChatInterface';
 import TopNavigation from './components/TopNavigation';
@@ -71,6 +73,21 @@ const AppContent: React.FC = () => {
 
   const { isShareOnboardingOpen, closeOnboarding } = useOnboarding({ memories });
 
+  // Move useSettings hook to be called before useEffect dependencies
+  const {
+    apiKeySet,
+    isSettingsOpen,
+    setIsSettingsOpen,
+    saveKey,
+    clearKey
+  } = useSettings();
+
+  const handleCaptureClose = useCallback(() => {
+    setIsCaptureOpen(false);
+    logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_CAPTURE_CANCELLED);
+    clearShareData();
+  }, [clearShareData]);
+
   useEffect(() => {
     initGA();
     logPageView('home');
@@ -84,7 +101,36 @@ const AppContent: React.FC = () => {
             console.error('[App] Initial sync failed:', err);
         });
     }
-  }, [authStatus]);
+
+    // Native Back Button Handling
+    if (isNative()) {
+      CapacitorApp.addListener('backButton', ({ canGoBack }) => {
+        if (viewingAttachment) {
+          setViewingAttachment(null);
+        } else if (expandedMemory) {
+          setExpandedMemory(null);
+        } else if (isApiKeyModalOpen) {
+          setIsApiKeyModalOpen(false);
+        } else if (isSettingsOpen) {
+          setIsSettingsOpen(false);
+        } else if (isCaptureOpen) {
+          handleCaptureClose();
+        } else if (view === ViewMode.RECALL) {
+          setView(ViewMode.FEED);
+        } else if (canGoBack) {
+          window.history.back();
+        } else {
+          CapacitorApp.exitApp();
+        }
+      });
+    }
+
+    return () => {
+        if(isNative()) {
+            CapacitorApp.removeAllListeners();
+        }
+    }
+  }, [authStatus, viewingAttachment, expandedMemory, isApiKeyModalOpen, isSettingsOpen, isCaptureOpen, view, handleCaptureClose]); // Added handleCaptureClose to dependencies
 
   useEffect(() => {
     if (shareData) {
@@ -93,14 +139,6 @@ const AppContent: React.FC = () => {
     }
   }, [shareData]);
 
-
-  const {
-    apiKeySet,
-    isSettingsOpen,
-    setIsSettingsOpen,
-    saveKey,
-    clearKey
-  } = useSettings();
 
   const {
     filterType,
@@ -127,12 +165,6 @@ const AppContent: React.FC = () => {
 
     await Promise.allSettled(retryPromises);
   }, [saveKey, memories, handleRetry]);
-
-  const handleCaptureClose = useCallback(() => {
-    setIsCaptureOpen(false);
-    logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_CAPTURE_CANCELLED);
-    clearShareData();
-  }, [clearShareData]);
 
   const handleCreateMemory = useCallback(async (text: string, attachments: any[], tags: string[], location?: { latitude: number; longitude: number }) => {
     await createMemory(text, attachments, tags, location);
@@ -322,7 +354,7 @@ const AppContent: React.FC = () => {
 
       <button 
         onClick={handleOpenCapture}
-        className="fixed bottom-6 right-4 sm:bottom-8 sm:right-8 z-20 h-14 sm:h-16 px-5 sm:px-7 bg-blue-600 text-white rounded-2xl flex items-center gap-3 shadow-2xl hover:bg-blue-700 hover:scale-105 active:scale-95 transition-all duration-300 shadow-blue-900/50"
+        className="fixed bottom-6 right-4 sm:bottom-8 sm:right-8 z-20 h-14 sm:h-16 px-5 sm:px-7 bg-blue-600 text-white rounded-2xl flex items-center gap-3 shadow-2xl hover:bg-blue-700 hover:scale-105 active:scale-95 transition-all duration-300 shadow-blue-900/50 pb-safe"
       >
         <Plus size={28} strokeWidth={3} />
         <span className="font-bold text-lg">New</span>

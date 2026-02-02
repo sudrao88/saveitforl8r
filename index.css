@@ -2,6 +2,10 @@
 
 :root {
   color-scheme: dark;
+  --sat: env(safe-area-inset-top);
+  --sar: env(safe-area-inset-right);
+  --sab: env(safe-area-inset-bottom);
+  --sal: env(safe-area-inset-left);
 }
 
 body {
@@ -14,6 +18,11 @@ body {
   background-color: #111827;
   color: #f3f4f6;
   overscroll-behavior-y: none; /* Prevent pull-to-refresh on mobile */
+  
+  padding-top: var(--sat);
+  padding-right: var(--sar);
+  padding-bottom: var(--sab);
+  padding-left: var(--sal);
 }
 
 /* Custom scrollbar for webkit */
@@ -58,6 +67,10 @@ body {
 /* Safe Area Utility for Mobile */
 .pb-safe {
     padding-bottom: env(safe-area-inset-bottom);
+}
+
+.pt-safe {
+    padding-top: env(safe-area-inset-top);
 }
 
 /* Animations */

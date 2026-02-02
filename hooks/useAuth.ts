@@ -9,12 +9,22 @@ import {
 } from '../services/googleDriveService';
 import { ANALYTICS_EVENTS } from '../constants';
 import { logEvent } from '../services/analytics';
+import { isNative } from '../services/platform';
 
 export type AuthStatus = 'unlinked' | 'linked' | 'authenticating' | 'error';
 
 export const useAuth = () => {
-  const [authStatus, setAuthStatus] = useState<AuthStatus>(checkIsLinked() ? 'linked' : 'unlinked');
+  const [authStatus, setAuthStatus] = useState<AuthStatus>('unlinked');
   const [authError, setAuthError] = useState<string | null>(null);
+
+  // Initialize auth status (async for native storage)
+  useEffect(() => {
+    const initStatus = async () => {
+        const linked = await checkIsLinked();
+        setAuthStatus(linked ? 'linked' : 'unlinked');
+    };
+    initStatus();
+  }, []);
 
   const handleLogin = useCallback(async () => {
     try {
@@ -29,8 +39,8 @@ export const useAuth = () => {
     }
   }, []);
 
-  const handleUnlink = useCallback(() => {
-    unlinkDrive();
+  const handleUnlink = useCallback(async () => {
+    await unlinkDrive();
     setAuthStatus('unlinked');
     logEvent(ANALYTICS_EVENTS.AUTH.CATEGORY, ANALYTICS_EVENTS.AUTH.ACTION_LOGOUT);
   }, []);
@@ -38,7 +48,10 @@ export const useAuth = () => {
   // Handle OAuth Callback
   useEffect(() => {
     const handleAuth = async () => {
-        if (window.location.search.includes('code=')) {
+        // Only run this logic on Web. Native auth flow is handled differently (in-app browser or deeplink)
+        // For now, assuming web-based redirect flow is used or native bridge handles it.
+        // If native requires App Links, we'd listen for appUrlOpen here.
+        if (!isNative() && window.location.search.includes('code=')) {
             console.log('[Auth] Processing OAuth callback...');
             setAuthStatus('authenticating');
             try {

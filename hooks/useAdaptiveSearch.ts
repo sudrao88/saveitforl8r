@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { queryBrain } from '../services/geminiService';
 import { Memory } from '../types';
 import { v4 as uuidv4 } from 'uuid';
+import { storage } from '../services/platform';
 
 export interface SearchResultItem {
   id: string;
@@ -96,7 +97,7 @@ export const useAdaptiveSearch = () => {
 
     setIsSearching(true);
 
-    const apiKey = localStorage.getItem('gemini_api_key');
+    const apiKey = await storage.get('gemini_api_key');
     const hasKey = !!apiKey;
 
     try {

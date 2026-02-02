@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Paperclip, FileText, X, Tag as TagIcon, Loader2, ArrowLeft, Bold, Italic, Underline, Heading1, Heading2, CheckSquare, Plus } from 'lucide-react';
 import { Attachment } from '../types';
+import { isNative } from '../services/platform';
+import { Keyboard } from '@capacitor/keyboard';
 
 interface NewMemoryPageProps {
   onClose: () => void;
@@ -43,6 +45,14 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, initia
   const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    // Ensure keyboard pushes content up on native
+    if (isNative()) {
+      Keyboard.setAccessoryBarVisible({ isVisible: true });
+      Keyboard.setScroll({ isDisabled: false });
+    }
+  }, []);
 
   // Initialize content ONLY once
   useEffect(() => {
@@ -281,9 +291,9 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, initia
   };
 
   return (
-    <div className="min-h-screen bg-gray-900 flex flex-col" dir="ltr">
+    <div className="min-h-screen bg-gray-900 flex flex-col pt-safe pb-safe" dir="ltr">
         {/* Header */}
-        <div className="sticky top-0 z-30 bg-gray-900/90 backdrop-blur-md border-b border-gray-800 px-4 py-3 flex items-center justify-between">
+        <div className="sticky top-0 z-30 bg-gray-900/90 backdrop-blur-md border-b border-gray-800 px-4 py-3 flex items-center justify-between pt-[calc(env(safe-area-inset-top)+12px)]">
             <div className="flex items-center gap-3">
                 <button 
                     onClick={handleClose} 

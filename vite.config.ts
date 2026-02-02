@@ -26,5 +26,8 @@ export default defineConfig(({ mode }) => {
         environment: 'jsdom',
         setupFiles: './setupTests.ts',
       },
+      build: {
+        outDir: 'dist', // Ensure this matches capacitor webDir
+      }
     };
 });

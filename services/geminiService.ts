@@ -1,11 +1,11 @@
-
 import { GoogleGenAI, Type, HarmCategory, HarmBlockThreshold } from "@google/genai";
 import { EnrichmentData, Memory, Attachment } from '../types.ts';
+import { storage } from './platform.ts';
 
-const getAiClient = () => {
+const getAiClient = async () => {
   // STRICT REQUIREMENT: Only use user-provided API key from storage.
   // Do NOT fallback to process.env.API_KEY
-  const apiKey = localStorage.getItem('gemini_api_key');
+  const apiKey = await storage.get('gemini_api_key');
   if (!apiKey) throw new Error("API Key not found in storage");
   return new GoogleGenAI({ apiKey });
 };
@@ -132,7 +132,7 @@ export const enrichInput = async (
   };
 
   try {
-    const ai = getAiClient();
+    const ai = await getAiClient();
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview', 
       contents: { parts },
@@ -168,7 +168,7 @@ export const enrichInput = async (
 };
 
 export const queryBrain = async (query: string, memories: Memory[]): Promise<{ answer: string; sourceIds: string[] }> => {
-  const ai = getAiClient();
+  const ai = await getAiClient();
   const contextBlock = memories.filter(m => !m.isPending && !m.processingError).map(m => `
     [ID: ${m.id}] [DATE: ${new Date(m.timestamp).toLocaleDateString()}]
     [CONTENT]: ${m.content} 

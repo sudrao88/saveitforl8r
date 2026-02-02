@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">saveitforl8r</string>
+    <string name="title_activity_main">saveitforl8r</string>
+    <string name="package_name">com.saveitforl8r.app</string>
+    <string name="custom_url_scheme">com.saveitforl8r.app</string>
+</resources>

@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getMemories, deleteMemory, saveMemory, getMemory } from '../services/storageService';
 import { enrichInput } from '../services/geminiService';
@@ -6,6 +5,7 @@ import { Memory, Attachment } from '../types';
 import { SAMPLE_MEMORIES } from '../services/sampleData';
 import { useSync } from './useSync';
 import { useAuth } from './useAuth';
+import { storage } from '../services/platform';
 
 export const useMemories = () => {
   const [memories, setMemories] = useState<Memory[]>([]);
@@ -19,13 +19,13 @@ export const useMemories = () => {
         const loaded = await getMemories();
         const activeMemories = loaded.filter(m => !m.isDeleted);
 
-        const samplesInitialized = localStorage.getItem('samples_initialized');
+        const samplesInitialized = await storage.get('samples_initialized');
         if (!samplesInitialized && loaded.length === 0) {
             console.log("Seeding sample memories...");
             for (const sample of SAMPLE_MEMORIES) {
                 await saveMemory(sample);
             }
-            localStorage.setItem('samples_initialized', 'true');
+            await storage.set('samples_initialized', 'true');
             setMemories([...SAMPLE_MEMORIES]);
             return;
         }
@@ -132,7 +132,7 @@ export const useMemories = () => {
     }
   }, [memories, trySyncFile]);
 
-  const createMemory = useCallback((
+  const createMemory = useCallback(async (
     text: string, 
     attachments: Attachment[], 
     tags: string[], 
@@ -142,7 +142,7 @@ export const useMemories = () => {
       const memoryId = crypto.randomUUID();
       const timestamp = Date.now();
       
-      const apiKey = localStorage.getItem('gemini_api_key');
+      const apiKey = await storage.get('gemini_api_key');
       const hasKey = !!apiKey && apiKey.trim().length > 0;
 
       const newMemory: Memory = {
@@ -246,13 +246,13 @@ export const useMemories = () => {
   }, [trySyncFile]);
 
   useEffect(() => {
-    const handleOnline = () => {
+    const handleOnline = async () => {
       console.log("App is back online.");
       // Trigger sync if linked
       if (authStatus === 'linked') sync();
 
       // Auto-retry enrichment for failed memories if API key exists
-      const apiKey = localStorage.getItem('gemini_api_key');
+      const apiKey = await storage.get('gemini_api_key');
       if (apiKey && apiKey.trim().length > 0) {
           const failures = memories.filter(m => m.processingError);
           if (failures.length > 0) {

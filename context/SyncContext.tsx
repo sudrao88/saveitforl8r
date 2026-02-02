@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useCallback, ReactNode, useRef, useEffect } from 'react';
 import { getMemories, saveMemory, deleteMemory, reconcileEmbeddings } from '../services/storageService';
 import { 
@@ -10,6 +9,7 @@ import {
 } from '../services/googleDriveService';
 import { Memory } from '../types';
 import { useAuth } from '../hooks/useAuth';
+import { storage } from '../services/platform';
 
 interface SyncContextType {
   isSyncing: boolean;
@@ -48,9 +48,10 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           // Update snapshot immediately
           const updatedFile = await findFileByName(filename);
           if (updatedFile) {
-              const snapshot = JSON.parse(localStorage.getItem(SNAPSHOT_KEY) || '{}');
+              const snapshotJSON = await storage.get(SNAPSHOT_KEY);
+              const snapshot = snapshotJSON ? JSON.parse(snapshotJSON) : {};
               snapshot[memory.id] = updatedFile.modifiedTime;
-              localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snapshot));
+              await storage.set(SNAPSHOT_KEY, JSON.stringify(snapshot));
           }
       } catch (e) {
           console.error(`[Sync] Internal sync failed for ${memory.id}:`, e);
@@ -58,10 +59,10 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
   }, []);
 
-  const saveSnapshot = useCallback((remoteFiles: any[]) => {
+  const saveSnapshot = useCallback(async (remoteFiles: any[]) => {
       const snapshot = Object.fromEntries(remoteFiles.map(f => [f.name.replace('.json', ''), f.modifiedTime]));
-      localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snapshot));
-      localStorage.setItem(LAST_SYNC_KEY, Date.now().toString());
+      await storage.set(SNAPSHOT_KEY, JSON.stringify(snapshot));
+      await storage.set(LAST_SYNC_KEY, Date.now().toString());
   }, []);
 
   const reconcileItem = useCallback(async (id: string, local: Memory | undefined, remoteFile: any | undefined) => {
@@ -110,7 +111,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         throw new Error(`Failed to reconcile ${errors.length} items`);
     }
 
-    saveSnapshot(remoteFiles);
+    await saveSnapshot(remoteFiles);
     console.log('--- [Sync] Full Sync Complete ---');
   }, [reconcileItem, saveSnapshot]);
 
@@ -146,7 +147,8 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
 
     // 3. Local changes
-    const lastSyncTime = parseInt(localStorage.getItem(LAST_SYNC_KEY) || '0');
+    const lastSyncTimeStr = await storage.get(LAST_SYNC_KEY);
+    const lastSyncTime = parseInt(lastSyncTimeStr || '0');
     const localMemories = await getMemories();
     const unsyncedLocals = localMemories.filter(m => m.timestamp > lastSyncTime);
     
@@ -165,12 +167,13 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         throw new Error(`Failed to sync ${errors.length} items`);
     }
 
-    saveSnapshot(currentRemoteFiles);
+    await saveSnapshot(currentRemoteFiles);
     console.log('--- [Sync] Delta Sync Complete ---');
   }, [reconcileItem, syncFileInternal, saveSnapshot]);
 
   const performSync = useCallback(async (forceFull = false) => {
-    if (isSyncingRef.current || !checkIsLinked()) return;
+    const isLinked = await checkIsLinked();
+    if (isSyncingRef.current || !isLinked) return;
     
     // Debounce check
     if (debounceTimerRef.current) {
@@ -185,7 +188,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             
             try {
                 await getAccessToken(); // Ensure token is valid
-                const previousSnapshotJSON = localStorage.getItem(SNAPSHOT_KEY);
+                const previousSnapshotJSON = await storage.get(SNAPSHOT_KEY);
 
                 if (forceFull || !previousSnapshotJSON) {
                     console.log('--- [Sync] Mode: FULL ---');
@@ -218,7 +221,8 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, [doFullSync, doDeltaSync, getAccessToken]);
 
   const performSingleSync = useCallback(async (memory: Memory) => {
-      if (isSyncingRef.current || !checkIsLinked()) return;
+      const isLinked = await checkIsLinked();
+      if (isSyncingRef.current || !isLinked) return;
       
       // We don't debounce single file syncs as strictly, but prevent overlap
       setIsSyncing(true);

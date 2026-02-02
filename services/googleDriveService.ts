@@ -1,6 +1,7 @@
 // services/googleDriveService.ts
 import { getAuthorizedFetch, getValidToken, initiateLogin, handleAuthCallback } from './googleAuth';
 import { clearTokens } from './tokenService';
+import { storage } from './platform';
 
 const G_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '267358862238-5lur0dimfrek6ep3uv8dlj48q7dlh40l.apps.googleusercontent.com';
 
@@ -15,14 +16,15 @@ interface DriveFile {
 export const loginToDrive = initiateLogin;
 export const processAuthCallback = handleAuthCallback;
 
-export const isLinked = () => {
-  return localStorage.getItem('gdrive_linked') === 'true';
+export const isLinked = async () => {
+  const linked = await storage.get('gdrive_linked');
+  return linked === 'true';
 };
 
 export const unlinkDrive = async () => {
   await clearTokens();
-  localStorage.removeItem('gdrive_linked');
-  localStorage.removeItem('gdrive_email');
+  await storage.remove('gdrive_linked');
+  await storage.remove('gdrive_email');
 };
 
 const driveFetch = async (url: string, options: RequestInit = {}) => {
