@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import React from 'react';
 import { SyncProvider, useSync } from './SyncContext';
@@ -14,8 +14,11 @@ vi.mock('../services/storageService', () => ({
 vi.mock('../services/googleDriveService', () => ({
   listAllFiles: vi.fn().mockResolvedValue([]),
   downloadFileContent: vi.fn().mockResolvedValue({}),
+  downloadMultipleFiles: vi.fn().mockResolvedValue({ contents: new Map(), failures: [] }),
   uploadFile: vi.fn().mockResolvedValue({ id: 'file-1' }),
+  uploadMultipleFiles: vi.fn().mockResolvedValue({ failures: [] }),
   findFileByName: vi.fn().mockResolvedValue(null),
+  deleteFileById: vi.fn().mockResolvedValue(undefined),
   isLinked: vi.fn().mockReturnValue(true),
   deleteRemoteNote: vi.fn().mockResolvedValue(undefined),
 }));
@@ -89,22 +92,32 @@ describe('SyncContext', () => {
         await syncPromise!;
       });
 
-      expect(driveService.uploadFile).toHaveBeenCalledWith(
-        'local-1.json',
-        expect.objectContaining({ id: 'local-1' })
-      );
+      // Local-only note should be batch-uploaded via uploadMultipleFiles
+      expect(driveService.uploadMultipleFiles).toHaveBeenCalledWith([
+        expect.objectContaining({
+          filename: 'local-1.json',
+          content: expect.objectContaining({ id: 'local-1' }),
+        }),
+      ]);
     });
 
     it('should download remote-only memories to local', async () => {
-      (storageService.getMemories as any).mockResolvedValue([]);
-      (driveService.listAllFiles as any).mockResolvedValue([
-        { id: 'drive-file-1', name: 'remote-1.json', modifiedTime: '2024-01-01T00:00:00Z' },
-      ]);
-      (driveService.downloadFileContent as any).mockResolvedValue({
+      const remoteContent = {
         id: 'remote-1',
         content: 'Remote memory',
         timestamp: 2000,
         tags: [],
+      };
+
+      (storageService.getMemories as any).mockResolvedValue([]);
+      (driveService.listAllFiles as any).mockResolvedValue([
+        { id: 'drive-file-1', name: 'remote-1.json', modifiedTime: '2024-01-01T00:00:00Z' },
+      ]);
+      // downloadMultipleFiles returns a Map of fileId → content
+      const contentsMap = new Map([['drive-file-1', remoteContent]]);
+      (driveService.downloadMultipleFiles as any).mockResolvedValue({
+        contents: contentsMap,
+        failures: [],
       });
 
       const { result } = renderHook(() => useSync(), { wrapper });
@@ -119,7 +132,7 @@ describe('SyncContext', () => {
         await syncPromise!;
       });
 
-      expect(driveService.downloadFileContent).toHaveBeenCalledWith('drive-file-1');
+      expect(driveService.downloadMultipleFiles).toHaveBeenCalledWith(['drive-file-1']);
       expect(storageService.saveMemory).toHaveBeenCalledWith(
         expect.objectContaining({ id: 'remote-1' })
       );
@@ -133,7 +146,11 @@ describe('SyncContext', () => {
       (driveService.listAllFiles as any).mockResolvedValue([
         { id: 'drive-file-1', name: 'mem-1.json', modifiedTime: '2024-01-02T00:00:00Z' },
       ]);
-      (driveService.downloadFileContent as any).mockResolvedValue(remoteMem);
+      const contentsMap = new Map([['drive-file-1', remoteMem]]);
+      (driveService.downloadMultipleFiles as any).mockResolvedValue({
+        contents: contentsMap,
+        failures: [],
+      });
 
       const { result } = renderHook(() => useSync(), { wrapper });
 
@@ -158,7 +175,11 @@ describe('SyncContext', () => {
       (driveService.listAllFiles as any).mockResolvedValue([
         { id: 'drive-file-1', name: 'mem-1.json', modifiedTime: '2024-01-01T00:00:00Z' },
       ]);
-      (driveService.downloadFileContent as any).mockResolvedValue(remoteMem);
+      const contentsMap = new Map([['drive-file-1', remoteMem]]);
+      (driveService.downloadMultipleFiles as any).mockResolvedValue({
+        contents: contentsMap,
+        failures: [],
+      });
 
       const { result } = renderHook(() => useSync(), { wrapper });
 
@@ -172,10 +193,15 @@ describe('SyncContext', () => {
         await syncPromise!;
       });
 
-      expect(driveService.uploadFile).toHaveBeenCalledWith(
-        'mem-1.json',
-        localMem,
-        'drive-file-1'
+      // Local is newer → should be batch-uploaded with the Drive file ID for PATCH
+      expect(driveService.uploadMultipleFiles).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            filename: 'mem-1.json',
+            content: localMem,
+            existingFileId: 'drive-file-1',
+          }),
+        ])
       );
     });
 
@@ -187,7 +213,11 @@ describe('SyncContext', () => {
       (driveService.listAllFiles as any).mockResolvedValue([
         { id: 'drive-file-1', name: 'mem-1.json', modifiedTime: '2024-01-02T00:00:00Z' },
       ]);
-      (driveService.downloadFileContent as any).mockResolvedValue(deletedRemote);
+      const contentsMap = new Map([['drive-file-1', deletedRemote]]);
+      (driveService.downloadMultipleFiles as any).mockResolvedValue({
+        contents: contentsMap,
+        failures: [],
+      });
 
       const { result } = renderHook(() => useSync(), { wrapper });
 
@@ -202,6 +232,88 @@ describe('SyncContext', () => {
       });
 
       expect(storageService.deleteMemory).toHaveBeenCalledWith('mem-1');
+    });
+
+    it('should skip unchanged files when snapshot matches remote modifiedTime', async () => {
+      // Set up a snapshot where mem-1 has same modifiedTime as remote
+      const snapshot = { 'mem-1': '2024-01-01T00:00:00Z' };
+      localStorage.setItem('gdrive_remote_snapshot', JSON.stringify(snapshot));
+      localStorage.setItem('gdrive_last_sync_time', '5000'); // Last sync at t=5000
+
+      const localMem = { id: 'mem-1', content: 'Unchanged', timestamp: 1000, tags: [] };
+      (storageService.getMemories as any).mockResolvedValue([localMem]);
+      (driveService.listAllFiles as any).mockResolvedValue([
+        { id: 'drive-file-1', name: 'mem-1.json', modifiedTime: '2024-01-01T00:00:00Z' },
+      ]);
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      let syncPromise: Promise<void>;
+      await act(async () => {
+        syncPromise = result.current.sync(true);
+        vi.advanceTimersByTime(2500);
+      });
+
+      await act(async () => {
+        await syncPromise!;
+      });
+
+      // Should NOT download since snapshot matches → no network call for content
+      expect(driveService.downloadMultipleFiles).toHaveBeenCalledWith([]);
+      // Should NOT upload since local timestamp (1000) < lastSyncTime (5000)
+      expect(driveService.uploadMultipleFiles).toHaveBeenCalledWith([]);
+    });
+
+    it('should delete local note when remote was deleted by another device', async () => {
+      // Snapshot says mem-1 existed remotely
+      const snapshot = { 'mem-1': '2024-01-01T00:00:00Z' };
+      localStorage.setItem('gdrive_remote_snapshot', JSON.stringify(snapshot));
+      localStorage.setItem('gdrive_last_sync_time', '5000');
+
+      const localMem = { id: 'mem-1', content: 'Still here locally', timestamp: 1000, tags: [] };
+      (storageService.getMemories as any).mockResolvedValue([localMem]);
+      // Remote listing is empty — the file was deleted from Drive
+      (driveService.listAllFiles as any).mockResolvedValue([]);
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      let syncPromise: Promise<void>;
+      await act(async () => {
+        syncPromise = result.current.sync(true);
+        vi.advanceTimersByTime(2500);
+      });
+
+      await act(async () => {
+        await syncPromise!;
+      });
+
+      // Local copy should be deleted because another device removed it from Drive
+      expect(storageService.deleteMemory).toHaveBeenCalledWith('mem-1');
+    });
+
+    it('should handle local tombstones by deleting remote and hard-deleting local', async () => {
+      const tombstone = { id: 'del-1', content: '', timestamp: 2000, tags: [], isDeleted: true };
+      (storageService.getMemories as any).mockResolvedValue([tombstone]);
+      (driveService.listAllFiles as any).mockResolvedValue([
+        { id: 'drive-file-del', name: 'del-1.json', modifiedTime: '2024-01-01T00:00:00Z' },
+      ]);
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      let syncPromise: Promise<void>;
+      await act(async () => {
+        syncPromise = result.current.sync(true);
+        vi.advanceTimersByTime(2500);
+      });
+
+      await act(async () => {
+        await syncPromise!;
+      });
+
+      // Should delete the remote file by Drive file ID
+      expect(driveService.deleteFileById).toHaveBeenCalledWith('drive-file-del');
+      // Should hard-delete the local tombstone
+      expect(storageService.deleteMemory).toHaveBeenCalledWith('del-1');
     });
   });
 
@@ -245,6 +357,21 @@ describe('SyncContext', () => {
       });
 
       expect(driveService.uploadFile).not.toHaveBeenCalled();
+    });
+
+    it('should delete remote file and local tombstone on single sync of deleted memory', async () => {
+      const tombstone = { id: 'del-single', content: '', timestamp: 2000, tags: [], isDeleted: true };
+      (driveService.findFileByName as any).mockResolvedValue({ id: 'drive-del-single', name: 'del-single.json', modifiedTime: '2024-01-01T00:00:00Z' });
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      await act(async () => {
+        await result.current.syncFile(tombstone as any);
+      });
+
+      // Should use deleteFileById (not deleteRemoteNote) with the Drive file ID
+      expect(driveService.deleteFileById).toHaveBeenCalledWith('drive-del-single');
+      expect(storageService.deleteMemory).toHaveBeenCalledWith('del-single');
     });
   });
 
