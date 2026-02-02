@@ -8,6 +8,7 @@ vi.mock('../services/storageService', () => ({
   getMemories: vi.fn().mockResolvedValue([]),
   saveMemory: vi.fn().mockResolvedValue(undefined),
   deleteMemory: vi.fn().mockResolvedValue(undefined),
+  reconcileEmbeddings: vi.fn().mockResolvedValue({ total: 0, enriched: 0, toQueue: 0, alreadyIndexed: 0, pendingInQueue: 0, error: null, timestamp: Date.now() }),
 }));
 
 vi.mock('../services/googleDriveService', () => ({
@@ -16,6 +17,7 @@ vi.mock('../services/googleDriveService', () => ({
   uploadFile: vi.fn().mockResolvedValue({ id: 'file-1' }),
   findFileByName: vi.fn().mockResolvedValue(null),
   isLinked: vi.fn().mockReturnValue(true),
+  deleteRemoteNote: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../hooks/useAuth', () => ({
