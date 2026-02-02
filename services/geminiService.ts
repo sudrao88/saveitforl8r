@@ -1,5 +1,5 @@
 
-import { GoogleGenAI, Type, HarmCategory, HarmBlockThreshold } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 import { EnrichmentData, Memory, Attachment } from '../types.ts';
 
 const getAiClient = () => {
@@ -121,12 +121,7 @@ export const enrichInput = async (
 
   const config: any = {
       tools: [{ googleSearch: {} }],
-      safetySettings: [
-        { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-        { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
-        { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
-        { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-      ],
+      // Safety settings use Gemini API defaults (no explicit overrides)
       // OPTIMIZATION: Disable thinking process to minimize latency
       thinkingConfig: { thinkingBudget: 0 }
   };
@@ -187,15 +182,10 @@ export const queryBrain = async (query: string, memories: Memory[]): Promise<{ a
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: `CONTEXT:\n${contextBlock}\nQUERY: "${query}"`,
-      config: { 
-          systemInstruction, 
+      config: {
+          systemInstruction,
           temperature: 0.2,
-          safetySettings: [
-            { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-            { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
-            { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
-            { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-          ],
+          // Safety settings use Gemini API defaults (no explicit overrides)
           // OPTIMIZATION: Disable thinking process to minimize latency
           thinkingConfig: { thinkingBudget: 0 }
       }

@@ -10,6 +10,7 @@ import NewMemoryPage from './components/NewMemoryPage';
 import ApiKeyModal from './components/ApiKeyModal';
 import ShareOnboardingModal from './components/ShareOnboardingModal';
 import { InstallPrompt } from './components/InstallPrompt';
+import ErrorBoundary from './components/ErrorBoundary';
 import { Logo } from './components/icons';
 
 import { useMemories } from './hooks/useMemories';
@@ -235,10 +236,15 @@ const AppContent: React.FC = () => {
 
   if (view === ViewMode.RECALL) {
      return (
-        <ChatInterface 
-          memories={displayMemories} 
-          onClose={handleChatClose} 
-        />
+        <ErrorBoundary
+          fallbackTitle="Brain Search encountered an error"
+          fallbackMessage="The AI search feature hit an unexpected issue. Your memories are safe — try reloading."
+        >
+          <ChatInterface
+            memories={displayMemories}
+            onClose={handleChatClose}
+          />
+        </ErrorBoundary>
      );
   }
 
@@ -411,9 +417,11 @@ const AppContent: React.FC = () => {
 };
 
 const App = () => (
-    <SyncProvider>
-        <AppContent />
-    </SyncProvider>
+    <ErrorBoundary>
+      <SyncProvider>
+          <AppContent />
+      </SyncProvider>
+    </ErrorBoundary>
 );
 
 export default App;

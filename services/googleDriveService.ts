@@ -2,7 +2,7 @@
 import { getAuthorizedFetch, getValidToken, initiateLogin, handleAuthCallback } from './googleAuth';
 import { clearTokens } from './tokenService';
 
-const G_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '267358862238-5lur0dimfrek6ep3uv8dlj48q7dlh40l.apps.googleusercontent.com';
+// CLIENT_ID is managed in googleAuth.ts — no longer duplicated here
 
 interface DriveFile {
   id: string;
