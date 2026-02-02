@@ -90,21 +90,41 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const doFullSync = useCallback(async () => {
     const localMemories = await getMemories();
     const localMap = new Map(localMemories.map(m => [m.id, m]));
-    
+
     const remoteFiles = await listAllFiles();
     const remoteMap = new Map(remoteFiles.map(f => [f.name.replace('.json', ''), f]));
 
+    // Use existing snapshot to skip items whose remote modifiedTime hasn't changed
+    const previousSnapshot: Record<string, string> = JSON.parse(localStorage.getItem(SNAPSHOT_KEY) || '{}');
+
     const allIds = new Set([...localMap.keys(), ...remoteMap.keys()]);
-    
+
     const errors: string[] = [];
-    
+    let skipped = 0;
+    let downloadCount = 0;
+    let uploadCount = 0;
+
     for (const id of allIds) {
+        const local = localMap.get(id);
+        const remote = remoteMap.get(id);
+
+        // If both exist locally and remotely, and remote hasn't changed since last snapshot, skip
+        if (local && remote && previousSnapshot[id] && previousSnapshot[id] === remote.modifiedTime) {
+            skipped++;
+            continue;
+        }
+
+        if (!local && remote) downloadCount++;
+        else if (local && !remote) uploadCount++;
+
         try {
-            await reconcileItem(id, localMap.get(id), remoteMap.get(id));
+            await reconcileItem(id, local, remote);
         } catch (e) {
             errors.push(id);
         }
     }
+
+    console.log(`[Sync] Full sync plan: download=${downloadCount} upload=${uploadCount} skipped=${skipped}`);
 
     if (errors.length > 0) {
         throw new Error(`Failed to reconcile ${errors.length} items`);
