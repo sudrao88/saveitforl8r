@@ -425,7 +425,7 @@ const AppContent: React.FC = () => {
             appVersion={appVersion}
             hasApiKey={apiKeySet}
             onAddApiKey={handleAddApiKey}
-            syncError={!!syncError}
+            syncError={syncError}
             onSyncComplete={handleFullRefresh} 
             modelStatus={modelStatus}
             downloadProgress={downloadProgress}
