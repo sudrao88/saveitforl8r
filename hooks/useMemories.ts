@@ -245,6 +245,90 @@ export const useMemories = () => {
     }
   }, [trySyncFile]);
 
+  const updateMemory = useCallback(async (
+    id: string,
+    text: string,
+    attachments: Attachment[],
+    tags: string[],
+    location?: { latitude: number; longitude: number; accuracy?: number }
+  ) => {
+      const existing = await getMemory(id);
+      if (!existing) {
+          console.error("Memory not found for update:", id);
+          return;
+      }
+
+      const apiKey = await storage.get('gemini_api_key');
+      const hasKey = !!apiKey && apiKey.trim().length > 0;
+
+      // Create updated memory, clearing enrichment to trigger re-enrichment
+      const updatedMemory: Memory = {
+        ...existing,
+        content: text,
+        attachments,
+        tags,
+        location: location || existing.location,
+        enrichment: undefined, // Clear enrichment to trigger re-processing
+        isPending: hasKey,
+        processingError: !hasKey,
+        timestamp: Date.now()
+      };
+
+      // Update UI immediately
+      setMemories(prev => prev.map(m => m.id === id ? updatedMemory : m));
+
+      // Save locally
+      await saveMemory(updatedMemory);
+
+      // Sync immediately (even before enrichment completes)
+      await trySyncFile(updatedMemory);
+
+      // Schedule background enrichment if API key exists
+      if (hasKey) {
+          enrichInput(text, attachments, updatedMemory.location, tags)
+            .then(async (enrichment) => {
+                if (!enrichment) return;
+
+                // Check if memory still exists
+                const current = await getMemory(id);
+                if (!current || current.isDeleted) {
+                    console.log("Memory deleted during enrichment, aborting save.");
+                    return;
+                }
+
+                const allTags = Array.from(new Set([...tags, ...enrichment.suggestedTags]));
+                const enrichedMemory: Memory = {
+                    ...updatedMemory,
+                    enrichment,
+                    tags: allTags,
+                    isPending: false,
+                    timestamp: Date.now()
+                };
+
+                await saveMemory(enrichedMemory);
+                setMemories(prev => prev.map(m => m.id === id ? enrichedMemory : m));
+                console.log("Update enrichment complete, syncing...");
+
+                await trySyncFile(enrichedMemory);
+            })
+            .catch(async (err) => {
+                console.error("Update enrichment failed:", err);
+                const current = await getMemory(id);
+                if (!current || current.isDeleted) return;
+
+                const failedMemory: Memory = {
+                    ...updatedMemory,
+                    isPending: false,
+                    processingError: true
+                };
+                await saveMemory(failedMemory);
+                setMemories(prev => prev.map(m => m.id === id ? failedMemory : m));
+            });
+      }
+
+      return Promise.resolve();
+  }, [trySyncFile]);
+
   useEffect(() => {
     const handleOnline = async () => {
       console.log("App is back online.");
@@ -272,6 +356,7 @@ export const useMemories = () => {
     handleDelete,
     handleRetry,
     createMemory,
+    updateMemory,
     updateMemoryContent,
     togglePin,
     isLoading

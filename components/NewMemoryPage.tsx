@@ -1,37 +1,76 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Send, Paperclip, FileText, X, Tag as TagIcon, Loader2, ArrowLeft, Bold, Italic, Underline, Heading1, Heading2, CheckSquare, Plus } from 'lucide-react';
-import { Attachment } from '../types';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { Send, Paperclip, FileText, X, Tag as TagIcon, Loader2, ArrowLeft, Bold, Italic, Underline, Heading1, Heading2, CheckSquare, Plus, AlertTriangle } from 'lucide-react';
+import { Attachment, Memory } from '../types';
 import { isNative } from '../services/platform';
 import { Keyboard } from '@capacitor/keyboard';
 
 interface NewMemoryPageProps {
   onClose: () => void;
   onCreate: (
-    text: string, 
-    attachments: Attachment[], 
-    tags: string[], 
+    text: string,
+    attachments: Attachment[],
+    tags: string[],
     location?: { latitude: number; longitude: number; accuracy?: number }
-  ) => Promise<void>; 
+  ) => Promise<void>;
+  onUpdate?: (
+    id: string,
+    text: string,
+    attachments: Attachment[],
+    tags: string[],
+    location?: { latitude: number; longitude: number; accuracy?: number }
+  ) => Promise<void>;
   initialContent?: {
     text: string;
     attachments: Attachment[];
     checkClipboard?: boolean;
   };
+  editMemory?: Memory;
 }
 
 const SUGGESTED_TAGS = ["Book", "Restaurant", "Place to Visit", "Movie", "Podcast", "Stuff"];
 
-const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, initialContent }) => {
-  const [attachments, setAttachments] = useState<Attachment[]>(initialContent?.attachments || []);
-  const [tags, setTags] = useState<string[]>([]);
+const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpdate, initialContent, editMemory }) => {
+  const isEditMode = !!editMemory;
+
+  // Get initial values for edit mode
+  const getInitialAttachments = (): Attachment[] => {
+    if (editMemory?.attachments) return [...editMemory.attachments];
+    if (initialContent?.attachments) return initialContent.attachments;
+    return [];
+  };
+
+  const getInitialTags = (): string[] => {
+    if (editMemory?.tags) return [...editMemory.tags];
+    return [];
+  };
+
+  const getInitialContent = (): string => {
+    if (editMemory?.content) return editMemory.content;
+    if (initialContent?.text) return initialContent.text;
+    return '';
+  };
+
+  const [attachments, setAttachments] = useState<Attachment[]>(getInitialAttachments);
+  const [tags, setTags] = useState<string[]>(getInitialTags);
   const [tagInput, setTagInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-  
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+
+  // Store initial values for change detection
+  const initialValuesRef = useRef({
+    content: getInitialContent(),
+    attachments: JSON.stringify(getInitialAttachments().map(a => a.id).sort()),
+    tags: JSON.stringify([...getInitialTags()].sort())
+  });
+
   // Editor States
-  const [isChecklistMode, setIsChecklistMode] = useState(false);
+  const [isChecklistMode, setIsChecklistMode] = useState(() => {
+    const content = getInitialContent();
+    return content.startsWith('<ul class="checklist">');
+  });
   const [activeFormats, setActiveFormats] = useState<string[]>([]);
-  const [isEmpty, setIsEmpty] = useState(true);
-  
+  const [isEmpty, setIsEmpty] = useState(() => !getInitialContent());
+
   // For Rich Text Mode
   const editorRef = useRef<HTMLDivElement>(null);
   const isInitialized = useRef(false);
@@ -42,7 +81,20 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, initia
     text: string;
     checked: boolean;
   }
-  const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([]);
+  const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>(() => {
+    const content = getInitialContent();
+    if (content.startsWith('<ul class="checklist">')) {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(content, 'text/html');
+      const items = Array.from(doc.querySelectorAll('li'));
+      return items.map(item => ({
+        id: crypto.randomUUID(),
+        text: item.textContent || '',
+        checked: item.getAttribute('data-checked') === 'true'
+      }));
+    }
+    return [];
+  });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -58,14 +110,17 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, initia
   useEffect(() => {
     if (!isChecklistMode && editorRef.current && !isInitialized.current) {
         let initialText = '';
-        if (initialContent?.text) {
+        if (editMemory?.content && !editMemory.content.startsWith('<ul class="checklist">')) {
+            // Edit mode with regular content (may contain HTML)
+            initialText = editMemory.content;
+        } else if (initialContent?.text) {
             initialText = initialContent.text.replace(/\n/g, '<br>');
         }
         editorRef.current.innerHTML = initialText;
         setIsEmpty(!initialText);
         isInitialized.current = true;
     }
-  }, [isChecklistMode, initialContent]);
+  }, [isChecklistMode, initialContent, editMemory]);
 
   // Focus editor on mount
   useEffect(() => {
@@ -233,11 +288,38 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, initia
       setChecklistItems(prev => prev.filter(item => item.id !== id));
   };
 
+  // Check if there are unsaved changes
+  const hasChanges = useCallback((): boolean => {
+    // Get current content
+    let currentContent = '';
+    if (isChecklistMode) {
+      const listItems = checklistItems.map(item =>
+        `<li data-checked="${item.checked}">${item.text}</li>`
+      ).join('');
+      currentContent = checklistItems.length > 0 ? `<ul class="checklist">${listItems}</ul>` : '';
+    } else {
+      currentContent = editorRef.current?.innerHTML || '';
+    }
+
+    // Compare content
+    if (currentContent !== initialValuesRef.current.content) return true;
+
+    // Compare attachments
+    const currentAttachments = JSON.stringify(attachments.map(a => a.id).sort());
+    if (currentAttachments !== initialValuesRef.current.attachments) return true;
+
+    // Compare tags
+    const currentTags = JSON.stringify([...tags].sort());
+    if (currentTags !== initialValuesRef.current.tags) return true;
+
+    return false;
+  }, [isChecklistMode, checklistItems, attachments, tags]);
+
   const handleSubmit = async () => {
     let finalContent = '';
-    
+
     if (isChecklistMode) {
-        const listItems = checklistItems.map(item => 
+        const listItems = checklistItems.map(item =>
             `<li data-checked="${item.checked}">${item.text}</li>`
         ).join('');
         finalContent = `<ul class="checklist">${listItems}</ul>`;
@@ -248,46 +330,66 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, initia
     if ((!finalContent.trim() && attachments.length === 0) || isProcessing) return;
 
     setIsProcessing(true);
-    
+
     try {
       let location: { latitude: number; longitude: number; accuracy?: number } | undefined;
-      try {
-        if (navigator.geolocation) {
-            const pos = await Promise.race([
-                new Promise<GeolocationPosition>((resolve, reject) => {
-                    navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
-                }),
-                new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000))
-            ]) as GeolocationPosition | null;
 
-            if (pos) {
-                location = {
-                    latitude: pos.coords.latitude,
-                    longitude: pos.coords.longitude,
-                    accuracy: pos.coords.accuracy
-                };
-            }
+      // Only fetch location for new memories, not edits
+      if (!isEditMode) {
+        try {
+          if (navigator.geolocation) {
+              const pos = await Promise.race([
+                  new Promise<GeolocationPosition>((resolve, reject) => {
+                      navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
+                  }),
+                  new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000))
+              ]) as GeolocationPosition | null;
+
+              if (pos) {
+                  location = {
+                      latitude: pos.coords.latitude,
+                      longitude: pos.coords.longitude,
+                      accuracy: pos.coords.accuracy
+                  };
+              }
+          }
+        } catch (e) {
+          console.warn("Location access denied or unavailable", e);
         }
-      } catch (e) {
-        console.warn("Location access denied or unavailable", e);
       }
 
-      await onCreate(finalContent, attachments, tags, location);
-      handleClose();
+      if (isEditMode && onUpdate && editMemory) {
+        // Update existing memory
+        await onUpdate(editMemory.id, finalContent, attachments, tags, editMemory.location);
+      } else {
+        // Create new memory
+        await onCreate(finalContent, attachments, tags, location);
+      }
+      handleCloseConfirmed();
 
     } catch (error) {
-        console.error("Error creating memory:", error);
-        setIsProcessing(false); 
-        alert("Failed to save memory. Please try again.");
+        console.error("Error saving memory:", error);
+        setIsProcessing(false);
+        alert(`Failed to ${isEditMode ? 'update' : 'save'} memory. Please try again.`);
     }
   };
 
-  const handleClose = () => {
+  const handleCloseConfirmed = () => {
     setChecklistItems([]);
     setTags([]);
     setTagInput('');
     setIsProcessing(false);
+    setShowDiscardConfirm(false);
     onClose();
+  };
+
+  const handleClose = () => {
+    // In edit mode, check for unsaved changes
+    if (isEditMode && hasChanges()) {
+      setShowDiscardConfirm(true);
+      return;
+    }
+    handleCloseConfirmed();
   };
 
   return (
@@ -295,13 +397,13 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, initia
         {/* Header */}
         <div className="sticky top-0 z-30 bg-gray-900/90 backdrop-blur-md border-b border-gray-800 px-4 py-3 flex items-center justify-between pt-[calc(env(safe-area-inset-top)+12px)]">
             <div className="flex items-center gap-3">
-                <button 
-                    onClick={handleClose} 
+                <button
+                    onClick={handleClose}
                     className="p-2 -ml-2 rounded-full hover:bg-gray-800 text-gray-400 hover:text-white transition-colors"
                 >
                     <ArrowLeft size={24} />
                 </button>
-                <h1 className="text-xl font-bold text-gray-100">New Memory</h1>
+                <h1 className="text-xl font-bold text-gray-100">{isEditMode ? 'Edit Memory' : 'New Memory'}</h1>
             </div>
         </div>
 
@@ -530,21 +632,52 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, initia
 
                {/* Save Button */}
                <div className="flex justify-end pt-2 pb-6">
-                  <button 
+                  <button
                       onClick={handleSubmit}
                       disabled={isProcessing}
                       className={`flex items-center justify-center gap-2 px-8 py-3 rounded-xl font-bold transition-all shadow-lg w-full sm:w-auto
-                          ${isProcessing 
-                              ? 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700' 
+                          ${isProcessing
+                              ? 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700'
                               : 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-900/20 hover:scale-[1.02] active:scale-95'
                           }`}
                   >
                       {isProcessing ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
-                      {isProcessing ? 'Saving...' : 'Save Memory'}
+                      {isProcessing ? (isEditMode ? 'Updating...' : 'Saving...') : (isEditMode ? 'Update Memory' : 'Save Memory')}
                   </button>
                </div>
             </div>
         </main>
+
+        {/* Discard Changes Confirmation Dialog */}
+        {showDiscardConfirm && (
+            <div className="fixed inset-0 z-[100] bg-gray-950/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
+                <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 max-w-sm w-full shadow-2xl animate-in zoom-in-95 duration-200">
+                    <div className="flex flex-col items-center text-center">
+                        <div className="w-12 h-12 bg-amber-900/30 rounded-full flex items-center justify-center mb-4">
+                            <AlertTriangle size={24} className="text-amber-500" />
+                        </div>
+                        <h3 className="text-lg font-bold text-gray-100 mb-2">Discard Changes?</h3>
+                        <p className="text-sm text-gray-400 mb-6">
+                            You have unsaved changes. Are you sure you want to discard them?
+                        </p>
+                        <div className="flex gap-3 w-full">
+                            <button
+                                onClick={() => setShowDiscardConfirm(false)}
+                                className="flex-1 py-3 text-sm font-medium text-gray-300 bg-gray-800 rounded-xl hover:bg-gray-700 transition-colors"
+                            >
+                                Keep Editing
+                            </button>
+                            <button
+                                onClick={handleCloseConfirmed}
+                                className="flex-1 py-3 text-sm font-bold text-white bg-red-500 rounded-xl hover:bg-red-600 transition-colors shadow-lg shadow-red-500/20"
+                            >
+                                Discard
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        )}
     </div>
   );
 };
