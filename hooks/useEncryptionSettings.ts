@@ -34,10 +34,10 @@ export const useEncryptionSettings = () => {
       if (!file) return;
 
       const reader = new FileReader();
-      reader.onload = (e) => {
+      reader.onload = async (e) => {
           const content = e.target?.result as string;
           if (content) {
-              const success = restoreEncryptionKey(content);
+              const success = await restoreEncryptionKey(content);
               if (success) {
                   alert("Encryption key restored successfully! Please refresh the app.");
                   window.location.reload();

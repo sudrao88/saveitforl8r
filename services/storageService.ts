@@ -221,16 +221,21 @@ export const reconcileEmbeddings = async (): Promise<ReconcileReport> => {
 
     if (enrichedMemories.length === 0) return report;
 
-    // Use keys to minimize memory footprint on check
-    const vectorKeys = await db.vectors.toArray();
-    const embeddedIds = new Set(vectorKeys.map(v => v.originalId));
-    report.alreadyIndexed = embeddedIds.size;
+    // Use uniqueKeys() to get only the distinct originalIds without loading
+    // full vector records (which include large number[] arrays) into memory
+    const embeddedIdKeys = await db.vectors.orderBy('originalId').uniqueKeys();
+    const embeddedIds2 = new Set(embeddedIdKeys as string[]);
+    report.alreadyIndexed = embeddedIds2.size;
 
-    const queueItems = await db.processingQueue.toArray();
-    const activeQueueIds = new Set(queueItems.filter(q => q.status !== 'completed' && q.status !== 'failed').map(q => q.noteId));
-    report.pendingInQueue = activeQueueIds.size;
+    // Only load active queue items (pending states), not completed/failed
+    const activeQueueItems = await db.processingQueue
+        .where('status').anyOf('pending_extraction', 'pending_embedding')
+        .toArray();
+    const activeQueueIds2 = new Set(activeQueueItems.map(q => q.noteId));
 
-    const toQueue = enrichedMemories.filter(m => !embeddedIds.has(m.id) && !activeQueueIds.has(m.id));
+    report.pendingInQueue = activeQueueIds2.size;
+
+    const toQueue = enrichedMemories.filter(m => !embeddedIds2.has(m.id) && !activeQueueIds2.has(m.id));
     report.toQueue = toQueue.length;
     
     if (toQueue.length > 0) {

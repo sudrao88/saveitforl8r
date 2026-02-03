@@ -17,7 +17,10 @@ export interface EmbeddingStats {
   completed: number;
 }
 
-export type ModelStatus = 'idle' | 'downloading' | 'ready' | 'error';
+export type ModelStatus = 'idle' | 'downloading' | 'loading' | 'ready' | 'error';
+
+// Timeout for worker search queries (30 seconds)
+const SEARCH_TIMEOUT_MS = 30_000;
 
 export const useAdaptiveSearch = () => {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -27,9 +30,11 @@ export const useAdaptiveSearch = () => {
   const [downloadProgress, setDownloadProgress] = useState<any>(null);
   const [embeddingStats, setEmbeddingStats] = useState<EmbeddingStats>({ pending: 0, failed: 0, completed: 0 });
   const [lastError, setLastError] = useState<string | null>(null);
-  
+  const [isModelCached, setIsModelCached] = useState<boolean | null>(null);
+
   const workerRef = useRef<Worker | null>(null);
   const searchResolvers = useRef<Map<string, (results: any) => void>>(new Map());
+  const searchTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   // Initialize Worker
   useEffect(() => {
@@ -58,46 +63,74 @@ export const useAdaptiveSearch = () => {
         } else if (type === 'STATS_UPDATE') {
           setEmbeddingStats(payload);
         } else if (type === 'SEARCH_RESULTS') {
-          const resolve = searchResolvers.current.get(queryId);
-          if (resolve) {
-            resolve(payload);
-            searchResolvers.current.delete(queryId);
-          }
+          resolveSearch(queryId, payload);
         } else if (type === 'SEARCH_ERROR') {
-             // Handle worker error for a specific query
-             const resolve = searchResolvers.current.get(queryId);
-             if (resolve) {
-                 resolve([]); // Resolve with empty on error for now
-                 searchResolvers.current.delete(queryId);
-             }
-             console.error("Worker Search Error:", error);
+          resolveSearch(queryId, []);
+          console.error("Worker Search Error:", error);
+        } else if (type === 'MODEL_CACHE_STATUS') {
+          setIsModelCached(payload.isCached);
         }
       };
 
+      // Send initial online status to worker
+      workerRef.current.postMessage({ type: 'SET_ONLINE_STATUS', payload: { isOnline: navigator.onLine } });
+      // Check if model is cached (useful for offline status display)
+      workerRef.current.postMessage({ type: 'CHECK_MODEL_CACHE' });
       // Check model status on init
       workerRef.current.postMessage({ type: 'CHECK_MODEL_STATUS' });
       // Start processing queue
       workerRef.current.postMessage({ type: 'START_PROCESSING' });
     }
 
-    const updateOnlineStatus = () => setIsOnline(navigator.onLine);
+    const updateOnlineStatus = () => {
+      const online = navigator.onLine;
+      setIsOnline(online);
+      // Send online status update to worker so it can adjust model loading strategy
+      workerRef.current?.postMessage({ type: 'SET_ONLINE_STATUS', payload: { isOnline: online } });
+    };
     window.addEventListener('online', updateOnlineStatus);
     window.addEventListener('offline', updateOnlineStatus);
 
     return () => {
       window.removeEventListener('online', updateOnlineStatus);
       window.removeEventListener('offline', updateOnlineStatus);
-      // We generally keep the worker alive, but if unmounting logic is needed:
-      // workerRef.current?.terminate(); 
+
+      // Clean up all pending search resolvers and timers on unmount
+      for (const [queryId, timer] of searchTimers.current) {
+          clearTimeout(timer);
+      }
+      searchTimers.current.clear();
+      // Resolve any remaining search promises with empty results
+      for (const [, resolve] of searchResolvers.current) {
+          resolve([]);
+      }
+      searchResolvers.current.clear();
+      // Terminate the worker to free memory (model + Orama index)
+      workerRef.current?.terminate();
+      workerRef.current = null;
     };
   }, []);
+
+  // Resolve a search query and clean up its timeout timer
+  const resolveSearch = (queryId: string, results: any) => {
+      const resolve = searchResolvers.current.get(queryId);
+      if (resolve) {
+          resolve(results);
+          searchResolvers.current.delete(queryId);
+      }
+      const timer = searchTimers.current.get(queryId);
+      if (timer) {
+          clearTimeout(timer);
+          searchTimers.current.delete(queryId);
+      }
+  };
 
   const search = useCallback(async (query: string, memories: Memory[] = []) => {
     if (!query.trim()) return;
 
     setIsSearching(true);
 
-    const apiKey = await storage.get('gemini_api_key');
+    const apiKey = localStorage.getItem('gemini_api_key');
     const hasKey = !!apiKey;
 
     try {
@@ -106,16 +139,32 @@ export const useAdaptiveSearch = () => {
         setIsSearching(false);
         return { mode: 'online', result };
       } else {
-        if (modelStatus !== 'ready') {
-             console.warn("Local model not ready");
-             if (modelStatus === 'error') {
-                 // Retry logic could go here or be manual
-             }
+        // Check if model is available for offline search
+        if (modelStatus === 'error') {
+             setIsSearching(false);
+             return {
+                 mode: 'offline_model_error',
+                 result: [],
+                 error: lastError || 'The search model failed to load. Please check Settings for details.'
+             };
+        }
+        if (modelStatus !== 'ready' && modelStatus !== 'loading') {
+             console.warn("Local model not ready, status:", modelStatus);
         }
 
         const queryId = uuidv4();
         const promise = new Promise<SearchResultItem[]>((resolve) => {
           searchResolvers.current.set(queryId, resolve);
+
+          // Auto-timeout to prevent resolver from leaking if the worker
+          // never responds (e.g., crash, OOM, or stalled processing)
+          const timer = setTimeout(() => {
+              if (searchResolvers.current.has(queryId)) {
+                  console.warn(`[Search] Query ${queryId} timed out after ${SEARCH_TIMEOUT_MS}ms`);
+                  resolveSearch(queryId, []);
+              }
+          }, SEARCH_TIMEOUT_MS);
+          searchTimers.current.set(queryId, timer);
         });
 
         workerRef.current?.postMessage({
@@ -125,10 +174,10 @@ export const useAdaptiveSearch = () => {
 
         const results = await promise;
         setIsSearching(false);
-        
-        return { 
-            mode: (isOnline && !hasKey) ? 'offline_no_key' : 'offline', 
-            result: results 
+
+        return {
+            mode: (isOnline && !hasKey) ? 'offline_no_key' : 'offline',
+            result: results
         };
       }
     } catch (e) {
@@ -136,7 +185,7 @@ export const useAdaptiveSearch = () => {
       setIsSearching(false);
       return { mode: 'error', error: e };
     }
-  }, [isOnline, modelStatus]);
+  }, [isOnline, modelStatus, lastError]);
 
   const retryDownload = () => {
        setLastError(null); // Clear error on retry
@@ -151,8 +200,16 @@ export const useAdaptiveSearch = () => {
        workerRef.current?.postMessage({ type: 'DELETE_NOTE', payload: { noteId } });
   };
 
+  const rebuildIndex = () => {
+       workerRef.current?.postMessage({ type: 'REBUILD_INDEX' });
+  };
+
   const closeWorkerDB = () => {
        workerRef.current?.postMessage({ type: 'CLOSE_DB' });
+  };
+
+  const checkModelCache = () => {
+       workerRef.current?.postMessage({ type: 'CHECK_MODEL_CACHE' });
   };
 
   return {
@@ -165,7 +222,10 @@ export const useAdaptiveSearch = () => {
     embeddingStats,
     retryFailedEmbeddings,
     deleteNoteFromIndex,
+    rebuildIndex,
     closeWorkerDB,
-    lastError
+    lastError,
+    isModelCached,
+    checkModelCache
   };
 };

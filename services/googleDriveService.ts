@@ -3,7 +3,7 @@ import { getAuthorizedFetch, getValidToken, initiateLogin, handleAuthCallback } 
 import { clearTokens } from './tokenService';
 import { storage } from './platform';
 
-const G_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '267358862238-5lur0dimfrek6ep3uv8dlj48q7dlh40l.apps.googleusercontent.com';
+// CLIENT_ID is managed in googleAuth.ts — no longer duplicated here
 
 interface DriveFile {
   id: string;
@@ -12,6 +12,10 @@ interface DriveFile {
   parents?: string[];
   trashed?: boolean;
 }
+
+// Max parallel requests. Stays well within Drive API quota (~10 QPS sustained)
+// while dramatically reducing wall-clock time vs sequential requests.
+const BATCH_CONCURRENCY = 6;
 
 export const loginToDrive = initiateLogin;
 export const processAuthCallback = handleAuthCallback;
@@ -99,12 +103,12 @@ export const listAllFiles = async (): Promise<DriveFile[]> => {
     let pageToken: string | undefined = undefined;
 
     do {
-        let url = `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=trashed=false&fields=nextPageToken,files(id, name, modifiedTime)`;
+        let url = `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&pageSize=1000&q=trashed=false&fields=nextPageToken,files(id, name, modifiedTime)`;
         if (pageToken) url += `&pageToken=${pageToken}`;
-        
+
         const res = await driveFetch(url);
         const data = await res.json();
-        
+
         if (data.files) {
             allFiles = allFiles.concat(data.files);
         }
@@ -114,11 +118,76 @@ export const listAllFiles = async (): Promise<DriveFile[]> => {
     return allFiles;
 };
 
+// Delete a Drive file directly by its Drive file ID (no extra lookup needed
+// when the caller already has the ID from a listing).
+export const deleteFileById = async (fileId: string) => {
+    await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, { method: 'DELETE' });
+};
+
+// Delete a remote note by its application note ID (looks up the file first).
 export const deleteRemoteNote = async (noteId: string) => {
     const file = await findFileByName(`${noteId}.json`);
     if (file) {
-        await driveFetch(`https://www.googleapis.com/drive/v3/files/${file.id}`, { method: 'DELETE' });
+        await deleteFileById(file.id);
     }
+};
+
+// Download multiple files in parallel with a concurrency limit.
+// Returns a map of fileId → parsed JSON content, plus a list of failed fileIds.
+export const downloadMultipleFiles = async (
+    fileIds: string[]
+): Promise<{ contents: Map<string, any>; failures: string[] }> => {
+    const contents = new Map<string, any>();
+    const failures: string[] = [];
+    if (fileIds.length === 0) return { contents, failures };
+
+    for (let i = 0; i < fileIds.length; i += BATCH_CONCURRENCY) {
+        const batch = fileIds.slice(i, i + BATCH_CONCURRENCY);
+        const results = await Promise.all(
+            batch.map(async (fileId) => {
+                try {
+                    const content = await downloadFileContent(fileId);
+                    return { fileId, content, ok: true as const };
+                } catch (e) {
+                    console.error(`[Drive] Download failed for ${fileId}:`, e);
+                    return { fileId, content: null, ok: false as const };
+                }
+            })
+        );
+        for (const r of results) {
+            if (r.ok) contents.set(r.fileId, r.content);
+            else failures.push(r.fileId);
+        }
+    }
+    return { contents, failures };
+};
+
+// Upload multiple files in parallel with a concurrency limit.
+// Returns a list of filenames that failed.
+export const uploadMultipleFiles = async (
+    items: Array<{ filename: string; content: any; existingFileId?: string }>
+): Promise<{ failures: string[] }> => {
+    const failures: string[] = [];
+    if (items.length === 0) return { failures };
+
+    for (let i = 0; i < items.length; i += BATCH_CONCURRENCY) {
+        const batch = items.slice(i, i + BATCH_CONCURRENCY);
+        const results = await Promise.all(
+            batch.map(async (item) => {
+                try {
+                    await uploadFile(item.filename, item.content, item.existingFileId);
+                    return { filename: item.filename, ok: true as const };
+                } catch (e) {
+                    console.error(`[Drive] Upload failed for ${item.filename}:`, e);
+                    return { filename: item.filename, ok: false as const };
+                }
+            })
+        );
+        for (const r of results) {
+            if (!r.ok) failures.push(r.filename);
+        }
+    }
+    return { failures };
 };
 
 export const initializeGoogleAuth = (cb?: () => void) => { if(cb) cb(); };

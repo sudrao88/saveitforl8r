@@ -1,6 +1,8 @@
 
 import React, { useState, useRef } from 'react';
-import { X, Key, Download, Upload, Info, RefreshCw, Cloud, AlertTriangle, ShieldCheck, LogOut, Settings, Cpu, CheckCircle2, Loader2, Database, ChevronDown, Trash2 } from 'lucide-react';
+
+import { X, Key, Download, Upload, Info, RefreshCw, Cloud, AlertTriangle, AlertCircle, ShieldCheck, LogOut, Settings, Cpu, CheckCircle2, Loader2, Database, ChevronDown, Trash2 } from 'lucide-react';
+
 import { useExportImport } from '../hooks/useExportImport';
 import { useEncryptionSettings } from '../hooks/useEncryptionSettings';
 import { useSync } from '../hooks/useSync';
@@ -17,7 +19,7 @@ interface SettingsModalProps {
   appVersion: string | null;
   hasApiKey: boolean;
   onAddApiKey: () => void;
-  syncError: boolean;
+  syncError: string | null;
   onSyncComplete?: () => void;
   modelStatus: ModelStatus;
   downloadProgress?: any;
@@ -135,7 +137,9 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
   const handleLinkDrive = () => { login(); };
   const handleSyncNow = async () => {
       try {
-          await sync(true);
+
+          await sync();
+
           if (onSyncComplete) onSyncComplete();
       } catch (e: any) { console.error("Sync failed:", e); }
   };
@@ -181,6 +185,38 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
         </div>
 
         <div className="overflow-y-auto p-6 flex-1 space-y-6">
+
+
+          {(syncError || modelStatus === 'error') && (
+            <div className="space-y-3">
+              {syncError && (
+                <div className="flex items-start gap-3 p-3 bg-red-900/30 border border-red-800/60 rounded-xl">
+                  <AlertCircle size={18} className="text-red-400 shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-red-300">Google Drive Sync Error</p>
+                    <p className="text-xs text-red-400/80 mt-0.5 break-words">{syncError}</p>
+                  </div>
+                  <button onClick={handleSyncNow} disabled={isSyncing} className="px-3 py-1.5 text-xs bg-red-800 hover:bg-red-700 text-white font-bold rounded-lg transition-colors shrink-0 flex items-center gap-1.5 disabled:opacity-50">
+                    {isSyncing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Retry Sync
+                  </button>
+                </div>
+              )}
+              {modelStatus === 'error' && (
+                <div className="flex items-start gap-3 p-3 bg-amber-900/30 border border-amber-800/60 rounded-xl">
+                  <AlertTriangle size={18} className="text-amber-400 shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-amber-300">AI Model Download Error</p>
+                    <p className="text-xs text-amber-400/80 mt-0.5 break-words">{lastError || 'The local AI model failed to load. Offline search is unavailable.'}</p>
+                  </div>
+                  <button onClick={retryDownload} className="px-3 py-1.5 text-xs bg-amber-800 hover:bg-amber-700 text-white font-bold rounded-lg transition-colors shrink-0 flex items-center gap-1.5">
+                    <RefreshCw size={14} /> Retry
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+
           <SettingsCard title="AI & Index" icon={Cpu}>
             <SettingsRow>
               <SettingsInfo label="Gemini API Key" description="Powers AI search, summaries, and enrichment." />
@@ -198,7 +234,10 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
             <SettingsRow>
                <SettingsInfo label="Local AI Index" description="On-device model for offline search capabilities." />
                <div className="flex items-center gap-2">
-                 <span className={`text-xs px-2 py-1 rounded-md font-medium ${modelStatus === 'ready' ? 'bg-green-900/30 text-green-400' : 'bg-yellow-900/30 text-yellow-400'}`}>{modelStatus}</span>
+
+
+                 <span className={`text-xs px-2 py-1 rounded-md font-medium ${modelStatus === 'ready' ? 'bg-green-900/30 text-green-400' : modelStatus === 'error' ? 'bg-red-900/30 text-red-400' : 'bg-yellow-900/30 text-yellow-400'}`}>{modelStatus}</span>
+
                  <button onClick={handleForceReindex} disabled={isReindexing} className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1.5">
                     {isReindexing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Re-index
                  </button>
