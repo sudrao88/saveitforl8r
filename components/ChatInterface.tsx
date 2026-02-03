@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Send, BrainCircuit, ExternalLink, Bot, Sparkles, WifiOff } from 'lucide-react';
-import { Memory } from '../types';
+import { X, Send, BrainCircuit, ExternalLink, Bot, Sparkles, WifiOff, Key, Download, FileText } from 'lucide-react';
+import { Memory, Attachment } from '../types';
 import MemoryCard from './MemoryCard';
 
 interface ChatInterfaceProps {
@@ -14,6 +14,7 @@ interface Message {
   text: string;
   sources?: string[]; // IDs of memories used
   isOffline?: boolean;
+  missingKey?: boolean;
 }
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, searchFunction }) => {
@@ -21,6 +22,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const [previewMemoryId, setPreviewMemoryId] = useState<string | null>(null);
+  const [viewingAttachment, setViewingAttachment] = useState<Attachment | null>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -96,13 +98,18 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
       if (response.mode === 'online') {
           const { answer, sourceIds } = response.result;
           setMessages(prev => [...prev, { role: 'model', text: answer, sources: sourceIds }]);
-      } else if (response.mode === 'offline') {
+      } else if (response.mode === 'offline' || response.mode === 'offline_no_key') {
           const items = response.result;
-          const text = items.length > 0 
+          let text = items.length > 0 
               ? "I found these relevant notes in your offline database:" 
               : "I couldn't find any relevant notes in your offline database.";
           
-          // Extract unique IDs from metadata.originalId or id
+          if (response.mode === 'offline_no_key') {
+              text = items.length > 0
+                  ? "I found these notes using local search. For smarter AI answers, please add your Gemini API Key in Settings."
+                  : "I couldn't find any notes. Add your Gemini API Key in Settings for smarter search.";
+          }
+          
           const sourceIds = Array.from(new Set(items.map((item: any) => 
             item.metadata?.originalId || item.id
           ))) as string[];
@@ -111,7 +118,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
               role: 'model', 
               text, 
               sources: sourceIds,
-              isOffline: true
+              isOffline: true,
+              missingKey: response.mode === 'offline_no_key'
           }]);
       } else {
            setMessages(prev => [...prev, { role: 'model', text: "Sorry, I encountered an error searching your memories." }]);
@@ -178,9 +186,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
                 : 'bg-gray-800 border border-gray-700 text-gray-100 shadow-sm'
             }`}>
               <div className="flex items-center justify-between mb-1">
-                 {msg.isOffline && (
+                 {msg.isOffline && !msg.missingKey && (
                      <span className="flex items-center gap-1 text-[10px] uppercase font-bold text-yellow-500/80 mb-1">
                         <WifiOff size={10} /> Offline Mode
+                     </span>
+                 )}
+                 {msg.missingKey && (
+                     <span className="flex items-center gap-1 text-[10px] uppercase font-bold text-blue-400/80 mb-1">
+                        <Key size={10} /> Setup Required
                      </span>
                  )}
               </div>
@@ -273,7 +286,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
             onClick={() => setPreviewMemoryId(null)}
           >
               <div className="relative w-full max-w-lg animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
-                  <MemoryCard memory={previewMemory} isDialog={true} />
+                  <MemoryCard 
+                    memory={previewMemory} 
+                    isDialog={true} 
+                    onViewAttachment={setViewingAttachment} 
+                  />
                   <button 
                     onClick={() => setPreviewMemoryId(null)}
                     className="mt-4 w-full py-3 bg-gray-800 text-white rounded-xl font-bold shadow-xl border border-gray-700 text-sm"
@@ -282,6 +299,60 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
                   </button>
               </div>
           </div>
+      )}
+
+      {/* Attachment Viewer */}
+      {viewingAttachment && (
+        <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-md flex flex-col animate-in fade-in zoom-in-95 duration-200">
+           <div className="flex items-center justify-between px-4 py-3 bg-black/50 border-b border-white/10 pt-[env(safe-area-inset-top)]">
+              <div className="flex items-center gap-3">
+                 <button onClick={() => setViewingAttachment(null)} className="p-2 -ml-2 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition-colors">
+                    <X size={24} />
+                 </button>
+                 <span className="text-sm font-medium text-gray-200 truncate max-w-[200px] sm:max-w-md">{viewingAttachment.name}</span>
+              </div>
+              <a 
+                href={viewingAttachment.data} 
+                download={viewingAttachment.name}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all"
+              >
+                 <Download size={14} /> Download
+              </a>
+           </div>
+           
+           <div className="flex-1 flex items-center justify-center p-4 overflow-hidden">
+              {viewingAttachment.type === 'image' ? (
+                 <img 
+                    src={viewingAttachment.data} 
+                    alt={viewingAttachment.name} 
+                    className="max-w-full max-h-full object-contain shadow-2xl rounded-lg animate-in zoom-in-90 duration-300"
+                 />
+              ) : viewingAttachment.mimeType === 'application/pdf' ? (
+                 <iframe 
+                    src={viewingAttachment.data} 
+                    className="w-full h-full rounded-lg bg-white shadow-2xl border-none"
+                    title={viewingAttachment.name}
+                 />
+              ) : (
+                 <div className="bg-gray-900 border border-gray-800 p-8 rounded-2xl flex flex-col items-center gap-4 text-center max-w-sm">
+                    <div className="w-16 h-16 bg-gray-800 rounded-2xl flex items-center justify-center">
+                       <FileText size={32} className="text-blue-400" />
+                    </div>
+                    <div>
+                       <h3 className="text-gray-100 font-bold mb-1">{viewingAttachment.name}</h3>
+                       <p className="text-gray-400 text-xs">Preview not available for this file type.</p>
+                    </div>
+                    <a 
+                        href={viewingAttachment.data} 
+                        download={viewingAttachment.name}
+                        className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold transition-all shadow-lg"
+                    >
+                        Download to View
+                    </a>
+                 </div>
+              )}
+           </div>
+        </div>
       )}
     </div>
     </>

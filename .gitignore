@@ -26,7 +26,7 @@ coverage
 # nyc test coverage
 .nyc_output
 
-# Grunt intermediate storage (https://gruntjs.com/creating-plugins#storing-task-files)
+# Grunt intermediate storage (https://gruntjs.com/creating-plugins#storing-temporary-files)
 .grunt
 
 # Bower dependency directory (https://bower.io/)
@@ -42,8 +42,8 @@ build/Release
 node_modules/
 jspm_packages/
 
-# TypeScript v1 declaration files
-typings/
+# Snowpack dependency directory (https://snowpack.dev/)
+web_modules
 
 # TypeScript cache
 *.tsbuildinfo
@@ -71,8 +71,10 @@ typings/
 
 # dotenv environment variables file
 .env
-.env.test
-.env.production
+.env.development.local
+.env.test.local
+.env.production.local
+.env.local
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache
@@ -82,39 +84,99 @@ typings/
 .next
 out
 
-# Nuxt.js build / generate output
+# Nuxt.js build output
 .nuxt
 dist
 
-# Gatsby files
+# Nuxt.js static build output
+.output
+
+# Docusaurus build output
+.docusaurus
+
+# Gatsby build output
 .cache/
 # Comment in the public line in if your project uses Gatsby and not Next.js
+# https://nextjs.org/blog/next-9-1#public-directory-support
 # public
 
 # vuepress build output
 .vuepress/dist
 
-# Serverless directories
-.serverless/
+# SvelteKit build output
+.svelte-kit
+build
 
-# FuseBox cache
-.fusebox/
+# Remotion build output
+.remotion/
+out/
 
-# DynamoDB Local files
-.dynamodb/
+# SolidStart build output
+.solid/
+dist/
 
-# TernJS port file
-.tern-port
+# Vitest coverage directory
+coverage/
 
-# Stores VSCode versions used for testing VSCode extensions
-.vscode-test
+# framework generated
+dist
+dist-ssr
+.vercel
+.output
+.vite-inspect
+.firebase
 
-# yarn v2
-.yarn/cache
-.yarn/unplugged
-.yarn/build-state.yml
-.yarn/install-state.gz
-.pnp.*
+# capacitor
+/android
+/ios
+/dist
 
-# IDX
-.idx/
+# iOS/xcode
+build/
+DerivedData/
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+*.xcarchive
+
+# Android/build
+.gradle
+build/
+   
+# Android/captures
+captures/
+*.ap_
+
+# Android/other
+*.iml
+.idea
+  
+# Cocoapods
+Pods/
+   
+# Carthage
+Carthage/
+
+# fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots
+fastlane/test_output
+
+# Local secret files
+.env*.local
+.env
+secrets.json
+google-services.json
+GoogleService-Info.plist
+*.p12
+*.keystore
+/android/key.properties
+/android/app/key.properties
+/ios/App/App/GoogleService-Info.plist
+
+# Build artifacts
+/dist
+/ios/App/App/public
+/android/app/src/main/assets/public

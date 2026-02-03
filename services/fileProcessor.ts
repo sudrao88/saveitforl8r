@@ -1,12 +1,12 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import Tesseract from 'tesseract.js';
 
-// Set the worker source for pdfjs-dist. 
-// In Vite, this often requires copying the worker file to public or importing it specifically.
-// For now, we'll try using the CDN link or a local import if configured in vite.config.ts.
-// A common pattern in Vite is `import pdfWorker from 'pdfjs-dist/build/pdf.worker.mjs?url';`
-// But to be safe with standard setups:
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.js`;
+// Bundle the PDF.js worker locally via Vite's ?url import instead of loading
+// from a CDN at runtime. This is critical for an offline-first PWA — the CDN
+// would be unavailable offline. Vite emits the worker into /assets/ which the
+// service worker caches automatically.
+import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 export const extractTextFromPDF = async (pdfBlob: Blob): Promise<string> => {
   try {

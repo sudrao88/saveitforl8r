@@ -7,22 +7,14 @@ const DB_NAME = 'SaveItForL8rDB';
 const STORE_NAME = 'memories';
 const DB_VERSION = 1;
 
-// Internal type for what is actually stored in IndexedDB
-interface StoredMemory {
-  id: string;
-  timestamp: number;
-  encryptedData?: EncryptedPayload; // New encrypted blob
-  
-  // Legacy fields (kept for migration or unencrypted fallback)
-  content?: string;
-  image?: string;
-  attachments?: any[];
-  location?: any;
-  enrichment?: any;
-  tags?: string[];
-  isPending?: boolean;
-  isDeleting?: boolean;
-  processingError?: boolean;
+export interface ReconcileReport {
+    total: number;
+    enriched: number;
+    toQueue: number;
+    alreadyIndexed: number;
+    pendingInQueue: number;
+    error: string | null;
+    timestamp: number;
 }
 
 // Open (or create) the IndexedDB database
@@ -31,9 +23,9 @@ const openDB = (): Promise<IDBDatabase> => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
     
     request.onupgradeneeded = (event) => {
-      const db = (event.target as IDBOpenDBRequest).result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+      const dbInstance = (event.target as IDBOpenDBRequest).result;
+      if (!dbInstance.objectStoreNames.contains(STORE_NAME)) {
+        dbInstance.createObjectStore(STORE_NAME, { keyPath: 'id' });
       }
     };
     
@@ -47,13 +39,12 @@ const rehydrateMemory = async (stored: StoredMemory): Promise<Memory> => {
   if (stored.encryptedData) {
     try {
       const decrypted = await decryptData(stored.encryptedData);
-      const mem = {
+      return {
         id: stored.id,
         timestamp: stored.timestamp,
-        ...decrypted // Spread decrypted fields (content, tags, etc.)
+        ...decrypted
       };
-      return mem;
-    } catch (e) {
+    } catch (e: any) {
       console.error(`Failed to decrypt memory ${stored.id}`, e);
       return {
         id: stored.id,
@@ -64,63 +55,41 @@ const rehydrateMemory = async (stored: StoredMemory): Promise<Memory> => {
       };
     }
   }
-
   return stored as unknown as Memory;
 };
 
-// Helper to queue memories for embedding
+// Resilient helper to queue memories
 const queueMemoriesForEmbedding = async (memories: Memory[]) => {
+    if (memories.length === 0) return;
+    
     const queueItems: any[] = [];
     
     for (const memory of memories) {
-        // Double check enrichment constraint
         if (!memory.enrichment) continue;
 
-        console.log(`[RAG] Queuing memory ${memory.id} for embedding...`);
-
-        // Clear old vectors first (if any exist, to avoid duplicates on update)
+        // Clear existing state for this note
         try {
-            const vectorIds = await db.vectors.where('originalId').equals(memory.id).primaryKeys();
-            if (vectorIds.length > 0) {
-                 await db.vectors.bulkDelete(vectorIds);
-            }
-        } catch (e) {
-            console.error(`[RAG] Error clearing vectors for ${memory.id}`, e);
-        }
+            await db.vectors.where('originalId').equals(memory.id).delete();
+            await db.processingQueue.where('noteId').equals(memory.id).delete();
+        } catch (e) { console.error(`[RAG] Reset error for ${memory.id}`, e); }
 
-        // Construct Rich Text Payload for Context Embedding
+        // Construct Rich Text Payload
         let textPayload = "";
-        
-        // 1. User Content
-        if (memory.content) {
-            textPayload += `CONTENT: ${memory.content}\n`;
-        }
-        
-        // 2. Enrichment Data
+        if (memory.content) textPayload += `CONTENT: ${memory.content}\n`;
         if (memory.enrichment) {
-            if (memory.enrichment.summary) {
-                textPayload += `SUMMARY: ${memory.enrichment.summary}\n`;
-            }
-            if (memory.enrichment.visualDescription) {
-                textPayload += `VISUAL DESCRIPTION: ${memory.enrichment.visualDescription}\n`;
-            }
-            if (memory.enrichment.suggestedTags && memory.enrichment.suggestedTags.length > 0) {
-                textPayload += `TAGS: ${memory.enrichment.suggestedTags.join(', ')}\n`;
-            }
-            if (memory.enrichment.locationContext?.name) {
-                textPayload += `LOCATION: ${memory.enrichment.locationContext.name}\n`;
-            }
-            if (memory.enrichment.entityContext?.title) {
-                textPayload += `ENTITY: ${memory.enrichment.entityContext.title}\n`;
+            if (memory.enrichment.summary) textPayload += `SUMMARY: ${memory.enrichment.summary}\n`;
+            if (memory.enrichment.visualDescription) textPayload += `VISUAL: ${memory.enrichment.visualDescription}\n`;
+            if (memory.enrichment.suggestedTags?.length) textPayload += `TAGS: ${memory.enrichment.suggestedTags.join(', ')}\n`;
+            if (memory.enrichment.locationContext?.name) textPayload += `LOCATION: ${memory.enrichment.locationContext.name}\n`;
+            if (memory.enrichment.entityContext) {
+                if (memory.enrichment.entityContext.type) textPayload += `TYPE: ${memory.enrichment.entityContext.type}\n`;
+                if (memory.enrichment.entityContext.title) textPayload += `ENTITY: ${memory.enrichment.entityContext.title}\n`;
+                if (memory.enrichment.entityContext.subtitle) textPayload += `SUBTITLE: ${memory.enrichment.entityContext.subtitle}\n`;
+                if (memory.enrichment.entityContext.description) textPayload += `DESCRIPTION: ${memory.enrichment.entityContext.description}\n`;
             }
         }
-        
-        // 3. User Tags
-        if (memory.tags && memory.tags.length > 0) {
-             textPayload += `USER TAGS: ${memory.tags.join(', ')}\n`;
-        }
+        if (memory.tags?.length) textPayload += `USER TAGS: ${memory.tags.join(', ')}\n`;
 
-        // Queue the rich text payload
         if (textPayload.trim().length > 0) {
             queueItems.push({
                 noteId: memory.id,
@@ -132,30 +101,27 @@ const queueMemoriesForEmbedding = async (memories: Memory[]) => {
             });
         }
 
-        // Attachments
+        // Attachments - Process lazily or with safety
         if (memory.attachments) {
             for (const att of memory.attachments) {
-                if (att.data) {
-                    let type: 'pdf' | 'image' | null = null;
-                    if (att.mimeType === 'application/pdf') type = 'pdf';
-                    else if (att.mimeType.startsWith('image/')) type = 'image';
-
-                    if (type) {
-                        try {
-                            const res = await fetch(att.data);
-                            const blob = await res.blob();
-                            
-                            queueItems.push({
-                                noteId: memory.id,
-                                type: type,
-                                contentOrPath: blob,
-                                retryCount: 0,
-                                status: 'pending_extraction',
-                                timestamp: Date.now()
-                            });
-                        } catch (err) {
-                            console.error(`[RAG] Failed to process attachment for ${memory.id}`, err);
-                        }
+                if (att.data && (att.mimeType === 'application/pdf' || att.mimeType.startsWith('image/'))) {
+                    // We add a 'pending_extraction' task. 
+                    // To avoid fetch errors blocking the loop, we assume the worker handles the blob if we can get it.
+                    // If we can't get the blob now, we skip this attachment but keep the note context task.
+                    try {
+                        // Data URI to Blob
+                        const res = await fetch(att.data);
+                        const blob = await res.blob();
+                        queueItems.push({
+                            noteId: memory.id,
+                            type: att.mimeType === 'application/pdf' ? 'pdf' : 'image',
+                            contentOrPath: blob,
+                            retryCount: 0,
+                            status: 'pending_extraction',
+                            timestamp: Date.now()
+                        });
+                    } catch (err) {
+                        console.error(`[RAG] Skip attachment for ${memory.id}`, err);
                     }
                 }
             }
@@ -163,16 +129,15 @@ const queueMemoriesForEmbedding = async (memories: Memory[]) => {
     }
 
     if (queueItems.length > 0) {
-        await db.processingQueue.bulkAdd(queueItems);
-        console.log(`[RAG] Added ${queueItems.length} items to processing queue.`);
+        await db.processingQueue.bulkPut(queueItems);
     }
 };
 
 export const getMemories = async (): Promise<Memory[]> => {
   try {
-    const db = await openDB();
+    const dbInstance = await openDB();
     const storedMemories = await new Promise<StoredMemory[]>((resolve, reject) => {
-      const tx = db.transaction(STORE_NAME, 'readonly');
+      const tx = dbInstance.transaction(STORE_NAME, 'readonly');
       const store = tx.objectStore(STORE_NAME);
       const request = store.getAll();
       request.onsuccess = () => resolve(request.result as StoredMemory[]);
@@ -197,58 +162,39 @@ export const getMemory = async (id: string): Promise<Memory | null> => {
       request.onsuccess = () => resolve(request.result || null);
       request.onerror = () => reject(request.error);
     });
-
     if (!stored) return null;
     return await rehydrateMemory(stored);
-  } catch (error) {
-    return null;
-  }
+  } catch (error) { return null; }
 };
 
 export const saveMemory = async (memory: Memory): Promise<void> => {
-  // Separate metadata from sensitive data
   const { id, timestamp, ...sensitiveData } = memory;
-
-  // RAG Integration: Queue ONLY if enriched
   if (sensitiveData.enrichment) {
-      await queueMemoriesForEmbedding([memory]);
+      queueMemoriesForEmbedding([memory]).catch(e => console.error("RAG queue error", e));
   }
-  
-  // Encrypt sensitive data
   const encryptedPayload = await encryptData(sensitiveData);
-
-  const storedItem: StoredMemory = {
-    id,
-    timestamp,
-    encryptedData: encryptedPayload
-  };
-
+  const storedItem: StoredMemory = { id, timestamp, encryptedData: encryptedPayload };
   const dbInstance = await openDB();
   return new Promise((resolve, reject) => {
     const tx = dbInstance.transaction(STORE_NAME, 'readwrite');
     const store = tx.objectStore(STORE_NAME);
-    const request = store.put(storedItem); 
-    
+    store.put(storedItem); 
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
-    request.onerror = () => reject(request.error);
   });
 };
 
 export const deleteMemory = async (id: string): Promise<void> => {
   try {
-      const vectorIds = await db.vectors.where('originalId').equals(id).primaryKeys();
-      await db.vectors.bulkDelete(vectorIds);
-  } catch (e) {
-      console.error("Failed to delete from RAG DB", e);
-  }
+      await db.vectors.where('originalId').equals(id).delete();
+      await db.processingQueue.where('noteId').equals(id).delete();
+  } catch (e) { console.error("Failed to delete from RAG DB", e); }
 
   const dbInstance = await openDB();
   return new Promise((resolve, reject) => {
     const tx = dbInstance.transaction(STORE_NAME, 'readwrite');
     const store = tx.objectStore(STORE_NAME);
-    const request = store.delete(id);
-    
+    store.delete(id);
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
@@ -257,65 +203,137 @@ export const deleteMemory = async (id: string): Promise<void> => {
 export const updateMemoryTags = async (id: string, newTags: string[]): Promise<void> => {
   const memory = await getMemory(id);
   if (!memory) return;
-
   memory.tags = newTags;
   await saveMemory(memory);
 };
 
-// New function for Reconciliation
-export const reconcileEmbeddings = async () => {
+export const reconcileEmbeddings = async (): Promise<ReconcileReport> => {
+  const report: ReconcileReport = { total: 0, enriched: 0, toQueue: 0, alreadyIndexed: 0, pendingInQueue: 0, error: null, timestamp: Date.now() };
   try {
-    console.log("[RAG] Starting reconciliation...");
+    // 1. Ensure DB is open and indices are ready
+    await db.open();
+    
     const memories = await getMemories();
-    // Filter for enriched memories only
-    const enrichedMemories = memories.filter(m => m.enrichment && !m.processingError);
+    report.total = memories.length;
+    
+    const enrichedMemories = memories.filter(m => m.enrichment && !m.isDeleted && !m.processingError);
+    report.enriched = enrichedMemories.length;
 
-    if (enrichedMemories.length === 0) {
-        console.log("[RAG] No enriched memories to reconcile.");
-        return;
-    }
+    if (enrichedMemories.length === 0) return report;
 
-    // Get all IDs that have vectors
-    const embeddedIds = new Set(await db.vectors.orderBy('originalId').uniqueKeys());
+    // Use keys to minimize memory footprint on check
+    const vectorKeys = await db.vectors.toArray();
+    const embeddedIds = new Set(vectorKeys.map(v => v.originalId));
+    report.alreadyIndexed = embeddedIds.size;
 
-    // Get all IDs currently in queue (pending OR failed)
-    const pendingIds = new Set(
-        await db.processingQueue
-            .where('status').anyOf('pending_extraction', 'pending_embedding')
-            .toArray()
-            .then(items => items.map(i => i.noteId))
-    );
+    const queueItems = await db.processingQueue.toArray();
+    const activeQueueIds = new Set(queueItems.filter(q => q.status !== 'completed' && q.status !== 'failed').map(q => q.noteId));
 
-    const toQueue: Memory[] = [];
+    // Use uniqueKeys() to get only the distinct originalIds without loading
+    // full vector records (which include large number[] arrays) into memory
+    const embeddedIdKeys = await db.vectors.orderBy('originalId').uniqueKeys();
+    const embeddedIds2 = new Set(embeddedIdKeys as string[]);
+    report.alreadyIndexed = embeddedIds2.size;
 
-    for (const mem of enrichedMemories) {
-        // If it's already embedded, skip.
-        if (embeddedIds.has(mem.id)) continue;
-        
-        // If it's currently pending processing, skip.
-        if (pendingIds.has(mem.id)) continue;
+    // Only load active queue items (pending states), not completed/failed
+    const activeQueueItems = await db.processingQueue
+        .where('status').anyOf('pending_extraction', 'pending_embedding')
+        .toArray();
+    const activeQueueIds2 = new Set(activeQueueItems.map(q => q.noteId));
 
-        // If we are here, it's either:
-        // 1. Never queued.
-        // 2. Queued but 'failed' (since we only checked pending statuses).
-        // 3. Queued but 'completed' (but not in vectors?? Inconsistent state).
-        
-        // We add to queue.
-        toQueue.push(mem);
-    }
+    report.pendingInQueue = activeQueueIds2.size;
+
+    const toQueue = enrichedMemories.filter(m => !embeddedIds2.has(m.id) && !activeQueueIds2.has(m.id));
+    report.toQueue = toQueue.length;
     
     if (toQueue.length > 0) {
-        console.log(`[RAG] Reconciling: Found ${toQueue.length} notes needing embedding.`);
-        // Clean up queue for these IDs first.
-        const idsToQueue = toQueue.map(m => m.id);
-        await db.processingQueue.where('noteId').anyOf(idsToQueue).delete();
-        
         await queueMemoriesForEmbedding(toQueue);
-    } else {
-        console.log("[RAG] Reconciliation complete. All notes embedded or pending.");
     }
-
-  } catch (error) {
+    return report;
+  } catch (error: any) {
       console.error("[RAG] Reconciliation failed:", error);
+      report.error = error.message || String(error);
+      return report;
   }
 };
+
+export const forceReindexAll = async (): Promise<ReconcileReport> => {
+    try {
+        console.log("[RAG] Force Reindexing All...");
+        await db.vectors.clear();
+        await db.processingQueue.clear();
+        return await reconcileEmbeddings();
+    } catch (e: any) {
+        return { total: 0, enriched: 0, toQueue: 0, alreadyIndexed: 0, pendingInQueue: 0, error: e.message, timestamp: Date.now() };
+    }
+};
+
+export const factoryReset = async () => {
+    try {
+        console.log("Starting Factory Reset...");
+        try { db.close(); } catch (e) {}
+
+        if ('serviceWorker' in navigator) {
+            const registrations = await navigator.serviceWorker.getRegistrations();
+            for (const registration of registrations) { await registration.unregister(); }
+        }
+
+        if ('caches' in window) {
+            const keys = await caches.keys();
+            await Promise.all(keys.map(key => caches.delete(key)));
+        }
+
+        localStorage.clear();
+
+        const dbsToReset = [
+            { name: 'SaveItForL8rDB', stores: ['memories'] },
+            { name: 'SaveItForL8rRAG', stores: ['vectors', 'processingQueue'] },
+            { name: 'auth_db', stores: ['tokens'] },
+            { name: 'saveitforl8r-share', stores: ['shares'] }
+        ];
+
+        for (const dbConfig of dbsToReset) {
+            const dbName = dbConfig.name;
+            try {
+                const reqOpen = indexedDB.open(dbName);
+                await new Promise((resolve) => {
+                    reqOpen.onsuccess = (e) => {
+                        const dbConn = (e.target as IDBOpenDBRequest).result;
+                        const existingStores = Array.from(dbConn.objectStoreNames);
+                        if (existingStores.length > 0) {
+                            try {
+                                const tx = dbConn.transaction(existingStores, 'readwrite');
+                                existingStores.forEach(store => {
+                                    if (dbConfig.stores.includes(store)) tx.objectStore(store).clear();
+                                });
+                                tx.oncomplete = () => { dbConn.close(); resolve(null); };
+                            } catch (err) { dbConn.close(); resolve(null); }
+                        } else { dbConn.close(); resolve(null); }
+                    };
+                    reqOpen.onerror = () => resolve(null);
+                });
+                indexedDB.deleteDatabase(dbName);
+            } catch (e) { console.error(`Failed to reset DB ${dbName}`, e); }
+        }
+
+        window.location.href = window.location.origin + '/?reset=' + Date.now();
+    } catch (error) {
+        console.error("Factory Reset Failed:", error);
+        alert("Reset failed. Please clear browser data manually.");
+    }
+};
+
+interface StoredMemory {
+  id: string;
+  timestamp: number;
+  encryptedData?: EncryptedPayload;
+  content?: string;
+  image?: string;
+  attachments?: any[];
+  location?: any;
+  enrichment?: any;
+  tags?: string[];
+  isPending?: boolean;
+  isDeleting?: boolean;
+  processingError?: boolean;
+}

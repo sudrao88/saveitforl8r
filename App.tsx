@@ -10,6 +10,7 @@ import NewMemoryPage from './components/NewMemoryPage';
 import ApiKeyModal from './components/ApiKeyModal';
 import ShareOnboardingModal from './components/ShareOnboardingModal';
 import { InstallPrompt } from './components/InstallPrompt';
+import ErrorBoundary from './components/ErrorBoundary';
 import { Logo } from './components/icons';
 
 import { useMemories } from './hooks/useMemories';
@@ -21,8 +22,9 @@ import { useSync } from './hooks/useSync';
 import { useAuth } from './hooks/useAuth';
 import { useOnboarding } from './hooks/useOnboarding';
 import { useAdaptiveSearch } from './hooks/useAdaptiveSearch';
+import { useHotkeys } from './hooks/useHotkeys';
 import { SyncProvider } from './context/SyncContext';
-import { reconcileEmbeddings } from './services/storageService';
+import { reconcileEmbeddings, ReconcileReport } from './services/storageService';
 import { ViewMode, Memory, Attachment } from './types';
 import { initGA, logPageView, logEvent } from './services/analytics';
 import { ANALYTICS_EVENTS } from './constants';
@@ -33,6 +35,7 @@ const AppContent: React.FC = () => {
   const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
   const [expandedMemory, setExpandedMemory] = useState<Memory | null>(null);
   const [viewingAttachment, setViewingAttachment] = useState<Attachment | null>(null);
+  const [reconcileReport, setReconcileReport] = useState<ReconcileReport | null>(null);
   
   const { updateAvailable, updateApp, appVersion } = useServiceWorker();
   const { shareData, clearShareData } = useShareReceiver();
@@ -40,7 +43,7 @@ const AppContent: React.FC = () => {
   const { sync, isSyncing, syncError } = useSync();
   const { authStatus, login, unlink } = useAuth();
 
-  const { modelStatus, downloadProgress, retryDownload, search, embeddingStats, retryFailedEmbeddings } = useAdaptiveSearch();
+  const { modelStatus, downloadProgress, retryDownload, search, embeddingStats, retryFailedEmbeddings, deleteNoteFromIndex, lastError, closeWorkerDB } = useAdaptiveSearch();
 
   const {
     memories,
@@ -53,11 +56,10 @@ const AppContent: React.FC = () => {
     isLoading
   } = useMemories();
 
-  // Wrap refresh to also reconcile embeddings
   const handleFullRefresh = useCallback(async () => {
       await refreshMemories();
-      // Run reconciliation in background
-      reconcileEmbeddings().catch(err => console.error("Reconciliation error", err));
+      const report = await reconcileEmbeddings();
+      setReconcileReport(report);
   }, [refreshMemories]);
 
   const syncRef = useRef(sync);
@@ -74,8 +76,7 @@ const AppContent: React.FC = () => {
     initGA();
     logPageView('home');
     
-    // Initial load reconciliation
-    reconcileEmbeddings().catch(console.error);
+    reconcileEmbeddings().then(setReconcileReport).catch(console.error);
     
     if (authStatus === 'linked') {
         syncRef.current().then(() => {
@@ -128,12 +129,6 @@ const AppContent: React.FC = () => {
     await Promise.allSettled(retryPromises);
   }, [saveKey, memories, handleRetry]);
 
-  const handleManualSync = useCallback((): void => {
-      syncRef.current().then(() => refreshRef.current()).catch(e => {
-          console.error("Manual sync error", e);
-      });
-  }, []);
-
   const handleCaptureClose = useCallback(() => {
     setIsCaptureOpen(false);
     logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_CAPTURE_CANCELLED);
@@ -184,9 +179,10 @@ const AppContent: React.FC = () => {
 
   const handleDeleteMemory = useCallback((id: string) => {
     handleDelete(id);
+    deleteNoteFromIndex(id); 
     logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_DELETED);
     if (expandedMemory?.id === id) setExpandedMemory(null);
-  }, [handleDelete, expandedMemory]);
+  }, [handleDelete, expandedMemory, deleteNoteFromIndex]);
 
   const handleRetryMemory = useCallback((id: string) => {
     handleRetry(id);
@@ -195,7 +191,6 @@ const AppContent: React.FC = () => {
 
   const handleTogglePin = useCallback((id: string, isPinned: boolean) => {
     togglePin(id, isPinned);
-    // You might want to log an event for pinning/unpinning here
   }, [togglePin]);
 
   const handleOpenCapture = useCallback(() => {
@@ -214,32 +209,33 @@ const AppContent: React.FC = () => {
   }, [clearKey]);
 
   const handleImportSuccess = useCallback(() => {
-    refreshRef.current();
+    handleFullRefresh();
     logEvent(ANALYTICS_EVENTS.DATA.CATEGORY, ANALYTICS_EVENTS.DATA.ACTION_IMPORT_SUCCESS);
     if (authStatus === 'linked') {
-        syncRef.current().then(() => refreshRef.current());
+        syncRef.current().then(() => handleFullRefresh());
     } 
-  }, [authStatus]);
+  }, [authStatus, handleFullRefresh]);
 
   const handleAddApiKey = useCallback(() => {
     setIsSettingsOpen(false); 
     setIsApiKeyModalOpen(true);
   }, [setIsSettingsOpen]);
 
+  useHotkeys({
+    'Mod+k': () => setIsCaptureOpen(true),
+    'Mod+f': () => setView(ViewMode.RECALL),
+    'Mod+,': () => setIsSettingsOpen(true),
+  });
+
   const displayMemories = useMemo(() => {
     const active = filteredMemories.filter(m => !m.isDeleting);
     return active.sort((a, b) => {
-      // Pinned memories first
       if (a.isPinned && !b.isPinned) return -1;
       if (!a.isPinned && b.isPinned) return 1;
-      // Then sort by timestamp (descending) - assuming the list is already sorted by timestamp or we rely on default order
-      // If default order isn't guaranteed, we should sort by timestamp here too:
-      // return b.timestamp - a.timestamp;
-      return 0; // Keep existing order for non-pinned items (usually timestamp desc)
+      return 0; 
     });
   }, [filteredMemories]);
 
-  // Calculate active memories count for stats
   const activeMemoryCount = useMemo(() => memories.filter(m => !m.isDeleted).length, [memories]);
 
   if (isLoading) {
@@ -267,11 +263,17 @@ const AppContent: React.FC = () => {
 
   if (view === ViewMode.RECALL) {
      return (
-        <ChatInterface 
-          memories={displayMemories} 
-          onClose={handleChatClose} 
-          searchFunction={search}
-        />
+        <ErrorBoundary
+          fallbackTitle="Brain Search encountered an error"
+          fallbackMessage="The AI search feature hit an unexpected issue. Your memories are safe — try reloading."
+        >
+          <ChatInterface
+            memories={displayMemories}
+            onClose={handleChatClose}
+            searchFunction={search}
+            onViewAttachment={setViewingAttachment}
+          />
+        </ErrorBoundary>
      );
   }
 
@@ -332,7 +334,6 @@ const AppContent: React.FC = () => {
         <span className="font-bold text-lg">New</span>
       </button>
 
-      {/* Full-Screen Memory Detail */}
       {expandedMemory && (
         <div className="fixed inset-0 z-[100] bg-gray-950/90 backdrop-blur-md flex flex-col animate-in fade-in duration-300">
           <div className="sticky top-0 z-10 px-4 py-3 border-b border-gray-800 flex items-center justify-between bg-gray-950/50 backdrop-blur-xl pt-[env(safe-area-inset-top)]">
@@ -362,7 +363,6 @@ const AppContent: React.FC = () => {
         </div>
       )}
 
-      {/* Attachment Viewer Overlay */}
       {viewingAttachment && (
         <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-md flex flex-col animate-in fade-in zoom-in-95 duration-200">
            <div className="flex items-center justify-between px-4 py-3 bg-black/50 border-b border-white/10 pt-[env(safe-area-inset-top)]">
@@ -416,7 +416,6 @@ const AppContent: React.FC = () => {
         </div>
       )}
 
-      {/* Settings Modal */}
       {isSettingsOpen && (
         <SettingsModal 
             onClose={handleSettingsClose}
@@ -426,18 +425,20 @@ const AppContent: React.FC = () => {
             appVersion={appVersion}
             hasApiKey={apiKeySet}
             onAddApiKey={handleAddApiKey}
-            syncError={!!syncError}
+            syncError={syncError}
             onSyncComplete={handleFullRefresh} 
             modelStatus={modelStatus}
             downloadProgress={downloadProgress}
             retryDownload={retryDownload}
             embeddingStats={embeddingStats}
             retryFailedEmbeddings={retryFailedEmbeddings}
-            totalMemories={activeMemoryCount} // Pass the count
+            totalMemories={activeMemoryCount}
+            lastError={lastError}
+            closeWorkerDB={closeWorkerDB}
+            reconcileReport={reconcileReport}
         />
       )}
 
-      {/* API Key Modal */}
       {isApiKeyModalOpen && (
         <ApiKeyModal
             onClose={() => setIsApiKeyModalOpen(false)}
@@ -453,9 +454,11 @@ const AppContent: React.FC = () => {
 };
 
 const App = () => (
-    <SyncProvider>
-        <AppContent />
-    </SyncProvider>
+    <ErrorBoundary>
+      <SyncProvider>
+          <AppContent />
+      </SyncProvider>
+    </ErrorBoundary>
 );
 
 export default App;

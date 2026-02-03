@@ -8,7 +8,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "vitest"
+    "test": "vitest",
+    "prepare": "husky"
   },
   "dependencies": {
     "@google/genai": "^1.34.0",
@@ -31,12 +32,19 @@
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
     "autoprefixer": "^10.4.23",
+    "husky": "^9.1.7",
     "jsdom": "^24.0.0",
+    "lint-staged": "^15.4.3",
     "postcss": "^8.5.6",
     "tailwindcss": "^4.1.18",
     "typescript": "~5.8.2",
     "vite": "^6.2.0",
     "vitest": "^3.0.5",
     "worker-loader": "^3.0.8"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "bash -c 'tsc --noEmit'"
+    ]
   }
 }

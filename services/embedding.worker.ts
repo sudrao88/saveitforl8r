@@ -1,7 +1,7 @@
 import { pipeline, env } from '@xenova/transformers';
 import { db, ProcessingQueueItem } from './db';
 import { extractTextFromPDF, extractTextFromImage } from './fileProcessor';
-import { create, insert, search, remove, SearchResult } from '@orama/orama';
+import { create, insert, search, remove, removeMultiple } from '@orama/orama';
 
 // Declare self for TypeScript in Worker environment
 declare const self: DedicatedWorkerGlobalScope;
@@ -17,8 +17,8 @@ const getPipeline = async () => {
     // Notify start of download
     self.postMessage({ type: 'MODEL_STATUS', payload: 'downloading' });
     try {
-        // Switched to bge-base-en-v1.5 (~110MB) for superior accuracy
-        embeddingPipeline = await pipeline('feature-extraction', 'Xenova/bge-base-en-v1.5', {
+        // Switched to bge-small-en-v1.5 (~33MB) for iOS stability
+        embeddingPipeline = await pipeline('feature-extraction', 'Xenova/bge-small-en-v1.5', {
             progress_callback: (data: any) => {
                 if (data.status === 'progress') {
                     self.postMessage({ type: 'MODEL_DOWNLOAD_PROGRESS', payload: data });
@@ -37,28 +37,28 @@ const getPipeline = async () => {
 // Singleton for Orama index (in-memory)
 let oramaDb: any = null;
 
+const ORAMA_SCHEMA = {
+    id: 'string' as const,
+    text: 'string' as const,
+    embedding: 'vector[384]' as const, // bge-small uses 384 dimensions
+    originalId: 'string' as const,
+    chunkIndex: 'number' as const
+};
+
 const initOrama = async () => {
   if (!oramaDb) {
-    oramaDb = await create({
-      schema: {
-        id: 'string',
-        text: 'string',
-        embedding: 'vector[768]', // bge-base-en-v1.5 uses 768 dimensions
-        originalId: 'string',
-        chunkIndex: 'number'
-      }
-    });
+    oramaDb = await create({ schema: ORAMA_SCHEMA });
     // Load existing vectors from Dexie into Orama on startup
     const vectors = await db.vectors.toArray();
     const invalidIds: string[] = [];
-    
+
     for (const v of vectors) {
-        if (v.vector.length === 768) {
+        if (v.vector.length === 384) {
              await insert(oramaDb, {
                 id: v.id,
                 text: v.extractedText,
                 embedding: v.vector,
-                originalId: v.metadata?.originalId || v.originalId || "", 
+                originalId: v.metadata?.originalId || v.originalId || "",
                 chunkIndex: v.metadata?.chunkIndex || 0
             });
         } else {
@@ -66,37 +66,79 @@ const initOrama = async () => {
             invalidIds.push(v.id);
         }
     }
-    
+
     // Auto-cleanup incompatible vectors
     if (invalidIds.length > 0) {
-        console.log(`[RAG] Removing ${invalidIds.length} incompatible vectors (wrong dimension).`);
+        console.log(`[RAG] Removing ${invalidIds.length} incompatible vectors.`);
         await db.vectors.bulkDelete(invalidIds);
     }
   }
   return oramaDb;
 };
 
-const broadcastStats = async () => {
-    const pending = await db.processingQueue
-        .where('status').anyOf('pending_extraction', 'pending_embedding')
-        .count();
-    
-    const failed = await db.processingQueue
-        .where('status').equals('failed')
-        .count();
-        
-    // Count actual embedded notes (unique by originalId)
-    const uniqueIds = await db.vectors.orderBy('originalId').uniqueKeys();
-    const completed = uniqueIds.length;
+// Rebuild the Orama index from Dexie (frees old index memory)
+const rebuildOramaIndex = async () => {
+    console.log('[RAG] Rebuilding Orama index from Dexie...');
+    oramaDb = null;
+    return await initOrama();
+};
 
-    self.postMessage({
-        type: 'STATS_UPDATE',
-        payload: { pending, failed, completed }
-    });
+// Remove all Orama entries for a given noteId using the Dexie index
+// instead of the fragile sequential `noteId_0`, `noteId_1`... loop
+// that breaks on gaps and orphans chunks.
+const removeNoteChunksFromOrama = async (odb: any, noteId: string) => {
+    const chunkRecords = await db.vectors.where('originalId').equals(noteId).toArray();
+    if (chunkRecords.length === 0) return;
+    const ids = chunkRecords.map(r => r.id);
+    for (const id of ids) {
+        try { await remove(odb, id); } catch (_) { /* chunk may not be in index */ }
+    }
+};
+
+// Purge completed queue items older than the threshold (default 1 hour)
+const COMPLETED_RETENTION_MS = 60 * 60 * 1000;
+const purgeCompletedQueueItems = async () => {
+    try {
+        const cutoff = Date.now() - COMPLETED_RETENTION_MS;
+        const staleItems = await db.processingQueue
+            .where('status').equals('completed')
+            .filter(item => item.timestamp < cutoff)
+            .toArray();
+        if (staleItems.length > 0) {
+            const ids = staleItems.map(i => i.id!).filter(Boolean);
+            await db.processingQueue.bulkDelete(ids);
+            console.log(`[RAG] Purged ${ids.length} completed queue items.`);
+        }
+    } catch (e) {
+        console.error('[RAG] Purge completed items failed', e);
+    }
+};
+
+const broadcastStats = async () => {
+    try {
+        const pending = await db.processingQueue
+            .where('status').anyOf('pending_extraction', 'pending_embedding')
+            .count();
+
+        const failed = await db.processingQueue
+            .where('status').equals('failed')
+            .count();
+
+        const uniqueIds = await db.vectors.orderBy('originalId').uniqueKeys();
+        const completed = uniqueIds.length;
+
+        self.postMessage({
+            type: 'STATS_UPDATE',
+            payload: { pending, failed, completed }
+        });
+    } catch (e) {
+        console.error("[Worker] Stats broadcast failed", e);
+    }
 };
 
 let queueTimeout: any = null;
 let isProcessing = false;
+let processedSinceLastPurge = 0;
 
 // Queue Processor
 const processQueue = async () => {
@@ -107,38 +149,47 @@ const processQueue = async () => {
     // Broadcast stats on every cycle
     await broadcastStats();
 
+    // Periodically purge completed items to prevent unbounded IndexedDB growth
+    if (processedSinceLastPurge >= 20) {
+        await purgeCompletedQueueItems();
+        processedSinceLastPurge = 0;
+    }
+
     const pendingItems = await db.processingQueue
         .where('status')
         .anyOf('pending_extraction', 'pending_embedding')
         .sortBy('timestamp');
 
     if (pendingItems.length === 0) {
+        // No work — purge any remaining completed items before going idle
+        await purgeCompletedQueueItems();
+        processedSinceLastPurge = 0;
         isProcessing = false;
-        queueTimeout = setTimeout(processQueue, 5000); // Poll every 5s if empty
+        queueTimeout = setTimeout(processQueue, 5000);
         return;
     }
 
-    const item = pendingItems[0]; 
+    const item = pendingItems[0];
 
     try {
         if (item.status === 'pending_extraction') {
-        await handleExtraction(item);
+            await handleExtraction(item);
         } else if (item.status === 'pending_embedding') {
-        await handleEmbedding(item);
+            await handleEmbedding(item);
         }
+        processedSinceLastPurge++;
     } catch (error: any) {
         console.error(`Error processing item ${item.noteId}:`, error);
         await db.processingQueue.update(item.id!, {
-        retryCount: (item.retryCount || 0) + 1,
-        error: error.message
+            retryCount: (item.retryCount || 0) + 1,
+            error: error.message
         });
 
         if ((item.retryCount || 0) >= 3) {
-        await db.processingQueue.update(item.id!, { status: 'failed' });
+            await db.processingQueue.update(item.id!, { status: 'failed' });
         }
     }
 
-    // Process next immediately
     isProcessing = false;
     queueTimeout = setTimeout(processQueue, 100);
 
@@ -151,7 +202,7 @@ const processQueue = async () => {
 
 const handleExtraction = async (item: ProcessingQueueItem) => {
   let text = '';
-  
+
   if (item.type === 'pdf' && item.contentOrPath instanceof Blob) {
     text = await extractTextFromPDF(item.contentOrPath);
   } else if (item.type === 'image' && item.contentOrPath instanceof Blob) {
@@ -162,52 +213,20 @@ const handleExtraction = async (item: ProcessingQueueItem) => {
 
   await db.processingQueue.update(item.id!, {
     status: 'pending_embedding',
-    contentOrPath: text, 
-    type: 'text' 
+    contentOrPath: text,
+    type: 'text'
   });
 };
 
 const handleEmbedding = async (item: ProcessingQueueItem) => {
     const pipe = await getPipeline();
     const odb = await initOrama();
-    
-    const text = item.contentOrPath as string;
-    
-    // Chunking if necessary
-    const MAX_CHARS = 1000; 
-    const chunks = text.match(new RegExp(`.{1,${MAX_CHARS}}`, 'g')) || [text];
 
-    // Remove existing vectors for this note from Orama (in-memory) to prevent duplicates
-    // Dexie overwrite handles persistence, but Orama throws on duplicate ID.
-    // Since we chunk, IDs are noteId_0, noteId_1.
-    // If we re-embed, we might have fewer or more chunks.
-    // It's safer to try removing possible existing chunks first or just catching the error?
-    // Orama remove requires ID.
-    // Since we don't know exactly how many chunks existed before in Orama (it's in-memory),
-    // and we just reloaded from Dexie... 
-    // Actually, `queueMemoriesForEmbedding` in storageService clears Dexie vectors.
-    // But `initOrama` loads from Dexie.
-    // If `handleEmbedding` runs, it means we are processing a queue item.
-    // If `storageService` cleared Dexie, then `initOrama` won't load them on NEXT init.
-    // But if `initOrama` was ALREADY initialized, it still has the old vectors in memory!
-    // We MUST remove them from Orama index too.
-    
-    // We can use `remove` by ID. But we need to know the IDs.
-    // We can search by `originalId` if Orama supports where clause in remove (it usually requires ID).
-    // Alternatively, we iterate and try remove `noteId_0`, `noteId_1`... until failure?
-    // Or we simply catch the insert error and ignore (if it exists, maybe it's fine? No, content might have changed).
-    // If content changed, we want to update.
-    // Orama `insert` throws if ID exists. `update` or `upsert` might be available?
-    // `insert` is strict.
-    // I will use a loop to try removing potential old chunks `noteId_0` to `noteId_100` (safe upper bound or until error).
-    
-    for (let j = 0; j < 50; j++) { // Heuristic cleanup
-        try {
-            await remove(odb, `${item.noteId}_${j}`);
-        } catch (e) {
-            // Ignore if not found
-        }
-    }
+    const text = item.contentOrPath as string;
+    const chunks = text.match(new RegExp(`.{1,1000}`, 'g')) || [text];
+
+    // Remove old chunks using the Dexie originalId index (reliable, no orphans)
+    await removeNoteChunksFromOrama(odb, item.noteId);
 
     for (let i = 0; i < chunks.length; i++) {
         const chunk = chunks[i];
@@ -215,7 +234,6 @@ const handleEmbedding = async (item: ProcessingQueueItem) => {
         const embedding = Array.from(output.data) as number[];
         const vectorId = `${item.noteId}_${i}`;
 
-        // Store in Dexie (Persistent)
         await db.vectors.put({
             id: vectorId,
             originalId: item.noteId,
@@ -224,9 +242,6 @@ const handleEmbedding = async (item: ProcessingQueueItem) => {
             metadata: { originalId: item.noteId, chunkIndex: i }
         });
 
-        // Insert into Orama (In-Memory Search)
-        // Check if exists to be safe? (Race condition if we didn't remove above)
-        // If we removed above, we should be fine.
         try {
             await insert(odb, {
                 id: vectorId,
@@ -236,19 +251,10 @@ const handleEmbedding = async (item: ProcessingQueueItem) => {
                 chunkIndex: i
             });
         } catch (e: any) {
-             // If duplicate, try removing and inserting again (Upsert logic)
              if (e.message?.includes('already exists')) {
                  await remove(odb, vectorId);
-                 await insert(odb, {
-                    id: vectorId,
-                    text: chunk,
-                    embedding: embedding,
-                    originalId: item.noteId,
-                    chunkIndex: i
-                });
-             } else {
-                 throw e;
-             }
+                 await insert(odb, { id: vectorId, text: chunk, embedding, originalId: item.noteId, chunkIndex: i });
+             } else { throw e; }
         }
     }
 
@@ -266,16 +272,13 @@ self.onmessage = async (e) => {
         const pipe = await getPipeline();
         const output = await pipe(query, { pooling: 'mean', normalize: true });
         const queryEmbedding = Array.from(output.data) as number[];
-        
         const odb = await initOrama();
-        
+
         const searchResult = await search(odb, {
-            mode: 'vector',
-            vector: {
-                value: queryEmbedding,
-                property: 'embedding'
-            },
-            similarity: threshold, 
+            mode: 'hybrid',
+            term: query,
+            vector: { value: queryEmbedding, property: 'embedding' },
+            similarity: threshold,
             limit: limit
         });
 
@@ -283,41 +286,43 @@ self.onmessage = async (e) => {
             id: hit.id,
             text: hit.document.text,
             score: hit.score,
-            metadata: {
-                originalId: hit.document.originalId,
-                chunkIndex: hit.document.chunkIndex
-            }
+            metadata: { originalId: hit.document.originalId, chunkIndex: hit.document.chunkIndex }
         }));
-
         self.postMessage({ type: 'SEARCH_RESULTS', payload: results, queryId: queryId });
-
     } catch (err) {
-        console.error("Search error", err);
         self.postMessage({ type: 'SEARCH_ERROR', error: err, queryId: queryId });
     }
   } else if (type === 'CHECK_MODEL_STATUS') {
-      if (embeddingPipeline) {
-          self.postMessage({ type: 'MODEL_STATUS', payload: 'ready' });
-      } else {
-          // Trigger load
-          getPipeline().catch(() => {});
-      }
+      if (embeddingPipeline) self.postMessage({ type: 'MODEL_STATUS', payload: 'ready' });
+      else getPipeline().catch(() => {});
   } else if (type === 'RETRY_FAILED') {
       await db.processingQueue.where('status').equals('failed').modify((item: any) => {
           item.retryCount = 0;
-          // Determine status based on type and content
-          if (item.type !== 'text' && item.contentOrPath instanceof Blob) {
-             item.status = 'pending_extraction';
-          } else {
-             item.status = 'pending_embedding';
-          }
+          item.status = (item.type !== 'text' && item.contentOrPath instanceof Blob) ? 'pending_extraction' : 'pending_embedding';
       });
-      // Force wake up
       if (queueTimeout) clearTimeout(queueTimeout);
-      isProcessing = false; // Reset flag to allow start
+      isProcessing = false;
       processQueue();
   } else if (type === 'GET_STATS') {
       broadcastStats();
+  } else if (type === 'DELETE_NOTE') {
+      const { noteId } = payload;
+      const odb = await initOrama();
+      // Use Dexie index for reliable cleanup (no orphaned chunks)
+      await removeNoteChunksFromOrama(odb, noteId);
+      // Also clean up Dexie vectors and queue items for this note
+      await db.vectors.where('originalId').equals(noteId).delete();
+      await db.processingQueue.where('noteId').equals(noteId).delete();
+      broadcastStats();
+  } else if (type === 'REBUILD_INDEX') {
+      // Destroy and rebuild the Orama index from Dexie data.
+      // Use this to reclaim memory if the index grows too large.
+      await rebuildOramaIndex();
+      broadcastStats();
+      self.postMessage({ type: 'INDEX_REBUILT' });
+  } else if (type === 'CLOSE_DB') {
+      db.close();
+      self.postMessage({ type: 'DB_CLOSED' });
   }
 };
 
