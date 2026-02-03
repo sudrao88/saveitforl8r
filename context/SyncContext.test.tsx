@@ -71,7 +71,7 @@ describe('SyncContext', () => {
     consoleSpy.mockRestore();
   });
 
-  describe('full sync', () => {
+  describe('delta sync', () => {
     it('should upload local-only memories to Drive', async () => {
       const localMemories = [
         { id: 'local-1', content: 'Test memory', timestamp: 1000, tags: [] },
@@ -83,7 +83,7 @@ describe('SyncContext', () => {
 
       let syncPromise: Promise<void>;
       await act(async () => {
-        syncPromise = result.current.sync(true);
+        syncPromise = result.current.sync();
         // Advance past debounce
         vi.advanceTimersByTime(2500);
       });
@@ -124,7 +124,7 @@ describe('SyncContext', () => {
 
       let syncPromise: Promise<void>;
       await act(async () => {
-        syncPromise = result.current.sync(true);
+        syncPromise = result.current.sync();
         vi.advanceTimersByTime(2500);
       });
 
@@ -156,7 +156,7 @@ describe('SyncContext', () => {
 
       let syncPromise: Promise<void>;
       await act(async () => {
-        syncPromise = result.current.sync(true);
+        syncPromise = result.current.sync();
         vi.advanceTimersByTime(2500);
       });
 
@@ -185,7 +185,7 @@ describe('SyncContext', () => {
 
       let syncPromise: Promise<void>;
       await act(async () => {
-        syncPromise = result.current.sync(true);
+        syncPromise = result.current.sync();
         vi.advanceTimersByTime(2500);
       });
 
@@ -223,7 +223,7 @@ describe('SyncContext', () => {
 
       let syncPromise: Promise<void>;
       await act(async () => {
-        syncPromise = result.current.sync(true);
+        syncPromise = result.current.sync();
         vi.advanceTimersByTime(2500);
       });
 
@@ -250,7 +250,7 @@ describe('SyncContext', () => {
 
       let syncPromise: Promise<void>;
       await act(async () => {
-        syncPromise = result.current.sync(true);
+        syncPromise = result.current.sync();
         vi.advanceTimersByTime(2500);
       });
 
@@ -279,7 +279,7 @@ describe('SyncContext', () => {
 
       let syncPromise: Promise<void>;
       await act(async () => {
-        syncPromise = result.current.sync(true);
+        syncPromise = result.current.sync();
         vi.advanceTimersByTime(2500);
       });
 
@@ -302,7 +302,7 @@ describe('SyncContext', () => {
 
       let syncPromise: Promise<void>;
       await act(async () => {
-        syncPromise = result.current.sync(true);
+        syncPromise = result.current.sync();
         vi.advanceTimersByTime(2500);
       });
 
@@ -383,7 +383,7 @@ describe('SyncContext', () => {
 
       await act(async () => {
         // Start sync and immediately attach a catch handler to prevent unhandled rejection
-        const syncPromise = result.current.sync(true).catch(() => {
+        const syncPromise = result.current.sync().catch(() => {
           // Expected rejection — error state is set internally by SyncContext
         });
         // Advance past debounce timer

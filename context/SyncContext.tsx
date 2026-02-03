@@ -17,7 +17,7 @@ import { useAuth } from '../hooks/useAuth';
 interface SyncContextType {
   isSyncing: boolean;
   syncError: string | null;
-  sync: (forceFull?: boolean) => Promise<void>;
+  sync: () => Promise<void>;
   syncFile: (memory: Memory) => Promise<void>;
   pendingCount: number;
 }
@@ -182,112 +182,10 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       localStorage.setItem(LAST_SYNC_KEY, Date.now().toString());
   }, []);
 
-  // ---- Full Sync ----
-  // Classifies every note into download/upload/delete/skip, then executes
-  // the plan using batch parallel operations.
-
-  const doFullSync = useCallback(async () => {
-    const localMemories = await getMemories();
-    const localMap = new Map(localMemories.map(m => [m.id, m]));
-
-    const remoteFiles = await listAllFiles();
-    const remoteMap = new Map(remoteFiles.map((f: any) => [f.name.replace('.json', ''), f]));
-
-    // Load previous snapshot to detect which remote files have actually changed
-    const snapshot: Record<string, string> = JSON.parse(
-        localStorage.getItem(SNAPSHOT_KEY) || '{}'
-    );
-    const hasSnapshot = Object.keys(snapshot).length > 0;
-    const lastSyncTime = parseInt(localStorage.getItem(LAST_SYNC_KEY) || '0');
-
-    console.log(`[Sync-Debug] localMap.size=${localMap.size} remoteMap.size=${remoteMap.size} hasSnapshot=${hasSnapshot} snapshotKeys=${Object.keys(snapshot).length} lastSyncTime=${lastSyncTime}`);
-
-    // --- Classification ---
-    const plan: SyncPlan = {
-        toDownload: [],
-        toUpload: [],
-        toDeleteLocal: [],
-        toDeleteRemote: [],
-        toHardDeleteLocal: [],
-    };
-
-    const allIds = new Set([...localMap.keys(), ...remoteMap.keys()]);
-    let skippedSample = 0, skippedPending = 0, skippedTombstone = 0, skippedUnchanged = 0;
-    let classRemoteOnly = 0, classBothSnapshotMismatch = 0, classLocalOnly = 0;
-
-    for (const id of allIds) {
-        const local = localMap.get(id);
-        const remote = remoteMap.get(id);
-
-        // Skip sample memories and memories still being processed by AI
-        if (local?.isSample || (!local && id.startsWith('sample-'))) { skippedSample++; continue; }
-        if (local && (local.isPending || local.processingError)) { skippedPending++; continue; }
-
-        // Local tombstone — delete remote, then hard-delete local
-        if (local?.isDeleted) {
-            if (remote) {
-                plan.toDeleteRemote.push({ noteId: id, fileId: remote.id });
-            }
-            plan.toHardDeleteLocal.push(id);
-            skippedTombstone++;
-            continue;
-        }
-
-        if (local && !remote) {
-            classLocalOnly++;
-            // Local-only, no remote counterpart
-            if (hasSnapshot && snapshot[id]) {
-                // Was in snapshot but gone from remote → another device deleted it
-                plan.toDeleteLocal.push(id);
-            } else {
-                // New local note (not in snapshot) → upload
-                plan.toUpload.push({ noteId: id, memory: local });
-            }
-        } else if (!local && remote) {
-            classRemoteOnly++;
-            // Remote-only → download
-            plan.toDownload.push({ noteId: id, fileId: remote.id });
-        } else if (local && remote) {
-            // Both exist — use snapshot to skip unchanged files
-            if (hasSnapshot && snapshot[id] === remote.modifiedTime) {
-                // Remote hasn't changed since last sync
-                if (local.timestamp > lastSyncTime) {
-                    // But local was modified → upload
-                    plan.toUpload.push({ noteId: id, memory: local, remoteFileId: remote.id });
-                } else {
-                    skippedUnchanged++;
-                }
-                // Otherwise both unchanged → skip entirely (no network call)
-            } else {
-                classBothSnapshotMismatch++;
-                // Remote changed (or first sync without snapshot) → download for comparison
-                plan.toDownload.push({ noteId: id, fileId: remote.id, local });
-            }
-        }
-    }
-
-    console.log(`[Sync-Debug] Classification: remoteOnly=${classRemoteOnly} bothSnapshotMismatch=${classBothSnapshotMismatch} localOnly=${classLocalOnly} skipped(sample=${skippedSample} pending=${skippedPending} tombstone=${skippedTombstone} unchanged=${skippedUnchanged})`);
-    console.log(`[Sync] Full sync plan: download=${plan.toDownload.length} upload=${plan.toUpload.length} deleteRemote=${plan.toDeleteRemote.length} deleteLocal=${plan.toDeleteLocal.length} tombstones=${plan.toHardDeleteLocal.length}`);
-
-    const errors = await executeSyncPlan(plan);
-
-    if (errors.length > 0) {
-        console.error(`[Sync] ${errors.length} item(s) failed:`, errors);
-        throw new Error(`Failed to reconcile ${errors.length} items`);
-    }
-
-    // Re-fetch remote file listing AFTER plan execution so the snapshot
-    // reflects updated modifiedTime values for any files we uploaded/created.
-    // Without this, the snapshot is stale and the next sync re-downloads
-    // every file that was uploaded during this sync.
-    const updatedRemoteFiles = await listAllFiles();
-    saveSnapshot(updatedRemoteFiles);
-    console.log('--- [Sync] Full Sync Complete ---');
-  }, [saveSnapshot]);
-
   // ---- Delta Sync ----
-  // Only processes notes that changed since the last snapshot.
-  // Uses the same batch download/upload pattern as full sync.
+  // Compares current remote state against the previous snapshot to find
+  // changes.  When no snapshot exists (first sync) an empty object is
+  // passed so every remote file is treated as new.
 
   const doDeltaSync = useCallback(async (previousSnapshot: Record<string, string>) => {
     const localMemories = await getMemories();
@@ -386,7 +284,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   // ---- Sync Dispatch ----
 
-  const performSync = useCallback(async (forceFull = false) => {
+  const performSync = useCallback(async () => {
     if (isSyncingRef.current || !checkIsLinked()) return;
 
     // Debounce check
@@ -402,15 +300,12 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
             try {
                 await getAccessToken(); // Ensure token is valid
-                const previousSnapshotJSON = localStorage.getItem(SNAPSHOT_KEY);
+                const previousSnapshot: Record<string, string> = JSON.parse(
+                    localStorage.getItem(SNAPSHOT_KEY) || '{}'
+                );
 
-                if (forceFull || !previousSnapshotJSON) {
-                    console.log('--- [Sync] Mode: FULL ---');
-                    await doFullSync();
-                } else {
-                    console.log('--- [Sync] Mode: DELTA (Snapshot Diff) ---');
-                    await doDeltaSync(JSON.parse(previousSnapshotJSON));
-                }
+                console.log(`--- [Sync] Mode: DELTA (Snapshot Diff) — ${Object.keys(previousSnapshot).length} entries in snapshot ---`);
+                await doDeltaSync(previousSnapshot);
 
                 // Trigger RAG reconciliation after any successful sync
                 reconcileEmbeddings().catch(e => console.error("[Sync] RAG Reconciliation failed:", e));
@@ -432,7 +327,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
         }, SYNC_DEBOUNCE_MS);
     });
-  }, [doFullSync, doDeltaSync, getAccessToken]);
+  }, [doDeltaSync, getAccessToken]);
 
   // ---- Single File Sync ----
   // Used for individual note save/delete operations (file-by-file as requested).
