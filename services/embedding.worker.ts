@@ -10,24 +10,79 @@ declare const self: DedicatedWorkerGlobalScope;
 env.allowLocalModels = false;
 env.useBrowserCache = true;
 
+// Track online/offline status (updated via messages from main thread)
+let isOnline = true;
+
+// Model name constant for cache checking
+const MODEL_NAME = 'Xenova/bge-small-en-v1.5';
+
+// Check if model files are already in the browser cache
+// This allows us to know if we can work offline before attempting to load
+const isModelCached = async (): Promise<boolean> => {
+  try {
+    // The transformers.js library caches models in the Cache API
+    // under the 'transformers-cache' cache name
+    const cache = await caches.open('transformers-cache');
+    const keys = await cache.keys();
+
+    // Check if we have any files for our model in the cache
+    // The model files are stored with URLs like:
+    // https://huggingface.co/Xenova/bge-small-en-v1.5/resolve/main/...
+    const modelFiles = keys.filter(req =>
+      req.url.includes(MODEL_NAME.replace('/', '/')) ||
+      req.url.includes(encodeURIComponent(MODEL_NAME))
+    );
+
+    // We need at least the config and model files (onnx, tokenizer, etc.)
+    // A fully cached model typically has 5+ files
+    const isCached = modelFiles.length >= 3;
+    console.log(`[RAG] Model cache check: ${modelFiles.length} files found, cached=${isCached}`);
+    return isCached;
+  } catch (e) {
+    console.warn('[RAG] Cache check failed:', e);
+    return false;
+  }
+};
+
 // Singleton for the embedding pipeline
 let embeddingPipeline: any = null;
-const getPipeline = async () => {
+const getPipeline = async (forceOffline?: boolean) => {
   if (!embeddingPipeline) {
-    // Notify start of download
-    self.postMessage({ type: 'MODEL_STATUS', payload: 'downloading' });
+    const useOfflineMode = forceOffline ?? !isOnline;
+
+    // When offline, first check if model is cached
+    if (useOfflineMode) {
+      const cached = await isModelCached();
+      if (!cached) {
+        const error = new Error('Model not available offline. Please connect to the internet to download the search model first.');
+        self.postMessage({ type: 'MODEL_STATUS', payload: 'error', error: error.message });
+        throw error;
+      }
+      console.log('[RAG] Offline mode: loading model from cache');
+    }
+
+    // Notify start of download/loading
+    self.postMessage({ type: 'MODEL_STATUS', payload: useOfflineMode ? 'loading' : 'downloading' });
+
     try {
         // Switched to bge-small-en-v1.5 (~33MB) for iOS stability
-        embeddingPipeline = await pipeline('feature-extraction', 'Xenova/bge-small-en-v1.5', {
+        // When offline, use local_files_only to prevent network requests
+        embeddingPipeline = await pipeline('feature-extraction', MODEL_NAME, {
             progress_callback: (data: any) => {
                 if (data.status === 'progress') {
                     self.postMessage({ type: 'MODEL_DOWNLOAD_PROGRESS', payload: data });
                 }
-            }
+            },
+            // Critical: when offline, only use cached files - don't attempt network fetch
+            local_files_only: useOfflineMode
         });
         self.postMessage({ type: 'MODEL_STATUS', payload: 'ready' });
-    } catch (e) {
-        self.postMessage({ type: 'MODEL_STATUS', payload: 'error', error: e });
+    } catch (e: any) {
+        // Provide better error message for offline failures
+        const errorMessage = useOfflineMode
+          ? 'Failed to load cached model. The model may not be fully downloaded.'
+          : e.message;
+        self.postMessage({ type: 'MODEL_STATUS', payload: 'error', error: errorMessage });
         throw e;
     }
   }
@@ -323,7 +378,24 @@ self.onmessage = async (e) => {
   } else if (type === 'CLOSE_DB') {
       db.close();
       self.postMessage({ type: 'DB_CLOSED' });
+  } else if (type === 'SET_ONLINE_STATUS') {
+      // Update online/offline status from the main thread
+      const wasOnline = isOnline;
+      isOnline = payload.isOnline;
+      console.log(`[RAG] Online status updated: ${isOnline}`);
+
+      // If we just came online and model isn't loaded, try to load it
+      if (!wasOnline && isOnline && !embeddingPipeline) {
+          getPipeline().catch(() => {});
+      }
+  } else if (type === 'CHECK_MODEL_CACHE') {
+      // Check if model is cached without attempting to load
+      const cached = await isModelCached();
+      self.postMessage({ type: 'MODEL_CACHE_STATUS', payload: { isCached: cached } });
   }
 };
+
+// Set initial online status based on navigator (worker has access to navigator)
+isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
 
 processQueue();

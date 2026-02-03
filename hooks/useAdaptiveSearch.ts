@@ -16,7 +16,7 @@ export interface EmbeddingStats {
   completed: number;
 }
 
-export type ModelStatus = 'idle' | 'downloading' | 'ready' | 'error';
+export type ModelStatus = 'idle' | 'downloading' | 'loading' | 'ready' | 'error';
 
 // Timeout for worker search queries (30 seconds)
 const SEARCH_TIMEOUT_MS = 30_000;
@@ -29,6 +29,7 @@ export const useAdaptiveSearch = () => {
   const [downloadProgress, setDownloadProgress] = useState<any>(null);
   const [embeddingStats, setEmbeddingStats] = useState<EmbeddingStats>({ pending: 0, failed: 0, completed: 0 });
   const [lastError, setLastError] = useState<string | null>(null);
+  const [isModelCached, setIsModelCached] = useState<boolean | null>(null);
 
   const workerRef = useRef<Worker | null>(null);
   const searchResolvers = useRef<Map<string, (results: any) => void>>(new Map());
@@ -65,16 +66,27 @@ export const useAdaptiveSearch = () => {
         } else if (type === 'SEARCH_ERROR') {
           resolveSearch(queryId, []);
           console.error("Worker Search Error:", error);
+        } else if (type === 'MODEL_CACHE_STATUS') {
+          setIsModelCached(payload.isCached);
         }
       };
 
+      // Send initial online status to worker
+      workerRef.current.postMessage({ type: 'SET_ONLINE_STATUS', payload: { isOnline: navigator.onLine } });
+      // Check if model is cached (useful for offline status display)
+      workerRef.current.postMessage({ type: 'CHECK_MODEL_CACHE' });
       // Check model status on init
       workerRef.current.postMessage({ type: 'CHECK_MODEL_STATUS' });
       // Start processing queue
       workerRef.current.postMessage({ type: 'START_PROCESSING' });
     }
 
-    const updateOnlineStatus = () => setIsOnline(navigator.onLine);
+    const updateOnlineStatus = () => {
+      const online = navigator.onLine;
+      setIsOnline(online);
+      // Send online status update to worker so it can adjust model loading strategy
+      workerRef.current?.postMessage({ type: 'SET_ONLINE_STATUS', payload: { isOnline: online } });
+    };
     window.addEventListener('online', updateOnlineStatus);
     window.addEventListener('offline', updateOnlineStatus);
 
@@ -186,6 +198,10 @@ export const useAdaptiveSearch = () => {
        workerRef.current?.postMessage({ type: 'CLOSE_DB' });
   };
 
+  const checkModelCache = () => {
+       workerRef.current?.postMessage({ type: 'CHECK_MODEL_CACHE' });
+  };
+
   return {
     search,
     isOnline,
@@ -198,6 +214,8 @@ export const useAdaptiveSearch = () => {
     deleteNoteFromIndex,
     rebuildIndex,
     closeWorkerDB,
-    lastError
+    lastError,
+    isModelCached,
+    checkModelCache
   };
 };
