@@ -114,12 +114,20 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
             item.metadata?.originalId || item.id
           ))) as string[];
 
-          setMessages(prev => [...prev, { 
-              role: 'model', 
-              text, 
+          setMessages(prev => [...prev, {
+              role: 'model',
+              text,
               sources: sourceIds,
               isOffline: true,
               missingKey: response.mode === 'offline_no_key'
+          }]);
+      } else if (response.mode === 'offline_model_error') {
+          // Model failed to load - likely offline without cached model
+          const errorText = response.error || 'The search model is not available.';
+          setMessages(prev => [...prev, {
+              role: 'model',
+              text: `⚠️ ${errorText}\n\nTo use offline search, please connect to the internet once to download the search model. It will then be cached for future offline use.`,
+              isOffline: true
           }]);
       } else {
            setMessages(prev => [...prev, { role: 'model', text: "Sorry, I encountered an error searching your memories." }]);

@@ -138,8 +138,17 @@ export const useAdaptiveSearch = () => {
         setIsSearching(false);
         return { mode: 'online', result };
       } else {
-        if (modelStatus !== 'ready') {
-             console.warn("Local model not ready");
+        // Check if model is available for offline search
+        if (modelStatus === 'error') {
+             setIsSearching(false);
+             return {
+                 mode: 'offline_model_error',
+                 result: [],
+                 error: lastError || 'The search model failed to load. Please check Settings for details.'
+             };
+        }
+        if (modelStatus !== 'ready' && modelStatus !== 'loading') {
+             console.warn("Local model not ready, status:", modelStatus);
         }
 
         const queryId = uuidv4();
@@ -175,7 +184,7 @@ export const useAdaptiveSearch = () => {
       setIsSearching(false);
       return { mode: 'error', error: e };
     }
-  }, [isOnline, modelStatus]);
+  }, [isOnline, modelStatus, lastError]);
 
   const retryDownload = () => {
        setLastError(null); // Clear error on retry
