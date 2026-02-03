@@ -200,6 +200,8 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const hasSnapshot = Object.keys(snapshot).length > 0;
     const lastSyncTime = parseInt(localStorage.getItem(LAST_SYNC_KEY) || '0');
 
+    console.log(`[Sync-Debug] localMap.size=${localMap.size} remoteMap.size=${remoteMap.size} hasSnapshot=${hasSnapshot} snapshotKeys=${Object.keys(snapshot).length} lastSyncTime=${lastSyncTime}`);
+
     // --- Classification ---
     const plan: SyncPlan = {
         toDownload: [],
@@ -210,14 +212,16 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
 
     const allIds = new Set([...localMap.keys(), ...remoteMap.keys()]);
+    let skippedSample = 0, skippedPending = 0, skippedTombstone = 0, skippedUnchanged = 0;
+    let classRemoteOnly = 0, classBothSnapshotMismatch = 0, classLocalOnly = 0;
 
     for (const id of allIds) {
         const local = localMap.get(id);
         const remote = remoteMap.get(id);
 
         // Skip sample memories and memories still being processed by AI
-        if (local?.isSample || (!local && id.startsWith('sample-'))) continue;
-        if (local && (local.isPending || local.processingError)) continue;
+        if (local?.isSample || (!local && id.startsWith('sample-'))) { skippedSample++; continue; }
+        if (local && (local.isPending || local.processingError)) { skippedPending++; continue; }
 
         // Local tombstone — delete remote, then hard-delete local
         if (local?.isDeleted) {
@@ -225,10 +229,12 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 plan.toDeleteRemote.push({ noteId: id, fileId: remote.id });
             }
             plan.toHardDeleteLocal.push(id);
+            skippedTombstone++;
             continue;
         }
 
         if (local && !remote) {
+            classLocalOnly++;
             // Local-only, no remote counterpart
             if (hasSnapshot && snapshot[id]) {
                 // Was in snapshot but gone from remote → another device deleted it
@@ -238,6 +244,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 plan.toUpload.push({ noteId: id, memory: local });
             }
         } else if (!local && remote) {
+            classRemoteOnly++;
             // Remote-only → download
             plan.toDownload.push({ noteId: id, fileId: remote.id });
         } else if (local && remote) {
@@ -247,15 +254,19 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 if (local.timestamp > lastSyncTime) {
                     // But local was modified → upload
                     plan.toUpload.push({ noteId: id, memory: local, remoteFileId: remote.id });
+                } else {
+                    skippedUnchanged++;
                 }
                 // Otherwise both unchanged → skip entirely (no network call)
             } else {
+                classBothSnapshotMismatch++;
                 // Remote changed (or first sync without snapshot) → download for comparison
                 plan.toDownload.push({ noteId: id, fileId: remote.id, local });
             }
         }
     }
 
+    console.log(`[Sync-Debug] Classification: remoteOnly=${classRemoteOnly} bothSnapshotMismatch=${classBothSnapshotMismatch} localOnly=${classLocalOnly} skipped(sample=${skippedSample} pending=${skippedPending} tombstone=${skippedTombstone} unchanged=${skippedUnchanged})`);
     console.log(`[Sync] Full sync plan: download=${plan.toDownload.length} upload=${plan.toUpload.length} deleteRemote=${plan.toDeleteRemote.length} deleteLocal=${plan.toDeleteLocal.length} tombstones=${plan.toHardDeleteLocal.length}`);
 
     const errors = await executeSyncPlan(plan);
