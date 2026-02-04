@@ -95,12 +95,13 @@ const AppContent: React.FC = () => {
     setEditingMemory(null);
   }, []);
 
+  // INITIALIZATION EFFECT - runs once on mount and when auth status changes
   useEffect(() => {
     initGA();
     logPageView('home');
-    
+
     reconcileEmbeddings().then(setReconcileReport).catch(console.error);
-    
+
     if (authStatus === 'linked') {
         syncRef.current().then(() => {
             refreshRef.current();
@@ -108,38 +109,40 @@ const AppContent: React.FC = () => {
             console.error('[App] Initial sync failed:', err);
         });
     }
+  }, [authStatus]);
 
-    // Native Back Button Handling
-    if (isNative()) {
-      CapacitorApp.addListener('backButton', ({ canGoBack }) => {
-        if (viewingAttachment) {
-          setViewingAttachment(null);
-        } else if (expandedMemory) {
-          setExpandedMemory(null);
-        } else if (isApiKeyModalOpen) {
-          setIsApiKeyModalOpen(false);
-        } else if (isSettingsOpen) {
-          setIsSettingsOpen(false);
-        } else if (editingMemory) {
-          handleEditClose();
-        } else if (isCaptureOpen) {
-          handleCaptureClose();
-        } else if (view === ViewMode.RECALL) {
-          setView(ViewMode.FEED);
-        } else if (canGoBack) {
-          window.history.back();
-        } else {
-          CapacitorApp.exitApp();
-        }
-      });
-    }
+  // NATIVE BACK BUTTON HANDLING - separate effect with UI state dependencies
+  useEffect(() => {
+    if (!isNative()) return;
+
+    const handleBackButton = ({ canGoBack }: { canGoBack: boolean }) => {
+      if (viewingAttachment) {
+        setViewingAttachment(null);
+      } else if (expandedMemory) {
+        setExpandedMemory(null);
+      } else if (isApiKeyModalOpen) {
+        setIsApiKeyModalOpen(false);
+      } else if (isSettingsOpen) {
+        setIsSettingsOpen(false);
+      } else if (editingMemory) {
+        handleEditClose();
+      } else if (isCaptureOpen) {
+        handleCaptureClose();
+      } else if (view === ViewMode.RECALL) {
+        setView(ViewMode.FEED);
+      } else if (canGoBack) {
+        window.history.back();
+      } else {
+        CapacitorApp.exitApp();
+      }
+    };
+
+    CapacitorApp.addListener('backButton', handleBackButton);
 
     return () => {
-        if(isNative()) {
-            CapacitorApp.removeAllListeners();
-        }
-    }
-  }, [authStatus, viewingAttachment, expandedMemory, isApiKeyModalOpen, isSettingsOpen, editingMemory, isCaptureOpen, view, handleCaptureClose, handleEditClose]);
+      CapacitorApp.removeAllListeners();
+    };
+  }, [viewingAttachment, expandedMemory, isApiKeyModalOpen, isSettingsOpen, editingMemory, isCaptureOpen, view, handleCaptureClose, handleEditClose]);
 
   useEffect(() => {
     if (shareData) {
