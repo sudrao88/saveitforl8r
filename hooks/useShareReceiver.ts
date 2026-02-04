@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Attachment } from '../types';
+import { isNative } from '../services/platform';
+import { SendIntent } from 'capacitor-plugin-send-intent';
 
 export interface ShareData {
   text: string;
@@ -21,20 +23,69 @@ export const useShareReceiver = () => {
 
     console.log('[ShareReceiver] Checking URL:', window.location.href);
 
-    // --- 1. iOS / Direct URL Text Share ---
+    // --- 1. Native Android Intent ---
+    if (isNative()) {
+         try {
+             // @ts-ignore - The plugin types might be missing this method definition or incorrect
+             SendIntent.checkSendIntentReceived().then(async (response: any) => {
+                 if (response) {
+                     console.log('[ShareReceiver] Native Intent:', response);
+                     
+                     let text = response.title || response.description || response.text || '';
+                     if (response.url && !text.includes(response.url)) {
+                        text = text ? `${text}\n${response.url}` : response.url;
+                     }
+                     
+                     const attachments: Attachment[] = [];
+
+                     // Handle Image Share (Content URI)
+                     if (response.type?.startsWith('image/') && response.url) {
+                         try {
+                             // Fetch blob from content URI (works in WebView for content://)
+                             const fileRes = await fetch(response.url);
+                             const blob = await fileRes.blob();
+                             const reader = new FileReader();
+                             const base64 = await new Promise<string>(r => {
+                                 reader.onload = e => r(e.target?.result as string);
+                                 reader.readAsDataURL(blob);
+                             });
+                             
+                             attachments.push({
+                                 id: crypto.randomUUID(),
+                                 type: 'image',
+                                 mimeType: response.type,
+                                 data: base64,
+                                 name: 'Shared Image'
+                             });
+                         } catch (e) {
+                             console.error("Failed to read native attachment", e);
+                         }
+                     }
+                     // Handle Text Share
+                     else if (response.type === 'text/plain' && response.text) {
+                         // already handled above
+                     }
+
+                     if (text || attachments.length > 0) {
+                        setShareData({ text: text.trim(), attachments });
+                     }
+                 }
+             }).catch((err: any) => console.warn('SendIntent check failed (plugin might not be active)', err));
+         } catch (e) {
+             console.warn("SendIntent plugin error", e);
+         }
+    }
+
+    // --- 2. iOS / Direct URL Text Share ---
     if (hasText) {
         let text = searchParams.get('share_text') || '';
         
         // ROBUST DECODING FALLBACK
-        // Sometimes URLSearchParams fails on specific encodings or partials on iOS.
-        // We manually extract the string from the raw search string.
         try {
             const rawSearch = window.location.search;
-            // Regex looks for ?share_text=VALUE or &share_text=VALUE, stops at & or end of string
             const match = rawSearch.match(/[?&]share_text=([^&]*)/);
             if (match && match[1]) {
                 const rawValue = match[1];
-                // Decode manually. replace + with space first.
                 text = decodeURIComponent(rawValue.replace(/\+/g, ' '));
                 console.log('[ShareReceiver] Manual decode result:', text);
             }
@@ -49,7 +100,7 @@ export const useShareReceiver = () => {
         return;
     }
 
-    // --- 2. iOS / Direct URL Clipboard Share ---
+    // --- 3. iOS / Direct URL Clipboard Share ---
     if (hasClipboard) {
         console.log('[ShareReceiver] Detected clipboard share');
         setShareData({ text: '', attachments: [], checkClipboard: true });
@@ -58,7 +109,7 @@ export const useShareReceiver = () => {
         return;
     }
 
-    // --- 3. Android Web Share Target (IndexedDB) ---
+    // --- 4. Android Web Share Target (IndexedDB - PWA Mode) ---
     if (hasShareTarget) {
         console.log('[ShareReceiver] Detected Android share target');
         
