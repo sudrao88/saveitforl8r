@@ -38,6 +38,7 @@ const AppContent: React.FC = () => {
   const [expandedMemory, setExpandedMemory] = useState<Memory | null>(null);
   const [viewingAttachment, setViewingAttachment] = useState<Attachment | null>(null);
   const [reconcileReport, setReconcileReport] = useState<ReconcileReport | null>(null);
+  const [editingMemory, setEditingMemory] = useState<Memory | null>(null);
   
   const { updateAvailable, updateApp, appVersion } = useServiceWorker();
   const { shareData, clearShareData } = useShareReceiver();
@@ -53,6 +54,7 @@ const AppContent: React.FC = () => {
     handleDelete,
     handleRetry,
     createMemory,
+    updateMemory,
     updateMemoryContent,
     togglePin,
     isLoading
@@ -89,6 +91,10 @@ const AppContent: React.FC = () => {
     clearShareData();
   }, [clearShareData]);
 
+  const handleEditClose = useCallback(() => {
+    setEditingMemory(null);
+  }, []);
+
   useEffect(() => {
     initGA();
     logPageView('home');
@@ -114,6 +120,8 @@ const AppContent: React.FC = () => {
           setIsApiKeyModalOpen(false);
         } else if (isSettingsOpen) {
           setIsSettingsOpen(false);
+        } else if (editingMemory) {
+          handleEditClose();
         } else if (isCaptureOpen) {
           handleCaptureClose();
         } else if (view === ViewMode.RECALL) {
@@ -131,7 +139,7 @@ const AppContent: React.FC = () => {
             CapacitorApp.removeAllListeners();
         }
     }
-  }, [authStatus, viewingAttachment, expandedMemory, isApiKeyModalOpen, isSettingsOpen, isCaptureOpen, view, handleCaptureClose]); // Added handleCaptureClose to dependencies
+  }, [authStatus, viewingAttachment, expandedMemory, isApiKeyModalOpen, isSettingsOpen, editingMemory, isCaptureOpen, view, handleCaptureClose, handleEditClose]);
 
   useEffect(() => {
     if (shareData) {
@@ -173,6 +181,23 @@ const AppContent: React.FC = () => {
     logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_CREATED);
     clearShareData();
   }, [createMemory, clearShareData]);
+
+  const handleUpdateMemory = useCallback(async (id: string, text: string, attachments: any[], tags: string[], location?: { latitude: number; longitude: number }) => {
+    await updateMemory(id, text, attachments, tags, location);
+    setEditingMemory(null);
+    // Close expanded view if we were editing from there
+    if (expandedMemory?.id === id) {
+      setExpandedMemory(null);
+    }
+    logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_CREATED, 'updated');
+  }, [updateMemory, expandedMemory]);
+
+  const handleEditMemory = useCallback((memory: Memory) => {
+    setEditingMemory(memory);
+    // Close expanded view when opening edit
+    setExpandedMemory(null);
+    logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_CREATED, 'edit_started');
+  }, []);
 
   const handleChatClose = useCallback(() => {
     setView(ViewMode.FEED);
@@ -283,9 +308,20 @@ const AppContent: React.FC = () => {
     );
   }
 
+  if (editingMemory) {
+    return (
+      <NewMemoryPage
+        onClose={handleEditClose}
+        onCreate={handleCreateMemory}
+        onUpdate={handleUpdateMemory}
+        editMemory={editingMemory}
+      />
+    );
+  }
+
   if (isCaptureOpen) {
     return (
-      <NewMemoryPage 
+      <NewMemoryPage
         onClose={handleCaptureClose}
         onCreate={handleCreateMemory}
         initialContent={shareData || undefined}
@@ -341,15 +377,16 @@ const AppContent: React.FC = () => {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {displayMemories.map(mem => (
-              <MemoryCard 
-                key={mem.id} 
-                memory={mem} 
-                onDelete={handleDeleteMemory} 
+              <MemoryCard
+                key={mem.id}
+                memory={mem}
+                onDelete={handleDeleteMemory}
                 onRetry={handleRetryMemory}
                 onUpdate={updateMemoryContent}
                 onExpand={setExpandedMemory}
                 onViewAttachment={setViewingAttachment}
                 onTogglePin={handleTogglePin}
+                onEdit={handleEditMemory}
                 hasApiKey={apiKeySet}
                 onAddApiKey={handleAddApiKey}
               />
@@ -379,13 +416,14 @@ const AppContent: React.FC = () => {
           </div>
           <div className="flex-1 overflow-y-auto p-4 sm:p-8">
              <div className="max-w-2xl mx-auto pb-20">
-                <MemoryCard 
-                    memory={expandedMemory} 
-                    onDelete={handleDeleteMemory} 
+                <MemoryCard
+                    memory={expandedMemory}
+                    onDelete={handleDeleteMemory}
                     onRetry={handleRetryMemory}
                     onUpdate={updateMemoryContent}
                     onViewAttachment={setViewingAttachment}
                     onTogglePin={handleTogglePin}
+                    onEdit={handleEditMemory}
                     isDialog={true}
                     hasApiKey={apiKeySet}
                     onAddApiKey={handleAddApiKey}

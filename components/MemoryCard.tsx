@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Trash2, MapPin, Loader2, Clock, ExternalLink, X, Check, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, WifiOff, FileText, Paperclip, ChevronDown, ChevronUp, FileCode, MoreVertical, Search, AlertTriangle, Key, Square, CheckSquare, Maximize2, Eye, Pin } from 'lucide-react';
+import { Trash2, MapPin, Loader2, Clock, ExternalLink, X, Check, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, WifiOff, FileText, Paperclip, ChevronDown, ChevronUp, FileCode, MoreVertical, Search, AlertTriangle, Key, Square, CheckSquare, Maximize2, Eye, Pin, Pencil } from 'lucide-react';
 import { Memory, Attachment } from '../types.ts';
 
 interface MemoryCardProps {
@@ -10,6 +10,7 @@ interface MemoryCardProps {
   onExpand?: (memory: Memory) => void;
   onViewAttachment?: (attachment: Attachment) => void;
   onTogglePin?: (id: string, isPinned: boolean) => void;
+  onEdit?: (memory: Memory) => void;
   isDialog?: boolean;
   hasApiKey?: boolean;
   onAddApiKey?: () => void;
@@ -35,7 +36,7 @@ const linkifyHtml = (html: string): string => {
     }).join('');
 };
 
-const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUpdate, onExpand, onViewAttachment, onTogglePin, isDialog, hasApiKey = true, onAddApiKey }) => {
+const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUpdate, onExpand, onViewAttachment, onTogglePin, onEdit, isDialog, hasApiKey = true, onAddApiKey }) => {
   const [isConfirming, setIsConfirming] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -102,6 +103,12 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
   const handlePin = (e: React.MouseEvent) => {
     e.stopPropagation();
     onTogglePin?.(memory.id, !memory.isPinned);
+    setIsMenuOpen(false);
+  };
+
+  const handleEdit = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onEdit?.(memory);
     setIsMenuOpen(false);
   };
 
@@ -378,8 +385,13 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                             <div className="absolute bottom-full right-0 mb-1 w-32 bg-gray-900 border border-gray-700 rounded-xl shadow-xl z-20 overflow-hidden animate-in slide-in-from-bottom-2 fade-in duration-200">
                                 {onTogglePin && (
                                     <button onClick={handlePin} className="w-full px-3 py-2.5 text-left text-xs font-medium text-gray-300 hover:bg-gray-800 hover:text-white flex items-center gap-2">
-                                        <Pin size={14} className={memory.isPinned ? "fill-current" : ""} /> 
+                                        <Pin size={14} className={memory.isPinned ? "fill-current" : ""} />
                                         {memory.isPinned ? 'Unpin' : 'Pin'}
+                                    </button>
+                                )}
+                                {onEdit && (
+                                    <button onClick={handleEdit} className="w-full px-3 py-2.5 text-left text-xs font-medium text-gray-300 hover:bg-gray-800 hover:text-white flex items-center gap-2 border-t border-gray-800">
+                                        <Pencil size={14} /> Edit
                                     </button>
                                 )}
                                 {onDelete && (
