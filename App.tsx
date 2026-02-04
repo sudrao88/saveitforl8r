@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Plus, RefreshCw, AlertTriangle, X, Download, Maximize, Minimize, FileText } from 'lucide-react'; 
-import { App as CapacitorApp } from '@capacitor/app';
+import { App as CapacitorApp, URLOpenListenerEvent } from '@capacitor/app';
 import { isNative } from './services/platform';
 import MemoryCard from './components/MemoryCard';
 import ChatInterface from './components/ChatInterface';
@@ -30,6 +30,7 @@ import { reconcileEmbeddings, ReconcileReport } from './services/storageService'
 import { ViewMode, Memory, Attachment } from './types';
 import { initGA, logPageView, logEvent } from './services/analytics';
 import { ANALYTICS_EVENTS } from './constants';
+import { handleDeepLink } from './services/googleAuth';
 
 const AppContent: React.FC = () => {
   const [view, setView] = useState<ViewMode>(ViewMode.FEED);
@@ -95,6 +96,32 @@ const AppContent: React.FC = () => {
     setEditingMemory(null);
   }, []);
 
+  // BOUNCER LOGIC (Web only)
+  // Redirects back to native app if 'state' indicates a native login flow
+  useEffect(() => {
+    if (!isNative()) {
+        const params = new URLSearchParams(window.location.search);
+        const state = params.get('state');
+        if (state === 'is_native_login') {
+            const code = params.get('code');
+            const error = params.get('error');
+            // Custom scheme: com.saveitforl8r.app://google-auth
+            const schemeUrl = `com.saveitforl8r.app://google-auth?code=${code}&error=${error || ''}`;
+            
+            console.log("Bouncing to native app:", schemeUrl);
+            window.location.href = schemeUrl;
+            
+            // Visual feedback
+            document.body.innerHTML = `
+              <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;background:#111827;color:white;font-family:sans-serif;">
+                <h2>Redirecting to App...</h2>
+                <p>If not redirected, <a href="${schemeUrl}" style="color:#3b82f6">click here</a>.</p>
+              </div>
+            `;
+        }
+    }
+  }, []);
+
   // INITIALIZATION EFFECT - runs once on mount and when auth status changes
   useEffect(() => {
     initGA();
@@ -109,6 +136,34 @@ const AppContent: React.FC = () => {
             console.error('[App] Initial sync failed:', err);
         });
     }
+  }, [authStatus]);
+
+  // NATIVE DEEP LINK HANDLING (Google Auth)
+  useEffect(() => {
+    if (!isNative()) return;
+
+    const handleUrlOpen = async (event: URLOpenListenerEvent) => {
+        // Handle Google Auth Deep Link
+        if (event.url.includes('google-auth')) {
+            try {
+                await handleDeepLink(event.url);
+                // Trigger sync after successful login
+                if (authStatus !== 'linked') {
+                    // Force a reload or re-check auth state might be needed, 
+                    // but handleDeepLink does a reload() currently.
+                }
+            } catch (e) {
+                console.error("Deep link error:", e);
+                alert("Login failed. Please try again.");
+            }
+        }
+    };
+
+    CapacitorApp.addListener('appUrlOpen', handleUrlOpen);
+
+    // No cleanup here to avoid removing backButton listener if they are shared on the plugin level
+    // in older versions, but typically addListener returns a handle to remove it specifically.
+    // For simplicity in this functional component, we assume it persists.
   }, [authStatus]);
 
   // NATIVE BACK BUTTON HANDLING - separate effect with UI state dependencies
@@ -137,10 +192,12 @@ const AppContent: React.FC = () => {
       }
     };
 
-    CapacitorApp.addListener('backButton', handleBackButton);
+    const listener = CapacitorApp.addListener('backButton', handleBackButton);
 
     return () => {
-      CapacitorApp.removeAllListeners();
+      // Clean up specifically this listener if promise resolves (React 18 safe?)
+      // Since addListener is async in some versions, but usually returns PluginListenerHandle
+      listener.then(handle => handle.remove()).catch(e => console.error(e));
     };
   }, [viewingAttachment, expandedMemory, isApiKeyModalOpen, isSettingsOpen, editingMemory, isCaptureOpen, view, handleCaptureClose, handleEditClose]);
 

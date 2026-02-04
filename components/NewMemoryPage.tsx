@@ -504,13 +504,13 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
             )}
 
             {/* Toolbar Area - order-3 */}
-            <div className="flex flex-col gap-4 border-gray-800 pt-0 order-3 sticky bottom-[calc(env(safe-area-inset-bottom)+80px)] sm:bottom-0 sm:relative z-20">
+            <div className="flex flex-col gap-4 border-gray-800 pt-0 order-3 sticky bottom-0 pb-[env(safe-area-inset-bottom)] sm:relative z-20 bg-gray-900/95 transition-all duration-200">
                  {/* Combined Toolbar */}
                  <div className="flex flex-wrap items-center gap-3 bg-gray-800/90 backdrop-blur-md p-3 rounded-2xl border border-gray-700/50 shadow-xl">
                     {/* Attachments Button */}
                     <button 
                         onClick={() => fileInputRef.current?.click()}
-                        className="p-3 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-xl transition-colors active:scale-95"
+                        className="p-2 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-xl transition-colors active:scale-95"
                         title="Add Attachment"
                     >
                         <Paperclip size={20} />
@@ -531,21 +531,21 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                         <>
                             <button 
                                 onClick={() => execFormat('bold')} 
-                                className={`p-3 rounded-xl transition-colors active:scale-95 ${isFormatActive('bold') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`} 
+                                className={`p-2 rounded-xl transition-colors active:scale-95 ${isFormatActive('bold') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`} 
                                 title="Bold"
                             >
                                 <Bold size={20} />
                             </button>
                             <button 
                                 onClick={() => execFormat('italic')} 
-                                className={`p-3 rounded-xl transition-colors active:scale-95 ${isFormatActive('italic') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`} 
+                                className={`p-2 rounded-xl transition-colors active:scale-95 ${isFormatActive('italic') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`} 
                                 title="Italic"
                             >
                                 <Italic size={20} />
                             </button>
                             <button 
                                 onClick={() => execFormat('underline')} 
-                                className={`p-3 rounded-xl transition-colors active:scale-95 ${isFormatActive('underline') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`} 
+                                className={`p-2 rounded-xl transition-colors active:scale-95 ${isFormatActive('underline') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`} 
                                 title="Underline"
                             >
                                 <Underline size={20} />
@@ -553,14 +553,14 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                             <div className="w-px h-8 bg-gray-700/50 mx-1"></div>
                             <button 
                                 onClick={() => execFormat('formatBlock', 'H1')} 
-                                className={`p-3 rounded-xl transition-colors active:scale-95 ${isFormatActive('H1') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`} 
+                                className={`p-2 rounded-xl transition-colors active:scale-95 ${isFormatActive('H1') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`} 
                                 title="Heading 1"
                             >
                                 <Heading1 size={20} />
                             </button>
                             <button 
                                 onClick={() => execFormat('formatBlock', 'H2')} 
-                                className={`p-3 rounded-xl transition-colors active:scale-95 ${isFormatActive('H2') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`} 
+                                className={`p-2 rounded-xl transition-colors active:scale-95 ${isFormatActive('H2') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`} 
                                 title="Heading 2"
                             >
                                 <Heading2 size={20} />
@@ -572,7 +572,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                     {/* Checklist Toggle */}
                     <button
                         onClick={toggleChecklistMode}
-                        className={`p-3 rounded-xl transition-colors active:scale-95 ${isChecklistMode ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`}
+                        className={`p-2 rounded-xl transition-colors active:scale-95 ${isChecklistMode ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`}
                         title="Checklist Mode"
                     >
                         <CheckSquare size={20} />
