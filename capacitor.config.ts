@@ -1,4 +1,5 @@
 import type { CapacitorConfig } from '@capacitor/cli';
+import { KeyboardResize, KeyboardStyle } from '@capacitor/keyboard';
 
 const config: CapacitorConfig = {
   appId: 'com.saveitforl8r.app',
@@ -6,8 +7,8 @@ const config: CapacitorConfig = {
   webDir: 'dist',
   plugins: {
       Keyboard: {
-          resize: 'body',
-          style: 'dark',
+          resize: KeyboardResize.Body,
+          style: KeyboardStyle.Dark,
           resizeOnFullScreen: true
       },
       SplashScreen: {

@@ -381,8 +381,13 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                         </button>
                         {isMenuOpen && (
                             <>
-                            <div className="fixed inset-0 z-10 cursor-default" onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); }} />
-                            <div className="absolute bottom-full right-0 mb-1 w-40 bg-gray-900 border border-gray-700 rounded-xl shadow-xl z-20 overflow-hidden animate-in slide-in-from-bottom-2 fade-in duration-200">
+                            {/* Backdrop: z-[55] to be above main content (z-40) but below FAB (z-60) */}
+                            <div
+                                className="fixed inset-0 z-[55] cursor-default touch-manipulation"
+                                onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); }}
+                                onTouchStart={(e) => { e.stopPropagation(); setIsMenuOpen(false); }}
+                            />
+                            <div className="absolute bottom-full right-0 mb-1 w-40 bg-gray-900 border border-gray-700 rounded-xl shadow-xl z-[56] overflow-hidden animate-in slide-in-from-bottom-2 fade-in duration-200">
                                 {onTogglePin && (
                                     <button onClick={handlePin} className="w-full px-4 py-3 text-left text-sm font-medium text-gray-300 hover:bg-gray-800 hover:text-white flex items-center gap-3 active:bg-gray-700">
                                         <Pin size={16} className={memory.isPinned ? "fill-current" : ""} />

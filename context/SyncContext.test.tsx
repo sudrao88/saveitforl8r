@@ -3,7 +3,29 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 import React from 'react';
 import { SyncProvider, useSync } from './SyncContext';
 
+// Mock storage values
+const mockStorageValues: Record<string, string | null> = {};
+
 // Mock all dependencies
+vi.mock('../services/platform', () => ({
+  storage: {
+    get: vi.fn((key: string) => Promise.resolve(mockStorageValues[key] || null)),
+    set: vi.fn((key: string, value: string) => {
+      mockStorageValues[key] = value;
+      return Promise.resolve();
+    }),
+    remove: vi.fn((key: string) => {
+      delete mockStorageValues[key];
+      return Promise.resolve();
+    }),
+    clear: vi.fn(() => {
+      Object.keys(mockStorageValues).forEach(key => delete mockStorageValues[key]);
+      return Promise.resolve();
+    }),
+  },
+  isNative: vi.fn().mockReturnValue(false),
+}));
+
 vi.mock('../services/storageService', () => ({
   getMemories: vi.fn().mockResolvedValue([]),
   saveMemory: vi.fn().mockResolvedValue(undefined),
@@ -19,7 +41,7 @@ vi.mock('../services/googleDriveService', () => ({
   uploadMultipleFiles: vi.fn().mockResolvedValue({ failures: [] }),
   findFileByName: vi.fn().mockResolvedValue(null),
   deleteFileById: vi.fn().mockResolvedValue(undefined),
-  isLinked: vi.fn().mockReturnValue(true),
+  isLinked: vi.fn().mockResolvedValue(true), // Now async
   deleteRemoteNote: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -34,6 +56,7 @@ vi.mock('../hooks/useAuth', () => ({
 
 import * as storageService from '../services/storageService';
 import * as driveService from '../services/googleDriveService';
+import { storage } from '../services/platform';
 
 const wrapper = ({ children }: { children: React.ReactNode }) => (
   <SyncProvider>{children}</SyncProvider>
@@ -43,7 +66,8 @@ describe('SyncContext', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers();
-    localStorage.clear();
+    // Clear mock storage values
+    Object.keys(mockStorageValues).forEach(key => delete mockStorageValues[key]);
   });
 
   afterEach(() => {
@@ -237,8 +261,8 @@ describe('SyncContext', () => {
     it('should skip unchanged files when snapshot matches remote modifiedTime', async () => {
       // Set up a snapshot where mem-1 has same modifiedTime as remote
       const snapshot = { 'mem-1': '2024-01-01T00:00:00Z' };
-      localStorage.setItem('gdrive_remote_snapshot', JSON.stringify(snapshot));
-      localStorage.setItem('gdrive_last_sync_time', '5000'); // Last sync at t=5000
+      mockStorageValues['gdrive_remote_snapshot'] = JSON.stringify(snapshot);
+      mockStorageValues['gdrive_last_sync_time'] = '5000'; // Last sync at t=5000
 
       const localMem = { id: 'mem-1', content: 'Unchanged', timestamp: 1000, tags: [] };
       (storageService.getMemories as any).mockResolvedValue([localMem]);
@@ -267,8 +291,8 @@ describe('SyncContext', () => {
     it('should delete local note when remote was deleted by another device', async () => {
       // Snapshot says mem-1 existed remotely
       const snapshot = { 'mem-1': '2024-01-01T00:00:00Z' };
-      localStorage.setItem('gdrive_remote_snapshot', JSON.stringify(snapshot));
-      localStorage.setItem('gdrive_last_sync_time', '5000');
+      mockStorageValues['gdrive_remote_snapshot'] = JSON.stringify(snapshot);
+      mockStorageValues['gdrive_last_sync_time'] = '5000';
 
       const localMem = { id: 'mem-1', content: 'Still here locally', timestamp: 1000, tags: [] };
       (storageService.getMemories as any).mockResolvedValue([localMem]);
@@ -396,12 +420,13 @@ describe('SyncContext', () => {
     });
 
     it('should not sync when not linked', async () => {
-      (driveService.isLinked as any).mockReturnValue(false);
+      (driveService.isLinked as any).mockResolvedValue(false);
 
       const { result } = renderHook(() => useSync(), { wrapper });
 
       await act(async () => {
         await result.current.sync();
+        vi.advanceTimersByTime(2500);
       });
 
       // No Drive operations should have been called

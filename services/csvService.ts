@@ -5,9 +5,9 @@ export const memoriesToCSV = (memories: Memory[]): string => {
   // Define columns
   const headers = ['id', 'timestamp', 'date_iso', 'content', 'type', 'tags', 'summary', 'location_json', 'attachments_json', 'enrichment_json'];
   
-  const escape = (str: string | undefined | null) => {
-    if (str === undefined || str === null) return '';
-    const stringified = String(str);
+  const escape = (val: string | number | undefined | null) => {
+    if (val === undefined || val === null) return '';
+    const stringified = String(val);
     if (stringified.includes('"') || stringified.includes(',') || stringified.includes('\n') || stringified.includes('\r')) {
       return `"${stringified.replace(/"/g, '""')}"`;
     }

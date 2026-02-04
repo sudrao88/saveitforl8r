@@ -157,10 +157,10 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
   }, []);
 
-  const saveSnapshot = useCallback((remoteFiles: any[]) => {
+  const saveSnapshot = useCallback(async (remoteFiles: any[]) => {
       const snapshot = Object.fromEntries(remoteFiles.map((f: any) => [f.name.replace('.json', ''), f.modifiedTime]));
-      localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snapshot));
-      localStorage.setItem(LAST_SYNC_KEY, Date.now().toString());
+      await storage.set(SNAPSHOT_KEY, JSON.stringify(snapshot));
+      await storage.set(LAST_SYNC_KEY, Date.now().toString());
   }, []);
 
   const doDeltaSync = useCallback(async (previousSnapshot: Record<string, string>) => {
@@ -170,7 +170,8 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const remoteFiles = await listAllFiles();
     const remoteMap = new Map(remoteFiles.map((f: any) => [f.name.replace('.json', ''), f]));
 
-    const lastSyncTime = parseInt(localStorage.getItem(LAST_SYNC_KEY) || '0');
+    const lastSyncTimeStr = await storage.get(LAST_SYNC_KEY);
+    const lastSyncTime = parseInt(lastSyncTimeStr || '0');
 
     const plan: SyncPlan = {
         toDownload: [],
@@ -244,7 +245,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
 
     const updatedRemoteFiles = await listAllFiles();
-    saveSnapshot(updatedRemoteFiles);
+    await saveSnapshot(updatedRemoteFiles);
     console.log('--- [Sync] Delta Sync Complete ---');
   }, [saveSnapshot]);
 
@@ -267,10 +268,11 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             setSyncError(null);
 
             try {
-                await getAccessToken(); 
+                await getAccessToken();
                 let previousSnapshot: Record<string, string> = {};
                 try {
-                    previousSnapshot = JSON.parse(localStorage.getItem(SNAPSHOT_KEY) || '{}');
+                    const snapshotJSON = await storage.get(SNAPSHOT_KEY);
+                    previousSnapshot = JSON.parse(snapshotJSON || '{}');
                 } catch (e) {
                     console.warn("[Sync] Snapshot corrupted, starting fresh");
                 }
@@ -312,11 +314,12 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                   await deleteFileById(remoteFile.id);
               }
               await deleteMemory(memory.id);
-              const snapshotJSON = localStorage.getItem(SNAPSHOT_KEY);
+              // Update snapshot using storage adapter for cross-platform consistency
+              const snapshotJSON = await storage.get(SNAPSHOT_KEY);
               if (snapshotJSON) {
                   const snapshot = JSON.parse(snapshotJSON);
                   delete snapshot[memory.id];
-                  localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snapshot));
+                  await storage.set(SNAPSHOT_KEY, JSON.stringify(snapshot));
               }
           } else {
               await syncFileInternal(memory);

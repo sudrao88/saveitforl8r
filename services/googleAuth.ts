@@ -1,6 +1,7 @@
 // services/googleAuth.ts
 import { generateCodeVerifier, generateCodeChallenge } from './pkce';
 import { storeTokens, getStoredToken, clearTokens } from './tokenService';
+import { storage } from './platform';
 
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 const CLIENT_SECRET = import.meta.env.VITE_GOOGLE_CLIENT_SECRET;
@@ -79,7 +80,8 @@ export const handleAuthCallback = async () => {
   const expiresAt = Date.now() + data.expires_in * 1000;
   
   await storeTokens(data.access_token, expiresAt, data.refresh_token);
-  localStorage.setItem('gdrive_linked', 'true');
+  // Use storage adapter for cross-platform consistency
+  await storage.set('gdrive_linked', 'true');
 };
 
 // Refresh Access Token
@@ -103,7 +105,7 @@ const refreshAccessToken = async () => {
   if (!res.ok) {
       if (res.status === 400 || res.status === 401) {
           await clearTokens();
-          localStorage.removeItem('gdrive_linked');
+          await storage.remove('gdrive_linked');
       }
       throw new Error('Token refresh failed');
   }

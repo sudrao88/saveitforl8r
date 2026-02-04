@@ -395,9 +395,11 @@ const AppContent: React.FC = () => {
         )}
       </main>
 
-      <button 
+      {/* FAB: Use calc for safe area positioning instead of pb-safe to prevent layout shift during scroll */}
+      <button
         onClick={handleOpenCapture}
-        className="fixed bottom-6 right-4 sm:bottom-8 sm:right-8 z-[60] h-14 px-5 bg-blue-600 text-white rounded-2xl flex items-center gap-3 shadow-2xl hover:bg-blue-700 hover:scale-105 active:scale-95 transition-all duration-300 shadow-blue-900/50 pb-safe active:translate-y-1 touch-manipulation"
+        className="fixed right-4 sm:right-8 z-[60] h-14 px-5 bg-blue-600 text-white rounded-2xl flex items-center gap-3 shadow-2xl hover:bg-blue-700 hover:scale-105 active:scale-95 transition-colors duration-200 shadow-blue-900/50 touch-manipulation will-change-transform"
+        style={{ bottom: 'calc(24px + env(safe-area-inset-bottom))' }}
       >
         <Plus size={28} strokeWidth={3} />
         <span className="font-bold text-lg hidden sm:inline">New</span>

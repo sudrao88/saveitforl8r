@@ -53,5 +53,6 @@ export const ANALYTICS_EVENTS = {
     CATEGORY: 'Auth',
     ACTION_LOGIN_SUCCESS: 'Login successful',
     ACTION_CALLBACK_FAILED: 'Callback processing failed',
+    ACTION_LOGOUT: 'Logout',
   }
 } as const;

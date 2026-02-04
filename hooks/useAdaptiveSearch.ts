@@ -125,8 +125,10 @@ export const useAdaptiveSearch = () => {
       }
   };
 
-  const search = useCallback(async (query: string, memories: Memory[] = []) => {
-    if (!query.trim()) return;
+  const search = useCallback(async (query: string, memories: Memory[] = []): Promise<{ mode: string; result: any; error?: any }> => {
+    if (!query.trim()) {
+      return { mode: 'empty', result: [] };
+    }
 
     setIsSearching(true);
 
@@ -183,7 +185,7 @@ export const useAdaptiveSearch = () => {
     } catch (e) {
       console.error("Search failed", e);
       setIsSearching(false);
-      return { mode: 'error', error: e };
+      return { mode: 'error', result: [], error: e };
     }
   }, [isOnline, modelStatus, lastError]);
 

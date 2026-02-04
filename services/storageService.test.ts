@@ -31,7 +31,12 @@ const mockStore = {
   delete: vi.fn(),
 };
 
-const mockRequest = {
+const mockRequest: {
+  result: any;
+  onsuccess: ReturnType<typeof vi.fn> | null;
+  onerror: ReturnType<typeof vi.fn> | null;
+  error: any;
+} = {
   result: null,
   onsuccess: vi.fn(),
   onerror: vi.fn(),
