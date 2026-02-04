@@ -45,7 +45,7 @@ const SettingsCard: React.FC<{ title: string; icon: React.ElementType; children:
 );
 
 const SettingsRow: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">{children}</div>
+  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-2">{children}</div>
 );
 
 const SettingsInfo: React.FC<{ label: string; description: string }> = ({ label, description }) => (
@@ -79,8 +79,8 @@ const FactoryResetModal: React.FC<{ isOpen: boolean; onClose: () => void; onConf
     const isConfirmed = confirmationText === 'DELETE';
 
     return (
-        <div className="absolute inset-0 z-20 flex items-center justify-center bg-gray-900/80 backdrop-blur-md animate-in fade-in duration-300">
-            <div className="bg-red-900/20 border border-red-800 rounded-2xl max-w-sm w-full m-4 p-6 shadow-2xl text-center">
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-gray-900/80 backdrop-blur-md animate-in fade-in duration-300 p-4">
+            <div className="bg-red-900/20 border border-red-800 rounded-2xl max-w-sm w-full p-6 shadow-2xl text-center">
                 <div className="w-14 h-14 bg-red-900/50 border-4 border-red-800 rounded-full mx-auto flex items-center justify-center">
                     <AlertTriangle size={32} className="text-red-300" />
                 </div>
@@ -137,9 +137,7 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
   const handleLinkDrive = () => { login(); };
   const handleSyncNow = async () => {
       try {
-
           await sync();
-
           if (onSyncComplete) onSyncComplete();
       } catch (e: any) { console.error("Sync failed:", e); }
   };
@@ -170,21 +168,22 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
   const statsFailed = embeddingStats?.failed || 0;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-      <div className="bg-gray-900 border border-gray-700 rounded-3xl max-w-2xl w-full shadow-2xl relative max-h-[90vh] flex flex-col overflow-hidden">
-        <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors z-20">
-          <X size={20} />
-        </button>
-        
-        <div className="p-6 border-b border-gray-700 flex items-center gap-4">
-          <div className="w-12 h-12 bg-gray-800 rounded-2xl flex items-center justify-center text-gray-300"><Settings size={24} /></div>
-          <div>
-            <h3 className="text-xl font-bold text-white">Settings</h3>
-            <p className="text-gray-400 text-sm">Manage your data, AI, and security preferences</p>
+    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in duration-200">
+      <div className="bg-gray-900 border border-gray-700 rounded-t-3xl sm:rounded-3xl max-w-2xl w-full shadow-2xl relative max-h-[85vh] sm:max-h-[90vh] flex flex-col overflow-hidden animate-in slide-in-from-bottom-10 sm:zoom-in-95 duration-200">
+        <div className="p-4 sm:p-6 border-b border-gray-700 flex items-center justify-between shrink-0 bg-gray-900 z-10 pt-4 sm:pt-6">
+          <div className="flex items-center gap-3">
+             <div className="w-10 h-10 bg-gray-800 rounded-xl flex items-center justify-center text-gray-300 shrink-0"><Settings size={20} /></div>
+             <div>
+               <h3 className="text-lg font-bold text-white leading-tight">Settings</h3>
+               <p className="text-gray-400 text-xs hidden sm:block">Manage your data, AI, and security preferences</p>
+             </div>
           </div>
+          <button onClick={onClose} className="p-2 -mr-2 text-gray-400 hover:text-white transition-colors hover:bg-gray-800 rounded-full active:scale-95">
+             <X size={24} />
+          </button>
         </div>
 
-        <div className="overflow-y-auto p-6 flex-1 space-y-6">
+        <div className="overflow-y-auto p-4 sm:p-6 flex-1 space-y-6 overscroll-contain pb-safe">
 
 
           {(syncError || modelStatus === 'error') && (
@@ -196,7 +195,7 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
                     <p className="text-sm font-medium text-red-300">Google Drive Sync Error</p>
                     <p className="text-xs text-red-400/80 mt-0.5 break-words">{syncError}</p>
                   </div>
-                  <button onClick={handleSyncNow} disabled={isSyncing} className="px-3 py-1.5 text-xs bg-red-800 hover:bg-red-700 text-white font-bold rounded-lg transition-colors shrink-0 flex items-center gap-1.5 disabled:opacity-50">
+                  <button onClick={handleSyncNow} disabled={isSyncing} className="px-3 py-1.5 text-xs bg-red-800 hover:bg-red-700 text-white font-bold rounded-lg transition-colors shrink-0 flex items-center gap-1.5 disabled:opacity-50 active:scale-95">
                     {isSyncing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Retry Sync
                   </button>
                 </div>
@@ -208,7 +207,7 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
                     <p className="text-sm font-medium text-amber-300">AI Model Download Error</p>
                     <p className="text-xs text-amber-400/80 mt-0.5 break-words">{lastError || 'The local AI model failed to load. Offline search is unavailable.'}</p>
                   </div>
-                  <button onClick={retryDownload} className="px-3 py-1.5 text-xs bg-amber-800 hover:bg-amber-700 text-white font-bold rounded-lg transition-colors shrink-0 flex items-center gap-1.5">
+                  <button onClick={retryDownload} className="px-3 py-1.5 text-xs bg-amber-800 hover:bg-amber-700 text-white font-bold rounded-lg transition-colors shrink-0 flex items-center gap-1.5 active:scale-95">
                     <RefreshCw size={14} /> Retry
                   </button>
                 </div>
@@ -224,10 +223,10 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
                 {hasApiKey ? (
                   <>
                     <span className="flex items-center gap-1.5 text-xs text-green-400 bg-green-900/30 px-2 py-1 rounded-md"><CheckCircle2 size={14} /> Set</span>
-                    <button onClick={clearKey} className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors">Clear</button>
+                    <button onClick={clearKey} className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors active:scale-95">Clear</button>
                   </>
                 ) : (
-                  <button onClick={onAddApiKey} className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg transition-colors">Add Key</button>
+                  <button onClick={onAddApiKey} className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg transition-colors active:scale-95">Add Key</button>
                 )}
               </div>
             </SettingsRow>
@@ -238,7 +237,7 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
 
                  <span className={`text-xs px-2 py-1 rounded-md font-medium ${modelStatus === 'ready' ? 'bg-green-900/30 text-green-400' : modelStatus === 'error' ? 'bg-red-900/30 text-red-400' : 'bg-yellow-900/30 text-yellow-400'}`}>{modelStatus}</span>
 
-                 <button onClick={handleForceReindex} disabled={isReindexing} className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1.5">
+                 <button onClick={handleForceReindex} disabled={isReindexing} className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1.5 active:scale-95">
                     {isReindexing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Re-index
                  </button>
                </div>
@@ -257,7 +256,7 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
                     <div className="bg-gray-800/50 p-2 rounded-lg"><span className="block font-bold text-lg text-red-400">{statsFailed}</span><span className="text-gray-400">Failed</span></div>
                 </div>
                  {statsFailed > 0 && retryFailedEmbeddings && (
-                    <button onClick={retryFailedEmbeddings} className="w-full mt-2 text-xs py-1.5 bg-red-900/30 hover:bg-red-900/40 text-red-300 rounded-lg transition-colors">Retry {statsFailed} Failed Items</button>
+                    <button onClick={retryFailedEmbeddings} className="w-full mt-2 text-xs py-1.5 bg-red-900/30 hover:bg-red-900/40 text-red-300 rounded-lg transition-colors active:scale-95">Retry {statsFailed} Failed Items</button>
                 )}
             </ExpandableSection>
           </SettingsCard>
@@ -267,18 +266,18 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
               <SettingsInfo label="Google Drive Sync" description="Securely syncs encrypted data across devices." />
               {authStatus === 'linked' ? (
                 <div className="flex items-center gap-2">
-                  <button onClick={handleSyncNow} disabled={isSyncing} className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg transition-colors flex items-center gap-1.5 disabled:opacity-50">{isSyncing ? <Loader2 size={14} className="animate-spin"/> : <RefreshCw size={14} />} Sync Now</button>
-                  <button onClick={handleUnlink} className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors">Unlink</button>
+                  <button onClick={handleSyncNow} disabled={isSyncing} className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg transition-colors flex items-center gap-1.5 disabled:opacity-50 active:scale-95">{isSyncing ? <Loader2 size={14} className="animate-spin"/> : <RefreshCw size={14} />} Sync Now</button>
+                  <button onClick={handleUnlink} className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors active:scale-95">Unlink</button>
                 </div>
               ) : (
-                <button onClick={handleLinkDrive} disabled={authStatus === 'authenticating'} className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg transition-colors disabled:opacity-50">Connect</button>
+                <button onClick={handleLinkDrive} disabled={authStatus === 'authenticating'} className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg transition-colors disabled:opacity-50 active:scale-95">Connect</button>
               )}
             </SettingsRow>
             <SettingsRow>
                 <SettingsInfo label="Manual Backup & Restore" description="Export or import all memories from a file." />
                 <div className="flex items-center gap-2 shrink-0">
-                    <button onClick={handleExport} className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors flex items-center gap-1.5"><Download size={14} /> Export</button>
-                    <button onClick={handleImportClick} className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors flex items-center gap-1.5"><Upload size={14} /> Import</button>
+                    <button onClick={handleExport} className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors flex items-center gap-1.5 active:scale-95"><Download size={14} /> Export</button>
+                    <button onClick={handleImportClick} className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors flex items-center gap-1.5 active:scale-95"><Upload size={14} /> Import</button>
                 </div>
             </SettingsRow>
           </SettingsCard>
@@ -291,17 +290,17 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
              <SettingsRow>
                 <SettingsInfo label="Encryption Key" description="Back up your key to prevent permanent data loss." />
                  <div className="flex items-center gap-2 shrink-0">
-                    <button onClick={handleDownloadKey} className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors flex items-center gap-1.5"><Download size={14} /> Backup Key</button>
-                    <button onClick={handleRestoreClick} className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors flex items-center gap-1.5"><Upload size={14} /> Restore Key</button>
+                    <button onClick={handleDownloadKey} className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors flex items-center gap-1.5 active:scale-95"><Download size={14} /> Backup Key</button>
+                    <button onClick={handleRestoreClick} className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors flex items-center gap-1.5 active:scale-95"><Upload size={14} /> Restore Key</button>
                 </div>
             </SettingsRow>
           </SettingsCard>
 
-          <div className="border-t border-red-900/50 pt-6">
+          <div className="border-t border-red-900/50 pt-6 pb-6">
             <SettingsCard title="Danger Zone" icon={AlertTriangle}>
                 <SettingsRow>
                     <SettingsInfo label="Factory Reset" description="Permanently erases all data and resets the application." />
-                    <button onClick={() => setIsResetModalOpen(true)} className="px-4 py-2 text-sm bg-red-800 hover:bg-red-700 text-white font-bold rounded-lg transition-colors flex items-center gap-2">
+                    <button onClick={() => setIsResetModalOpen(true)} className="px-4 py-2 text-sm bg-red-800 hover:bg-red-700 text-white font-bold rounded-lg transition-colors flex items-center gap-2 active:scale-95">
                         <Trash2 size={16} /> Wipe All Data
                     </button>
                 </SettingsRow>
@@ -309,7 +308,7 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
           </div>
         </div>
         
-        {appVersion && <div className="text-center py-2 border-t border-gray-700 text-[10px] font-mono text-gray-500">Version: {appVersion}</div>}
+        {appVersion && <div className="text-center py-2 border-t border-gray-700 text-[10px] font-mono text-gray-500 shrink-0 bg-gray-900">Version: {appVersion}</div>}
         
         <FactoryResetModal 
             isOpen={isResetModalOpen}

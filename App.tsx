@@ -348,7 +348,7 @@ const AppContent: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-900 flex flex-col">
       <InstallPrompt />
-      <div className="sticky top-0 z-30 bg-gray-900/90 backdrop-blur-md border-b border-gray-800 pt-[env(safe-area-inset-top)]">
+      <div className="sticky top-0 z-[50] bg-gray-900/90 backdrop-blur-md border-b border-gray-800 pt-[env(safe-area-inset-top)]">
           <TopNavigation 
             setView={handleSetView} 
             resetFilters={handleResetFilters} 
@@ -368,7 +368,7 @@ const AppContent: React.FC = () => {
           />
       </div>
 
-      <main className="flex-1 p-4 sm:p-8 max-w-7xl mx-auto w-full relative">
+      <main className="flex-1 p-4 sm:p-8 max-w-7xl mx-auto w-full relative z-[40]">
         {filteredMemories.length === 0 ? (
           <EmptyState 
             hasMemories={memories.length > 0} 
@@ -397,17 +397,17 @@ const AppContent: React.FC = () => {
 
       <button 
         onClick={handleOpenCapture}
-        className="fixed bottom-6 right-4 sm:bottom-8 sm:right-8 z-20 h-14 sm:h-16 px-5 sm:px-7 bg-blue-600 text-white rounded-2xl flex items-center gap-3 shadow-2xl hover:bg-blue-700 hover:scale-105 active:scale-95 transition-all duration-300 shadow-blue-900/50 pb-safe"
+        className="fixed bottom-6 right-4 sm:bottom-8 sm:right-8 z-[60] h-14 px-5 bg-blue-600 text-white rounded-2xl flex items-center gap-3 shadow-2xl hover:bg-blue-700 hover:scale-105 active:scale-95 transition-all duration-300 shadow-blue-900/50 pb-safe active:translate-y-1 touch-manipulation"
       >
         <Plus size={28} strokeWidth={3} />
-        <span className="font-bold text-lg">New</span>
+        <span className="font-bold text-lg hidden sm:inline">New</span>
       </button>
 
       {expandedMemory && (
         <div className="fixed inset-0 z-[100] bg-gray-950/90 backdrop-blur-md flex flex-col animate-in fade-in duration-300">
           <div className="sticky top-0 z-10 px-4 py-3 border-b border-gray-800 flex items-center justify-between bg-gray-950/50 backdrop-blur-xl pt-[env(safe-area-inset-top)]">
              <div className="flex items-center gap-3">
-                <button onClick={() => setExpandedMemory(null)} className="p-2 -ml-2 rounded-full hover:bg-gray-800 text-gray-400 hover:text-white transition-colors">
+                <button onClick={() => setExpandedMemory(null)} className="p-3 -ml-3 rounded-full hover:bg-gray-800 text-gray-400 hover:text-white transition-colors active:scale-95">
                     <X size={24} />
                 </button>
                 <h2 className="text-lg font-bold text-gray-100 truncate max-w-[200px] sm:max-w-md">Memory Detail</h2>
@@ -437,7 +437,7 @@ const AppContent: React.FC = () => {
         <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-md flex flex-col animate-in fade-in zoom-in-95 duration-200">
            <div className="flex items-center justify-between px-4 py-3 bg-black/50 border-b border-white/10 pt-[env(safe-area-inset-top)]">
               <div className="flex items-center gap-3">
-                 <button onClick={() => setViewingAttachment(null)} className="p-2 -ml-2 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition-colors">
+                 <button onClick={() => setViewingAttachment(null)} className="p-3 -ml-3 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition-colors active:scale-95">
                     <X size={24} />
                  </button>
                  <span className="text-sm font-medium text-gray-200 truncate max-w-[200px] sm:max-w-md">{viewingAttachment.name}</span>
@@ -445,7 +445,7 @@ const AppContent: React.FC = () => {
               <a 
                 href={viewingAttachment.data} 
                 download={viewingAttachment.name}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all"
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all active:scale-95"
               >
                  <Download size={14} /> Download
               </a>
@@ -476,7 +476,7 @@ const AppContent: React.FC = () => {
                     <a 
                         href={viewingAttachment.data} 
                         download={viewingAttachment.name}
-                        className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold transition-all shadow-lg"
+                        className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold transition-all shadow-lg active:scale-95"
                     >
                         Download to View
                     </a>

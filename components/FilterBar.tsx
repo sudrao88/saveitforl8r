@@ -29,7 +29,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
   }
 
   return (
-    <div className="w-full max-w-4xl mx-auto px-4 sm:px-8 py-2 flex items-center gap-2 overflow-x-auto no-scrollbar mask-gradient">
+    <div className="w-full max-w-4xl mx-auto px-4 sm:px-8 py-2 flex items-center gap-2 overflow-x-auto no-scrollbar mask-gradient touch-pan-x">
        <div className="flex items-center gap-2 pr-3 shrink-0 border-r border-gray-700/50 mr-1">
            <Filter size={14} className="text-gray-500" />
            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest hidden sm:inline">Filter</span>
@@ -38,7 +38,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
        {filterType && (
            <button 
                onClick={clearFilters} 
-               className="shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full bg-gray-800 text-gray-400 text-xs font-bold border border-red-900/30 hover:bg-red-900/20 hover:text-red-400 transition-colors"
+               className="shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full bg-gray-800 text-gray-400 text-xs font-bold border border-red-900/30 hover:bg-red-900/20 hover:text-red-400 transition-colors active:scale-95 touch-manipulation"
            >
                <X size={12} /> Clear
            </button>
@@ -49,7 +49,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
            <button 
                key={t} 
                onClick={() => setFilterType(filterType === t ? null : t)}
-               className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${
+               className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-all active:scale-95 touch-manipulation ${
                    filterType === t 
                    ? 'bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-900/20' 
                    : 'bg-gray-800 text-gray-300 border-gray-700 hover:border-gray-500'

@@ -399,7 +399,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
             <div className="flex items-center gap-3">
                 <button
                     onClick={handleClose}
-                    className="p-2 -ml-2 rounded-full hover:bg-gray-800 text-gray-400 hover:text-white transition-colors"
+                    className="p-3 -ml-3 rounded-full hover:bg-gray-800 text-gray-400 hover:text-white transition-colors active:bg-gray-700"
                 >
                     <ArrowLeft size={24} />
                 </button>
@@ -412,15 +412,15 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
             {/* Editor Area */}
             <div className="min-h-[200px] relative text-left order-1 mb-6" dir="ltr">
                 {isChecklistMode ? (
-                    <div className="space-y-2">
+                    <div className="space-y-3">
                         {checklistItems.map((item, index) => (
-                            <div key={item.id} className="flex items-start gap-3 animate-in fade-in slide-in-from-left-2 duration-200">
+                            <div key={item.id} className="flex items-start gap-4 animate-in fade-in slide-in-from-left-2 duration-200">
                                 <div 
-                                    className="mt-1.5 text-gray-500 cursor-pointer"
+                                    className="mt-2 text-gray-500 cursor-pointer p-1 -m-1"
                                     onClick={() => setChecklistItems(prev => prev.map(i => i.id === item.id ? { ...i, checked: !i.checked } : i))}
                                 >
-                                    <div className={`w-5 h-5 border-2 rounded flex items-center justify-center transition-colors ${item.checked ? 'border-blue-500 bg-blue-500/20' : 'border-gray-600'}`}>
-                                        {item.checked && <div className="w-2.5 h-2.5 bg-blue-500 rounded-sm" />}
+                                    <div className={`w-6 h-6 border-2 rounded-lg flex items-center justify-center transition-colors ${item.checked ? 'border-blue-500 bg-blue-500/20' : 'border-gray-600'}`}>
+                                        {item.checked && <div className="w-3 h-3 bg-blue-500 rounded-sm" />}
                                     </div>
                                 </div>
                                 <input
@@ -439,16 +439,16 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                                     }}
                                     autoFocus={index === checklistItems.length - 1} 
                                     placeholder="List item..."
-                                    className={`flex-1 bg-transparent text-lg text-white placeholder-gray-600 focus:outline-none border-b border-transparent focus:border-gray-700/50 pb-1 transition-all text-left ${item.checked ? 'line-through text-gray-500' : ''}`}
+                                    className={`flex-1 bg-transparent text-lg text-white placeholder-gray-600 focus:outline-none border-b border-transparent focus:border-gray-700/50 pb-2 transition-all text-left ${item.checked ? 'line-through text-gray-500' : ''}`}
                                     dir="ltr"
                                 />
                             </div>
                         ))}
                         <button 
                             onClick={() => addChecklistItem(checklistItems[checklistItems.length - 1]?.id)}
-                            className="flex items-center gap-2 text-gray-500 hover:text-blue-400 mt-2 pl-1 transition-colors text-sm font-medium"
+                            className="flex items-center gap-2 text-gray-500 hover:text-blue-400 mt-4 pl-1 transition-colors text-base font-medium py-2 active:text-blue-500"
                         >
-                            <Plus size={16} /> Add Item
+                            <Plus size={20} /> Add Item
                         </button>
                     </div>
                 ) : (
@@ -460,7 +460,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                             prose-p:my-2 prose-ul:my-2 prose-li:my-0
                             [&_h1]:text-3xl [&_h1]:font-bold [&_h1]:mt-4 [&_h1]:mb-2 [&_h1]:text-white
                             [&_h2]:text-2xl [&_h2]:font-bold [&_h2]:mt-3 [&_h2]:mb-2 [&_h2]:text-gray-100
-                            text-left"
+                            text-left touch-manipulation"
                             dir="ltr"
                             onKeyUp={checkFormats}
                             onMouseUp={checkFormats}
@@ -479,24 +479,24 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
 
             {/* Attachments Preview - MOVED ABOVE TOOLBAR */}
             {attachments.length > 0 && (
-                <div className="flex gap-3 flex-wrap order-2 mb-4">
+                <div className="flex gap-4 flex-wrap order-2 mb-6">
                     {attachments.map((att) => (
                         <div key={att.id} className="relative group animate-in zoom-in-90 duration-200">
                             {att.type === 'image' ? (
-                                <div className="w-24 h-24 rounded-xl overflow-hidden border border-gray-700 bg-black/50">
+                                <div className="w-24 h-24 rounded-2xl overflow-hidden border border-gray-700 bg-black/50 shadow-lg">
                                     <img src={att.data} alt="preview" className="w-full h-full object-cover" />
                                 </div>
                             ) : (
-                                <div className="w-24 h-24 rounded-xl border border-gray-700 bg-gray-800/50 flex flex-col items-center justify-center p-2 text-center">
+                                <div className="w-24 h-24 rounded-2xl border border-gray-700 bg-gray-800/50 flex flex-col items-center justify-center p-2 text-center shadow-lg">
                                     <FileText size={24} className="text-gray-400 mb-2" />
                                     <span className="text-[10px] text-gray-400 w-full truncate px-1">{att.name}</span>
                                 </div>
                             )}
                             <button 
                                 onClick={() => removeAttachment(att.id)}
-                                className="absolute -top-2 -right-2 bg-gray-800 text-gray-400 hover:text-red-400 border border-gray-600 rounded-full p-1.5 shadow-lg transition-colors"
+                                className="absolute -top-3 -right-3 bg-gray-800 text-gray-400 hover:text-red-400 border border-gray-600 rounded-full p-2 shadow-lg transition-colors active:scale-95"
                             >
-                                <X size={14} />
+                                <X size={16} />
                             </button>
                         </div>
                     ))}
@@ -504,16 +504,16 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
             )}
 
             {/* Toolbar Area - order-3 */}
-            <div className="flex flex-col gap-4 border-gray-800 pt-0 order-3">
+            <div className="flex flex-col gap-4 border-gray-800 pt-0 order-3 sticky bottom-[calc(env(safe-area-inset-bottom)+80px)] sm:bottom-0 sm:relative z-20">
                  {/* Combined Toolbar */}
-                 <div className="flex flex-wrap items-center gap-2 bg-gray-800/30 p-2 rounded-xl border border-gray-700/50">
+                 <div className="flex flex-wrap items-center gap-3 bg-gray-800/90 backdrop-blur-md p-3 rounded-2xl border border-gray-700/50 shadow-xl">
                     {/* Attachments Button */}
                     <button 
                         onClick={() => fileInputRef.current?.click()}
-                        className="p-2 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors"
+                        className="p-3 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-xl transition-colors active:scale-95"
                         title="Add Attachment"
                     >
-                        <Paperclip size={18} />
+                        <Paperclip size={20} />
                     </button>
                     <input 
                         type="file" 
@@ -524,63 +524,63 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                         accept="image/*,.pdf,.txt,.md"
                     />
 
-                    <div className="w-px h-6 bg-gray-700/50 mx-1"></div>
+                    <div className="w-px h-8 bg-gray-700/50 mx-1"></div>
 
                     {/* Formatting Controls (Only in Normal Mode) */}
                     {!isChecklistMode && (
                         <>
                             <button 
                                 onClick={() => execFormat('bold')} 
-                                className={`p-2 rounded-lg transition-colors ${isFormatActive('bold') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`} 
+                                className={`p-3 rounded-xl transition-colors active:scale-95 ${isFormatActive('bold') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`} 
                                 title="Bold"
                             >
-                                <Bold size={18} />
+                                <Bold size={20} />
                             </button>
                             <button 
                                 onClick={() => execFormat('italic')} 
-                                className={`p-2 rounded-lg transition-colors ${isFormatActive('italic') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`} 
+                                className={`p-3 rounded-xl transition-colors active:scale-95 ${isFormatActive('italic') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`} 
                                 title="Italic"
                             >
-                                <Italic size={18} />
+                                <Italic size={20} />
                             </button>
                             <button 
                                 onClick={() => execFormat('underline')} 
-                                className={`p-2 rounded-lg transition-colors ${isFormatActive('underline') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`} 
+                                className={`p-3 rounded-xl transition-colors active:scale-95 ${isFormatActive('underline') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`} 
                                 title="Underline"
                             >
-                                <Underline size={18} />
+                                <Underline size={20} />
                             </button>
-                            <div className="w-px h-6 bg-gray-700/50 mx-1"></div>
+                            <div className="w-px h-8 bg-gray-700/50 mx-1"></div>
                             <button 
                                 onClick={() => execFormat('formatBlock', 'H1')} 
-                                className={`p-2 rounded-lg transition-colors ${isFormatActive('H1') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`} 
+                                className={`p-3 rounded-xl transition-colors active:scale-95 ${isFormatActive('H1') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`} 
                                 title="Heading 1"
                             >
-                                <Heading1 size={18} />
+                                <Heading1 size={20} />
                             </button>
                             <button 
                                 onClick={() => execFormat('formatBlock', 'H2')} 
-                                className={`p-2 rounded-lg transition-colors ${isFormatActive('H2') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`} 
+                                className={`p-3 rounded-xl transition-colors active:scale-95 ${isFormatActive('H2') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`} 
                                 title="Heading 2"
                             >
-                                <Heading2 size={18} />
+                                <Heading2 size={20} />
                             </button>
-                            <div className="w-px h-6 bg-gray-700/50 mx-1"></div>
+                            <div className="w-px h-8 bg-gray-700/50 mx-1"></div>
                         </>
                     )}
 
                     {/* Checklist Toggle */}
                     <button
                         onClick={toggleChecklistMode}
-                        className={`p-2 rounded-lg transition-colors ${isChecklistMode ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`}
+                        className={`p-3 rounded-xl transition-colors active:scale-95 ${isChecklistMode ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`}
                         title="Checklist Mode"
                     >
-                        <CheckSquare size={18} />
+                        <CheckSquare size={20} />
                     </button>
                  </div>
             </div>
             
-            <div className="pt-4 order-4">
+            <div className="pt-4 order-4 pb-20 sm:pb-0">
                <hr className="border-gray-800 mb-6" />
 
                {/* Tags Interface */}
@@ -588,13 +588,13 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                   <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Tags</h3>
                   <div className="flex flex-wrap items-center gap-2">
                       {tags.map(tag => (
-                          <span key={tag} className="bg-blue-500/10 text-blue-400 border border-blue-500/20 px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-2 animate-in fade-in">
+                          <span key={tag} className="bg-blue-500/10 text-blue-400 border border-blue-500/20 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 animate-in fade-in">
                               #{tag}
-                              <button onClick={() => removeTag(tag)} className="hover:text-blue-200"><X size={14} /></button>
+                              <button onClick={() => removeTag(tag)} className="hover:text-blue-200 p-1 -m-1"><X size={16} /></button>
                           </span>
                       ))}
-                      <div className="flex items-center gap-2 bg-gray-800/50 px-3 py-1.5 rounded-xl border border-gray-700/50 focus-within:border-blue-500/50 focus-within:bg-gray-800 transition-all">
-                          <TagIcon size={16} className="text-gray-500" />
+                      <div className="flex items-center gap-2 bg-gray-800/50 px-4 py-2 rounded-2xl border border-gray-700/50 focus-within:border-blue-500/50 focus-within:bg-gray-800 transition-all">
+                          <TagIcon size={18} className="text-gray-500" />
                           <input 
                               type="text" 
                               value={tagInput}
@@ -607,7 +607,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                               }}
                               onBlur={handleAddTag} 
                               placeholder="Add custom tag..."
-                              className="bg-transparent text-sm text-white placeholder-gray-500 focus:outline-none min-w-[120px]"
+                              className="bg-transparent text-sm text-white placeholder-gray-500 focus:outline-none min-w-[120px] py-1"
                           />
                       </div>
                   </div>
@@ -619,7 +619,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                               <button
                                   key={tag}
                                   onClick={() => toggleTag(tag)}
-                                  className="px-3 py-1.5 rounded-full text-xs font-bold bg-gray-800 text-gray-400 border border-gray-700 hover:border-gray-500 hover:text-gray-200 transition-all"
+                                  className="px-4 py-2 rounded-full text-xs font-bold bg-gray-800 text-gray-400 border border-gray-700 hover:border-gray-500 hover:text-gray-200 transition-all active:scale-95"
                               >
                                   + {tag}
                               </button>
@@ -635,13 +635,13 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                   <button
                       onClick={handleSubmit}
                       disabled={isProcessing}
-                      className={`flex items-center justify-center gap-2 px-8 py-3 rounded-xl font-bold transition-all shadow-lg w-full sm:w-auto
+                      className={`flex items-center justify-center gap-3 px-8 py-4 rounded-2xl font-bold transition-all shadow-lg w-full sm:w-auto text-lg
                           ${isProcessing
                               ? 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700'
-                              : 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-900/20 hover:scale-[1.02] active:scale-95'
+                              : 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-900/20 active:scale-95'
                           }`}
                   >
-                      {isProcessing ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
+                      {isProcessing ? <Loader2 size={24} className="animate-spin" /> : <Send size={24} />}
                       {isProcessing ? (isEditMode ? 'Updating...' : 'Saving...') : (isEditMode ? 'Update Memory' : 'Save Memory')}
                   </button>
                </div>
@@ -653,23 +653,23 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
             <div className="fixed inset-0 z-[100] bg-gray-950/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
                 <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 max-w-sm w-full shadow-2xl animate-in zoom-in-95 duration-200">
                     <div className="flex flex-col items-center text-center">
-                        <div className="w-12 h-12 bg-amber-900/30 rounded-full flex items-center justify-center mb-4">
-                            <AlertTriangle size={24} className="text-amber-500" />
+                        <div className="w-16 h-16 bg-amber-900/30 rounded-full flex items-center justify-center mb-4">
+                            <AlertTriangle size={32} className="text-amber-500" />
                         </div>
-                        <h3 className="text-lg font-bold text-gray-100 mb-2">Discard Changes?</h3>
-                        <p className="text-sm text-gray-400 mb-6">
+                        <h3 className="text-xl font-bold text-gray-100 mb-2">Discard Changes?</h3>
+                        <p className="text-base text-gray-400 mb-6">
                             You have unsaved changes. Are you sure you want to discard them?
                         </p>
-                        <div className="flex gap-3 w-full">
+                        <div className="flex gap-4 w-full">
                             <button
                                 onClick={() => setShowDiscardConfirm(false)}
-                                className="flex-1 py-3 text-sm font-medium text-gray-300 bg-gray-800 rounded-xl hover:bg-gray-700 transition-colors"
+                                className="flex-1 py-3 text-sm font-medium text-gray-300 bg-gray-800 rounded-xl hover:bg-gray-700 transition-colors active:scale-95"
                             >
                                 Keep Editing
                             </button>
                             <button
                                 onClick={handleCloseConfirmed}
-                                className="flex-1 py-3 text-sm font-bold text-white bg-red-500 rounded-xl hover:bg-red-600 transition-colors shadow-lg shadow-red-500/20"
+                                className="flex-1 py-3 text-sm font-bold text-white bg-red-500 rounded-xl hover:bg-red-600 transition-colors shadow-lg shadow-red-500/20 active:scale-95"
                             >
                                 Discard
                             </button>

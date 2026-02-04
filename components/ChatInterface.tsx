@@ -165,7 +165,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
             <BrainCircuit size={24} className="text-blue-500" />
             <h2 className="text-lg font-bold text-gray-100">Brain Search</h2>
         </div>
-        <button onClick={onClose} className="p-2 hover:bg-gray-800 rounded-full transition text-gray-400">
+        <button onClick={onClose} className="p-3 -m-3 hover:bg-gray-800 rounded-full transition text-gray-400 active:scale-95">
           <X size={24} />
         </button>
       </div>
@@ -223,7 +223,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
                                 <button 
                                     key={id}
                                     onClick={() => setPreviewMemoryId(id)}
-                                    className="flex items-center gap-2 p-1.5 bg-gray-900 rounded-lg border border-gray-700 hover:border-blue-500 transition-all text-left shadow-sm group"
+                                    className="flex items-center gap-2 p-1.5 bg-gray-900 rounded-lg border border-gray-700 hover:border-blue-500 transition-all text-left shadow-sm group active:scale-[0.98]"
                                 >
                                     {mem.image && (
                                         <img src={mem.image} className="w-8 h-8 rounded-md object-cover bg-gray-800 border border-gray-800" alt="" />
@@ -280,7 +280,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
             <button 
                 onClick={handleSend}
                 disabled={!query.trim() || loading}
-                className="mb-1 p-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                className="mb-1 p-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0 active:scale-95"
             >
                 <Send size={18} />
             </button>
@@ -301,7 +301,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
                   />
                   <button 
                     onClick={() => setPreviewMemoryId(null)}
-                    className="mt-4 w-full py-3 bg-gray-800 text-white rounded-xl font-bold shadow-xl border border-gray-700 text-sm"
+                    className="mt-4 w-full py-3 bg-gray-800 text-white rounded-xl font-bold shadow-xl border border-gray-700 text-sm active:scale-95"
                   >
                       Close Preview
                   </button>

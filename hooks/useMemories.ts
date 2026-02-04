@@ -261,35 +261,38 @@ export const useMemories = () => {
       const apiKey = await storage.get('gemini_api_key');
       const hasKey = !!apiKey && apiKey.trim().length > 0;
 
-      // Create updated memory, clearing enrichment to trigger re-enrichment
+      // Create updated memory
+      // CRITICAL FIX: Explicitly set isPending=true and processingError=false if we have a key
+      // This forces the "Enriching..." UI state and ensures the enrichment logic is valid
       const updatedMemory: Memory = {
         ...existing,
         content: text,
         attachments,
         tags,
         location: location || existing.location,
-        enrichment: undefined, // Clear enrichment to trigger re-processing
-        isPending: hasKey,
-        processingError: !hasKey,
+        enrichment: undefined, // Clear old enrichment to force re-processing
+        isPending: hasKey,     // Force pending state if we have a key
+        processingError: !hasKey && existing.processingError, // Only keep error if we don't have a key to fix it
         timestamp: Date.now()
       };
 
-      // Update UI immediately
+      // Update UI immediately to show "Enriching..." state
       setMemories(prev => prev.map(m => m.id === id ? updatedMemory : m));
 
-      // Save locally
+      // Save locally so if app closes, we at least have the text update
       await saveMemory(updatedMemory);
 
-      // Sync immediately (even before enrichment completes)
+      // Sync immediately (save the text changes even before enrichment finishes)
       await trySyncFile(updatedMemory);
 
-      // Schedule background enrichment if API key exists
+      // Trigger Background Enrichment
       if (hasKey) {
+          console.log(`[Update] Triggering enrichment for ${id}`);
           enrichInput(text, attachments, updatedMemory.location, tags)
             .then(async (enrichment) => {
                 if (!enrichment) return;
 
-                // Check if memory still exists
+                // Re-fetch to ensure we don't overwrite concurrent changes (unlikely here but safe)
                 const current = await getMemory(id);
                 if (!current || current.isDeleted) {
                     console.log("Memory deleted during enrichment, aborting save.");
@@ -302,12 +305,13 @@ export const useMemories = () => {
                     enrichment,
                     tags: allTags,
                     isPending: false,
+                    processingError: false, // Clear any errors on success
                     timestamp: Date.now()
                 };
 
                 await saveMemory(enrichedMemory);
                 setMemories(prev => prev.map(m => m.id === id ? enrichedMemory : m));
-                console.log("Update enrichment complete, syncing...");
+                console.log("Update enrichment complete, syncing enriched version...");
 
                 await trySyncFile(enrichedMemory);
             })

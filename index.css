@@ -8,6 +8,11 @@
   --sal: env(safe-area-inset-left);
 }
 
+html {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
@@ -23,6 +28,16 @@ body {
   padding-right: var(--sar);
   padding-bottom: var(--sab);
   padding-left: var(--sal);
+  
+  /* Disable text selection by default for app-like feel, re-enable on specific text areas */
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Re-enable selection for content */
+.prose, input, textarea, [contenteditable] {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 /* Custom scrollbar for webkit */

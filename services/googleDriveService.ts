@@ -3,8 +3,6 @@ import { getAuthorizedFetch, getValidToken, initiateLogin, handleAuthCallback } 
 import { clearTokens } from './tokenService';
 import { storage } from './platform';
 
-// CLIENT_ID is managed in googleAuth.ts — no longer duplicated here
-
 interface DriveFile {
   id: string;
   name: string;
@@ -13,8 +11,6 @@ interface DriveFile {
   trashed?: boolean;
 }
 
-// Max parallel requests. Stays well within Drive API quota (~10 QPS sustained)
-// while dramatically reducing wall-clock time vs sequential requests.
 const BATCH_CONCURRENCY = 6;
 
 export const loginToDrive = initiateLogin;
@@ -49,8 +45,6 @@ const driveFetch = async (url: string, options: RequestInit = {}) => {
   }
 };
 
-// --- Operations ---
-
 export const findFileByName = async (filename: string): Promise<DriveFile | null> => {
   const query = `name = '${filename}' and 'appDataFolder' in parents and trashed = false`;
   const url = `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=${encodeURIComponent(query)}&fields=files(id, name, modifiedTime)`;
@@ -65,6 +59,7 @@ export const downloadFileContent = async (fileId: string) => {
   return await res.json();
 };
 
+// Robust Multipart Upload Implementation
 export const uploadFile = async (filename: string, content: any, existingFileId?: string) => {
   const metadata = {
     name: filename,
@@ -72,9 +67,17 @@ export const uploadFile = async (filename: string, content: any, existingFileId?
     mimeType: 'application/json'
   };
 
-  const formData = new FormData();
-  formData.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-  formData.append('file', new Blob([JSON.stringify(content)], { type: 'application/json' }));
+  const boundary = '-------314159265358979323846';
+  const delimiter = `\r\n--${boundary}\r\n`;
+  const closeDelim = `\r\n--${boundary}--`;
+
+  const body = delimiter +
+    'Content-Type: application/json\r\n\r\n' +
+    JSON.stringify(metadata) +
+    delimiter +
+    'Content-Type: application/json\r\n\r\n' +
+    JSON.stringify(content) +
+    closeDelim;
 
   let url = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
   let method = 'POST';
@@ -87,8 +90,11 @@ export const uploadFile = async (filename: string, content: any, existingFileId?
   const token = await getValidToken();
   const res = await fetch(url, {
     method,
-    body: formData,
-    headers: { 'Authorization': `Bearer ${token}` }
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': `multipart/related; boundary=${boundary}`
+    },
+    body
   });
 
   if (!res.ok) {
@@ -118,13 +124,10 @@ export const listAllFiles = async (): Promise<DriveFile[]> => {
     return allFiles;
 };
 
-// Delete a Drive file directly by its Drive file ID (no extra lookup needed
-// when the caller already has the ID from a listing).
 export const deleteFileById = async (fileId: string) => {
     await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, { method: 'DELETE' });
 };
 
-// Delete a remote note by its application note ID (looks up the file first).
 export const deleteRemoteNote = async (noteId: string) => {
     const file = await findFileByName(`${noteId}.json`);
     if (file) {
@@ -132,8 +135,6 @@ export const deleteRemoteNote = async (noteId: string) => {
     }
 };
 
-// Download multiple files in parallel with a concurrency limit.
-// Returns a map of fileId → parsed JSON content, plus a list of failed fileIds.
 export const downloadMultipleFiles = async (
     fileIds: string[]
 ): Promise<{ contents: Map<string, any>; failures: string[] }> => {
@@ -162,8 +163,6 @@ export const downloadMultipleFiles = async (
     return { contents, failures };
 };
 
-// Upload multiple files in parallel with a concurrency limit.
-// Returns a list of filenames that failed.
 export const uploadMultipleFiles = async (
     items: Array<{ filename: string; content: any; existingFileId?: string }>
 ): Promise<{ failures: string[] }> => {

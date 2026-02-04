@@ -172,7 +172,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                       return (
                         <div 
                             key={idx} 
-                            className="flex items-start gap-3 group/item cursor-pointer"
+                            className="flex items-start gap-3 group/item cursor-pointer p-2 -mx-2 hover:bg-white/5 rounded-lg active:bg-white/10 transition-colors"
                             onClick={(e) => { e.stopPropagation(); handleToggleCheck(idx); }}
                         >
                             <div className={`mt-0.5 transition-colors ${checked ? 'text-blue-500' : 'text-gray-500 group-hover/item:text-gray-400'}`}>
@@ -221,7 +221,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                 </p>
                 <button
                     onClick={(e) => { e.stopPropagation(); onAddApiKey?.(); }}
-                    className="w-full max-w-[200px] py-2.5 text-sm font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-500 transition-colors shadow-lg shadow-blue-500/20"
+                    className="w-full max-w-[200px] py-3 text-sm font-bold text-white bg-blue-600 rounded-xl hover:bg-blue-500 transition-colors shadow-lg shadow-blue-500/20 active:scale-95 touch-manipulation"
                 >
                     Add API Key
                 </button>
@@ -287,7 +287,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                         <div className="absolute bottom-0 left-0 right-0 flex justify-center pb-2">
                             <button 
                                 onClick={(e) => { e.stopPropagation(); onExpand?.(memory); }}
-                                className="flex items-center gap-2 px-4 py-1.5 bg-gray-800/90 backdrop-blur-md border border-gray-700 rounded-full text-[10px] font-bold text-blue-400 hover:text-blue-300 hover:bg-gray-700 transition-all shadow-lg"
+                                className="flex items-center gap-2 px-4 py-2 bg-gray-800/90 backdrop-blur-md border border-gray-700 rounded-full text-xs font-bold text-blue-400 hover:text-blue-300 hover:bg-gray-700 transition-all shadow-lg active:scale-95"
                             >
                                 <Maximize2 size={12} /> READ FULL MEMORY
                             </button>
@@ -301,7 +301,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                 {(entity?.title) && (
                     <div className="pt-1">
                         {targetUri ? (
-                            <a href={targetUri} target="_blank" rel="noopener noreferrer" className="group/link inline-flex items-start gap-2 active:opacity-70 transition-all">
+                            <a href={targetUri} target="_blank" rel="noopener noreferrer" className="group/link inline-flex items-start gap-2 active:opacity-70 transition-all p-1 -m-1 rounded-lg hover:bg-white/5">
                                 <h3 className="text-lg font-bold text-blue-400 leading-tight underline decoration-blue-500/30 underline-offset-4 decoration-2">
                                     {entity.title}
                                 </h3>
@@ -323,7 +323,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                         {shouldTruncateAI && (
                             <button 
                                 onClick={(e) => { e.stopPropagation(); setIsExpanded(!isExpanded); }}
-                                className="text-[10px] font-bold text-gray-500 hover:text-blue-400 uppercase tracking-wide mt-1"
+                                className="text-[10px] font-bold text-gray-500 hover:text-blue-400 uppercase tracking-wide mt-2 p-2 -ml-2 hover:bg-white/5 rounded-lg transition-colors"
                             >
                                 {isExpanded ? 'Show Less' : 'Read More'}
                             </button>
@@ -339,19 +339,19 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                         <div 
                             key={idx} 
                             onClick={(e) => { e.stopPropagation(); onViewAttachment?.(doc); }}
-                            className="flex items-center gap-2 p-2 rounded-lg bg-gray-900/30 border border-gray-700/30 hover:bg-gray-700/50 transition-colors cursor-pointer group/doc"
+                            className="flex items-center gap-2 p-3 rounded-xl bg-gray-900/30 border border-gray-700/30 hover:bg-gray-700/50 transition-colors cursor-pointer group/doc active:scale-[0.98]"
                         >
-                            <FileText size={14} className="text-gray-500 group-hover/doc:text-blue-400" />
-                            <span className="text-xs text-gray-300 truncate flex-1 group-hover/doc:text-white">{doc.name}</span>
+                            <FileText size={16} className="text-gray-500 group-hover/doc:text-blue-400" />
+                            <span className="text-sm text-gray-300 truncate flex-1 group-hover/doc:text-white">{doc.name}</span>
                             <div className="flex items-center gap-2">
-                                <Eye size={12} className="text-gray-500 opacity-0 group-hover/doc:opacity-100" />
+                                <Eye size={16} className="text-gray-500 opacity-0 group-hover/doc:opacity-100" />
                                 <a 
                                     href={doc.data} 
                                     download={doc.name} 
                                     onClick={e => e.stopPropagation()} 
-                                    className="p-1 text-gray-500 hover:text-white transition-colors"
+                                    className="p-2 -m-2 text-gray-500 hover:text-white transition-colors"
                                 >
-                                    <Paperclip size={12} />
+                                    <Paperclip size={16} />
                                 </a>
                             </div>
                         </div>
@@ -363,40 +363,40 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
             <div className="flex flex-wrap items-center gap-y-2 gap-x-4 pt-2 border-t border-gray-700/20 mt-2">
                 <div className="flex flex-wrap gap-1.5 flex-1">
                     {memory.tags.map((tag, idx) => (
-                        <span key={idx} className="text-[10px] text-gray-500 hover:text-gray-300">#{tag}</span>
+                        <span key={idx} className="text-[10px] text-gray-500 hover:text-gray-300 bg-gray-900/50 px-2 py-1 rounded-md">#{tag}</span>
                     ))}
                 </div>
                 <div className="flex items-center gap-2 ml-auto relative">
                     {onRetry && memory.processingError && (
-                        <button onClick={() => onRetry(memory.id)} className="text-amber-500 hover:text-amber-400 transition-colors">
-                            <RefreshCcw size={14} />
+                        <button onClick={() => onRetry(memory.id)} className="p-2 text-amber-500 hover:text-amber-400 transition-colors rounded-lg hover:bg-amber-900/20">
+                            <RefreshCcw size={16} />
                         </button>
                     )}
                     <div className="relative">
                         <button 
                             onClick={(e) => { e.stopPropagation(); setIsMenuOpen(!isMenuOpen); }} 
-                            className={`p-1 rounded-full hover:bg-gray-700/50 transition-colors ${isMenuOpen ? 'text-gray-200 bg-gray-700/50' : 'text-gray-500'}`}
+                            className={`p-2 rounded-lg hover:bg-gray-700/50 transition-colors ${isMenuOpen ? 'text-gray-200 bg-gray-700/50' : 'text-gray-500'}`}
                         >
-                            <MoreVertical size={16} />
+                            <MoreVertical size={20} />
                         </button>
                         {isMenuOpen && (
                             <>
                             <div className="fixed inset-0 z-10 cursor-default" onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); }} />
-                            <div className="absolute bottom-full right-0 mb-1 w-32 bg-gray-900 border border-gray-700 rounded-xl shadow-xl z-20 overflow-hidden animate-in slide-in-from-bottom-2 fade-in duration-200">
+                            <div className="absolute bottom-full right-0 mb-1 w-40 bg-gray-900 border border-gray-700 rounded-xl shadow-xl z-20 overflow-hidden animate-in slide-in-from-bottom-2 fade-in duration-200">
                                 {onTogglePin && (
-                                    <button onClick={handlePin} className="w-full px-3 py-2.5 text-left text-xs font-medium text-gray-300 hover:bg-gray-800 hover:text-white flex items-center gap-2">
-                                        <Pin size={14} className={memory.isPinned ? "fill-current" : ""} />
+                                    <button onClick={handlePin} className="w-full px-4 py-3 text-left text-sm font-medium text-gray-300 hover:bg-gray-800 hover:text-white flex items-center gap-3 active:bg-gray-700">
+                                        <Pin size={16} className={memory.isPinned ? "fill-current" : ""} />
                                         {memory.isPinned ? 'Unpin' : 'Pin'}
                                     </button>
                                 )}
                                 {onEdit && (
-                                    <button onClick={handleEdit} className="w-full px-3 py-2.5 text-left text-xs font-medium text-gray-300 hover:bg-gray-800 hover:text-white flex items-center gap-2 border-t border-gray-800">
-                                        <Pencil size={14} /> Edit
+                                    <button onClick={handleEdit} className="w-full px-4 py-3 text-left text-sm font-medium text-gray-300 hover:bg-gray-800 hover:text-white flex items-center gap-3 border-t border-gray-800 active:bg-gray-700">
+                                        <Pencil size={16} /> Edit
                                     </button>
                                 )}
                                 {onDelete && (
-                                    <button onClick={startDelete} className="w-full px-3 py-2.5 text-left text-xs font-medium text-red-400 hover:bg-red-900/10 hover:text-red-300 flex items-center gap-2 border-t border-gray-800">
-                                        <Trash2 size={14} /> Delete
+                                    <button onClick={startDelete} className="w-full px-4 py-3 text-left text-sm font-medium text-red-400 hover:bg-red-900/10 hover:text-red-300 flex items-center gap-3 border-t border-gray-800 active:bg-red-900/20">
+                                        <Trash2 size={16} /> Delete
                                     </button>
                                 )}
                             </div>
@@ -412,10 +412,10 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                     <h4 className="text-gray-100 font-bold mb-1">Delete Memory?</h4>
                     <p className="text-xs text-gray-400 mb-4">This action cannot be undone.</p>
                     <div className="flex gap-2 w-full">
-                        <button onClick={cancelDelete} className="flex-1 py-2 text-xs font-medium text-gray-300 bg-gray-800 rounded-lg hover:bg-gray-700 transition-colors">
+                        <button onClick={cancelDelete} className="flex-1 py-3 text-sm font-medium text-gray-300 bg-gray-800 rounded-xl hover:bg-gray-700 transition-colors active:scale-95">
                             Cancel
                         </button>
-                        <button onClick={confirmDelete} className="flex-1 py-2 text-xs font-bold text-white bg-red-500 rounded-lg hover:bg-red-600 transition-colors shadow-lg shadow-red-500/20">
+                        <button onClick={confirmDelete} className="flex-1 py-3 text-sm font-bold text-white bg-red-500 rounded-xl hover:bg-red-600 transition-colors shadow-lg shadow-red-500/20 active:scale-95">
                             Delete
                         </button>
                     </div>
