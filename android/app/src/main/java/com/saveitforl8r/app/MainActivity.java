@@ -246,7 +246,7 @@ public class MainActivity extends BridgeActivity {
     }
 
     @Override
-    protected void onDestroy() {
+    public void onDestroy() {
         // Remove all pending callbacks and messages to prevent memory leaks
         // This ensures no references to the activity are held after destruction
         mainHandler.removeCallbacksAndMessages(null);
