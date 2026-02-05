@@ -130,7 +130,7 @@ export const enrichInput = async (
   try {
     const ai = await getAiClient();
     const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash', 
+      model: 'gemini-3-flash-preview', 
       contents: { parts },
       config: config
     });
@@ -186,7 +186,7 @@ export const queryBrain = async (query: string, memories: Memory[]): Promise<{ a
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
+      model: 'gemini-3-flash-preview',
       contents: `CONTEXT:\n${contextBlock}\nQUERY: "${query}"`,
       config: {
           systemInstruction,
