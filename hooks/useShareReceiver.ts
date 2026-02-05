@@ -154,7 +154,7 @@ export const useShareReceiver = () => {
         const check = async () => {
             const found = await checkNativeIntent();
             if (found) return; // Stop if found
-            
+
             attempts++;
             if (attempts < 5) {
                 setTimeout(check, 500);
@@ -162,13 +162,27 @@ export const useShareReceiver = () => {
         };
         check();
 
-        // Also check on resume
+        // Also check on resume (app comes back from background)
         const handleResume = () => {
             attempts = 0;
             check();
         };
         document.addEventListener('resume', handleResume); // Cordova/Capacitor event
-        return () => document.removeEventListener('resume', handleResume);
+
+        // Listen for sendIntentReceived event - dispatched by MainActivity.onNewIntent()
+        // This handles the case when the app is already running and receives a share intent
+        const handleSendIntentReceived = () => {
+            console.log('[ShareReceiver] sendIntentReceived event fired');
+            // Reset attempts and check immediately
+            attempts = 0;
+            check();
+        };
+        window.addEventListener('sendIntentReceived', handleSendIntentReceived);
+
+        return () => {
+            document.removeEventListener('resume', handleResume);
+            window.removeEventListener('sendIntentReceived', handleSendIntentReceived);
+        };
     } else {
         checkForWebShare();
     }
