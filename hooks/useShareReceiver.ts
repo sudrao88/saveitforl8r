@@ -18,6 +18,9 @@ declare global {
   }
 }
 
+// Maximum blob size for shared images (50MB)
+const MAX_BLOB_SIZE = 50 * 1024 * 1024;
+
 /**
  * Signal to Android native code that the React app is ready to receive share intents.
  * This is crucial for proper cold-start handling of share intents.
@@ -108,13 +111,19 @@ export const useShareReceiver = () => {
                  console.log('[ShareReceiver] Fetched blob, size:', blob.size, 'type:', blob.type);
 
                  // Validate blob size to prevent memory issues
-                 const MAX_BLOB_SIZE = 50 * 1024 * 1024; // 50MB limit
                  if (blob.size > MAX_BLOB_SIZE) {
                      console.warn('[ShareReceiver] Image too large, skipping:', blob.size);
                  } else if (blob.size > 0) {
                      const reader = new FileReader();
                      const base64 = await new Promise<string>((resolve, reject) => {
-                         reader.onload = e => resolve(e.target?.result as string);
+                         reader.onload = e => {
+                             const result = e.target?.result;
+                             if (typeof result === 'string') {
+                                 resolve(result);
+                             } else {
+                                 reject(new Error('FileReader result is not a string'));
+                             }
+                         };
                          reader.onerror = () => reject(new Error('FileReader error'));
                          reader.readAsDataURL(blob);
                      });
@@ -292,12 +301,10 @@ export const useShareReceiver = () => {
 
         // Signal app readiness to Android - this is crucial for cold-start share intents
         // We do this once the React app has mounted and is ready to receive events
+        // useEffect guarantees the component is mounted, so we can signal immediately
         if (!hasSignaledReady.current) {
             hasSignaledReady.current = true;
-            // Small delay to ensure React state is fully initialized
-            setTimeout(() => {
-                signalAppReady();
-            }, 100);
+            signalAppReady();
         }
 
         // Don't check immediately on mount - wait for the sendIntentReceived event
@@ -319,10 +326,8 @@ export const useShareReceiver = () => {
             if (timeoutId) {
                 clearTimeout(timeoutId);
             }
-            // Small delay to ensure the intent data is available
-            setTimeout(() => {
-                check('sendIntentReceived event');
-            }, 50);
+            // Native side handles timing, check immediately
+            check('sendIntentReceived event');
         };
         window.addEventListener('sendIntentReceived', handleSendIntentReceived);
 

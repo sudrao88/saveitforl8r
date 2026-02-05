@@ -155,10 +155,17 @@ public class MainActivity extends BridgeActivity {
             setIntent(intent);
 
             // Small delay to ensure intent is set before JS reads it
-            new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                notifyShareIntentReceived();
-            }, 100);
+            // Use mainHandler to ensure cleanup in onDestroy
+            mainHandler.postDelayed(this::notifyShareIntentReceived, 100);
         }
+    }
+
+    @Override
+    protected void onDestroy() {
+        // Remove all pending callbacks and messages to prevent memory leaks
+        // This ensures no references to the activity are held after destruction
+        mainHandler.removeCallbacksAndMessages(null);
+        super.onDestroy();
     }
 
     private int notifyRetryCount = 0;
