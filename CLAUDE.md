@@ -4,17 +4,28 @@
 
 SaveItForL8R is a **Progressive Web App (PWA)** — a "personal second brain" for capturing, organizing, and recalling memories with AI assistance. Users save text, images, and files which are enriched by Google Gemini, stored locally with encryption, and optionally synced to Google Drive.
 
+**Key Features:**
+- AI-powered memory enrichment and semantic search (online via Gemini, offline via local embeddings)
+- Offline-first with local vector search using Orama + transformer embeddings
+- PDF text extraction and OCR for images
+- End-to-end encryption with AES-GCM
+- Google Drive sync with conflict resolution
+- Native mobile apps via Capacitor (Android/iOS)
+
 ## Tech Stack
 
 - **Language**: TypeScript (strict, ES2022 target)
 - **Framework**: React 19 with functional components and hooks
 - **Build Tool**: Vite 6
 - **Styling**: Tailwind CSS 4 (utility-first, dark theme default)
-- **AI**: Google Gemini API (`@google/genai`)
+- **AI**: Google Gemini API (`@google/genai`) + local embeddings (`@xenova/transformers`)
+- **Vector Search**: Orama (in-memory) + Dexie (IndexedDB persistence)
+- **Document Processing**: PDF.js (text extraction), Tesseract.js (OCR)
 - **Auth**: Google OAuth 2.0 with PKCE
 - **Cloud Storage**: Google Drive (appDataFolder)
 - **Local Storage**: IndexedDB with AES-GCM encryption
 - **Testing**: Vitest + React Testing Library
+- **Native Apps**: Capacitor (Android/iOS)
 - **Deployment**: Docker + Nginx → Firebase Hosting or Google Cloud Run
 
 ## Commands
@@ -50,6 +61,7 @@ npm run test      # Run tests with Vitest
 │   ├── InstallPrompt.tsx    # PWA install prompt
 │   ├── ShareOnboardingModal.tsx  # Share feature onboarding
 │   ├── MultiSelect.tsx      # Tag/multi-select dropdown
+│   ├── ErrorBoundary.tsx    # React error boundary for graceful crash recovery
 │   └── icons.tsx            # Custom SVG icon components (Logo)
 │
 ├── hooks/                   # Custom React hooks (business logic)
@@ -62,7 +74,9 @@ npm run test      # Run tests with Vitest
 │   ├── useShareReceiver.ts  # Web Share Target API handler
 │   ├── useOnboarding.ts     # Onboarding flow state
 │   ├── useExportImport.ts   # Data export/import logic
-│   └── useEncryptionSettings.ts  # Encryption key management
+│   ├── useEncryptionSettings.ts  # Encryption key management
+│   ├── useAdaptiveSearch.ts # Hybrid online/offline search (Gemini + local RAG)
+│   └── useHotkeys.ts        # Keyboard shortcut handling
 │
 ├── services/                # External integrations & utilities
 │   ├── geminiService.ts     # Gemini API: enrichment + semantic search
@@ -74,16 +88,27 @@ npm run test      # Run tests with Vitest
 │   ├── pkce.ts              # PKCE code verifier/challenge generation
 │   ├── analytics.ts         # Google Analytics 4 wrapper
 │   ├── csvService.ts        # CSV export
-│   └── sampleData.ts        # Sample memories for first-run onboarding
+│   ├── sampleData.ts        # Sample memories for first-run onboarding
+│   ├── db.ts                # Dexie database for RAG vectors & processing queue
+│   ├── fileProcessor.ts     # PDF text extraction + OCR (Tesseract.js)
+│   └── embedding.worker.ts  # Web Worker: local embeddings & vector search
 │
 ├── context/
-│   └── SyncContext.tsx       # React Context for sync state (full & delta sync)
+│   └── SyncContext.tsx      # React Context for sync state (full & delta sync)
 │
 ├── public/                  # Static PWA assets
 │   ├── sw.js                # Service worker (caching, share target)
 │   ├── manifest.json        # Web App Manifest
 │   ├── icon.svg             # App icon (maskable)
 │   └── logo-full.svg        # Full logo SVG
+│
+├── android/                 # Capacitor Android project
+│   ├── app/                 # Android app module
+│   └── capacitor-cordova-android-plugins/
+│
+├── ios/                     # Capacitor iOS project
+│   ├── App/                 # iOS app module
+│   └── capacitor-cordova-ios-plugins/
 │
 ├── vite.config.ts           # Vite config (port 9000, env vars, path aliases)
 ├── tsconfig.json            # TypeScript config (ES2022, bundler resolution)
@@ -101,8 +126,9 @@ npm run test      # Run tests with Vitest
 
 1. **Capture**: `NewMemoryPage` → `useMemories.createMemory()` → IndexedDB (encrypted)
 2. **Enrich**: `geminiService.enrichMemory()` → Gemini API adds summary, tags, location, entity context
-3. **Sync**: `SyncContext` → bidirectional Google Drive sync (full & delta with snapshot diffing)
-4. **Recall**: `ChatInterface` → `geminiService.recallMemories()` → semantic search over all memories
+3. **Index**: `embedding.worker.ts` → Extract text (PDF/OCR) → Generate embeddings → Store in Dexie/Orama
+4. **Sync**: `SyncContext` → bidirectional Google Drive sync (full & delta with snapshot diffing)
+5. **Recall**: `ChatInterface` → `useAdaptiveSearch` → Online (Gemini) or Offline (local vector search)
 
 ### Key Patterns
 
@@ -112,6 +138,32 @@ npm run test      # Run tests with Vitest
 - **Two-phase memory creation**: Immediate local save (with `isPending: true`) → async AI enrichment
 - **Soft delete with tombstones**: `isDeleted` flag for sync consistency (never hard-delete synced memories until reconciled)
 - **Offline-first**: Full functionality without internet; enrichment and sync queue when online
+- **Adaptive search**: Automatically switches between Gemini (online) and local embeddings (offline)
+- **Web Worker isolation**: Heavy ML model runs in `embedding.worker.ts` to avoid blocking UI
+
+### Offline RAG System
+
+The app includes a local Retrieval-Augmented Generation (RAG) system for offline search:
+
+1. **Text Extraction** (`fileProcessor.ts`):
+   - PDF: Uses PDF.js to extract text from all pages
+   - Images: Uses Tesseract.js for OCR
+
+2. **Embedding Pipeline** (`embedding.worker.ts`):
+   - Model: `Xenova/bge-small-en-v1.5` (~33MB, 384 dimensions)
+   - Chunks text into 1000-char segments
+   - Generates embeddings via `@xenova/transformers`
+   - Stores vectors in Dexie (persistent) and Orama (in-memory index)
+
+3. **Search** (`useAdaptiveSearch.ts`):
+   - Online + API key: Uses Gemini semantic search
+   - Offline or no API key: Uses local hybrid search (Orama)
+   - Auto-detects network status and model availability
+
+4. **Processing Queue** (`db.ts`):
+   - Async queue with retry logic (3 attempts)
+   - States: `pending_extraction` → `pending_embedding` → `completed` | `failed`
+   - Auto-purges completed items after 1 hour
 
 ### Core Data Types (types.ts)
 
@@ -125,9 +177,19 @@ Memory {
   enrichment?: EnrichmentData; // AI-generated summary, tags, context
   tags: string[];          // Finalized tags
   isPending?: boolean;     // Enrichment in progress
+  isDeleting?: boolean;    // UI state for deletion animation
   processingError?: boolean;
   isDeleted?: boolean;     // Soft-delete for sync
   isSample?: boolean;      // Exclude from sync
+  isPinned?: boolean;      // Pin to top of feed
+}
+
+VectorRecord {
+  id: string;              // noteId_chunkIndex
+  originalId: string;      // Memory ID for querying
+  vector: number[];        // 384-dim embedding
+  extractedText: string;   // Chunk text
+  metadata: any;           // originalId, chunkIndex
 }
 ```
 
@@ -165,6 +227,7 @@ Memory {
 - Props destructured inline
 - `useCallback` and `useMemo` for performance-critical paths
 - `useRef` to avoid stale closures in callbacks
+- Use `ErrorBoundary` to wrap components that may throw
 
 ## Environment Variables
 
@@ -186,9 +249,25 @@ Variables are injected at build time via Vite's `define` config:
 - **Run**: `npm run test` (watch mode) or `npx vitest run` (single run)
 - **Mocking**: Vitest `vi.mock()` for services; mock IndexedDB, Gemini API
 
-Test files found:
+Test files:
 - `hooks/useMemories.test.ts` — Memory hook CRUD & retry logic
 - `services/googleDriveService.test.ts` — Drive API client tests
+- `services/googleAuth.test.ts` — OAuth flow tests
+- `services/encryptionService.test.ts` — Encryption/decryption tests
+- `services/storageService.test.ts` — IndexedDB storage tests
+- `context/SyncContext.test.tsx` — Sync state management tests
+
+## Pre-commit Hooks
+
+The project uses Husky + lint-staged for pre-commit checks:
+
+```json
+"lint-staged": {
+  "*.{ts,tsx}": ["bash -c 'tsc --noEmit'"]
+}
+```
+
+This runs TypeScript type checking on staged files before each commit.
 
 ## Deployment
 
@@ -210,6 +289,10 @@ docker build \
 
 Cloud Build pipeline defined in `cloudbuild.yaml`; deployment script in `deploy-cloud-run.sh`.
 
+### Native Apps (Capacitor)
+
+The `android/` and `ios/` directories contain Capacitor-based native app projects. These wrap the PWA for distribution on app stores.
+
 ## Security Considerations
 
 - **Encryption at rest**: All memories encrypted with AES-GCM (256-bit) before IndexedDB storage
@@ -217,6 +300,7 @@ Cloud Build pipeline defined in `cloudbuild.yaml`; deployment script in `deploy-
 - **No server-side storage**: Data lives in user's IndexedDB + their own Google Drive
 - **API keys**: User-provided Gemini key stored in `localStorage` (never sent to any server except Google's API)
 - **Sensitive files**: `.env` files are gitignored; never commit credentials
+- **Web Worker isolation**: ML model runs in separate thread, limiting main thread access
 
 ## Common Development Tasks
 
@@ -232,7 +316,8 @@ Cloud Build pipeline defined in `cloudbuild.yaml`; deployment script in `deploy-
 1. Create `components/NewComponent.tsx` (PascalCase)
 2. Use Tailwind classes for styling
 3. Import and compose in `App.tsx` or parent component
-4. Add analytics events in `constants.ts` if user-facing
+4. Wrap with `ErrorBoundary` if component may throw
+5. Add analytics events in `constants.ts` if user-facing
 
 ### Adding a new service
 1. Create `services/newService.ts` (camelCase)
@@ -242,3 +327,15 @@ Cloud Build pipeline defined in `cloudbuild.yaml`; deployment script in `deploy-
 ### Adding analytics events
 1. Define event constants in `constants.ts` under `ANALYTICS_EVENTS`
 2. Call `logEvent(category, action, label?)` from `services/analytics.ts`
+
+### Modifying the RAG pipeline
+1. **Text extraction**: Update `fileProcessor.ts` for new file types
+2. **Embedding model**: Update model name in `embedding.worker.ts` (check dimensions match Orama schema)
+3. **Vector storage**: Update `db.ts` schema if adding new fields
+4. **Search logic**: Update `useAdaptiveSearch.ts` for new search modes
+
+### Debugging offline search
+1. Check model status via `useAdaptiveSearch.modelStatus` ('idle' | 'downloading' | 'loading' | 'ready' | 'error')
+2. Check `embeddingStats` for processing queue status (pending, failed, completed)
+3. Worker errors logged to console with `[RAG]` prefix
+4. Model cache stored in browser's Cache API under 'transformers-cache'
