@@ -8,15 +8,21 @@ import android.os.Looper;
 import android.util.Log;
 import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
+
+import androidx.core.splashscreen.SplashScreen;
 
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
 
     private static final String TAG = "SaveItForL8r";
-    private boolean initialIntentHandled = false;
     private boolean jsAppReady = false;
     private boolean pendingShareIntent = false;
+    private boolean isInitializing = true; // Track if we're still in onCreate()
+    private boolean webViewReady = false;
+    private Intent pendingIntent = null; // Store the intent to process after WebView is ready
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     // Remote URL for OTA live updates
@@ -30,41 +36,104 @@ public class MainActivity extends BridgeActivity {
     private static final String PREF_SERVER_URL = "ota_server_url";
 
     // Maximum time to wait for JS app to signal readiness (ms)
-    private static final int MAX_WAIT_FOR_APP_READY = 10000;
+    private static final int MAX_WAIT_FOR_APP_READY = 15000;
     // Initial delay before checking if app is ready (ms)
-    private static final int INITIAL_CHECK_DELAY = 2500;
+    private static final int INITIAL_CHECK_DELAY = 1000;
     // Interval between retry checks (ms)
     private static final int RETRY_CHECK_INTERVAL = 500;
+    // Maximum retries for WebView setup (50 retries * 100ms = 5 seconds max)
+    private static final int MAX_WEBVIEW_SETUP_RETRIES = 50;
+    private int webViewSetupRetryCount = 0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // CRITICAL: Install splash screen BEFORE super.onCreate()
+        // This is required for Android 12+ when using Theme.SplashScreen
+        SplashScreen splashScreen = SplashScreen.installSplashScreen(this);
+
+        // Keep the splash screen visible until the WebView is ready
+        splashScreen.setKeepOnScreenCondition(() -> !webViewReady);
+
         // Configure server URL BEFORE calling super.onCreate()
         // which initializes the Capacitor bridge
         configureServerUrl();
+
         super.onCreate(savedInstanceState);
 
-        // Inject JavaScript interface for app readiness signaling
-        if (bridge != null && bridge.getWebView() != null) {
-            bridge.getWebView().addJavascriptInterface(new AppReadyInterface(), "AndroidBridge");
-        }
-
-        // Handle share intent on cold start
+        // Check if this is a share intent and store it for later processing
         Intent intent = getIntent();
-        if (intent != null) {
-            String action = intent.getAction();
-            String type = intent.getType();
-
-            Log.d(TAG, "onCreate - Action: " + action + ", Type: " + type);
-
-            if ((Intent.ACTION_SEND.equals(action) || Intent.ACTION_SEND_MULTIPLE.equals(action)) && type != null) {
-                Log.d(TAG, "onCreate - Share intent detected, will notify JS after app is ready");
-                initialIntentHandled = true;
-                pendingShareIntent = true;
-
-                // Wait for the app to signal readiness, with fallback timeout
-                scheduleShareIntentNotification();
-            }
+        if (intent != null && isShareIntent(intent)) {
+            Log.d(TAG, "onCreate - Share intent detected, storing for later processing");
+            pendingIntent = intent;
+            pendingShareIntent = true;
         }
+
+        // Setup WebView after bridge initialization
+        setupWebView();
+
+        // Mark initialization as complete
+        isInitializing = false;
+
+        Log.d(TAG, "onCreate completed, waiting for WebView to load");
+    }
+
+    /**
+     * Check if an intent is a share intent
+     */
+    private boolean isShareIntent(Intent intent) {
+        String action = intent.getAction();
+        String type = intent.getType();
+        return (Intent.ACTION_SEND.equals(action) || Intent.ACTION_SEND_MULTIPLE.equals(action)) && type != null;
+    }
+
+    /**
+     * Setup WebView with proper listeners and JavaScript interface
+     */
+    private void setupWebView() {
+        if (bridge == null || bridge.getWebView() == null) {
+            webViewSetupRetryCount++;
+            if (webViewSetupRetryCount <= MAX_WEBVIEW_SETUP_RETRIES) {
+                Log.w(TAG, "setupWebView - Bridge or WebView is null, scheduling retry (" +
+                    webViewSetupRetryCount + "/" + MAX_WEBVIEW_SETUP_RETRIES + ")");
+                mainHandler.postDelayed(this::setupWebView, 100);
+            } else {
+                Log.e(TAG, "setupWebView - Max retries exceeded, WebView setup failed");
+            }
+            return;
+        }
+
+        // Reset retry count on success
+        webViewSetupRetryCount = 0;
+
+        WebView webView = bridge.getWebView();
+
+        // Add JavaScript interface for app readiness signaling
+        try {
+            webView.addJavascriptInterface(new AppReadyInterface(), "AndroidBridge");
+            Log.d(TAG, "setupWebView - JavaScript interface added");
+        } catch (Exception e) {
+            Log.e(TAG, "setupWebView - Failed to add JavaScript interface: " + e.getMessage(), e);
+        }
+
+        // Add a WebViewClient to detect when the page finishes loading
+        webView.setWebViewClient(new WebViewClient() {
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                Log.d(TAG, "onPageFinished - URL: " + url);
+
+                if (!webViewReady) {
+                    webViewReady = true;
+                    Log.d(TAG, "onPageFinished - WebView marked as ready");
+
+                    // Process any pending share intent
+                    if (pendingShareIntent && pendingIntent != null) {
+                        Log.d(TAG, "onPageFinished - Processing pending share intent");
+                        scheduleShareIntentNotification();
+                    }
+                }
+            }
+        });
     }
 
     /**
@@ -142,21 +211,37 @@ public class MainActivity extends BridgeActivity {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
 
+        // Skip processing if called during BridgeActivity.load() initialization
+        // The share intent will be handled by onCreate() in that case
+        if (isInitializing) {
+            Log.d(TAG, "onNewIntent - Skipping during initialization (will be handled by onCreate)");
+            return;
+        }
+
         String action = intent.getAction();
         String type = intent.getType();
 
-        Log.d(TAG, "onNewIntent - Action: " + action + ", Type: " + type);
+        Log.d(TAG, "onNewIntent - Action: " + action + ", Type: " + type + ", isInitializing: " + isInitializing);
 
-        // Handle share intents (both single and multiple items)
-        if ((Intent.ACTION_SEND.equals(action) || Intent.ACTION_SEND_MULTIPLE.equals(action)) && type != null) {
-            Log.d(TAG, "onNewIntent - Share intent detected, updating intent and notifying JS");
+        // Handle share intents (both single and multiple items) - warm start case
+        if (isShareIntent(intent)) {
+            Log.d(TAG, "onNewIntent - Share intent detected (warm start), updating intent and notifying JS");
 
             // Update the activity's intent so the SendIntent plugin can read the new intent
             setIntent(intent);
+            pendingIntent = intent;
 
-            // Small delay to ensure intent is set before JS reads it
-            // Use mainHandler to ensure cleanup in onDestroy
-            mainHandler.postDelayed(this::notifyShareIntentReceived, 100);
+            // Reset state for new share intent
+            pendingShareIntent = true;
+
+            // Use scheduleShareIntentNotification to properly wait for JS readiness
+            // This avoids race conditions where we might notify before JS is ready
+            if (webViewReady) {
+                scheduleShareIntentNotification();
+            } else {
+                // Will be handled when WebView finishes loading
+                Log.d(TAG, "onNewIntent - WebView not ready, will notify after load");
+            }
         }
     }
 
