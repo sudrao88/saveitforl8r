@@ -1,0 +1,7 @@
+{
+  "version": "saveitforl8r-v24",
+  "buildNumber": 24,
+  "buildDate": "2026-02-05T00:00:00Z",
+  "minNativeVersion": "1.0.0",
+  "changelog": "Initial OTA update support"
+}
