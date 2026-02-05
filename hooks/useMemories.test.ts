@@ -9,12 +9,29 @@ import * as geminiService from '../services/geminiService';
 vi.mock('../services/storageService');
 vi.mock('../services/geminiService');
 
+// Mock platform storage to prevent sample seeding in tests
+vi.mock('../services/platform', () => ({
+  storage: {
+    get: vi.fn().mockResolvedValue('true'), // samples_initialized = true
+    set: vi.fn().mockResolvedValue(undefined),
+    remove: vi.fn().mockResolvedValue(undefined),
+  },
+  isNative: vi.fn().mockReturnValue(false),
+}));
+
 // Mock useSync hook
 vi.mock('../hooks/useSync', () => ({
   useSync: () => ({
     sync: vi.fn(),
     syncFile: vi.fn().mockResolvedValue(undefined),
     isLinked: vi.fn().mockReturnValue(false),
+  })
+}));
+
+// Mock useAuth hook
+vi.mock('../hooks/useAuth', () => ({
+  useAuth: () => ({
+    authStatus: 'unlinked',
   })
 }));
 
