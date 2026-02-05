@@ -41,6 +41,9 @@ public class MainActivity extends BridgeActivity {
     private static final int INITIAL_CHECK_DELAY = 1000;
     // Interval between retry checks (ms)
     private static final int RETRY_CHECK_INTERVAL = 500;
+    // Maximum retries for WebView setup (50 retries * 100ms = 5 seconds max)
+    private static final int MAX_WEBVIEW_SETUP_RETRIES = 50;
+    private int webViewSetupRetryCount = 0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -88,10 +91,19 @@ public class MainActivity extends BridgeActivity {
      */
     private void setupWebView() {
         if (bridge == null || bridge.getWebView() == null) {
-            Log.e(TAG, "setupWebView - Bridge or WebView is null, scheduling retry");
-            mainHandler.postDelayed(this::setupWebView, 100);
+            webViewSetupRetryCount++;
+            if (webViewSetupRetryCount <= MAX_WEBVIEW_SETUP_RETRIES) {
+                Log.w(TAG, "setupWebView - Bridge or WebView is null, scheduling retry (" +
+                    webViewSetupRetryCount + "/" + MAX_WEBVIEW_SETUP_RETRIES + ")");
+                mainHandler.postDelayed(this::setupWebView, 100);
+            } else {
+                Log.e(TAG, "setupWebView - Max retries exceeded, WebView setup failed");
+            }
             return;
         }
+
+        // Reset retry count on success
+        webViewSetupRetryCount = 0;
 
         WebView webView = bridge.getWebView();
 
@@ -219,14 +231,13 @@ public class MainActivity extends BridgeActivity {
             setIntent(intent);
             pendingIntent = intent;
 
-            // Reset the JS app ready flag for new share
-            jsAppReady = false;
+            // Reset state for new share intent
             pendingShareIntent = true;
 
-            // If WebView is already loaded, notify immediately with small delay
-            // Otherwise, wait for WebView to be ready
+            // Use scheduleShareIntentNotification to properly wait for JS readiness
+            // This avoids race conditions where we might notify before JS is ready
             if (webViewReady) {
-                mainHandler.postDelayed(this::notifyShareIntentReceived, 100);
+                scheduleShareIntentNotification();
             } else {
                 // Will be handled when WebView finishes loading
                 Log.d(TAG, "onNewIntent - WebView not ready, will notify after load");
