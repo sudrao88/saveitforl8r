@@ -28,7 +28,7 @@
 		"classpath": "com.capacitorjs.plugins.statusbar.StatusBarPlugin"
 	},
 	{
-		"pkg": "capacitor-plugin-send-intent",
-		"classpath": "com.gustavosanjose.sendintentplugin.SendIntent"
+		"pkg": "@mindlib-capacitor/send-intent",
+		"classpath": "de.mindlib.sendIntent.SendIntent"
 	}
 ]
