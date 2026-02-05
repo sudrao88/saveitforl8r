@@ -6,9 +6,44 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     var window: UIWindow?
 
+    // Remote URL for OTA live updates
+    private let remoteUrl = "https://saveitforl8r.com"
+
+    // Capacitor Preferences key prefix (matches Android CapacitorStorage)
+    private let prefsPrefix = "CapacitorStorage."
+
+    // Preference keys (must match useNativeOTA.ts)
+    private let prefUseRemote = "ota_use_remote"
+    private let prefServerUrl = "ota_server_url"
+
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        // Configure server URL for OTA updates
+        configureServerUrl()
         return true
+    }
+
+    /**
+     * Configures the WebView to load from either bundled assets or remote URL.
+     * Reads the OTA preference set by the React app via Capacitor Preferences.
+     */
+    private func configureServerUrl() {
+        let defaults = UserDefaults.standard
+
+        // Capacitor Preferences stores values with a prefix
+        let useRemote = defaults.string(forKey: prefsPrefix + prefUseRemote) ?? "false"
+
+        if useRemote == "true" {
+            let serverUrl = defaults.string(forKey: prefsPrefix + prefServerUrl) ?? remoteUrl
+
+            // Set the server URL for Capacitor to use
+            // Capacitor reads this UserDefaults key to override server configuration
+            defaults.set(serverUrl, forKey: "serverUrl")
+            print("[OTA] Loading from remote URL: \(serverUrl)")
+        } else {
+            // Remove any previously set server URL to use bundled assets
+            defaults.removeObject(forKey: "serverUrl")
+            print("[OTA] Loading from bundled assets")
+        }
     }
 
     func applicationWillResignActive(_ application: UIApplication) {

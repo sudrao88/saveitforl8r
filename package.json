@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node scripts/generate-version.js",
+    "build:version": "node scripts/generate-version.js",
     "preview": "vite preview",
     "test": "vitest",
     "prepare": "husky"
