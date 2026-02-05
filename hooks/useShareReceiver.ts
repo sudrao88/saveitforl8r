@@ -11,128 +11,97 @@ export interface ShareData {
 export const useShareReceiver = () => {
   const [shareData, setShareData] = useState<ShareData | null>(null);
 
-  // Core logic to check URL and process shares
-  const checkForShare = useCallback(async () => {
-    // 1. Clean up URL immediately if it matches our params to avoid loops
-    // We capture the values first, then clear.
+  // Native Intent Check (Async & Retryable)
+  const checkNativeIntent = useCallback(async (): Promise<boolean> => {
+      if (!isNative()) return false;
+      try {
+         const SendIntent = (window as any).Capacitor?.Plugins?.SendIntent;
+         if (!SendIntent || !SendIntent.checkSendIntentReceived) return false;
+
+         const response = await SendIntent.checkSendIntentReceived();
+         if (response) {
+             console.log('[ShareReceiver] Native Intent:', JSON.stringify(response));
+             
+             let text = response.title || response.description || response.text || '';
+             if (response.url && !text.includes(response.url)) {
+                text = text ? `${text}\n${response.url}` : response.url;
+             }
+             
+             const attachments: Attachment[] = [];
+
+             if (response.type?.startsWith('image/') && response.url) {
+                 try {
+                     const fileRes = await fetch(response.url);
+                     const blob = await fileRes.blob();
+                     const reader = new FileReader();
+                     const base64 = await new Promise<string>(r => {
+                         reader.onload = e => r(e.target?.result as string);
+                         reader.readAsDataURL(blob);
+                     });
+                     
+                     attachments.push({
+                         id: crypto.randomUUID(),
+                         type: 'image',
+                         mimeType: response.type,
+                         data: base64,
+                         name: 'Shared Image'
+                     });
+                 } catch (e) {
+                     console.error("Failed to read native attachment", e);
+                 }
+             }
+
+             if (text || attachments.length > 0) {
+                setShareData({ text: text.trim(), attachments });
+                return true;
+             }
+         }
+      } catch (e) {
+         console.warn("SendIntent plugin error", e);
+      }
+      return false;
+  }, []);
+
+  // Web Logic
+  const checkForWebShare = useCallback(async () => {
+    if (isNative()) return; // Skip web checks on native to avoid conflicts
+
     const searchParams = new URLSearchParams(window.location.search);
     const hasText = searchParams.has('share_text');
     const hasClipboard = searchParams.has('share_image_clipboard');
     const hasShareTarget = searchParams.has('share-target');
 
-    console.log('[ShareReceiver] Checking URL:', window.location.href);
-
-    // --- 1. Native Android Intent (via capacitor-plugin-send-intent) ---
-    if (isNative()) {
-         try {
-             // Access plugin dynamically to avoid importing 'web.js' which breaks build in newer Vite/Capacitor
-             const SendIntent = (window as any).Capacitor?.Plugins?.SendIntent;
-
-             if (SendIntent && SendIntent.checkSendIntentReceived) {
-                 SendIntent.checkSendIntentReceived().then(async (response: any) => {
-                     if (response) {
-                         console.log('[ShareReceiver] Native Intent:', response);
-                         
-                         let text = response.title || response.description || response.text || '';
-                         if (response.url && !text.includes(response.url)) {
-                            text = text ? `${text}\n${response.url}` : response.url;
-                         }
-                         
-                         const attachments: Attachment[] = [];
-
-                         // Handle Image Share (Content URI)
-                         if (response.type?.startsWith('image/') && response.url) {
-                             try {
-                                 // Fetch blob from content URI (works in WebView for content://)
-                                 const fileRes = await fetch(response.url);
-                                 const blob = await fileRes.blob();
-                                 const reader = new FileReader();
-                                 const base64 = await new Promise<string>(r => {
-                                     reader.onload = e => r(e.target?.result as string);
-                                     reader.readAsDataURL(blob);
-                                 });
-                                 
-                                 attachments.push({
-                                     id: crypto.randomUUID(),
-                                     type: 'image',
-                                     mimeType: response.type,
-                                     data: base64,
-                                     name: 'Shared Image'
-                                 });
-                             } catch (e) {
-                                 console.error("Failed to read native attachment", e);
-                             }
-                         }
-                         // Handle Text Share
-                         else if (response.type === 'text/plain' && response.text) {
-                             // already handled above
-                         }
-
-                         if (text || attachments.length > 0) {
-                            setShareData({ text: text.trim(), attachments });
-                         }
-                     }
-                 }).catch((err: any) => console.warn('SendIntent check failed', err));
-             }
-         } catch (e) {
-             console.warn("SendIntent plugin error", e);
-         }
-    }
-
-    // --- 2. iOS / Direct URL Text Share ---
     if (hasText) {
         let text = searchParams.get('share_text') || '';
-        
-        // ROBUST DECODING FALLBACK
         try {
             const rawSearch = window.location.search;
             const match = rawSearch.match(/[?&]share_text=([^&]*)/);
             if (match && match[1]) {
                 const rawValue = match[1];
                 text = decodeURIComponent(rawValue.replace(/\+/g, ' '));
-                console.log('[ShareReceiver] Manual decode result:', text);
             }
-        } catch (e) {
-            console.warn('[ShareReceiver] Manual decode failed, using standard param:', e);
-        }
+        } catch (e) { console.warn(e); }
 
-        console.log('[ShareReceiver] Final text detected:', text);
         setShareData({ text, attachments: [] });
-        
         window.history.replaceState({}, '', '/');
         return;
     }
 
-    // --- 3. iOS / Direct URL Clipboard Share ---
     if (hasClipboard) {
-        console.log('[ShareReceiver] Detected clipboard share');
         setShareData({ text: '', attachments: [], checkClipboard: true });
-        
         window.history.replaceState({}, '', '/');
         return;
     }
 
-    // --- 4. Android Web Share Target (IndexedDB - PWA Mode) ---
     if (hasShareTarget) {
-        console.log('[ShareReceiver] Detected Android share target');
-        
         try {
             const db = await new Promise<IDBDatabase>((resolve, reject) => {
                 const request = indexedDB.open('saveitforl8r-share', 1);
                 request.onsuccess = () => resolve(request.result);
                 request.onerror = () => reject(request.error);
-                request.onupgradeneeded = (e: any) => {
-                     const db = e.target.result;
-                     if (!db.objectStoreNames.contains('shares')) {
-                        db.createObjectStore('shares', { autoIncrement: true });
-                     }
-                };
             });
 
-            if (!db.objectStoreNames.contains('shares')) {
-                 window.history.replaceState({}, '', '/');
-                 return;
-            }
+            if (!db.objectStoreNames.contains('shares')) return;
 
             const tx = db.transaction('shares', 'readwrite');
             const store = tx.objectStore('shares');
@@ -142,26 +111,20 @@ export const useShareReceiver = () => {
                 const shares = getAllReq.result;
                 if (shares && shares.length > 0) {
                     const latestShare = shares[shares.length - 1];
-                    
                     let text = latestShare.text || '';
-                    const title = latestShare.title || '';
-                    const url = latestShare.url || '';
-                    
-                    if (title) text = `${title}\n${text}`;
-                    if (url) text = `${text}\n${url}`;
+                    if (latestShare.title) text = `${latestShare.title}\n${text}`;
+                    if (latestShare.url) text = `${text}\n${latestShare.url}`;
 
                     const attachments: Attachment[] = [];
-                    if (latestShare.files && latestShare.files.length > 0) {
+                    if (latestShare.files) {
                         for (const f of latestShare.files) {
                              const blob = f.blob || f;
                              if (!(blob instanceof Blob)) continue;
-
                              const reader = new FileReader();
                              const base64 = await new Promise<string>((resolve) => {
                                 reader.onload = (e) => resolve(e.target?.result as string);
                                 reader.readAsDataURL(blob);
                              });
-                             
                              attachments.push({
                                  id: crypto.randomUUID(),
                                  type: blob.type.startsWith('image/') ? 'image' : 'file',
@@ -171,47 +134,45 @@ export const useShareReceiver = () => {
                              });
                         }
                     }
-                    
                     setShareData({ text: text.trim(), attachments });
-                    
                     const clearTx = db.transaction('shares', 'readwrite');
                     clearTx.objectStore('shares').clear();
                 }
                 window.history.replaceState({}, '', '/');
             };
-            
-            getAllReq.onerror = () => {
-                 window.history.replaceState({}, '', '/');
-            };
-
         } catch (e) {
             console.error("[ShareReceiver] IDB Error:", e);
-            window.history.replaceState({}, '', '/');
         }
     }
   }, []);
 
   useEffect(() => {
-    checkForShare();
+    if (isNative()) {
+        // Native Loop: Check immediately, then retry a few times
+        // The Intent might take a moment to be readable by the plugin
+        let attempts = 0;
+        const check = async () => {
+            const found = await checkNativeIntent();
+            if (found) return; // Stop if found
+            
+            attempts++;
+            if (attempts < 5) {
+                setTimeout(check, 500);
+            }
+        };
+        check();
 
-    const handleVisibilityChange = () => {
-        if (document.visibilityState === 'visible') {
-            setTimeout(checkForShare, 100);
-        }
-    };
-
-    const handleFocus = () => {
-        setTimeout(checkForShare, 100);
-    };
-
-    window.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('focus', handleFocus);
-
-    return () => {
-        window.removeEventListener('visibilitychange', handleVisibilityChange);
-        window.removeEventListener('focus', handleFocus);
-    };
-  }, [checkForShare]);
+        // Also check on resume
+        const handleResume = () => {
+            attempts = 0;
+            check();
+        };
+        document.addEventListener('resume', handleResume); // Cordova/Capacitor event
+        return () => document.removeEventListener('resume', handleResume);
+    } else {
+        checkForWebShare();
+    }
+  }, [checkForWebShare, checkNativeIntent]);
 
   return { shareData, clearShareData: () => setShareData(null) };
 };

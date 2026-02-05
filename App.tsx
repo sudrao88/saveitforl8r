@@ -10,8 +10,6 @@ import SettingsModal from './components/SettingsModal';
 import EmptyState from './components/EmptyState';
 import NewMemoryPage from './components/NewMemoryPage';
 import ApiKeyModal from './components/ApiKeyModal';
-import ShareOnboardingModal from './components/ShareOnboardingModal';
-import { InstallPrompt } from './components/InstallPrompt';
 import ErrorBoundary from './components/ErrorBoundary';
 import { Logo } from './components/icons';
 
@@ -22,7 +20,6 @@ import { useServiceWorker } from './hooks/useServiceWorker';
 import { useShareReceiver } from './hooks/useShareReceiver';
 import { useSync } from './hooks/useSync';
 import { useAuth } from './hooks/useAuth';
-import { useOnboarding } from './hooks/useOnboarding';
 import { useAdaptiveSearch } from './hooks/useAdaptiveSearch';
 import { useHotkeys } from './hooks/useHotkeys';
 import { SyncProvider } from './context/SyncContext';
@@ -74,8 +71,6 @@ const AppContent: React.FC = () => {
     syncRef.current = sync;
     refreshRef.current = handleFullRefresh;
   }, [sync, handleFullRefresh]);
-
-  const { isShareOnboardingOpen, closeOnboarding } = useOnboarding({ memories });
 
   // Move useSettings hook to be called before useEffect dependencies
   const {
@@ -407,7 +402,6 @@ const AppContent: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-900 flex flex-col">
-      <InstallPrompt />
       <div className="sticky top-0 z-[50] bg-gray-900/90 backdrop-blur-md border-b border-gray-800 pt-[env(safe-area-inset-top)]">
           <TopNavigation 
             setView={handleSetView} 
@@ -576,10 +570,6 @@ const AppContent: React.FC = () => {
             onClose={() => setIsApiKeyModalOpen(false)}
             onSave={handleSaveApiKey}
         />
-      )}
-
-      {isShareOnboardingOpen && (
-          <ShareOnboardingModal onClose={closeOnboarding} />
       )}
     </div>
   );
