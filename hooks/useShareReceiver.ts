@@ -9,9 +9,34 @@ export interface ShareData {
   checkClipboard?: boolean;
 }
 
+// Declare the Android bridge interface
+declare global {
+  interface Window {
+    AndroidBridge?: {
+      signalAppReady: () => void;
+    };
+  }
+}
+
+/**
+ * Signal to Android native code that the React app is ready to receive share intents.
+ * This is crucial for proper cold-start handling of share intents.
+ */
+const signalAppReady = () => {
+  try {
+    if (isNative() && window.AndroidBridge?.signalAppReady) {
+      console.log('[ShareReceiver] Signaling app ready to Android');
+      window.AndroidBridge.signalAppReady();
+    }
+  } catch (e) {
+    console.warn('[ShareReceiver] Failed to signal app ready:', e);
+  }
+};
+
 export const useShareReceiver = () => {
   const [shareData, setShareData] = useState<ShareData | null>(null);
   const hasProcessedIntent = useRef(false);
+  const hasSignaledReady = useRef(false);
 
   // Native Intent Check (Async & Retryable)
   const checkNativeIntent = useCallback(async (): Promise<boolean> => {
@@ -28,7 +53,16 @@ export const useShareReceiver = () => {
 
       try {
          console.log('[ShareReceiver] Calling SendIntent.checkSendIntentReceived()...');
-         const response = await SendIntent.checkSendIntentReceived();
+
+         // Add timeout to prevent hanging
+         const timeoutPromise = new Promise<null>((_, reject) => {
+             setTimeout(() => reject(new Error('SendIntent timeout')), 5000);
+         });
+
+         const response = await Promise.race([
+             SendIntent.checkSendIntentReceived(),
+             timeoutPromise
+         ]);
 
          console.log('[ShareReceiver] Raw response:', JSON.stringify(response, null, 2));
 
@@ -55,29 +89,48 @@ export const useShareReceiver = () => {
 
          const attachments: Attachment[] = [];
 
+         // Process image attachments with proper error handling
          if (response.type?.startsWith('image/') && response.url) {
              console.log('[ShareReceiver] Processing image attachment:', response.url);
              try {
-                 const fileRes = await fetch(response.url);
+                 // Create an AbortController for the fetch timeout
+                 const controller = new AbortController();
+                 const fetchTimeout = setTimeout(() => controller.abort(), 10000);
+
+                 const fileRes = await fetch(response.url, { signal: controller.signal });
+                 clearTimeout(fetchTimeout);
+
+                 if (!fileRes.ok) {
+                     throw new Error(`Fetch failed with status ${fileRes.status}`);
+                 }
+
                  const blob = await fileRes.blob();
                  console.log('[ShareReceiver] Fetched blob, size:', blob.size, 'type:', blob.type);
 
-                 const reader = new FileReader();
-                 const base64 = await new Promise<string>(r => {
-                     reader.onload = e => r(e.target?.result as string);
-                     reader.readAsDataURL(blob);
-                 });
+                 // Validate blob size to prevent memory issues
+                 const MAX_BLOB_SIZE = 50 * 1024 * 1024; // 50MB limit
+                 if (blob.size > MAX_BLOB_SIZE) {
+                     console.warn('[ShareReceiver] Image too large, skipping:', blob.size);
+                 } else if (blob.size > 0) {
+                     const reader = new FileReader();
+                     const base64 = await new Promise<string>((resolve, reject) => {
+                         reader.onload = e => resolve(e.target?.result as string);
+                         reader.onerror = () => reject(new Error('FileReader error'));
+                         reader.readAsDataURL(blob);
+                     });
 
-                 attachments.push({
-                     id: crypto.randomUUID(),
-                     type: 'image',
-                     mimeType: response.type || blob.type,
-                     data: base64,
-                     name: 'Shared Image'
-                 });
-                 console.log('[ShareReceiver] Image attachment processed successfully');
+                     attachments.push({
+                         id: crypto.randomUUID(),
+                         type: 'image',
+                         mimeType: response.type || blob.type,
+                         data: base64,
+                         name: 'Shared Image'
+                     });
+                     console.log('[ShareReceiver] Image attachment processed successfully');
+                 }
              } catch (e) {
                  console.error('[ShareReceiver] Failed to read native attachment:', e);
+                 // Don't let image processing failure prevent text from being shared
              }
          }
 
@@ -88,9 +141,10 @@ export const useShareReceiver = () => {
 
             // Call finish() to clear the intent so it doesn't get processed again
             try {
-                SendIntent.finish();
+                await SendIntent.finish();
                 console.log('[ShareReceiver] SendIntent.finish() called');
             } catch (e) {
+                // finish() failure is non-critical
                 console.warn('[ShareReceiver] SendIntent.finish() failed:', e);
             }
 
@@ -99,7 +153,12 @@ export const useShareReceiver = () => {
             console.log('[ShareReceiver] No text or attachments to share');
          }
       } catch (e) {
+         // Catch all errors to prevent app crash
          console.error('[ShareReceiver] SendIntent plugin error:', e);
+         // Log additional error details if available
+         if (e instanceof Error) {
+             console.error('[ShareReceiver] Error name:', e.name, 'message:', e.message);
+         }
       }
       return false;
   }, []);
@@ -208,11 +267,15 @@ export const useShareReceiver = () => {
             if (!isActive) return;
 
             console.log(`[ShareReceiver] Checking intent (${reason}), attempt ${attempts + 1}`);
-            const found = await checkNativeIntent();
+            try {
+                const found = await checkNativeIntent();
 
-            if (found) {
-                console.log('[ShareReceiver] Intent found and processed!');
-                return;
+                if (found) {
+                    console.log('[ShareReceiver] Intent found and processed!');
+                    return;
+                }
+            } catch (e) {
+                console.error('[ShareReceiver] Error during intent check:', e);
             }
 
             attempts++;
@@ -226,6 +289,16 @@ export const useShareReceiver = () => {
                 console.log('[ShareReceiver] Max attempts reached, stopping checks');
             }
         };
+
+        // Signal app readiness to Android - this is crucial for cold-start share intents
+        // We do this once the React app has mounted and is ready to receive events
+        if (!hasSignaledReady.current) {
+            hasSignaledReady.current = true;
+            // Small delay to ensure React state is fully initialized
+            setTimeout(() => {
+                signalAppReady();
+            }, 100);
+        }
 
         // Don't check immediately on mount - wait for the sendIntentReceived event
         // This is dispatched by MainActivity after the bridge is ready
@@ -246,8 +319,10 @@ export const useShareReceiver = () => {
             if (timeoutId) {
                 clearTimeout(timeoutId);
             }
-            // Check immediately
-            check('sendIntentReceived event');
+            // Small delay to ensure the intent data is available
+            setTimeout(() => {
+                check('sendIntentReceived event');
+            }, 50);
         };
         window.addEventListener('sendIntentReceived', handleSendIntentReceived);
 
