@@ -27,6 +27,7 @@
 		"KeyboardPlugin",
 		"PreferencesPlugin",
 		"SharePlugin",
-		"StatusBarPlugin"
+		"StatusBarPlugin",
+		"SendIntentPlugin"
 	]
 }
