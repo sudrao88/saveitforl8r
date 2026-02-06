@@ -55,6 +55,18 @@
     <script>
        if ('serviceWorker' in navigator) {
          window.addEventListener('load', () => {
+           // Skip service worker on native platforms (Capacitor).
+           // Capacitor serves assets locally via its own WebViewClient;
+           // the SW's network-first navigation strategy conflicts with this
+           // and causes "Web page not available" or broken asset loading on first launch.
+           if (window.Capacitor && window.Capacitor.isNativePlatform()) {
+             // Unregister any previously registered service workers
+             navigator.serviceWorker.getRegistrations().then(function(registrations) {
+               registrations.forEach(function(reg) { reg.unregister(); });
+             });
+             console.log('SW skipped: running on native platform');
+             return;
+           }
            navigator.serviceWorker.register('/sw.js').then(registration => {
              console.log('SW registered: ', registration);
            }).catch(registrationError => {

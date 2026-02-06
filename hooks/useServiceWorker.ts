@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { isNative } from '../services/platform';
 
 export const useServiceWorker = () => {
   const [registration, setRegistration] = useState<ServiceWorkerRegistration | null>(null);
@@ -7,6 +8,9 @@ export const useServiceWorker = () => {
   const [appVersion, setAppVersion] = useState<string>('');
 
   useEffect(() => {
+    // Skip service worker on native - Capacitor handles asset serving
+    if (isNative()) return;
+
     if ('serviceWorker' in navigator) {
       // Register the service worker
       navigator.serviceWorker.register('/sw.js').then((reg) => {

@@ -8,7 +8,6 @@ import android.os.Looper;
 import android.util.Log;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
-import android.webkit.WebViewClient;
 
 import androidx.core.splashscreen.SplashScreen;
 
@@ -34,7 +33,7 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         try {
-            // Install splash screen
+            // Install splash screen - stays visible until JS app signals ready
             SplashScreen splashScreen = SplashScreen.installSplashScreen(this);
             splashScreen.setKeepOnScreenCondition(() -> !webViewReady);
 
@@ -44,8 +43,16 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
             // Initialize Share Handler
             shareHandler = new ShareIntentHandler(this, this);
 
-            // Setup WebView listeners
+            // Setup WebView JS interface (without replacing Capacitor's WebViewClient)
             setupWebView();
+
+            // Timeout fallback: dismiss splash after 5 seconds even if JS never signals ready
+            mainHandler.postDelayed(() -> {
+                if (!webViewReady) {
+                    Log.w(TAG, "Splash screen timeout - dismissing after 5 seconds");
+                    webViewReady = true;
+                }
+            }, 5000);
 
             // Process initial intent
             if (getIntent() != null) {
@@ -53,8 +60,8 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
             }
         } catch (Exception e) {
             Log.e(TAG, "Error in onCreate", e);
-            // Ensure super.onCreate was called if possible to avoid superNotCalledException
-            // But if super.onCreate threw, we are in trouble anyway.
+            // Ensure splash screen doesn't hang on error
+            webViewReady = true;
         }
     }
 
@@ -99,17 +106,15 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
             }
 
             WebView webView = bridge.getWebView();
-            
-            // Add JS Interface - using a new instance of the public class
+
+            // Add JS Interface for app-ready signaling from React
             webView.addJavascriptInterface(new AppReadyInterface(this), "AndroidBridge");
 
-            webView.setWebViewClient(new WebViewClient() {
-                @Override
-                public void onPageFinished(WebView view, String url) {
-                    super.onPageFinished(view, url);
-                    webViewReady = true;
-                }
-            });
+            // IMPORTANT: Do NOT call webView.setWebViewClient() here.
+            // Capacitor's BridgeWebViewClient handles shouldInterceptRequest() to serve
+            // local assets from the bundled assets/public/ directory. Replacing it causes
+            // "Web page not available" on first launch because the WebView tries to load
+            // https://localhost/ over the network instead of from local assets.
         } catch (Exception e) {
             Log.e(TAG, "Error setting up WebView", e);
         }
@@ -129,6 +134,7 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
             if (activity != null) {
                 activity.mainHandler.post(() -> {
                     activity.jsAppReady = true;
+                    activity.webViewReady = true; // Dismiss splash screen
                     activity.dispatchShareData();
                 });
             }
