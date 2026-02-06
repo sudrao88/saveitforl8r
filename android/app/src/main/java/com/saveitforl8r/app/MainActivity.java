@@ -24,6 +24,9 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
     
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
+    // Splash screen timeout: dismiss even if JS never signals ready
+    private static final int SPLASH_TIMEOUT_MS = 5000;
+
     // Remote URL for OTA live updates
     private static final String REMOTE_URL = "https://saveitforl8r.com";
     private static final String CAPACITOR_PREFS_NAME = "CapacitorStorage";
@@ -46,13 +49,14 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
             // Setup WebView JS interface (without replacing Capacitor's WebViewClient)
             setupWebView();
 
-            // Timeout fallback: dismiss splash after 5 seconds even if JS never signals ready
+            // Timeout fallback: dismiss splash even if JS never signals ready
             mainHandler.postDelayed(() -> {
                 if (!webViewReady) {
-                    Log.w(TAG, "Splash screen timeout - dismissing after 5 seconds");
+                    Log.w(TAG, "Splash screen timeout - dismissing after " +
+                          (SPLASH_TIMEOUT_MS / 1000) + " seconds");
                     webViewReady = true;
                 }
-            }, 5000);
+            }, SPLASH_TIMEOUT_MS);
 
             // Process initial intent
             if (getIntent() != null) {

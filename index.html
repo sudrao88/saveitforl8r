@@ -61,8 +61,8 @@
            // and causes "Web page not available" or broken asset loading on first launch.
            if (window.Capacitor && window.Capacitor.isNativePlatform()) {
              // Unregister any previously registered service workers
-             navigator.serviceWorker.getRegistrations().then(function(registrations) {
-               registrations.forEach(function(reg) { reg.unregister(); });
+             navigator.serviceWorker.getRegistrations().then(registrations => {
+               registrations.forEach(reg => reg.unregister());
              });
              console.log('SW skipped: running on native platform');
              return;
