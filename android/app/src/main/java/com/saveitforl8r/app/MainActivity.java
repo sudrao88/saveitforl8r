@@ -33,29 +33,35 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        // Install splash screen
-        SplashScreen splashScreen = SplashScreen.installSplashScreen(this);
-        splashScreen.setKeepOnScreenCondition(() -> !webViewReady);
+        try {
+            // Install splash screen
+            SplashScreen splashScreen = SplashScreen.installSplashScreen(this);
+            splashScreen.setKeepOnScreenCondition(() -> !webViewReady);
 
-        configureServerUrl();
-        super.onCreate(savedInstanceState);
+            configureServerUrl();
+            super.onCreate(savedInstanceState);
 
-        // Initialize Share Handler
-        shareHandler = new ShareIntentHandler(this, this);
+            // Initialize Share Handler
+            shareHandler = new ShareIntentHandler(this, this);
 
-        // Setup WebView listeners
-        setupWebView();
+            // Setup WebView listeners
+            setupWebView();
 
-        // Process initial intent
-        if (getIntent() != null) {
-            shareHandler.handleIntent(getIntent());
+            // Process initial intent
+            if (getIntent() != null) {
+                shareHandler.handleIntent(getIntent());
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error in onCreate", e);
+            // Ensure super.onCreate was called if possible to avoid superNotCalledException
+            // But if super.onCreate threw, we are in trouble anyway.
         }
     }
 
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
-        if (intent != null) {
+        if (intent != null && shareHandler != null) {
             shareHandler.handleIntent(intent);
         }
     }
@@ -70,54 +76,76 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
     }
 
     private void dispatchShareData() {
-        if (jsAppReady && pendingShareData != null && bridge != null) {
-            Log.d(TAG, "Dispatching share data to JS");
-            // triggerJSEvent sends a window event
-            bridge.triggerJSEvent("onShareReceived", "window", pendingShareData.toString());
-            pendingShareData = null;
-        } else {
-            Log.d(TAG, "Cannot dispatch share data yet. Ready: " + jsAppReady + ", Data: " + (pendingShareData != null));
+        try {
+            if (jsAppReady && pendingShareData != null && bridge != null) {
+                Log.d(TAG, "Dispatching share data to JS");
+                // triggerJSEvent sends a window event
+                bridge.triggerJSEvent("onShareReceived", "window", pendingShareData.toString());
+                pendingShareData = null;
+            } else {
+                Log.d(TAG, "Cannot dispatch share data yet. Ready: " + jsAppReady + ", Data: " + (pendingShareData != null));
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error dispatching share data", e);
         }
     }
 
     private void setupWebView() {
-        if (bridge == null || bridge.getWebView() == null) {
-            mainHandler.postDelayed(this::setupWebView, 100);
-            return;
-        }
-
-        WebView webView = bridge.getWebView();
-        
-        // Add JS Interface
-        webView.addJavascriptInterface(new AppReadyInterface(), "AndroidBridge");
-
-        webView.setWebViewClient(new WebViewClient() {
-            @Override
-            public void onPageFinished(WebView view, String url) {
-                super.onPageFinished(view, url);
-                webViewReady = true;
+        try {
+            if (bridge == null || bridge.getWebView() == null) {
+                // Retry in 100ms
+                mainHandler.postDelayed(this::setupWebView, 100);
+                return;
             }
-        });
+
+            WebView webView = bridge.getWebView();
+            
+            // Add JS Interface - using a new instance of the public class
+            webView.addJavascriptInterface(new AppReadyInterface(this), "AndroidBridge");
+
+            webView.setWebViewClient(new WebViewClient() {
+                @Override
+                public void onPageFinished(WebView view, String url) {
+                    super.onPageFinished(view, url);
+                    webViewReady = true;
+                }
+            });
+        } catch (Exception e) {
+            Log.e(TAG, "Error setting up WebView", e);
+        }
     }
 
-    private class AppReadyInterface {
+    // Made public and static (or keeping ref) to be safe
+    public class AppReadyInterface {
+        private MainActivity activity;
+
+        public AppReadyInterface(MainActivity activity) {
+            this.activity = activity;
+        }
+
         @JavascriptInterface
         public void signalAppReady() {
             Log.d(TAG, "JS App signaled ready");
-            mainHandler.post(() -> {
-                jsAppReady = true;
-                dispatchShareData();
-            });
+            if (activity != null) {
+                activity.mainHandler.post(() -> {
+                    activity.jsAppReady = true;
+                    activity.dispatchShareData();
+                });
+            }
         }
     }
 
     private void configureServerUrl() {
-        SharedPreferences prefs = getSharedPreferences(CAPACITOR_PREFS_NAME, MODE_PRIVATE);
-        String useRemote = prefs.getString(PREF_USE_REMOTE, "false");
+        try {
+            SharedPreferences prefs = getSharedPreferences(CAPACITOR_PREFS_NAME, MODE_PRIVATE);
+            String useRemote = prefs.getString(PREF_USE_REMOTE, "false");
 
-        if ("true".equals(useRemote)) {
-            String serverUrl = prefs.getString(PREF_SERVER_URL, REMOTE_URL);
-            getIntent().putExtra("serverUrl", serverUrl);
+            if ("true".equals(useRemote)) {
+                String serverUrl = prefs.getString(PREF_SERVER_URL, REMOTE_URL);
+                getIntent().putExtra("serverUrl", serverUrl);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error configuring server URL", e);
         }
     }
 }
