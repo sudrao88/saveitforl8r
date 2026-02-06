@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { SendIntent } from '@mindlib-capacitor/send-intent';
 import { Attachment } from '../types';
 import { isNative } from '../services/platform';
+import { Capacitor } from '@capacitor/core';
+import { Filesystem, Directory } from '@capacitor/filesystem';
 
 export interface ShareData {
   text: string;
@@ -18,12 +19,20 @@ declare global {
   }
 }
 
+interface NativeShareData {
+  text?: string;
+  attachments?: Array<{
+    name: string;
+    mimeType: string;
+    path: string;
+  }>;
+}
+
 // Maximum blob size for shared images (50MB)
 const MAX_BLOB_SIZE = 50 * 1024 * 1024;
 
 /**
  * Signal to Android native code that the React app is ready to receive share intents.
- * This is crucial for proper cold-start handling of share intents.
  */
 const signalAppReady = () => {
   try {
@@ -38,143 +47,81 @@ const signalAppReady = () => {
 
 export const useShareReceiver = () => {
   const [shareData, setShareData] = useState<ShareData | null>(null);
-  const hasProcessedIntent = useRef(false);
   const hasSignaledReady = useRef(false);
 
-  // Native Intent Check (Async & Retryable)
-  const checkNativeIntent = useCallback(async (): Promise<boolean> => {
-      if (!isNative()) {
-          console.log('[ShareReceiver] Not native platform, skipping');
-          return false;
-      }
+  // Native Share Handler
+  const handleNativeShare = useCallback(async (event: any) => {
+    console.log('[ShareReceiver] Received native share event:', event);
+    
+    // The data might be in event.detail (if CustomEvent) or just the event object itself depending on how Capacitor triggers it
+    const data: NativeShareData = event.detail || event;
+    
+    if (!data) {
+        console.warn('[ShareReceiver] Received empty share event');
+        return;
+    }
 
-      // Prevent processing the same intent multiple times
-      if (hasProcessedIntent.current) {
-          console.log('[ShareReceiver] Intent already processed, skipping');
-          return true;
-      }
+    const text = data.text || '';
+    const rawAttachments = data.attachments || [];
+    const processedAttachments: Attachment[] = [];
 
-      try {
-         console.log('[ShareReceiver] Calling SendIntent.checkSendIntentReceived()...');
+    console.log(`[ShareReceiver] Processing ${rawAttachments.length} attachments`);
 
-         // Add timeout to prevent hanging
-         const timeoutPromise = new Promise<null>((_, reject) => {
-             setTimeout(() => reject(new Error('SendIntent timeout')), 5000);
-         });
+    for (const att of rawAttachments) {
+        try {
+            // The path comes as "file:///..."
+            // We need to read this file. 
+            // Since it's in our cache dir, we can read it directly.
+            
+            // Convert file:// path to something usable if needed, 
+            // but Filesystem.readFile can often handle absolute paths if we don't specify directory,
+            // or we might need to fetch it.
+            
+            // Let's try fetching the local file first as it's often the easiest way 
+            // to get a blob from a file:// URI in a WebView (if allowed).
+            // Capacitor apps usually allow fetching file:// or strictly convertFileSrc.
+            
+            const webPath = Capacitor.convertFileSrc(att.path);
+            console.log('[ShareReceiver] Reading attachment from:', webPath);
 
-         const response = await Promise.race([
-             SendIntent.checkSendIntentReceived(),
-             timeoutPromise
-         ]);
-
-         console.log('[ShareReceiver] Raw response:', JSON.stringify(response, null, 2));
-
-         if (!response) {
-             console.log('[ShareReceiver] No response from SendIntent plugin');
-             return false;
-         }
-
-         // Check if response has any meaningful data
-         const hasData = response.title || response.description || response.url || response.type;
-         if (!hasData) {
-             console.log('[ShareReceiver] Response has no meaningful data');
-             return false;
-         }
-
-         console.log('[ShareReceiver] Processing intent data...');
-
-         let text = response.title || response.description || '';
-         if (response.url && !text.includes(response.url)) {
-            text = text ? `${text}\n${response.url}` : response.url;
-         }
-
-         console.log('[ShareReceiver] Extracted text:', text);
-
-         const attachments: Attachment[] = [];
-
-         // Process image attachments with proper error handling
-         if (response.type?.startsWith('image/') && response.url) {
-             console.log('[ShareReceiver] Processing image attachment:', response.url);
-             try {
-                 // Create an AbortController for the fetch timeout
-                 const controller = new AbortController();
-                 const fetchTimeout = setTimeout(() => controller.abort(), 10000);
-
-                 const fileRes = await fetch(response.url, { signal: controller.signal });
-                 clearTimeout(fetchTimeout);
-
-                 if (!fileRes.ok) {
-                     throw new Error(`Fetch failed with status ${fileRes.status}`);
-                 }
-
-                 const blob = await fileRes.blob();
-                 console.log('[ShareReceiver] Fetched blob, size:', blob.size, 'type:', blob.type);
-
-                 // Validate blob size to prevent memory issues
-                 if (blob.size > MAX_BLOB_SIZE) {
-                     console.warn('[ShareReceiver] Image too large, skipping:', blob.size);
-                 } else if (blob.size > 0) {
-                     const reader = new FileReader();
-                     const base64 = await new Promise<string>((resolve, reject) => {
-                         reader.onload = e => {
-                             const result = e.target?.result;
-                             if (typeof result === 'string') {
-                                 resolve(result);
-                             } else {
-                                 reject(new Error('FileReader result is not a string'));
-                             }
-                         };
-                         reader.onerror = () => reject(new Error('FileReader error'));
-                         reader.readAsDataURL(blob);
-                     });
-
-                     attachments.push({
-                         id: crypto.randomUUID(),
-                         type: 'image',
-                         mimeType: response.type || blob.type,
-                         data: base64,
-                         name: 'Shared Image'
-                     });
-                     console.log('[ShareReceiver] Image attachment processed successfully');
-                 }
-             } catch (e) {
-                 console.error('[ShareReceiver] Failed to read native attachment:', e);
-                 // Don't let image processing failure prevent text from being shared
-             }
-         }
-
-         if (text || attachments.length > 0) {
-            console.log('[ShareReceiver] Setting share data - text length:', text.length, 'attachments:', attachments.length);
-            hasProcessedIntent.current = true;
-            setShareData({ text: text.trim(), attachments });
-
-            // Call finish() to clear the intent so it doesn't get processed again
-            try {
-                await SendIntent.finish();
-                console.log('[ShareReceiver] SendIntent.finish() called');
-            } catch (e) {
-                // finish() failure is non-critical
-                console.warn('[ShareReceiver] SendIntent.finish() failed:', e);
+            const response = await fetch(webPath);
+            const blob = await response.blob();
+            
+            if (blob.size > MAX_BLOB_SIZE) {
+                console.warn('[ShareReceiver] File too large, skipping:', blob.size);
+                continue;
             }
 
-            return true;
-         } else {
-            console.log('[ShareReceiver] No text or attachments to share');
-         }
-      } catch (e) {
-         // Catch all errors to prevent app crash
-         console.error('[ShareReceiver] SendIntent plugin error:', e);
-         // Log additional error details if available
-         if (e instanceof Error) {
-             console.error('[ShareReceiver] Error name:', e.name, 'message:', e.message);
-         }
-      }
-      return false;
+            const reader = new FileReader();
+            const base64 = await new Promise<string>((resolve, reject) => {
+                reader.onload = e => resolve(e.target?.result as string);
+                reader.onerror = () => reject(new Error('FileReader error'));
+                reader.readAsDataURL(blob);
+            });
+
+            processedAttachments.push({
+                id: crypto.randomUUID(),
+                type: att.mimeType.startsWith('image/') ? 'image' : 'file',
+                mimeType: att.mimeType,
+                data: base64,
+                name: att.name || 'Shared File'
+            });
+
+        } catch (e) {
+            console.error('[ShareReceiver] Failed to process attachment:', att.path, e);
+        }
+    }
+
+    if (text || processedAttachments.length > 0) {
+        console.log('[ShareReceiver] Setting share data');
+        setShareData({ text: text.trim(), attachments: processedAttachments });
+    }
   }, []);
+
 
   // Web Logic
   const checkForWebShare = useCallback(async () => {
-    if (isNative()) return; // Skip web checks on native to avoid conflicts
+    if (isNative()) return; 
 
     const searchParams = new URLSearchParams(window.location.search);
     const hasText = searchParams.has('share_text');
@@ -256,105 +203,30 @@ export const useShareReceiver = () => {
     }
   }, []);
 
-  // Reset the processed flag when clearing share data
   const clearShareData = useCallback(() => {
-      console.log('[ShareReceiver] Clearing share data and resetting processed flag');
-      hasProcessedIntent.current = false;
       setShareData(null);
   }, []);
 
   useEffect(() => {
     if (isNative()) {
-        console.log('[ShareReceiver] Initializing native share receiver');
+        console.log('[ShareReceiver] Setting up native listener');
+        
+        // Listen for the custom event dispatched by MainActivity
+        window.addEventListener('onShareReceived', handleNativeShare);
 
-        // Check function with retry logic
-        let attempts = 0;
-        let timeoutId: ReturnType<typeof setTimeout> | null = null;
-        let isActive = true;
-
-        const check = async (reason: string) => {
-            if (!isActive) return;
-
-            console.log(`[ShareReceiver] Checking intent (${reason}), attempt ${attempts + 1}`);
-            try {
-                const found = await checkNativeIntent();
-
-                if (found) {
-                    console.log('[ShareReceiver] Intent found and processed!');
-                    return;
-                }
-            } catch (e) {
-                console.error('[ShareReceiver] Error during intent check:', e);
-            }
-
-            attempts++;
-            // Increase retry attempts and interval for cold start reliability
-            if (attempts < 8 && isActive) {
-                // Progressive delay: 300ms, 500ms, 700ms, 1000ms, 1500ms, 2000ms, 2500ms
-                const delay = Math.min(300 + (attempts * 200), 2500);
-                console.log(`[ShareReceiver] Will retry in ${delay}ms`);
-                timeoutId = setTimeout(() => check('retry'), delay);
-            } else {
-                console.log('[ShareReceiver] Max attempts reached, stopping checks');
-            }
-        };
-
-        // Signal app readiness to Android - this is crucial for cold-start share intents
-        // We do this once the React app has mounted and is ready to receive events
-        // useEffect guarantees the component is mounted, so we can signal immediately
         if (!hasSignaledReady.current) {
             hasSignaledReady.current = true;
-            signalAppReady();
+            // Short delay to ensure listeners are bound
+            setTimeout(signalAppReady, 100);
         }
 
-        // Don't check immediately on mount - wait for the sendIntentReceived event
-        // This is dispatched by MainActivity after the bridge is ready
-        // However, we do one initial check after a delay for edge cases
-        timeoutId = setTimeout(() => {
-            console.log('[ShareReceiver] Initial delayed check');
-            check('initial');
-        }, 500);
-
-        // Listen for sendIntentReceived event - dispatched by MainActivity
-        // This handles both cold start (after delay) and warm start scenarios
-        const handleSendIntentReceived = () => {
-            console.log('[ShareReceiver] sendIntentReceived event received from native');
-            // Reset state for new share
-            hasProcessedIntent.current = false;
-            attempts = 0;
-            // Clear any pending timeout
-            if (timeoutId) {
-                clearTimeout(timeoutId);
-            }
-            // Native side handles timing, check immediately
-            check('sendIntentReceived event');
-        };
-        window.addEventListener('sendIntentReceived', handleSendIntentReceived);
-
-        // Also check on resume (app comes back from background without new intent)
-        const handleResume = () => {
-            console.log('[ShareReceiver] App resumed');
-            // Only reset if we haven't already processed an intent
-            if (!hasProcessedIntent.current) {
-                attempts = 0;
-                check('resume');
-            }
-        };
-        document.addEventListener('resume', handleResume);
-
         return () => {
-            console.log('[ShareReceiver] Cleaning up native listeners');
-            isActive = false;
-            if (timeoutId) {
-                clearTimeout(timeoutId);
-            }
-            document.removeEventListener('resume', handleResume);
-            window.removeEventListener('sendIntentReceived', handleSendIntentReceived);
+            window.removeEventListener('onShareReceived', handleNativeShare);
         };
     } else {
         checkForWebShare();
     }
-  }, [checkForWebShare, checkNativeIntent]);
+  }, [handleNativeShare, checkForWebShare]);
 
   return { shareData, clearShareData };
 };
