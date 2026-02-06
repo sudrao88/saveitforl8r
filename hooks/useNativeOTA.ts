@@ -133,57 +133,6 @@ export const useNativeOTA = () => {
     return () => clearInterval(interval);
   }, [refreshCacheStatus]);
 
-  // Check for remote updates
-  const checkForUpdate = useCallback(async (): Promise<boolean> => {
-    if (!state.isOnline) return false;
-
-    setState(s => ({ ...s, isCheckingUpdate: true }));
-
-    try {
-      const response = await fetch(VERSION_CHECK_URL, {
-        cache: 'no-store',
-        headers: { 'Cache-Control': 'no-cache' }
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const remoteInfo: VersionInfo = await response.json();
-
-      const hasUpdate = remoteInfo.version !== state.currentVersion;
-
-      setState(s => ({
-        ...s,
-        remoteVersion: remoteInfo,
-        updateAvailable: hasUpdate,
-        isCheckingUpdate: false,
-      }));
-
-      return hasUpdate;
-    } catch (e) {
-      console.warn('[OTA] Version check failed:', e);
-      setState(s => ({ ...s, isCheckingUpdate: false }));
-      return false;
-    }
-  }, [state.isOnline, state.currentVersion]);
-
-  // Check for updates on mount and periodically (every 4 hours)
-  useEffect(() => {
-    if (!state.isUsingRemote) return;
-
-    // Initial check after a short delay
-    const timeout = setTimeout(checkForUpdate, 5000);
-
-    // Periodic check every 4 hours
-    const interval = setInterval(checkForUpdate, 4 * 60 * 60 * 1000);
-
-    return () => {
-      clearTimeout(timeout);
-      clearInterval(interval);
-    };
-  }, [state.isUsingRemote, checkForUpdate]);
-
   // Enable remote mode (switch from bundled assets to Cloud URL)
   const enableRemoteMode = useCallback(async () => {
     if (!Capacitor.isNativePlatform()) {
@@ -227,6 +176,65 @@ export const useNativeOTA = () => {
       throw e;
     }
   }, []);
+
+  // Check for remote updates
+  const checkForUpdate = useCallback(async (): Promise<boolean> => {
+    if (!state.isOnline) return false;
+
+    setState(s => ({ ...s, isCheckingUpdate: true }));
+
+    try {
+      const response = await fetch(VERSION_CHECK_URL, {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache' }
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const remoteInfo: VersionInfo = await response.json();
+
+      const hasUpdate = remoteInfo.version !== state.currentVersion;
+
+      // Automatically switch to remote mode if we are local and an update is found
+      if (hasUpdate && !state.isUsingRemote && Capacitor.isNativePlatform()) {
+         console.log('[OTA] Local version outdated. Switching to Remote Mode.');
+         // We do NOT await here to let the state update proceed, but we trigger the switch
+         enableRemoteMode().catch(e => console.error('[OTA] Auto-switch failed', e));
+      }
+
+      setState(s => ({
+        ...s,
+        remoteVersion: remoteInfo,
+        updateAvailable: hasUpdate,
+        isCheckingUpdate: false,
+      }));
+
+      return hasUpdate;
+    } catch (e) {
+      console.warn('[OTA] Version check failed:', e);
+      setState(s => ({ ...s, isCheckingUpdate: false }));
+      return false;
+    }
+  }, [state.isOnline, state.currentVersion, state.isUsingRemote, enableRemoteMode]);
+
+  // Check for updates on mount and periodically (every 4 hours)
+  // MODIFIED: Removed the `if (!state.isUsingRemote) return;` check to allow auto-upgrading from local
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    // Initial check after a short delay (5s)
+    const timeout = setTimeout(checkForUpdate, 5000);
+
+    // Periodic check every 4 hours
+    const interval = setInterval(checkForUpdate, 4 * 60 * 60 * 1000);
+
+    return () => {
+      clearTimeout(timeout);
+      clearInterval(interval);
+    };
+  }, [checkForUpdate]);
 
   // Precache all assets for offline use
   const precacheForOffline = useCallback(async (): Promise<void> => {

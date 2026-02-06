@@ -148,11 +148,16 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
     private void configureServerUrl() {
         try {
             SharedPreferences prefs = getSharedPreferences(CAPACITOR_PREFS_NAME, MODE_PRIVATE);
+            // Default to "false" to start with local assets (Offline First).
+            // The JS app (useNativeOTA) will detect a new version and set this to "true".
             String useRemote = prefs.getString(PREF_USE_REMOTE, "false");
 
             if ("true".equals(useRemote)) {
                 String serverUrl = prefs.getString(PREF_SERVER_URL, REMOTE_URL);
                 getIntent().putExtra("serverUrl", serverUrl);
+                Log.d(TAG, "Using remote server URL: " + serverUrl);
+            } else {
+                Log.d(TAG, "Using local assets");
             }
         } catch (Exception e) {
             Log.e(TAG, "Error configuring server URL", e);
