@@ -23,11 +23,11 @@
 	"packageClassList": [
 		"AppPlugin",
 		"CAPBrowserPlugin",
+		"FilesystemPlugin",
 		"HapticsPlugin",
 		"KeyboardPlugin",
 		"PreferencesPlugin",
 		"SharePlugin",
-		"StatusBarPlugin",
-		"SendIntentPlugin"
+		"StatusBarPlugin"
 	]
 }
