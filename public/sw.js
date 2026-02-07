@@ -3,6 +3,11 @@ const CACHE_NAME = 'saveitforl8r-v24'; // Increment version to force update
 const STATIC_CACHE = 'saveitforl8r-static-v1';
 const SCOPE = '/';
 
+// Minimum number of static assets cached before considering app ready for offline use.
+// A typical build produces ~15-20 hashed assets (JS chunks, CSS, fonts, images).
+// 5 is a conservative floor ensuring critical bundles (main JS, vendor JS, CSS, etc.) are present.
+const MIN_ASSETS_FOR_CACHE_READY = 5;
+
 // Critical assets that MUST be cached for offline use
 const PRECACHE_ASSETS = [
   SCOPE + 'index.html',
@@ -11,11 +16,10 @@ const PRECACHE_ASSETS = [
   SCOPE + 'version.json'
 ];
 
-// Track if we're running in a native app context
-const isNativeApp = () => {
-  return self.location.origin.includes('saveitforl8r.com') &&
-         !self.location.origin.includes('localhost');
-};
+// Track if we're running in a native app context.
+// Default false — client-side code sets this via SET_NATIVE_CONTEXT message
+// using Capacitor.isNativePlatform() which is the authoritative source.
+let nativeAppContext = false;
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -27,7 +31,7 @@ self.addEventListener('install', (event) => {
       .then(() => {
         // In native app context, don't auto-skip - let user control updates
         // In web context, skip waiting for seamless updates
-        if (!isNativeApp()) {
+        if (!nativeAppContext) {
           return self.skipWaiting();
         }
       })
@@ -51,6 +55,12 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('message', (event) => {
+  // Allow client-side code to inform the SW of native app context
+  // using Capacitor.isNativePlatform() as the authoritative source.
+  if (event.data && event.data.type === 'SET_NATIVE_CONTEXT') {
+    nativeAppContext = !!event.data.isNative;
+  }
+
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
@@ -116,7 +126,9 @@ async function precacheAllAssets() {
       while ((match = pattern.exec(html)) !== null) {
         const asset = match[1];
         if (asset.startsWith('/') || asset.startsWith('http')) {
-          assets.add(asset.startsWith('/') ? asset : new URL(asset).pathname);
+          // Keep full URLs for external assets (CDN etc.) so they can be fetched correctly.
+          // Only convert relative paths to absolute; leave absolute URLs as-is.
+          assets.add(asset);
         }
       }
     }
@@ -192,7 +204,7 @@ async function getCacheStatus() {
       staticCacheCount: staticKeys.length,
       totalCacheCount: dynamicKeys.length + staticKeys.length,
       estimatedSize: totalSize,
-      ready: staticKeys.length > 5 // Consider ready if we have assets cached
+      ready: staticKeys.length > MIN_ASSETS_FOR_CACHE_READY
     };
   } catch (e) {
     return { ready: false, error: e.message };

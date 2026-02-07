@@ -12,6 +12,12 @@ const PREF_USE_REMOTE = 'ota_use_remote';
 const PREF_SERVER_URL = 'ota_server_url';
 const PREF_LAST_VERSION = 'ota_last_version';
 
+// Time intervals
+const CACHE_STATUS_REFRESH_INTERVAL_MS = 30 * 1000;     // 30 seconds
+const INITIAL_UPDATE_CHECK_DELAY_MS = 5 * 1000;          // 5 seconds
+const PERIODIC_UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
+const PRECACHE_TIMEOUT_MS = 60 * 1000;                   // 60 seconds
+
 interface VersionInfo {
   version: string;
   buildNumber: number;
@@ -82,14 +88,21 @@ export const useNativeOTA = () => {
     };
   }, []);
 
-  // Get current service worker version
+  // Inform the service worker of native app context and get current SW version
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return;
 
-    const getVersion = async () => {
+    const initSW = async () => {
       try {
         const registration = await navigator.serviceWorker.ready;
         if (registration.active) {
+          // Inform SW whether we're in a native app context so it can
+          // decide whether to auto-skip waiting on install.
+          registration.active.postMessage({
+            type: 'SET_NATIVE_CONTEXT',
+            isNative: Capacitor.isNativePlatform(),
+          });
+
           const channel = new MessageChannel();
           channel.port1.onmessage = (event) => {
             if (event.data.type === 'VERSION') {
@@ -99,11 +112,11 @@ export const useNativeOTA = () => {
           registration.active.postMessage({ type: 'GET_VERSION' }, [channel.port2]);
         }
       } catch (e) {
-        console.warn('[OTA] Failed to get SW version:', e);
+        console.warn('[OTA] Failed to init SW:', e);
       }
     };
 
-    getVersion();
+    initSW();
   }, []);
 
   // Get cache status from service worker
@@ -129,7 +142,7 @@ export const useNativeOTA = () => {
   // Check cache status on mount and periodically
   useEffect(() => {
     refreshCacheStatus();
-    const interval = setInterval(refreshCacheStatus, 30000); // Every 30 seconds
+    const interval = setInterval(refreshCacheStatus, CACHE_STATUS_REFRESH_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [refreshCacheStatus]);
 
@@ -173,10 +186,10 @@ export const useNativeOTA = () => {
     if (!state.isUsingRemote) return;
 
     // Initial check after a short delay
-    const timeout = setTimeout(checkForUpdate, 5000);
+    const timeout = setTimeout(checkForUpdate, INITIAL_UPDATE_CHECK_DELAY_MS);
 
-    // Periodic check every 4 hours
-    const interval = setInterval(checkForUpdate, 4 * 60 * 60 * 1000);
+    // Periodic check
+    const interval = setInterval(checkForUpdate, PERIODIC_UPDATE_CHECK_INTERVAL_MS);
 
     return () => {
       clearTimeout(timeout);
@@ -239,32 +252,36 @@ export const useNativeOTA = () => {
     try {
       const registration = await navigator.serviceWorker.ready;
       const activeSW = registration.active;
-      
+
       if (!activeSW) {
         throw new Error('No active service worker');
       }
 
-      return new Promise((resolve, reject) => {
+      // Separate the promise creation from state updates so that
+      // state is never mutated inside the Promise executor.
+      await new Promise<void>((resolve, reject) => {
         const channel = new MessageChannel();
         const timeout = setTimeout(() => {
           reject(new Error('Precache timeout'));
-        }, 60000); // 60 second timeout
+        }, PRECACHE_TIMEOUT_MS);
 
         channel.port1.onmessage = (event) => {
           clearTimeout(timeout);
           if (event.data.type === 'PRECACHE_COMPLETE') {
-            setState(s => ({ ...s, isPrecaching: false }));
-            refreshCacheStatus();
             resolve();
           }
         };
 
         activeSW.postMessage({ type: 'PRECACHE_ALL' }, [channel.port2]);
       });
+
+      refreshCacheStatus();
     } catch (e) {
-      setState(s => ({ ...s, isPrecaching: false }));
       console.error('[OTA] Precache failed:', e);
       throw e;
+    } finally {
+      // Guarantee isPrecaching is reset even on error or unmount
+      setState(s => ({ ...s, isPrecaching: false }));
     }
   }, [refreshCacheStatus]);
 
@@ -276,17 +293,21 @@ export const useNativeOTA = () => {
       const registration = await navigator.serviceWorker.ready;
 
       if (registration.waiting) {
-        // There's a waiting service worker - tell it to activate
+        // There's a waiting service worker - tell it to activate then reload
+        // Listen for the new SW to take control before reloading
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          window.location.reload();
+        }, { once: true });
         registration.waiting.postMessage({ type: 'SKIP_WAITING' });
       } else {
-        // Force check for updates and reload
+        // No waiting worker yet — trigger an update check.
+        // The new SW needs to download and install before it can be activated.
+        // The caller should wait for registration.waiting to appear and then
+        // call applyUpdate() again.
         await registration.update();
-        window.location.reload();
       }
     } catch (e) {
       console.error('[OTA] Apply update failed:', e);
-      // Fallback: just reload
-      window.location.reload();
     }
   }, []);
 

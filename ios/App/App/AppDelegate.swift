@@ -35,10 +35,17 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         if useRemote == "true" {
             let serverUrl = defaults.string(forKey: prefsPrefix + prefServerUrl) ?? remoteUrl
 
-            // Set the server URL for Capacitor to use
-            // Capacitor reads this UserDefaults key to override server configuration
-            defaults.set(serverUrl, forKey: "serverUrl")
-            print("[OTA] Loading from remote URL: \(serverUrl)")
+            // Validate the URL starts with the expected production domain.
+            // An attacker who gains XSS could modify UserDefaults to point to a
+            // malicious server, so we enforce an allowlist here.
+            if serverUrl.hasPrefix(remoteUrl) {
+                defaults.set(serverUrl, forKey: "serverUrl")
+                print("[OTA] Loading from remote URL: \(serverUrl)")
+            } else {
+                print("[OTA] Blocked invalid OTA server URL: \(serverUrl)")
+                // Fall back to default remote URL
+                defaults.set(remoteUrl, forKey: "serverUrl")
+            }
         } else {
             // Remove any previously set server URL to use bundled assets
             defaults.removeObject(forKey: "serverUrl")
