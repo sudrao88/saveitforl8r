@@ -506,11 +506,11 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
             {/* Toolbar Area - order-3 */}
             <div className="flex flex-col gap-4 border-gray-800 pt-0 order-3 sticky bottom-0 pb-[env(safe-area-inset-bottom)] sm:relative z-20 bg-gray-900/95 transition-all duration-200">
                  {/* Combined Toolbar */}
-                 <div className="flex flex-nowrap items-center gap-1 bg-gray-800/90 backdrop-blur-md p-1.5 rounded-2xl border border-gray-700/50 shadow-xl overflow-x-auto no-scrollbar">
+                 <div className="flex flex-nowrap items-center gap-3 bg-gray-800/90 backdrop-blur-md p-2 rounded-2xl border border-gray-700/50 shadow-xl overflow-x-auto no-scrollbar">
                     {/* Attachments Button */}
                     <button 
                         onClick={() => fileInputRef.current?.click()}
-                        className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-xl transition-colors active:scale-95 shrink-0"
+                        className="p-2.5 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-xl transition-colors active:scale-95 shrink-0"
                         title="Add Attachment"
                     >
                         <Paperclip size={20} />
@@ -524,55 +524,55 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                         accept="image/*,.pdf,.txt,.md"
                     />
 
-                    <div className="w-px h-6 bg-gray-700/50 mx-0.5 shrink-0"></div>
+                    <div className="w-px h-6 bg-gray-700/50 mx-1 shrink-0"></div>
 
                     {/* Formatting Controls (Only in Normal Mode) */}
                     {!isChecklistMode && (
                         <>
-                            <button 
-                                onClick={() => execFormat('bold')} 
-                                className={`p-1.5 rounded-xl transition-colors active:scale-95 shrink-0 ${isFormatActive('bold') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`} 
+                            <button
+                                onClick={() => execFormat('bold')}
+                                className={`p-2.5 rounded-xl transition-colors active:scale-95 shrink-0 ${isFormatActive('bold') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`}
                                 title="Bold"
                             >
                                 <Bold size={20} />
                             </button>
-                            <button 
-                                onClick={() => execFormat('italic')} 
-                                className={`p-1.5 rounded-xl transition-colors active:scale-95 shrink-0 ${isFormatActive('italic') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`} 
+                            <button
+                                onClick={() => execFormat('italic')}
+                                className={`p-2.5 rounded-xl transition-colors active:scale-95 shrink-0 ${isFormatActive('italic') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`}
                                 title="Italic"
                             >
                                 <Italic size={20} />
                             </button>
-                            <button 
-                                onClick={() => execFormat('underline')} 
-                                className={`p-1.5 rounded-xl transition-colors active:scale-95 shrink-0 ${isFormatActive('underline') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`} 
+                            <button
+                                onClick={() => execFormat('underline')}
+                                className={`p-2.5 rounded-xl transition-colors active:scale-95 shrink-0 ${isFormatActive('underline') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`}
                                 title="Underline"
                             >
                                 <Underline size={20} />
                             </button>
-                            <div className="w-px h-6 bg-gray-700/50 mx-0.5 shrink-0"></div>
-                            <button 
-                                onClick={() => execFormat('formatBlock', 'H1')} 
-                                className={`p-1.5 rounded-xl transition-colors active:scale-95 shrink-0 ${isFormatActive('H1') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`} 
+                            <div className="w-px h-6 bg-gray-700/50 mx-1 shrink-0"></div>
+                            <button
+                                onClick={() => execFormat('formatBlock', 'H1')}
+                                className={`p-2.5 rounded-xl transition-colors active:scale-95 shrink-0 ${isFormatActive('H1') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`}
                                 title="Heading 1"
                             >
                                 <Heading1 size={20} />
                             </button>
-                            <button 
-                                onClick={() => execFormat('formatBlock', 'H2')} 
-                                className={`p-1.5 rounded-xl transition-colors active:scale-95 shrink-0 ${isFormatActive('H2') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`} 
+                            <button
+                                onClick={() => execFormat('formatBlock', 'H2')}
+                                className={`p-2.5 rounded-xl transition-colors active:scale-95 shrink-0 ${isFormatActive('H2') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`}
                                 title="Heading 2"
                             >
                                 <Heading2 size={20} />
                             </button>
-                            <div className="w-px h-6 bg-gray-700/50 mx-0.5 shrink-0"></div>
+                            <div className="w-px h-6 bg-gray-700/50 mx-1 shrink-0"></div>
                         </>
                     )}
 
                     {/* Checklist Toggle */}
                     <button
                         onClick={toggleChecklistMode}
-                        className={`p-1.5 rounded-xl transition-colors active:scale-95 shrink-0 ${isChecklistMode ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`}
+                        className={`p-2.5 rounded-xl transition-colors active:scale-95 shrink-0 ${isChecklistMode ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`}
                         title="Checklist Mode"
                     >
                         <CheckSquare size={20} />
