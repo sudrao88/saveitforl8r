@@ -1,5 +1,5 @@
 // public/sw.js
-const CACHE_NAME = 'saveitforl8r-v31'; // Increment version to force update
+const CACHE_NAME = 'saveitforl8r-v32'; // Increment version to force update
 const STATIC_CACHE = 'saveitforl8r-static-v1';
 const SCOPE = '/';
 
@@ -25,11 +25,9 @@ self.addEventListener('install', (event) => {
         return cache.addAll(PRECACHE_ASSETS);
       })
       .then(() => {
-        // In native app context, don't auto-skip - let user control updates
-        // In web context, skip waiting for seamless updates
-        if (!isNativeApp()) {
-          return self.skipWaiting();
-        }
+        // Always skip waiting so that the new service worker becomes active immediately.
+        // This ensures that when the app reloads (e.g. via Update button), the new version is served.
+        return self.skipWaiting();
       })
   );
 });
@@ -254,15 +252,8 @@ self.addEventListener('sync', (event) => {
   }
 });
 
-// Mock function to process queue - in a real PWA this would read from IndexedDB
-// and call the API. Since the actual enrichment logic is in the React app (Gemini Service),
-// we can't easily move it all to SW without duplicating a lot of code/dependencies.
-// However, standard browser behavior will keep the Promise in createMemory alive 
-// for a short while even if backgrounded. True background execution requires 
-// Background Sync API + moving logic here, which is complex for this architecture.
 async function processEnrichQueue() {
    console.log('[SW] Background sync triggered (placeholder)');
-   // Real implementation would require moving geminiService logic here
 }
 
 
@@ -300,7 +291,6 @@ self.addEventListener('fetch', (event) => {
   }
 
   // Static assets (JS/CSS bundles with hashed filenames) - cache-first strategy
-  // Use STATIC_CACHE for long-term storage since these files are immutable
   if (url.pathname.includes('/assets/')) {
     event.respondWith(
       caches.match(event.request).then((cachedResponse) => {
@@ -310,7 +300,6 @@ self.addEventListener('fetch', (event) => {
         return fetch(event.request).then((networkResponse) => {
           if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
             const responseToCache = networkResponse.clone();
-            // Use STATIC_CACHE for hashed assets (they never change)
             caches.open(STATIC_CACHE).then((cache) => {
               cache.put(event.request, responseToCache);
             });

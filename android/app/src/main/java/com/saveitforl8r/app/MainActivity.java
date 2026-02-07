@@ -152,8 +152,12 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
                 prefs.edit().putString(PREF_USE_REMOTE, "true").apply();
                 prefs.edit().putString(PREF_SERVER_URL, REMOTE_URL).apply();
                 
-                // Recreate activity to reload with new serverUrl
-                activity.mainHandler.post(() -> activity.recreate());
+                // Restart activity to reload with new serverUrl (avoids savedInstanceState issues)
+                activity.mainHandler.post(() -> {
+                    Intent intent = activity.getIntent();
+                    activity.finish();
+                    activity.startActivity(intent);
+                });
             }
         }
 
@@ -164,8 +168,12 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
                 SharedPreferences prefs = activity.getSharedPreferences(CAPACITOR_PREFS_NAME, MODE_PRIVATE);
                 prefs.edit().putString(PREF_USE_REMOTE, "false").apply();
                 
-                // Recreate activity to reload with local assets
-                activity.mainHandler.post(() -> activity.recreate());
+                // Restart activity to reload with local assets
+                activity.mainHandler.post(() -> {
+                    Intent intent = activity.getIntent();
+                    activity.finish();
+                    activity.startActivity(intent);
+                });
             }
         }
     }
