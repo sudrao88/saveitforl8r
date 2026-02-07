@@ -269,6 +269,8 @@ export const useNativeOTA = () => {
           clearTimeout(timeout);
           if (event.data.type === 'PRECACHE_COMPLETE') {
             resolve();
+          } else {
+            reject(new Error(`Precache failed with message: ${JSON.stringify(event.data)}`));
           }
         };
 

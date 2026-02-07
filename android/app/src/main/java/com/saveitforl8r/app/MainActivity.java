@@ -156,7 +156,7 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
                 // Validate the URL starts with the expected production domain.
                 // An attacker who gains XSS could modify SharedPreferences to point
                 // to a malicious server, so we enforce an allowlist here.
-                if (serverUrl != null && serverUrl.startsWith(REMOTE_URL)) {
+                if (serverUrl != null && (serverUrl.equals(REMOTE_URL) || serverUrl.startsWith(REMOTE_URL + "/"))) {
                     getIntent().putExtra("serverUrl", serverUrl);
                 } else {
                     Log.w(TAG, "Blocked invalid OTA server URL: " + serverUrl);

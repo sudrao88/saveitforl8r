@@ -38,7 +38,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             // Validate the URL starts with the expected production domain.
             // An attacker who gains XSS could modify UserDefaults to point to a
             // malicious server, so we enforce an allowlist here.
-            if serverUrl.hasPrefix(remoteUrl) {
+            if serverUrl == remoteUrl || serverUrl.hasPrefix(remoteUrl + "/") {
                 defaults.set(serverUrl, forKey: "serverUrl")
                 print("[OTA] Loading from remote URL: \(serverUrl)")
             } else {
