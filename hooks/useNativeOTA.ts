@@ -5,7 +5,7 @@ import { App } from '@capacitor/app';
 
 // Remote URL for live updates - the production Cloud Run/hosting URL
 const REMOTE_URL = 'https://saveitforl8r.com';
-const VERSION_CHECK_URL = `${REMOTE_URL}/version.json`;
+const REMOTE_VERSION_URL = `${REMOTE_URL}/version.json`;
 
 // Preference keys for native storage
 const PREF_USE_REMOTE = 'ota_use_remote';
@@ -20,13 +20,6 @@ interface VersionInfo {
   changelog: string;
 }
 
-interface CacheStatus {
-  ready: boolean;
-  totalCacheCount: number;
-  estimatedSize: number;
-  error?: string;
-}
-
 interface OTAState {
   isNative: boolean;
   isUsingRemote: boolean;
@@ -34,8 +27,6 @@ interface OTAState {
   currentVersion: string;
   remoteVersion: VersionInfo | null;
   isOnline: boolean;
-  cacheStatus: CacheStatus | null;
-  isPrecaching: boolean;
   isCheckingUpdate: boolean;
 }
 
@@ -47,8 +38,6 @@ export const useNativeOTA = () => {
     currentVersion: '',
     remoteVersion: null,
     isOnline: navigator.onLine,
-    cacheStatus: null,
-    isPrecaching: false,
     isCheckingUpdate: false,
   });
 
@@ -82,56 +71,23 @@ export const useNativeOTA = () => {
     };
   }, []);
 
-  // Get current service worker version
+  // Get current version from local version.json
   useEffect(() => {
-    if (!('serviceWorker' in navigator)) return;
-
-    const getVersion = async () => {
+    const fetchCurrentVersion = async () => {
       try {
-        const registration = await navigator.serviceWorker.ready;
-        if (registration.active) {
-          const channel = new MessageChannel();
-          channel.port1.onmessage = (event) => {
-            if (event.data.type === 'VERSION') {
-              setState(s => ({ ...s, currentVersion: event.data.version }));
-            }
-          };
-          registration.active.postMessage({ type: 'GET_VERSION' }, [channel.port2]);
+        // Fetch from relative path (works for both local assets and remote server)
+        const response = await fetch('/version.json');
+        if (response.ok) {
+          const data: VersionInfo = await response.json();
+          setState(s => ({ ...s, currentVersion: data.version }));
         }
       } catch (e) {
-        console.warn('[OTA] Failed to get SW version:', e);
+        console.warn('[OTA] Failed to fetch local version.json:', e);
       }
     };
 
-    getVersion();
+    fetchCurrentVersion();
   }, []);
-
-  // Get cache status from service worker
-  const refreshCacheStatus = useCallback(async () => {
-    if (!('serviceWorker' in navigator)) return;
-
-    try {
-      const registration = await navigator.serviceWorker.ready;
-      if (registration.active) {
-        const channel = new MessageChannel();
-        channel.port1.onmessage = (event) => {
-          if (event.data.type === 'CACHE_STATUS') {
-            setState(s => ({ ...s, cacheStatus: event.data }));
-          }
-        };
-        registration.active.postMessage({ type: 'GET_CACHE_STATUS' }, [channel.port2]);
-      }
-    } catch (e) {
-      console.warn('[OTA] Failed to get cache status:', e);
-    }
-  }, []);
-
-  // Check cache status on mount and periodically
-  useEffect(() => {
-    refreshCacheStatus();
-    const interval = setInterval(refreshCacheStatus, 30000); // Every 30 seconds
-    return () => clearInterval(interval);
-  }, [refreshCacheStatus]);
 
   // Enable remote mode (switch from bundled assets to Cloud URL)
   const enableRemoteMode = useCallback(async () => {
@@ -150,7 +106,6 @@ export const useNativeOTA = () => {
       }
 
       // Restart app to apply changes
-      // On Android/iOS this will restart the app with the new server URL
       await App.exitApp();
     } catch (e) {
       console.error('[OTA] Failed to enable remote mode:', e);
@@ -179,12 +134,13 @@ export const useNativeOTA = () => {
 
   // Check for remote updates
   const checkForUpdate = useCallback(async (): Promise<boolean> => {
-    if (!state.isOnline) return false;
+    if (!state.isOnline || !Capacitor.isNativePlatform()) return false;
 
     setState(s => ({ ...s, isCheckingUpdate: true }));
 
     try {
-      const response = await fetch(VERSION_CHECK_URL, {
+      // Add timestamp to prevent caching
+      const response = await fetch(`${REMOTE_VERSION_URL}?t=${Date.now()}`, {
         cache: 'no-store',
         headers: { 'Cache-Control': 'no-cache' }
       });
@@ -194,15 +150,11 @@ export const useNativeOTA = () => {
       }
 
       const remoteInfo: VersionInfo = await response.json();
+      
+      // Compare versions - ensure boolean result
+      const hasUpdate = !!(state.currentVersion && remoteInfo.version !== state.currentVersion);
 
-      const hasUpdate = remoteInfo.version !== state.currentVersion;
-
-      // Automatically switch to remote mode if we are local and an update is found
-      if (hasUpdate && !state.isUsingRemote && Capacitor.isNativePlatform()) {
-         console.log('[OTA] Local version outdated. Switching to Remote Mode.');
-         // We do NOT await here to let the state update proceed, but we trigger the switch
-         enableRemoteMode().catch(e => console.error('[OTA] Auto-switch failed', e));
-      }
+      console.log(`[OTA] Check complete. Current: ${state.currentVersion}, Remote: ${remoteInfo.version}, HasUpdate: ${hasUpdate}`);
 
       setState(s => ({
         ...s,
@@ -217,18 +169,17 @@ export const useNativeOTA = () => {
       setState(s => ({ ...s, isCheckingUpdate: false }));
       return false;
     }
-  }, [state.isOnline, state.currentVersion, state.isUsingRemote, enableRemoteMode]);
+  }, [state.isOnline, state.currentVersion]);
 
-  // Check for updates on mount and periodically (every 4 hours)
-  // MODIFIED: Removed the `if (!state.isUsingRemote) return;` check to allow auto-upgrading from local
+  // Periodic check
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
 
-    // Initial check after a short delay (5s)
+    // Check after 5 seconds
     const timeout = setTimeout(checkForUpdate, 5000);
-
-    // Periodic check every 4 hours
-    const interval = setInterval(checkForUpdate, 4 * 60 * 60 * 1000);
+    
+    // Check every hour
+    const interval = setInterval(checkForUpdate, 60 * 60 * 1000);
 
     return () => {
       clearTimeout(timeout);
@@ -236,84 +187,11 @@ export const useNativeOTA = () => {
     };
   }, [checkForUpdate]);
 
-  // Precache all assets for offline use
-  const precacheForOffline = useCallback(async (): Promise<void> => {
-    if (!('serviceWorker' in navigator)) {
-      throw new Error('Service worker not supported');
-    }
-
-    setState(s => ({ ...s, isPrecaching: true }));
-
-    try {
-      const registration = await navigator.serviceWorker.ready;
-      const activeSW = registration.active;
-      
-      if (!activeSW) {
-        throw new Error('No active service worker');
-      }
-
-      return new Promise((resolve, reject) => {
-        const channel = new MessageChannel();
-        const timeout = setTimeout(() => {
-          reject(new Error('Precache timeout'));
-        }, 60000); // 60 second timeout
-
-        channel.port1.onmessage = (event) => {
-          clearTimeout(timeout);
-          if (event.data.type === 'PRECACHE_COMPLETE') {
-            setState(s => ({ ...s, isPrecaching: false }));
-            refreshCacheStatus();
-            resolve();
-          }
-        };
-
-        activeSW.postMessage({ type: 'PRECACHE_ALL' }, [channel.port2]);
-      });
-    } catch (e) {
-      setState(s => ({ ...s, isPrecaching: false }));
-      console.error('[OTA] Precache failed:', e);
-      throw e;
-    }
-  }, [refreshCacheStatus]);
-
-  // Apply available update (tell SW to skip waiting and reload)
-  const applyUpdate = useCallback(async () => {
-    if (!('serviceWorker' in navigator)) return;
-
-    try {
-      const registration = await navigator.serviceWorker.ready;
-
-      if (registration.waiting) {
-        // There's a waiting service worker - tell it to activate
-        registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-      } else {
-        // Force check for updates and reload
-        await registration.update();
-        window.location.reload();
-      }
-    } catch (e) {
-      console.error('[OTA] Apply update failed:', e);
-      // Fallback: just reload
-      window.location.reload();
-    }
-  }, []);
-
-  // Format cache size for display
-  const formatCacheSize = useCallback((bytes: number): string => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  }, []);
-
   return {
     ...state,
     checkForUpdate,
     enableRemoteMode,
     disableRemoteMode,
-    precacheForOffline,
-    applyUpdate,
-    refreshCacheStatus,
-    formatCacheSize,
     remoteUrl: REMOTE_URL,
   };
 };

@@ -22,6 +22,7 @@ import { useSync } from './hooks/useSync';
 import { useAuth } from './hooks/useAuth';
 import { useAdaptiveSearch } from './hooks/useAdaptiveSearch';
 import { useHotkeys } from './hooks/useHotkeys';
+import useNativeOTA from './hooks/useNativeOTA';
 import { SyncProvider } from './context/SyncContext';
 import { reconcileEmbeddings, ReconcileReport } from './services/storageService';
 import { ViewMode, Memory, Attachment } from './types';
@@ -39,6 +40,12 @@ const AppContent: React.FC = () => {
   const [editingMemory, setEditingMemory] = useState<Memory | null>(null);
   
   const { updateAvailable, updateApp, appVersion } = useServiceWorker();
+  const { 
+      enableRemoteMode, 
+      updateAvailable: nativeUpdateAvailable, 
+      currentVersion: nativeVersion 
+  } = useNativeOTA();
+
   const { shareData, clearShareData } = useShareReceiver();
   
   const { sync, isSyncing, syncError } = useSync();
@@ -275,16 +282,20 @@ const AppContent: React.FC = () => {
   }, [setIsSettingsOpen]);
 
   const handleUpdateApp = useCallback(() => {
-    updateApp();
+    if (isNative()) {
+      enableRemoteMode().catch(console.error);
+    } else {
+      updateApp();
+    }
     logEvent(ANALYTICS_EVENTS.APP.CATEGORY, ANALYTICS_EVENTS.APP.ACTION_UPDATED);
-  }, [updateApp]);
+  }, [updateApp, enableRemoteMode]);
 
   const handleSetFilterType = useCallback((type: string | null) => {
     setFilterType(type);
     if (type) logEvent(ANALYTICS_EVENTS.FILTER.CATEGORY, ANALYTICS_EVENTS.FILTER.ACTION_APPLIED, type);
   }, [setFilterType]);
 
-  const handleClearFiltersEmptyState = useCallback(() => {
+  const handleClearFiltersEmptyState = useCallback((type?: string) => {
     clearFilters();
     logEvent(ANALYTICS_EVENTS.FILTER.CATEGORY, ANALYTICS_EVENTS.FILTER.ACTION_CLEARED_EMPTY);
   }, [clearFilters]);
@@ -350,6 +361,9 @@ const AppContent: React.FC = () => {
 
   const activeMemoryCount = useMemo(() => memories.filter(m => !m.isDeleted).length, [memories]);
 
+  const isUpdateAvailable = isNative() ? nativeUpdateAvailable : updateAvailable;
+  const versionToDisplay = isNative() ? nativeVersion : appVersion;
+
   if (isLoading) {
     return (
         <div className="fixed inset-0 bg-gray-900 z-[9999] flex flex-col items-center justify-center">
@@ -407,7 +421,7 @@ const AppContent: React.FC = () => {
             setView={handleSetView} 
             resetFilters={handleResetFilters} 
             onSettingsClick={handleSettingsClick}
-            updateAvailable={updateAvailable}
+            updateAvailable={isUpdateAvailable}
             onUpdateApp={handleUpdateApp}
             syncError={!!syncError}
             isSyncing={isSyncing} 
@@ -548,7 +562,7 @@ const AppContent: React.FC = () => {
             clearKey={handleClearKey}
             availableTypes={availableTypes}
             onImportSuccess={handleImportSuccess}
-            appVersion={appVersion}
+            appVersion={versionToDisplay}
             hasApiKey={apiKeySet}
             onAddApiKey={handleAddApiKey}
             syncError={syncError}

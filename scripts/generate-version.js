@@ -10,7 +10,7 @@
  * version reported to native apps for OTA update checks.
  */
 
-import { readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -19,6 +19,7 @@ const projectRoot = join(__dirname, '..');
 
 // Default output directory (can be overridden via command line)
 const outputDir = process.argv[2] || join(projectRoot, 'dist');
+const publicDir = join(projectRoot, 'public');
 
 // Read the service worker to extract the current version
 function extractVersionFromSW() {
@@ -43,9 +44,13 @@ function extractBuildNumber(version) {
 // Read minNativeVersion from existing version.json if it exists
 function getMinNativeVersion() {
   try {
-    const existingPath = join(projectRoot, 'public', 'version.json');
-    const existing = JSON.parse(readFileSync(existingPath, 'utf8'));
-    return existing.minNativeVersion || '1.0.0';
+    // Try to read from public/version.json first as it is the source
+    const existingPath = join(publicDir, 'version.json');
+    if (existsSync(existingPath)) {
+        const existing = JSON.parse(readFileSync(existingPath, 'utf8'));
+        return existing.minNativeVersion || '1.0.0';
+    }
+    return '1.0.0';
   } catch {
     return '1.0.0';
   }
@@ -54,37 +59,50 @@ function getMinNativeVersion() {
 // Read changelog from existing version.json or use default
 function getChangelog() {
   try {
-    const existingPath = join(projectRoot, 'public', 'version.json');
-    const existing = JSON.parse(readFileSync(existingPath, 'utf8'));
-    return existing.changelog || 'Bug fixes and improvements';
+    const existingPath = join(publicDir, 'version.json');
+    if (existsSync(existingPath)) {
+        const existing = JSON.parse(readFileSync(existingPath, 'utf8'));
+        return existing.changelog || 'Bug fixes and improvements';
+    }
+    return 'Bug fixes and improvements';
   } catch {
     return 'Bug fixes and improvements';
   }
 }
 
 function main() {
-  const version = extractVersionFromSW();
-  const buildNumber = extractBuildNumber(version);
-  const minNativeVersion = getMinNativeVersion();
-  const changelog = getChangelog();
+  try {
+      const version = extractVersionFromSW();
+      const buildNumber = extractBuildNumber(version);
+      const minNativeVersion = getMinNativeVersion();
+      const changelog = getChangelog();
 
-  const versionInfo = {
-    version,
-    buildNumber,
-    buildDate: new Date().toISOString(),
-    minNativeVersion,
-    changelog
-  };
+      const versionInfo = {
+        version,
+        buildNumber,
+        buildDate: new Date().toISOString(),
+        minNativeVersion,
+        changelog
+      };
 
-  // Ensure output directory exists
-  mkdirSync(outputDir, { recursive: true });
+      // Ensure output directory exists
+      mkdirSync(outputDir, { recursive: true });
 
-  // Write to output directory
-  const outputPath = join(outputDir, 'version.json');
-  writeFileSync(outputPath, JSON.stringify(versionInfo, null, 2) + '\n');
+      // Write to dist/version.json (for deployment)
+      const outputPath = join(outputDir, 'version.json');
+      writeFileSync(outputPath, JSON.stringify(versionInfo, null, 2) + '\n');
+      console.log(`[generate-version] Generated ${outputPath}`);
 
-  console.log(`[generate-version] Generated ${outputPath}`);
-  console.log(`[generate-version] Version: ${version} (build ${buildNumber})`);
+      // Write to public/version.json (for dev/source consistency)
+      const publicPath = join(publicDir, 'version.json');
+      writeFileSync(publicPath, JSON.stringify(versionInfo, null, 2) + '\n');
+      console.log(`[generate-version] Updated ${publicPath}`);
+
+      console.log(`[generate-version] Version: ${version} (build ${buildNumber})`);
+  } catch (error) {
+      console.error('[generate-version] Error:', error);
+      process.exit(1);
+  }
 }
 
 main();
