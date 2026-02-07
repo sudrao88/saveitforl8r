@@ -32,6 +32,8 @@ interface OTAState {
   remoteVersion: VersionInfo | null;
   isOnline: boolean;
   isCheckingUpdate: boolean;
+  isDownloading: boolean;
+  downloadError: string | null;
   isPrecaching?: boolean;
 }
 
@@ -44,6 +46,8 @@ export const useNativeOTA = () => {
     remoteVersion: null,
     isOnline: navigator.onLine,
     isCheckingUpdate: false,
+    isDownloading: false,
+    downloadError: null,
     isPrecaching: false,
   });
 
@@ -63,17 +67,24 @@ export const useNativeOTA = () => {
     loadPreferences();
   }, []);
 
-  // Track online/offline status
+  // Track online/offline status and OTA error events from native
   useEffect(() => {
     const handleOnline = () => setState(s => ({ ...s, isOnline: true }));
     const handleOffline = () => setState(s => ({ ...s, isOnline: false }));
+    const handleOtaError = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      console.error('[OTA] Download error from native:', detail);
+      setState(s => ({ ...s, isDownloading: false, downloadError: String(detail) }));
+    };
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+    window.addEventListener('ota-error', handleOtaError);
 
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('ota-error', handleOtaError);
     };
   }, []);
 
@@ -101,15 +112,21 @@ export const useNativeOTA = () => {
     fetchLocalVersion();
   }, []);
 
-  // Enable remote mode (switch from bundled assets to Cloud URL)
+  // Enable remote mode — downloads new assets then serves them locally.
+  // On Android, the native side downloads all web assets from the remote server
+  // to local storage, then calls bridge.setServerBasePath() which keeps the origin
+  // as https://localhost — preserving IndexedDB, localStorage, and Capacitor plugins.
+  // The WebView reloads automatically when setServerBasePath completes.
   const enableRemoteMode = useCallback(async () => {
     if (!Capacitor.isNativePlatform()) {
       console.warn('[OTA] Cannot enable remote mode on non-native platform');
       return;
     }
 
+    setState(s => ({ ...s, isDownloading: true, downloadError: null }));
+
     try {
-      // Store current version for comparison (useful for rollback logic if needed)
+      // Store current version for rollback logic
       if (state.currentVersion) {
           try {
              await Preferences.set({ key: PREF_LAST_VERSION, value: state.currentVersion });
@@ -117,17 +134,20 @@ export const useNativeOTA = () => {
       }
 
       if (Capacitor.getPlatform() === 'android' && (window as any).AndroidBridge) {
-          // Use native bridge to switch URL and recreate activity
-          // This ensures plugins work correctly on the new origin by re-initializing the Bridge
+          // Native bridge downloads assets to local storage, then calls
+          // bridge.setServerBasePath() which reloads the WebView automatically.
+          // On success the page reloads with the new version (same origin).
+          // On failure the native side dispatches an 'ota-error' CustomEvent.
           (window as any).AndroidBridge.enableRemoteMode();
       } else {
-          // Fallback (iOS or if bridge missing) - might have plugin issues on remote origin
+          // iOS fallback — sets preferences for AppDelegate to read on next launch
           await Preferences.set({ key: PREF_USE_REMOTE, value: 'true' });
           await Preferences.set({ key: PREF_SERVER_URL, value: REMOTE_URL });
           window.location.href = REMOTE_URL;
       }
     } catch (e) {
       console.error('[OTA] Failed to enable remote mode:', e);
+      setState(s => ({ ...s, isDownloading: false, downloadError: String(e) }));
     }
   }, [state.currentVersion]);
 
