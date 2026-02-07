@@ -5,6 +5,12 @@ const config: CapacitorConfig = {
   appId: 'com.saveitforl8r.app',
   appName: 'SaveItForL8r',
   webDir: 'dist',
+  server: {
+    allowNavigation: [
+      "saveitforl8r.com",
+      "*.saveitforl8r.com"
+    ]
+  },
   plugins: {
       Keyboard: {
           resize: KeyboardResize.Body,

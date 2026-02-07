@@ -143,6 +143,31 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
                 });
             }
         }
+
+        @JavascriptInterface
+        public void enableRemoteMode() {
+            Log.d(TAG, "Enabling remote mode via Bridge");
+            if (activity != null) {
+                SharedPreferences prefs = activity.getSharedPreferences(CAPACITOR_PREFS_NAME, MODE_PRIVATE);
+                prefs.edit().putString(PREF_USE_REMOTE, "true").apply();
+                prefs.edit().putString(PREF_SERVER_URL, REMOTE_URL).apply();
+                
+                // Recreate activity to reload with new serverUrl
+                activity.mainHandler.post(() -> activity.recreate());
+            }
+        }
+
+        @JavascriptInterface
+        public void disableRemoteMode() {
+            Log.d(TAG, "Disabling remote mode via Bridge");
+            if (activity != null) {
+                SharedPreferences prefs = activity.getSharedPreferences(CAPACITOR_PREFS_NAME, MODE_PRIVATE);
+                prefs.edit().putString(PREF_USE_REMOTE, "false").apply();
+                
+                // Recreate activity to reload with local assets
+                activity.mainHandler.post(() -> activity.recreate());
+            }
+        }
     }
 
     private void configureServerUrl() {
@@ -158,6 +183,8 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
                 Log.d(TAG, "Using remote server URL: " + serverUrl);
             } else {
                 Log.d(TAG, "Using local assets");
+                // Remove serverUrl extra to ensure fallback to default (capacitor.config)
+                getIntent().removeExtra("serverUrl");
             }
         } catch (Exception e) {
             Log.e(TAG, "Error configuring server URL", e);

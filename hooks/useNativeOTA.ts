@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
-import { App } from '@capacitor/app';
 
 // Remote URL for live updates - the production Cloud Run/hosting URL
 const REMOTE_URL = 'https://saveitforl8r.com';
@@ -97,19 +96,25 @@ export const useNativeOTA = () => {
     }
 
     try {
-      await Preferences.set({ key: PREF_USE_REMOTE, value: 'true' });
-      await Preferences.set({ key: PREF_SERVER_URL, value: REMOTE_URL });
-
-      // Store current version for comparison after restart
+      // Store current version for comparison (useful for rollback logic if needed)
       if (state.currentVersion) {
-        await Preferences.set({ key: PREF_LAST_VERSION, value: state.currentVersion });
+          try {
+             await Preferences.set({ key: PREF_LAST_VERSION, value: state.currentVersion });
+          } catch (ignore) {}
       }
 
-      // Restart app to apply changes
-      await App.exitApp();
+      if (Capacitor.getPlatform() === 'android' && (window as any).AndroidBridge) {
+          // Use native bridge to switch URL and recreate activity
+          // This ensures plugins work correctly on the new origin by re-initializing the Bridge
+          (window as any).AndroidBridge.enableRemoteMode();
+      } else {
+          // Fallback (iOS or if bridge missing) - might have plugin issues on remote origin
+          await Preferences.set({ key: PREF_USE_REMOTE, value: 'true' });
+          await Preferences.set({ key: PREF_SERVER_URL, value: REMOTE_URL });
+          window.location.href = REMOTE_URL;
+      }
     } catch (e) {
       console.error('[OTA] Failed to enable remote mode:', e);
-      throw e;
     }
   }, [state.currentVersion]);
 
@@ -121,14 +126,16 @@ export const useNativeOTA = () => {
     }
 
     try {
-      await Preferences.set({ key: PREF_USE_REMOTE, value: 'false' });
-      await Preferences.remove({ key: PREF_SERVER_URL });
-
-      // Restart app to apply changes
-      await App.exitApp();
+      if (Capacitor.getPlatform() === 'android' && (window as any).AndroidBridge) {
+          (window as any).AndroidBridge.disableRemoteMode();
+      } else {
+          await Preferences.set({ key: PREF_USE_REMOTE, value: 'false' });
+          await Preferences.remove({ key: PREF_SERVER_URL });
+          // Default Capacitor Android/iOS scheme
+          window.location.href = 'https://localhost';
+      }
     } catch (e) {
       console.error('[OTA] Failed to disable remote mode:', e);
-      throw e;
     }
   }, []);
 

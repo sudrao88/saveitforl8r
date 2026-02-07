@@ -3,8 +3,10 @@
 	"appName": "SaveItForL8r",
 	"webDir": "dist",
 	"server": {
-		"url": "https://saveitforl8r.com",
-		"cleartext": false
+		"allowNavigation": [
+			"saveitforl8r.com",
+			"*.saveitforl8r.com"
+		]
 	},
 	"plugins": {
 		"Keyboard": {
