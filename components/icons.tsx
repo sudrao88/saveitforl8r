@@ -12,23 +12,17 @@ export const Logo: React.FC<{ className?: string }> = ({ className }) => (
         }`}
       </style>
     </defs>
+
     {/* Floppy Body */}
-    <path d="M80 48H400L464 112V432C464 449.673 449.673 464 432 464H80C62.327 464 48 449.673 48 432V80C48 62.327 62.327 48 80 48Z" fill="#2563eb" />
-    
-    {/* Metal Shutter */}
-    <rect x="156" y="48" width="200" height="140" rx="8" fill="#e0e7ff" />
-    <rect x="272" y="80" width="60" height="80" rx="4" fill="#1e40af" fillOpacity="0.2"/>
-    
-    {/* Label Area */}
-    <rect x="86" y="240" width="340" height="192" rx="8" fill="white"/>
-    
+    <path d="M80 48H400L464 112V432C464 449.673 449.673 464 432 464H80C62.327 464 48 449.673 48 432V80C48 62.327 62.327 48 80 48Z" stroke="white" strokeWidth="24" fill="#2563eb" />
+  
     {/* "L8R" Text */}
     <text 
       x="256" 
-      y="352" 
+      y="286" 
       dominantBaseline="middle" 
       textAnchor="middle" 
-      fill="#2563eb" 
+      fill="#ffffff" 
       fontFamily="'Shantell Sans Icon', cursive, sans-serif" 
       fontSize="160" 
       fontWeight="800"
