@@ -21,7 +21,7 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
     private boolean webViewReady = false;
     private ShareIntentHandler shareHandler;
     private JSObject pendingShareData = null;
-    
+
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     // Splash screen timeout: dismiss even if JS never signals ready
@@ -40,13 +40,16 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
             SplashScreen splashScreen = SplashScreen.installSplashScreen(this);
             splashScreen.setKeepOnScreenCondition(() -> !webViewReady);
 
-            configureServerUrl();
+            // NOTE: Do NOT call configureServerUrl() here — Capacitor 8's Bridge
+            // ignores intent extras for serverUrl. Instead, we load the remote URL
+            // directly on the WebView after bridge init (see setupWebView).
             super.onCreate(savedInstanceState);
 
             // Initialize Share Handler
             shareHandler = new ShareIntentHandler(this, this);
 
-            // Setup WebView JS interface (without replacing Capacitor's WebViewClient)
+            // Setup WebView JS interface and load remote URL if OTA mode is active.
+            // This must happen after super.onCreate() so the bridge is initialized.
             setupWebView();
 
             // Timeout fallback: dismiss splash even if JS never signals ready
@@ -119,8 +122,49 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
             // local assets from the bundled assets/public/ directory. Replacing it causes
             // "Web page not available" on first launch because the WebView tries to load
             // https://localhost/ over the network instead of from local assets.
+
+            // After bridge and JS interface are ready, load the remote URL if OTA
+            // remote mode was previously enabled (persisted in SharedPreferences).
+            loadRemoteUrlIfNeeded();
         } catch (Exception e) {
             Log.e(TAG, "Error setting up WebView", e);
+        }
+    }
+
+    /**
+     * If the user has previously switched to OTA remote mode, load the remote URL
+     * directly on the WebView. Capacitor 8's Bridge does NOT read serverUrl from
+     * intent extras — it only reads from CapConfig (capacitor.config.json). So we
+     * bypass the config pipeline and navigate the WebView directly.
+     *
+     * The splash screen is still visible at this point, covering any brief flash
+     * from the local-to-remote navigation.
+     */
+    private void loadRemoteUrlIfNeeded() {
+        try {
+            SharedPreferences prefs = getSharedPreferences(CAPACITOR_PREFS_NAME, MODE_PRIVATE);
+            String useRemote = prefs.getString(PREF_USE_REMOTE, "false");
+
+            if (!"true".equals(useRemote)) {
+                Log.d(TAG, "Using local bundled assets");
+                return;
+            }
+
+            String serverUrl = prefs.getString(PREF_SERVER_URL, REMOTE_URL);
+
+            // Validate the URL against the expected production domain.
+            if (serverUrl == null || !(serverUrl.equals(REMOTE_URL) || serverUrl.startsWith(REMOTE_URL + "/"))) {
+                Log.w(TAG, "Blocked invalid OTA server URL: " + serverUrl);
+                prefs.edit().putString(PREF_USE_REMOTE, "false").apply();
+                return;
+            }
+
+            Log.d(TAG, "OTA remote mode active — loading: " + serverUrl);
+            WebView webView = bridge.getWebView();
+            webView.clearCache(true);
+            webView.loadUrl(serverUrl);
+        } catch (Exception e) {
+            Log.e(TAG, "Error loading remote URL for OTA", e);
         }
     }
 
@@ -147,65 +191,50 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
         @JavascriptInterface
         public void enableRemoteMode() {
             Log.d(TAG, "Enabling remote mode via Bridge");
-            if (activity != null) {
-                SharedPreferences prefs = activity.getSharedPreferences(CAPACITOR_PREFS_NAME, MODE_PRIVATE);
-                prefs.edit().putString(PREF_USE_REMOTE, "true").apply();
-                prefs.edit().putString(PREF_SERVER_URL, REMOTE_URL).apply();
-                
-                // Restart activity to reload with new serverUrl (avoids savedInstanceState issues)
-                activity.mainHandler.post(() -> {
-                    Intent intent = activity.getIntent();
-                    activity.finish();
-                    activity.startActivity(intent);
-                });
-            }
+            if (activity == null) return;
+
+            SharedPreferences prefs = activity.getSharedPreferences(CAPACITOR_PREFS_NAME, MODE_PRIVATE);
+            prefs.edit()
+                .putString(PREF_USE_REMOTE, "true")
+                .putString(PREF_SERVER_URL, REMOTE_URL)
+                .apply();
+
+            // Load the remote URL directly on the WebView. No activity restart
+            // needed — Capacitor's bridge and JS interfaces persist across navigations.
+            activity.mainHandler.post(() -> {
+                try {
+                    if (activity.bridge != null && activity.bridge.getWebView() != null) {
+                        WebView webView = activity.bridge.getWebView();
+                        webView.clearCache(true);
+                        webView.loadUrl(REMOTE_URL);
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Error loading remote URL in enableRemoteMode", e);
+                }
+            });
         }
 
         @JavascriptInterface
         public void disableRemoteMode() {
             Log.d(TAG, "Disabling remote mode via Bridge");
-            if (activity != null) {
-                SharedPreferences prefs = activity.getSharedPreferences(CAPACITOR_PREFS_NAME, MODE_PRIVATE);
-                prefs.edit().putString(PREF_USE_REMOTE, "false").apply();
-                
-                // Restart activity to reload with local assets
-                activity.mainHandler.post(() -> {
-                    Intent intent = activity.getIntent();
-                    activity.finish();
-                    activity.startActivity(intent);
-                });
-            }
+            if (activity == null) return;
+
+            SharedPreferences prefs = activity.getSharedPreferences(CAPACITOR_PREFS_NAME, MODE_PRIVATE);
+            prefs.edit()
+                .putString(PREF_USE_REMOTE, "false")
+                .remove(PREF_SERVER_URL)
+                .apply();
+
+            // Restart the activity to cleanly reinitialize with bundled local assets.
+            // Unlike enableRemoteMode (which can navigate in-place), going back to
+            // bundled mode requires Capacitor's BridgeWebViewClient to serve local
+            // assets from the default https://localhost/ origin.
+            activity.mainHandler.post(() -> {
+                Intent intent = activity.getIntent();
+                activity.finish();
+                activity.startActivity(intent);
+            });
         }
     }
 
-    private void configureServerUrl() {
-        try {
-            SharedPreferences prefs = getSharedPreferences(CAPACITOR_PREFS_NAME, MODE_PRIVATE);
-            // Default to "false" to start with local assets (Offline First).
-            // The JS app (useNativeOTA) will detect a new version and set this to "true".
-            String useRemote = prefs.getString(PREF_USE_REMOTE, "false");
-
-            if ("true".equals(useRemote)) {
-                String serverUrl = prefs.getString(PREF_SERVER_URL, REMOTE_URL);
-                
-                // Validate the URL starts with the expected production domain.
-                // An attacker who gains XSS could modify SharedPreferences to point
-                // to a malicious server, so we enforce an allowlist here.
-                if (serverUrl != null && (serverUrl.equals(REMOTE_URL) || serverUrl.startsWith(REMOTE_URL + "/"))) {
-                    getIntent().putExtra("serverUrl", serverUrl);
-                    Log.d(TAG, "Using remote server URL: " + serverUrl);
-                } else {
-                    Log.w(TAG, "Blocked invalid OTA server URL: " + serverUrl);
-                    // Fall back to default remote URL
-                    getIntent().putExtra("serverUrl", REMOTE_URL);
-                }
-            } else {
-                Log.d(TAG, "Using local assets");
-                // Remove serverUrl extra to ensure fallback to default (capacitor.config)
-                getIntent().removeExtra("serverUrl");
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "Error configuring server URL", e);
-        }
-    }
 }

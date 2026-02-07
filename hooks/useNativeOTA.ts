@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
-import { App } from '@capacitor/app';
 
 // Remote URL for live updates - the production Cloud Run/hosting URL
 const REMOTE_URL = 'https://saveitforl8r.com';
@@ -13,7 +12,6 @@ const PREF_SERVER_URL = 'ota_server_url';
 const PREF_LAST_VERSION = 'ota_last_version';
 
 // Time intervals
-const CACHE_STATUS_REFRESH_INTERVAL_MS = 30 * 1000;     // 30 seconds
 const INITIAL_UPDATE_CHECK_DELAY_MS = 5 * 1000;          // 5 seconds
 const PERIODIC_UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
 const PRECACHE_TIMEOUT_MS = 60 * 1000;                   // 60 seconds
@@ -79,35 +77,28 @@ export const useNativeOTA = () => {
     };
   }, []);
 
-  // Inform the service worker of native app context and get current SW version
+  // Fetch the current version from version.json (works in both bundled and remote mode).
+  // On native, the service worker is unregistered, so we cannot rely on SW messaging
+  // to get the version. Instead, fetch /version.json directly — this returns the
+  // bundled version when in local mode, or the remote version when in OTA remote mode.
   useEffect(() => {
-    if (!('serviceWorker' in navigator)) return;
+    if (!Capacitor.isNativePlatform()) return;
 
-    const initSW = async () => {
+    const fetchLocalVersion = async () => {
       try {
-        const registration = await navigator.serviceWorker.ready;
-        if (registration.active) {
-          // Inform SW whether we're in a native app context so it can
-          // decide whether to auto-skip waiting on install.
-          registration.active.postMessage({
-            type: 'SET_NATIVE_CONTEXT',
-            isNative: Capacitor.isNativePlatform(),
-          });
-
-          const channel = new MessageChannel();
-          channel.port1.onmessage = (event) => {
-            if (event.data.type === 'VERSION') {
-              setState(s => ({ ...s, currentVersion: event.data.version }));
-            }
-          };
-          registration.active.postMessage({ type: 'GET_VERSION' }, [channel.port2]);
+        const response = await fetch(`/version.json?t=${Date.now()}`, {
+          cache: 'no-store',
+        });
+        if (response.ok) {
+          const info: VersionInfo = await response.json();
+          setState(s => ({ ...s, currentVersion: info.version }));
         }
       } catch (e) {
-        console.warn('[OTA] Failed to init SW:', e);
+        console.warn('[OTA] Failed to fetch local version.json:', e);
       }
     };
 
-    initSW();
+    fetchLocalVersion();
   }, []);
 
   // Enable remote mode (switch from bundled assets to Cloud URL)
@@ -162,39 +153,46 @@ export const useNativeOTA = () => {
   }, []);
 
   const refreshCacheStatus = useCallback(() => {
-     // Placeholder to match origin logic if needed
+     // Placeholder for cache status refresh if needed
   }, []);
 
-  // Check cache status on mount and periodically
-  useEffect(() => {
-    refreshCacheStatus();
-    const interval = setInterval(refreshCacheStatus, CACHE_STATUS_REFRESH_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [refreshCacheStatus]);
-
-  // Check for remote updates
+  // Check for remote updates.
+  // When already in remote mode, the user is loading from the live server and
+  // always gets the latest code (nginx serves no-store for HTML), so no OTA
+  // update detection is needed.
   const checkForUpdate = useCallback(async (): Promise<boolean> => {
-    if (!state.isOnline || !Capacitor.isNativePlatform()) return false;
+    if (!state.isOnline || !Capacitor.isNativePlatform() || state.isUsingRemote) return false;
 
     setState(s => ({ ...s, isCheckingUpdate: true }));
 
     try {
-      // Add timestamp to prevent caching
-      const response = await fetch(`${REMOTE_VERSION_URL}?t=${Date.now()}`, {
-        cache: 'no-store',
-        headers: { 'Cache-Control': 'no-cache' }
-      });
+      // Fetch the local version (bundled in APK) and the remote version in parallel
+      const [localRes, remoteRes] = await Promise.all([
+        fetch(`/version.json?t=${Date.now()}`, { cache: 'no-store' }),
+        fetch(`${REMOTE_VERSION_URL}?t=${Date.now()}`, {
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache' },
+        }),
+      ]);
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+      if (!remoteRes.ok) {
+        throw new Error(`Remote HTTP ${remoteRes.status}`);
       }
 
-      const remoteInfo: VersionInfo = await response.json();
-      
-      // Compare versions - ensure boolean result
-      const hasUpdate = !!(state.currentVersion && remoteInfo.version !== state.currentVersion);
+      const remoteInfo: VersionInfo = await remoteRes.json();
 
-      console.log(`[OTA] Check complete. Current: ${state.currentVersion}, Remote: ${remoteInfo.version}, HasUpdate: ${hasUpdate}`);
+      // Determine the current version from the local fetch, or fall back to state
+      let currentVer = state.currentVersion;
+      if (localRes.ok) {
+        const localInfo: VersionInfo = await localRes.json();
+        currentVer = localInfo.version;
+        // Keep state in sync
+        setState(s => ({ ...s, currentVersion: localInfo.version }));
+      }
+
+      const hasUpdate = !!(currentVer && remoteInfo.version !== currentVer);
+
+      console.log(`[OTA] Check complete. Current: ${currentVer}, Remote: ${remoteInfo.version}, HasUpdate: ${hasUpdate}`);
 
       setState(s => ({
         ...s,
@@ -209,7 +207,7 @@ export const useNativeOTA = () => {
       setState(s => ({ ...s, isCheckingUpdate: false }));
       return false;
     }
-  }, [state.isOnline, state.currentVersion]);
+  }, [state.isOnline, state.currentVersion, state.isUsingRemote]);
 
   // Periodic check
   useEffect(() => {
