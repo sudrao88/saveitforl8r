@@ -187,8 +187,18 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
 
             if ("true".equals(useRemote)) {
                 String serverUrl = prefs.getString(PREF_SERVER_URL, REMOTE_URL);
-                getIntent().putExtra("serverUrl", serverUrl);
-                Log.d(TAG, "Using remote server URL: " + serverUrl);
+                
+                // Validate the URL starts with the expected production domain.
+                // An attacker who gains XSS could modify SharedPreferences to point
+                // to a malicious server, so we enforce an allowlist here.
+                if (serverUrl != null && (serverUrl.equals(REMOTE_URL) || serverUrl.startsWith(REMOTE_URL + "/"))) {
+                    getIntent().putExtra("serverUrl", serverUrl);
+                    Log.d(TAG, "Using remote server URL: " + serverUrl);
+                } else {
+                    Log.w(TAG, "Blocked invalid OTA server URL: " + serverUrl);
+                    // Fall back to default remote URL
+                    getIntent().putExtra("serverUrl", REMOTE_URL);
+                }
             } else {
                 Log.d(TAG, "Using local assets");
                 // Remove serverUrl extra to ensure fallback to default (capacitor.config)
