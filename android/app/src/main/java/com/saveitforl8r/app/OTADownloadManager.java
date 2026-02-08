@@ -33,6 +33,10 @@ public class OTADownloadManager {
 
     private static final int CONNECT_TIMEOUT_MS = 15_000;
     private static final int READ_TIMEOUT_MS = 30_000;
+    // Max size for in-memory string downloads (manifests, HTML, CSS) — 5 MB
+    private static final long MAX_STRING_DOWNLOAD_BYTES = 5 * 1024 * 1024;
+    // Max size for individual file downloads — 50 MB (covers large WASM/model files)
+    private static final long MAX_FILE_DOWNLOAD_BYTES = 50 * 1024 * 1024;
 
     public interface Callback {
         void onSuccess(String updatePath);
@@ -53,6 +57,12 @@ public class OTADownloadManager {
      */
     public static void downloadUpdate(File filesDir, String remoteUrl, Callback callback) {
         Handler mainHandler = new Handler(Looper.getMainLooper());
+
+        // Reject non-HTTPS URLs to prevent Man-in-the-Middle attacks
+        if (remoteUrl == null || !remoteUrl.startsWith("https://")) {
+            mainHandler.post(() -> callback.onError("OTA update URL must use HTTPS"));
+            return;
+        }
 
         new Thread(() -> {
             File updateDir = new File(filesDir, UPDATE_DIR);
@@ -363,8 +373,13 @@ public class OTADownloadManager {
             try (InputStream in = new BufferedInputStream(conn.getInputStream());
                  ByteArrayOutputStream out = new ByteArrayOutputStream()) {
                 byte[] buf = new byte[8192];
+                long total = 0;
                 int n;
                 while ((n = in.read(buf)) != -1) {
+                    total += n;
+                    if (total > MAX_STRING_DOWNLOAD_BYTES) {
+                        throw new IOException("Response exceeds " + MAX_STRING_DOWNLOAD_BYTES + " bytes for " + urlStr);
+                    }
                     out.write(buf, 0, n);
                 }
                 return out.toString("UTF-8");
@@ -391,8 +406,13 @@ public class OTADownloadManager {
             try (InputStream in = new BufferedInputStream(conn.getInputStream());
                  FileOutputStream fos = new FileOutputStream(target)) {
                 byte[] buf = new byte[8192];
+                long total = 0;
                 int n;
                 while ((n = in.read(buf)) != -1) {
+                    total += n;
+                    if (total > MAX_FILE_DOWNLOAD_BYTES) {
+                        throw new IOException("File exceeds " + MAX_FILE_DOWNLOAD_BYTES + " bytes for " + urlStr);
+                    }
                     fos.write(buf, 0, n);
                 }
             }

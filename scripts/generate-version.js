@@ -79,7 +79,7 @@ function listFilesRecursive(dir, baseDir) {
     if (stat.isDirectory()) {
       files.push(...listFilesRecursive(fullPath, baseDir));
     } else {
-      files.push(relative(baseDir, fullPath));
+      files.push(relative(baseDir, fullPath).replace(/\\/g, '/'));
     }
   }
   return files;
