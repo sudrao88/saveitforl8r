@@ -40,10 +40,12 @@ const AppContent: React.FC = () => {
   const [editingMemory, setEditingMemory] = useState<Memory | null>(null);
   
   const { updateAvailable, updateApp, appVersion } = useServiceWorker();
-  const { 
-      enableRemoteMode, 
-      updateAvailable: nativeUpdateAvailable, 
-      currentVersion: nativeVersion 
+  const {
+      enableRemoteMode,
+      updateAvailable: nativeUpdateAvailable,
+      currentVersion: nativeVersion,
+      isDownloading: isOtaDownloading,
+      downloadError: otaDownloadError,
   } = useNativeOTA();
 
   const { shareData, clearShareData } = useShareReceiver();
@@ -417,15 +419,16 @@ const AppContent: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-900 flex flex-col">
       <div className="sticky top-0 z-[50] bg-gray-900/90 backdrop-blur-md border-b border-gray-800 pt-[env(safe-area-inset-top)]">
-          <TopNavigation 
-            setView={handleSetView} 
-            resetFilters={handleResetFilters} 
+          <TopNavigation
+            setView={handleSetView}
+            resetFilters={handleResetFilters}
             onSettingsClick={handleSettingsClick}
             updateAvailable={isUpdateAvailable}
             onUpdateApp={handleUpdateApp}
             syncError={!!syncError}
-            isSyncing={isSyncing} 
+            isSyncing={isSyncing}
             modelStatus={modelStatus}
+            isOtaDownloading={isOtaDownloading}
           />
 
           <FilterBar 
@@ -584,6 +587,19 @@ const AppContent: React.FC = () => {
             onClose={() => setIsApiKeyModalOpen(false)}
             onSave={handleSaveApiKey}
         />
+      )}
+
+      {isOtaDownloading && (
+        <div className="fixed inset-0 z-[9999] bg-gray-950/95 backdrop-blur-md flex flex-col items-center justify-center gap-6">
+          <Logo className="w-16 h-16 text-blue-500" />
+          <div className="flex flex-col items-center gap-3">
+            <RefreshCw size={32} className="text-blue-400 animate-spin" />
+            <h2 className="text-xl font-bold text-gray-100">Downloading Update</h2>
+            <p className="text-sm text-gray-400 text-center max-w-xs">
+              Please wait while the latest version is downloaded. The app will reload automatically.
+            </p>
+          </div>
+        </div>
       )}
     </div>
   );

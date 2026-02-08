@@ -13,17 +13,19 @@ interface TopNavigationProps {
   syncError: boolean;
   isSyncing: boolean;
   modelStatus: ModelStatus;
+  isOtaDownloading?: boolean;
 }
 
-const TopNavigation: React.FC<TopNavigationProps> = ({ 
-    setView, 
-    resetFilters, 
-    onSettingsClick, 
+const TopNavigation: React.FC<TopNavigationProps> = ({
+    setView,
+    resetFilters,
+    onSettingsClick,
     updateAvailable,
     onUpdateApp,
     syncError,
     isSyncing,
-    modelStatus
+    modelStatus,
+    isOtaDownloading
 }) => {
   return (
     <nav className="px-4 py-3 sm:px-8 flex justify-center">
@@ -43,12 +45,21 @@ const TopNavigation: React.FC<TopNavigationProps> = ({
 
         <div className="flex items-center gap-2">
            {updateAvailable && (
-               <button 
+               <button
                 onClick={onUpdateApp}
-                className="flex items-center gap-2 bg-red-900/20 hover:bg-red-900/30 border border-red-900/50 hover:border-red-800 transition-all rounded-xl px-4 py-2.5 text-red-500 hover:text-red-400 group animate-pulse active:scale-95"
+                disabled={isOtaDownloading}
+                className={`flex items-center gap-2 border transition-all rounded-xl px-4 py-2.5 group ${
+                  isOtaDownloading
+                    ? 'bg-gray-800 border-gray-700 text-gray-500 cursor-not-allowed'
+                    : 'bg-red-900/20 hover:bg-red-900/30 border-red-900/50 hover:border-red-800 text-red-500 hover:text-red-400 animate-pulse active:scale-95'
+                }`}
                >
-                   <RefreshCw size={18} className="text-red-500" />
-                   <span className="font-bold text-sm">Update</span>
+                   {isOtaDownloading ? (
+                     <Loader2 size={18} className="animate-spin" />
+                   ) : (
+                     <RefreshCw size={18} className="text-red-500" />
+                   )}
+                   <span className="font-bold text-sm">{isOtaDownloading ? 'Updating...' : 'Update'}</span>
                </button>
            )}
 
