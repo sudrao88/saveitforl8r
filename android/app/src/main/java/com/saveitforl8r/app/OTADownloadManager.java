@@ -84,6 +84,7 @@ public class OTADownloadManager {
                     try {
                         String normalised = path.startsWith("/") ? path.substring(1) : path;
                         File target = new File(tempDir, normalised);
+                        validatePath(target, tempDir);
                         ensureParent(target);
                         downloadToFile(remoteUrl + "/" + normalised, target);
                         downloaded++;
@@ -116,6 +117,7 @@ public class OTADownloadManager {
                         try {
                             String normalised = path.startsWith("/") ? path.substring(1) : path;
                             File target = new File(tempDir, normalised);
+                            validatePath(target, tempDir);
                             if (!target.exists()) {
                                 ensureParent(target);
                                 downloadToFile(remoteUrl + "/" + normalised, target);
@@ -135,6 +137,7 @@ public class OTADownloadManager {
                 for (String sf : staticFiles) {
                     try {
                         File target = new File(tempDir, sf);
+                        validatePath(target, tempDir);
                         if (!target.exists()) {
                             downloadToFile(remoteUrl + "/" + sf, target);
                         }
@@ -183,6 +186,21 @@ public class OTADownloadManager {
     public static void clearUpdate(File filesDir) {
         deleteRecursive(new File(filesDir, UPDATE_DIR));
         deleteRecursive(new File(filesDir, UPDATE_DIR + "_tmp"));
+    }
+
+    // ---- Path validation ----
+
+    /**
+     * Validates that a resolved file path stays within the expected base directory.
+     * Prevents path traversal attacks where crafted asset paths (e.g. "../../etc/passwd")
+     * could write files outside the download directory.
+     */
+    private static void validatePath(File target, File baseDir) throws IOException {
+        String canonicalTarget = target.getCanonicalPath();
+        String canonicalBase = baseDir.getCanonicalPath() + File.separator;
+        if (!canonicalTarget.startsWith(canonicalBase) && !canonicalTarget.equals(baseDir.getCanonicalPath())) {
+            throw new IOException("Path traversal detected: " + canonicalTarget + " is outside " + canonicalBase);
+        }
     }
 
     // ---- Asset discovery ----
@@ -288,14 +306,15 @@ public class OTADownloadManager {
                 throw new IOException("HTTP " + code + " for " + urlStr);
             }
 
-            InputStream in = new BufferedInputStream(conn.getInputStream());
-            ByteArrayOutputStream out = new ByteArrayOutputStream();
-            byte[] buf = new byte[8192];
-            int n;
-            while ((n = in.read(buf)) != -1) {
-                out.write(buf, 0, n);
+            try (InputStream in = new BufferedInputStream(conn.getInputStream());
+                 ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+                byte[] buf = new byte[8192];
+                int n;
+                while ((n = in.read(buf)) != -1) {
+                    out.write(buf, 0, n);
+                }
+                return out.toString("UTF-8");
             }
-            return out.toString("UTF-8");
         } finally {
             if (conn != null) conn.disconnect();
         }
@@ -315,14 +334,14 @@ public class OTADownloadManager {
                 throw new IOException("HTTP " + code + " for " + urlStr);
             }
 
-            InputStream in = new BufferedInputStream(conn.getInputStream());
-            FileOutputStream fos = new FileOutputStream(target);
-            byte[] buf = new byte[8192];
-            int n;
-            while ((n = in.read(buf)) != -1) {
-                fos.write(buf, 0, n);
+            try (InputStream in = new BufferedInputStream(conn.getInputStream());
+                 FileOutputStream fos = new FileOutputStream(target)) {
+                byte[] buf = new byte[8192];
+                int n;
+                while ((n = in.read(buf)) != -1) {
+                    fos.write(buf, 0, n);
+                }
             }
-            fos.close();
         } finally {
             if (conn != null) conn.disconnect();
         }
@@ -330,21 +349,21 @@ public class OTADownloadManager {
 
     private static void writeString(File file, String content) throws IOException {
         ensureParent(file);
-        FileOutputStream fos = new FileOutputStream(file);
-        fos.write(content.getBytes("UTF-8"));
-        fos.close();
+        try (FileOutputStream fos = new FileOutputStream(file)) {
+            fos.write(content.getBytes("UTF-8"));
+        }
     }
 
     private static String readFile(File file) throws IOException {
-        InputStream in = new BufferedInputStream(new java.io.FileInputStream(file));
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        byte[] buf = new byte[8192];
-        int n;
-        while ((n = in.read(buf)) != -1) {
-            out.write(buf, 0, n);
+        try (InputStream in = new BufferedInputStream(new java.io.FileInputStream(file));
+             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) != -1) {
+                out.write(buf, 0, n);
+            }
+            return out.toString("UTF-8");
         }
-        in.close();
-        return out.toString("UTF-8");
     }
 
     private static void ensureParent(File file) {

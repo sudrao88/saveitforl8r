@@ -9,6 +9,8 @@ import android.util.Log;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 
+import org.json.JSONObject;
+
 import androidx.core.splashscreen.SplashScreen;
 
 import com.getcapacitor.BridgeActivity;
@@ -214,9 +216,10 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
                         Log.e(TAG, "OTA download failed: " + error);
                         // Notify JS of failure so it can show an error to the user
                         if (activity.bridge != null) {
+                            String safeError = JSONObject.quote(error);
                             activity.bridge.eval(
                                 "window.dispatchEvent(new CustomEvent('ota-error', " +
-                                "{ detail: '" + error.replace("'", "\\'") + "' }));",
+                                "{ detail: " + safeError + " }));",
                                 v -> {}
                             );
                         }
