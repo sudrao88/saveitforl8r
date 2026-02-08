@@ -123,6 +123,12 @@ export const useNativeOTA = () => {
       return;
     }
 
+    // Prevent multiple concurrent downloads
+    if (state.isDownloading) {
+      console.warn('[OTA] Download already in progress, ignoring duplicate call');
+      return;
+    }
+
     setState(s => ({ ...s, isDownloading: true, downloadError: null }));
 
     try {
@@ -149,7 +155,7 @@ export const useNativeOTA = () => {
       console.error('[OTA] Failed to enable remote mode:', e);
       setState(s => ({ ...s, isDownloading: false, downloadError: String(e) }));
     }
-  }, [state.currentVersion]);
+  }, [state.currentVersion, state.isDownloading]);
 
   // Disable remote mode (switch back to bundled assets)
   const disableRemoteMode = useCallback(async () => {
