@@ -9,6 +9,8 @@ import android.util.Log;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 
+import org.json.JSONObject;
+
 import androidx.core.splashscreen.SplashScreen;
 
 import com.getcapacitor.BridgeActivity;
@@ -31,7 +33,6 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
     private static final String REMOTE_URL = "https://saveitforl8r.com";
     private static final String CAPACITOR_PREFS_NAME = "CapacitorStorage";
     private static final String PREF_USE_REMOTE = "ota_use_remote";
-    private static final String PREF_SERVER_URL = "ota_server_url";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -40,15 +41,12 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
             SplashScreen splashScreen = SplashScreen.installSplashScreen(this);
             splashScreen.setKeepOnScreenCondition(() -> !webViewReady);
 
-            // NOTE: Do NOT call configureServerUrl() here — Capacitor 8's Bridge
-            // ignores intent extras for serverUrl. Instead, we load the remote URL
-            // directly on the WebView after bridge init (see setupWebView).
             super.onCreate(savedInstanceState);
 
             // Initialize Share Handler
             shareHandler = new ShareIntentHandler(this, this);
 
-            // Setup WebView JS interface and load remote URL if OTA mode is active.
+            // Setup WebView JS interface and apply OTA update if previously downloaded.
             // This must happen after super.onCreate() so the bridge is initialized.
             setupWebView();
 
@@ -84,7 +82,7 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
     public void onShareDataReady(JSObject data) {
         Log.d(TAG, "Share data ready to send to JS");
         pendingShareData = data;
-        
+
         // Post to main thread to ensure bridge access is safe
         mainHandler.post(this::dispatchShareData);
     }
@@ -123,54 +121,50 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
             // "Web page not available" on first launch because the WebView tries to load
             // https://localhost/ over the network instead of from local assets.
 
-            // After bridge and JS interface are ready, load the remote URL if OTA
-            // remote mode was previously enabled (persisted in SharedPreferences).
-            loadRemoteUrlIfNeeded();
+            // If a previous OTA update was downloaded, serve it via setServerBasePath.
+            // This keeps the origin as https://localhost — preserving IndexedDB,
+            // localStorage, and all Capacitor plugin functionality.
+            applyDownloadedUpdateIfExists();
         } catch (Exception e) {
             Log.e(TAG, "Error setting up WebView", e);
         }
     }
 
     /**
-     * If the user has previously switched to OTA remote mode, load the remote URL
-     * directly on the WebView. Capacitor 8's Bridge does NOT read serverUrl from
-     * intent extras — it only reads from CapConfig (capacitor.config.json). So we
-     * bypass the config pipeline and navigate the WebView directly.
+     * If an OTA update was previously downloaded, tell Capacitor's local server
+     * to serve files from the download directory instead of the bundled assets.
      *
-     * The splash screen is still visible at this point, covering any brief flash
-     * from the local-to-remote navigation.
+     * bridge.setServerBasePath() preserves the https://localhost origin, so
+     * IndexedDB, localStorage, and Capacitor plugins all continue working.
+     * It also automatically reloads the WebView.
      */
-    private void loadRemoteUrlIfNeeded() {
+    private void applyDownloadedUpdateIfExists() {
         try {
             SharedPreferences prefs = getSharedPreferences(CAPACITOR_PREFS_NAME, MODE_PRIVATE);
             String useRemote = prefs.getString(PREF_USE_REMOTE, "false");
 
             if (!"true".equals(useRemote)) {
-                Log.d(TAG, "Using local bundled assets");
+                Log.d(TAG, "Using bundled assets (OTA not active)");
                 return;
             }
 
-            String serverUrl = prefs.getString(PREF_SERVER_URL, REMOTE_URL);
-
-            // Validate the URL against the expected production domain.
-            if (serverUrl == null || !(serverUrl.equals(REMOTE_URL) || serverUrl.startsWith(REMOTE_URL + "/"))) {
-                Log.w(TAG, "Blocked invalid OTA server URL: " + serverUrl);
+            String updatePath = OTADownloadManager.getExistingUpdatePath(getFilesDir());
+            if (updatePath != null) {
+                Log.d(TAG, "Applying previously downloaded OTA update from: " + updatePath);
+                // setServerBasePath tells the local server to serve files from this
+                // filesystem path, then reloads the WebView. Origin stays https://localhost.
+                bridge.setServerBasePath(updatePath);
+            } else {
+                Log.w(TAG, "OTA preference is true but no downloaded update found — resetting");
                 prefs.edit().putString(PREF_USE_REMOTE, "false").apply();
-                return;
             }
-
-            Log.d(TAG, "OTA remote mode active — loading: " + serverUrl);
-            WebView webView = bridge.getWebView();
-            webView.clearCache(true);
-            webView.loadUrl(serverUrl);
         } catch (Exception e) {
-            Log.e(TAG, "Error loading remote URL for OTA", e);
+            Log.e(TAG, "Error applying downloaded OTA update", e);
         }
     }
 
-    // Made public and static (or keeping ref) to be safe
     public class AppReadyInterface {
-        private MainActivity activity;
+        private final MainActivity activity;
 
         public AppReadyInterface(MainActivity activity) {
             this.activity = activity;
@@ -188,47 +182,69 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
             }
         }
 
+        /**
+         * Downloads new web assets from the remote server and applies the update.
+         * Called from JS when the user taps the "Update" button.
+         *
+         * The assets are downloaded to local storage, then served via
+         * bridge.setServerBasePath(). The origin stays https://localhost so
+         * IndexedDB, localStorage, and Capacitor plugins all continue working.
+         */
         @JavascriptInterface
         public void enableRemoteMode() {
-            Log.d(TAG, "Enabling remote mode via Bridge");
+            Log.d(TAG, "Starting OTA download from: " + REMOTE_URL);
             if (activity == null) return;
 
             SharedPreferences prefs = activity.getSharedPreferences(CAPACITOR_PREFS_NAME, MODE_PRIVATE);
-            prefs.edit()
-                .putString(PREF_USE_REMOTE, "true")
-                .putString(PREF_SERVER_URL, REMOTE_URL)
-                .apply();
 
-            // Load the remote URL directly on the WebView. No activity restart
-            // needed — Capacitor's bridge and JS interfaces persist across navigations.
-            activity.mainHandler.post(() -> {
-                try {
-                    if (activity.bridge != null && activity.bridge.getWebView() != null) {
-                        WebView webView = activity.bridge.getWebView();
-                        webView.clearCache(true);
-                        webView.loadUrl(REMOTE_URL);
+            OTADownloadManager.downloadUpdate(activity.getFilesDir(), REMOTE_URL,
+                new OTADownloadManager.Callback() {
+                    @Override
+                    public void onSuccess(String updatePath) {
+                        Log.d(TAG, "OTA download complete, applying update from: " + updatePath);
+                        prefs.edit().putString(PREF_USE_REMOTE, "true").apply();
+
+                        // setServerBasePath switches the local server to serve from the
+                        // downloaded directory and reloads the WebView automatically.
+                        if (activity.bridge != null) {
+                            activity.bridge.setServerBasePath(updatePath);
+                        }
                     }
-                } catch (Exception e) {
-                    Log.e(TAG, "Error loading remote URL in enableRemoteMode", e);
+
+                    @Override
+                    public void onError(String error) {
+                        Log.e(TAG, "OTA download failed: " + error);
+                        // Notify JS of failure so it can show an error to the user
+                        if (activity.bridge != null) {
+                            String safeError = JSONObject.quote(error);
+                            activity.bridge.eval(
+                                "window.dispatchEvent(new CustomEvent('ota-error', " +
+                                "{ detail: " + safeError + " }));",
+                                v -> {}
+                            );
+                        }
+                    }
                 }
-            });
+            );
         }
 
+        /**
+         * Clears the downloaded OTA update and restarts with bundled assets.
+         */
         @JavascriptInterface
         public void disableRemoteMode() {
             Log.d(TAG, "Disabling remote mode via Bridge");
             if (activity == null) return;
 
             SharedPreferences prefs = activity.getSharedPreferences(CAPACITOR_PREFS_NAME, MODE_PRIVATE);
-            prefs.edit()
-                .putString(PREF_USE_REMOTE, "false")
-                .remove(PREF_SERVER_URL)
-                .apply();
+            prefs.edit().putString(PREF_USE_REMOTE, "false").apply();
 
-            // Restart the activity to cleanly reinitialize with bundled local assets.
-            // Unlike enableRemoteMode (which can navigate in-place), going back to
-            // bundled mode requires Capacitor's BridgeWebViewClient to serve local
-            // assets from the default https://localhost/ origin.
+            // Delete downloaded assets
+            OTADownloadManager.clearUpdate(activity.getFilesDir());
+
+            // Restart activity to reinitialize with bundled assets.
+            // setServerBasePath has already changed the local server's base path,
+            // so we need a full restart to reset it to the default bundled assets.
             activity.mainHandler.post(() -> {
                 Intent intent = activity.getIntent();
                 activity.finish();
