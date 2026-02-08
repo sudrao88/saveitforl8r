@@ -10,8 +10,8 @@
  * version reported to native apps for OTA update checks.
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
-import { dirname, join } from 'path';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSync } from 'fs';
+import { dirname, join, relative } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -70,6 +70,21 @@ function getChangelog() {
   }
 }
 
+// Recursively list all files in a directory, returning paths relative to baseDir
+function listFilesRecursive(dir, baseDir) {
+  const files = [];
+  for (const entry of readdirSync(dir)) {
+    const fullPath = join(dir, entry);
+    const stat = statSync(fullPath);
+    if (stat.isDirectory()) {
+      files.push(...listFilesRecursive(fullPath, baseDir));
+    } else {
+      files.push(relative(baseDir, fullPath));
+    }
+  }
+  return files;
+}
+
 function main() {
   try {
       const version = extractVersionFromSW();
@@ -99,6 +114,17 @@ function main() {
       console.log(`[generate-version] Updated ${publicPath}`);
 
       console.log(`[generate-version] Version: ${version} (build ${buildNumber})`);
+
+      // Generate ota-manifest.json — a complete list of all build output files.
+      // The native OTA download manager uses this to ensure every file (including
+      // worker chunks, WASM binaries, and dynamic imports) is downloaded.
+      if (existsSync(outputDir)) {
+        const allFiles = listFilesRecursive(outputDir, outputDir)
+          .filter(f => f !== 'ota-manifest.json' && !f.endsWith('.map')); // exclude self + source maps
+        const otaManifestPath = join(outputDir, 'ota-manifest.json');
+        writeFileSync(otaManifestPath, JSON.stringify({ files: allFiles }, null, 2) + '\n');
+        console.log(`[generate-version] Generated ${otaManifestPath} (${allFiles.length} files)`);
+      }
   } catch (error) {
       console.error('[generate-version] Error:', error);
       process.exit(1);

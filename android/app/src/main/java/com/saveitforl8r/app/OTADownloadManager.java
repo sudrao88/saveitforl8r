@@ -42,6 +42,14 @@ public class OTADownloadManager {
     /**
      * Downloads all web assets from the remote URL to a local directory.
      * Runs on a background thread; callbacks are dispatched on the main thread.
+     *
+     * Uses ota-manifest.json (generated at build time) as the primary source of
+     * truth for which files to download. This ensures ALL build output files are
+     * captured — including worker chunks, WASM binaries, and dynamic imports that
+     * aren't referenced in HTML or the Vite manifest.
+     *
+     * Falls back to HTML/Vite manifest parsing if ota-manifest.json is unavailable
+     * (e.g. older deployments that predate this change).
      */
     public static void downloadUpdate(File filesDir, String remoteUrl, Callback callback) {
         Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -58,90 +66,114 @@ public class OTADownloadManager {
                     throw new IOException("Failed to create temp update directory");
                 }
 
-                // 1. Download index.html — the entry point that references all assets
-                Log.d(TAG, "Downloading index.html...");
-                String html = downloadString(remoteUrl + "/index.html");
-                writeString(new File(tempDir, "index.html"), html);
-
-                // 2. Discover asset paths from HTML and (optionally) the Vite manifest
-                Set<String> assetPaths = parseAssetPathsFromHtml(html);
-                Log.d(TAG, "Found " + assetPaths.size() + " assets in HTML");
-
+                // Try the OTA manifest first — it lists every file in the build output.
+                Set<String> filesToDownload = null;
                 try {
-                    String manifest = downloadString(remoteUrl + "/.vite/manifest.json");
-                    writeString(new File(tempDir, ".vite/manifest.json"), manifest);
-                    Set<String> manifestAssets = parseViteManifest(manifest);
-                    Log.d(TAG, "Found " + manifestAssets.size() + " assets from Vite manifest");
-                    assetPaths.addAll(manifestAssets);
+                    String otaManifest = downloadString(remoteUrl + "/ota-manifest.json");
+                    filesToDownload = parseOtaManifest(otaManifest);
+                    Log.d(TAG, "Using ota-manifest.json: " + filesToDownload.size() + " files to download");
                 } catch (Exception e) {
-                    Log.w(TAG, "Vite manifest not available: " + e.getMessage());
+                    Log.w(TAG, "ota-manifest.json not available, falling back to HTML/Vite parsing: " + e.getMessage());
                 }
 
-                // 3. Download all discovered assets
                 int downloaded = 0;
                 int failed = 0;
-                for (String path : assetPaths) {
-                    try {
-                        String normalised = path.startsWith("/") ? path.substring(1) : path;
-                        File target = new File(tempDir, normalised);
-                        validatePath(target, tempDir);
-                        ensureParent(target);
-                        downloadToFile(remoteUrl + "/" + normalised, target);
-                        downloaded++;
-                    } catch (Exception e) {
-                        failed++;
-                        Log.w(TAG, "Failed to download asset: " + path + " — " + e.getMessage());
-                    }
-                }
 
-                // 4. Also parse downloaded CSS files for font/image references
-                Set<String> cssAssets = new HashSet<>();
-                for (String path : assetPaths) {
-                    if (path.endsWith(".css")) {
-                        String normalised = path.startsWith("/") ? path.substring(1) : path;
-                        File cssFile = new File(tempDir, normalised);
-                        if (cssFile.exists()) {
-                            try {
-                                String css = readFile(cssFile);
-                                Set<String> refs = parseCssUrls(css, path);
-                                cssAssets.addAll(refs);
-                            } catch (Exception e) {
-                                Log.w(TAG, "Failed to parse CSS: " + path);
-                            }
+                if (filesToDownload != null && !filesToDownload.isEmpty()) {
+                    // ---- Primary path: download every file from the OTA manifest ----
+                    for (String relativePath : filesToDownload) {
+                        try {
+                            File target = new File(tempDir, relativePath);
+                            validatePath(target, tempDir);
+                            ensureParent(target);
+                            downloadToFile(remoteUrl + "/" + relativePath, target);
+                            downloaded++;
+                        } catch (Exception e) {
+                            failed++;
+                            Log.w(TAG, "Failed to download: " + relativePath + " — " + e.getMessage());
                         }
                     }
-                }
-                // Download any newly discovered CSS assets
-                for (String path : cssAssets) {
-                    if (!assetPaths.contains(path)) {
+                } else {
+                    // ---- Fallback: discover assets from HTML + Vite manifest + CSS ----
+                    Log.d(TAG, "Downloading index.html...");
+                    String html = downloadString(remoteUrl + "/index.html");
+                    writeString(new File(tempDir, "index.html"), html);
+
+                    Set<String> assetPaths = parseAssetPathsFromHtml(html);
+                    Log.d(TAG, "Found " + assetPaths.size() + " assets in HTML");
+
+                    try {
+                        String manifest = downloadString(remoteUrl + "/.vite/manifest.json");
+                        writeString(new File(tempDir, ".vite/manifest.json"), manifest);
+                        Set<String> manifestAssets = parseViteManifest(manifest);
+                        Log.d(TAG, "Found " + manifestAssets.size() + " assets from Vite manifest");
+                        assetPaths.addAll(manifestAssets);
+                    } catch (Exception e) {
+                        Log.w(TAG, "Vite manifest not available: " + e.getMessage());
+                    }
+
+                    for (String path : assetPaths) {
                         try {
                             String normalised = path.startsWith("/") ? path.substring(1) : path;
                             File target = new File(tempDir, normalised);
                             validatePath(target, tempDir);
-                            if (!target.exists()) {
-                                ensureParent(target);
-                                downloadToFile(remoteUrl + "/" + normalised, target);
-                                downloaded++;
-                            }
+                            ensureParent(target);
+                            downloadToFile(remoteUrl + "/" + normalised, target);
+                            downloaded++;
                         } catch (Exception e) {
                             failed++;
-                            Log.w(TAG, "Failed to download CSS asset: " + path);
+                            Log.w(TAG, "Failed to download asset: " + path + " — " + e.getMessage());
                         }
                     }
-                }
 
-                // 5. Download known static files (non-critical — failures are tolerated)
-                String[] staticFiles = {
-                    "version.json", "manifest.json", "icon.svg", "logo-full.svg", "sw.js"
-                };
-                for (String sf : staticFiles) {
-                    try {
-                        File target = new File(tempDir, sf);
-                        validatePath(target, tempDir);
-                        if (!target.exists()) {
-                            downloadToFile(remoteUrl + "/" + sf, target);
+                    // Parse CSS files for font/image url() references
+                    Set<String> cssAssets = new HashSet<>();
+                    for (String path : assetPaths) {
+                        if (path.endsWith(".css")) {
+                            String normalised = path.startsWith("/") ? path.substring(1) : path;
+                            File cssFile = new File(tempDir, normalised);
+                            if (cssFile.exists()) {
+                                try {
+                                    String css = readFile(cssFile);
+                                    Set<String> refs = parseCssUrls(css, path);
+                                    cssAssets.addAll(refs);
+                                } catch (Exception e) {
+                                    Log.w(TAG, "Failed to parse CSS: " + path);
+                                }
+                            }
                         }
-                    } catch (Exception ignored) { }
+                    }
+                    for (String path : cssAssets) {
+                        if (!assetPaths.contains(path)) {
+                            try {
+                                String normalised = path.startsWith("/") ? path.substring(1) : path;
+                                File target = new File(tempDir, normalised);
+                                validatePath(target, tempDir);
+                                if (!target.exists()) {
+                                    ensureParent(target);
+                                    downloadToFile(remoteUrl + "/" + normalised, target);
+                                    downloaded++;
+                                }
+                            } catch (Exception e) {
+                                failed++;
+                                Log.w(TAG, "Failed to download CSS asset: " + path);
+                            }
+                        }
+                    }
+
+                    // Download known static files (non-critical)
+                    String[] staticFiles = {
+                        "version.json", "manifest.json", "icon.svg", "logo-full.svg", "sw.js"
+                    };
+                    for (String sf : staticFiles) {
+                        try {
+                            File target = new File(tempDir, sf);
+                            validatePath(target, tempDir);
+                            if (!target.exists()) {
+                                downloadToFile(remoteUrl + "/" + sf, target);
+                            }
+                        } catch (Exception ignored) { }
+                    }
                 }
 
                 Log.d(TAG, "Download complete: " + downloaded + " ok, " + failed + " failed");
@@ -152,7 +184,7 @@ public class OTADownloadManager {
                     throw new IOException("index.html missing or empty after download");
                 }
 
-                // 6. Atomically swap: delete old update dir and rename temp → update
+                // Atomically swap: delete old update dir and rename temp → update
                 deleteRecursive(updateDir);
                 if (!tempDir.renameTo(updateDir)) {
                     throw new IOException("Failed to rename temp dir to update dir");
@@ -204,6 +236,28 @@ public class OTADownloadManager {
     }
 
     // ---- Asset discovery ----
+
+    /**
+     * Parses the ota-manifest.json file which contains a complete list of all
+     * build output files. This is generated at build time by generate-version.js
+     * and guarantees no files are missed (worker chunks, WASM, dynamic imports).
+     */
+    static Set<String> parseOtaManifest(String json) {
+        Set<String> paths = new HashSet<>();
+        try {
+            JSONObject manifest = new JSONObject(json);
+            org.json.JSONArray files = manifest.getJSONArray("files");
+            for (int i = 0; i < files.length(); i++) {
+                String file = files.optString(i, null);
+                if (file != null && !file.isEmpty()) {
+                    paths.add(file);
+                }
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Failed to parse ota-manifest.json: " + e.getMessage());
+        }
+        return paths;
+    }
 
     /** Extracts local asset paths from HTML src/href attributes. */
     static Set<String> parseAssetPathsFromHtml(String html) {
