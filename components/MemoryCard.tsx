@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Trash2, MapPin, Loader2, Clock, ExternalLink, X, Check, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, WifiOff, FileText, Paperclip, ChevronDown, ChevronUp, FileCode, MoreVertical, Search, AlertTriangle, Key, Square, CheckSquare, Maximize2, Eye, Pin, Pencil } from 'lucide-react';
+import { Trash2, MapPin, Loader2, Clock, ExternalLink, X, Check, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, WifiOff, FileText, Paperclip, ChevronDown, ChevronUp, FileCode, MoreVertical, Search, AlertTriangle, Square, CheckSquare, Maximize2, Eye, Pin, Pencil } from 'lucide-react';
 import { Memory, Attachment } from '../types.ts';
 
 interface MemoryCardProps {
@@ -12,8 +12,6 @@ interface MemoryCardProps {
   onTogglePin?: (id: string, isPinned: boolean) => void;
   onEdit?: (memory: Memory) => void;
   isDialog?: boolean;
-  hasApiKey?: boolean;
-  onAddApiKey?: () => void;
 }
 
 
@@ -36,7 +34,7 @@ const linkifyHtml = (html: string): string => {
     }).join('');
 };
 
-const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUpdate, onExpand, onViewAttachment, onTogglePin, onEdit, isDialog, hasApiKey = true, onAddApiKey }) => {
+const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUpdate, onExpand, onViewAttachment, onTogglePin, onEdit, isDialog }) => {
   const [isConfirming, setIsConfirming] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -133,7 +131,6 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
   const shouldTruncateAI = aiText && aiText.length > 120;
 
   const showErrorOverlay = memory.processingError && onRetry && !dismissedError;
-  const showAddKeyOverlay = !hasApiKey && (memory.isPending || !!memory.processingError) && !dismissedError;
 
   const isChecklist = memory.content.startsWith('<ul class="checklist">');
   
@@ -206,28 +203,9 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
         ${isDialog ? 'bg-gray-900 border border-gray-800' : 'bg-gray-800/40 border border-gray-700/30 hover:bg-gray-800/60 hover:border-gray-600/50 hover:shadow-lg'}
         ${memory.isPending ? 'opacity-70 border-blue-900/30' : ''}
         ${memory.processingError ? 'border-amber-900/30 bg-amber-900/5' : ''}
-        ${showErrorOverlay || showAddKeyOverlay ? 'min-h-[350px]' : ''}
+        ${showErrorOverlay ? 'min-h-[350px]' : ''}
         `}
       >
-        {/* API Key Overlay */}
-        {showAddKeyOverlay && (
-            <div className="absolute inset-0 z-20 bg-gray-900/95 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-300">
-                <div className="w-12 h-12 bg-blue-900/50 border-4 border-blue-800 rounded-full mb-4 flex items-center justify-center">
-                    <Key size={24} className="text-blue-300" />
-                </div>
-                <h4 className="text-gray-100 font-bold mb-1">AI Enrichment Requires an API Key</h4>
-                <p className="text-xs text-gray-400 mb-4">
-                    Add your Gemini API key to enable automatic summaries, tagging, and contextual search for this memory.
-                </p>
-                <button
-                    onClick={(e) => { e.stopPropagation(); onAddApiKey?.(); }}
-                    className="w-full max-w-[200px] py-3 text-sm font-bold text-white bg-blue-600 rounded-xl hover:bg-blue-500 transition-colors shadow-lg shadow-blue-500/20 active:scale-95 touch-manipulation"
-                >
-                    Add API Key
-                </button>
-            </div>
-        )}
-
         {/* Image Preview */}
         {displayImages.length > 0 && (
             <div 

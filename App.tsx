@@ -9,7 +9,7 @@ import FilterBar from './components/FilterBar';
 import SettingsModal from './components/SettingsModal';
 import EmptyState from './components/EmptyState';
 import NewMemoryPage from './components/NewMemoryPage';
-import ApiKeyModal from './components/ApiKeyModal';
+
 import ErrorBoundary from './components/ErrorBoundary';
 import { Logo } from './components/icons';
 
@@ -33,7 +33,6 @@ import { handleDeepLink } from './services/googleAuth';
 const AppContent: React.FC = () => {
   const [view, setView] = useState<ViewMode>(ViewMode.FEED);
   const [isCaptureOpen, setIsCaptureOpen] = useState(false);
-  const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
   const [expandedMemory, setExpandedMemory] = useState<Memory | null>(null);
   const [viewingAttachment, setViewingAttachment] = useState<Attachment | null>(null);
   const [reconcileReport, setReconcileReport] = useState<ReconcileReport | null>(null);
@@ -81,13 +80,9 @@ const AppContent: React.FC = () => {
     refreshRef.current = handleFullRefresh;
   }, [sync, handleFullRefresh]);
 
-  // Move useSettings hook to be called before useEffect dependencies
   const {
-    apiKeySet,
     isSettingsOpen,
     setIsSettingsOpen,
-    saveKey,
-    clearKey
   } = useSettings();
 
   const handleCaptureClose = useCallback(() => {
@@ -179,8 +174,6 @@ const AppContent: React.FC = () => {
         setViewingAttachment(null);
       } else if (expandedMemory) {
         setExpandedMemory(null);
-      } else if (isApiKeyModalOpen) {
-        setIsApiKeyModalOpen(false);
       } else if (isSettingsOpen) {
         setIsSettingsOpen(false);
       } else if (editingMemory) {
@@ -203,7 +196,7 @@ const AppContent: React.FC = () => {
       // Since addListener is async in some versions, but usually returns PluginListenerHandle
       listener.then(handle => handle.remove()).catch(e => console.error(e));
     };
-  }, [viewingAttachment, expandedMemory, isApiKeyModalOpen, isSettingsOpen, editingMemory, isCaptureOpen, view, handleCaptureClose, handleEditClose]);
+  }, [viewingAttachment, expandedMemory, isSettingsOpen, editingMemory, isCaptureOpen, view, handleCaptureClose, handleEditClose]);
 
   useEffect(() => {
     if (shareData) {
@@ -220,24 +213,6 @@ const AppContent: React.FC = () => {
     filteredMemories,
     clearFilters
   } = useMemoryFilters(memories);
-
-  const handleSaveApiKey = useCallback(async (key: string): Promise<void> => {
-    saveKey(key);
-    logEvent(ANALYTICS_EVENTS.SETTINGS.CATEGORY, ANALYTICS_EVENTS.SETTINGS.ACTION_API_KEY_SET, 'Onboarding');
-    setIsApiKeyModalOpen(false);
-    
-    const pendingIds = memories.filter(m => m.isPending || m.processingError).map(m => m.id);
-    
-    const retryPromises = pendingIds.map(async (id) => {
-        try {
-            await handleRetry(id);
-        } catch (error) {
-            console.error(`Failed to retry memory ${id}:`, error);
-        }
-    });
-
-    await Promise.allSettled(retryPromises);
-  }, [saveKey, memories, handleRetry]);
 
   const handleCreateMemory = useCallback(async (text: string, attachments: any[], tags: string[], location?: { latitude: number; longitude: number }) => {
     await createMemory(text, attachments, tags, location);
@@ -328,11 +303,6 @@ const AppContent: React.FC = () => {
     logEvent(ANALYTICS_EVENTS.SETTINGS.CATEGORY, ANALYTICS_EVENTS.SETTINGS.ACTION_CLOSED);
   }, [setIsSettingsOpen]);
 
-  const handleClearKey = useCallback(() => {
-    clearKey();
-    logEvent(ANALYTICS_EVENTS.SETTINGS.CATEGORY, ANALYTICS_EVENTS.SETTINGS.ACTION_API_KEY_CLEARED);
-  }, [clearKey]);
-
   const handleImportSuccess = useCallback(() => {
     handleFullRefresh();
     logEvent(ANALYTICS_EVENTS.DATA.CATEGORY, ANALYTICS_EVENTS.DATA.ACTION_IMPORT_SUCCESS);
@@ -340,11 +310,6 @@ const AppContent: React.FC = () => {
         syncRef.current().then(() => handleFullRefresh());
     } 
   }, [authStatus, handleFullRefresh]);
-
-  const handleAddApiKey = useCallback(() => {
-    setIsSettingsOpen(false); 
-    setIsApiKeyModalOpen(true);
-  }, [setIsSettingsOpen]);
 
   useHotkeys({
     'Mod+k': () => setIsCaptureOpen(true),
@@ -458,8 +423,6 @@ const AppContent: React.FC = () => {
                 onViewAttachment={setViewingAttachment}
                 onTogglePin={handleTogglePin}
                 onEdit={handleEditMemory}
-                hasApiKey={apiKeySet}
-                onAddApiKey={handleAddApiKey}
               />
             ))}
           </div>
@@ -498,8 +461,6 @@ const AppContent: React.FC = () => {
                     onTogglePin={handleTogglePin}
                     onEdit={handleEditMemory}
                     isDialog={true}
-                    hasApiKey={apiKeySet}
-                    onAddApiKey={handleAddApiKey}
                 />
              </div>
           </div>
@@ -560,14 +521,11 @@ const AppContent: React.FC = () => {
       )}
 
       {isSettingsOpen && (
-        <SettingsModal 
+        <SettingsModal
             onClose={handleSettingsClose}
-            clearKey={handleClearKey}
             availableTypes={availableTypes}
             onImportSuccess={handleImportSuccess}
             appVersion={versionToDisplay}
-            hasApiKey={apiKeySet}
-            onAddApiKey={handleAddApiKey}
             syncError={syncError}
             onSyncComplete={handleFullRefresh} 
             modelStatus={modelStatus}
@@ -579,13 +537,6 @@ const AppContent: React.FC = () => {
             lastError={lastError}
             closeWorkerDB={closeWorkerDB}
             reconcileReport={reconcileReport}
-        />
-      )}
-
-      {isApiKeyModalOpen && (
-        <ApiKeyModal
-            onClose={() => setIsApiKeyModalOpen(false)}
-            onSave={handleSaveApiKey}
         />
       )}
 

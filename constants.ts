@@ -41,9 +41,7 @@ export const ANALYTICS_EVENTS = {
   },
   SETTINGS: {
     CATEGORY: 'Settings',
-    ACTION_API_KEY_SET: 'API Key Set',
     ACTION_CLOSED: 'Closed',
-    ACTION_API_KEY_CLEARED: 'API Key Cleared',
   },
   DATA: {
     CATEGORY: 'Data',
