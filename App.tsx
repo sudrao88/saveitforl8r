@@ -134,6 +134,13 @@ const AppContent: React.FC = () => {
         }).catch(err => {
             console.error('[App] Initial sync failed:', err);
         });
+
+        // Auto-retry enrichment for memories that failed while unauthenticated
+        const pendingIds = memories.filter(m => m.isPending || m.processingError).map(m => m.id);
+        if (pendingIds.length > 0) {
+            console.log(`[App] Auth linked — auto-retrying ${pendingIds.length} failed memories`);
+            pendingIds.forEach(id => handleRetry(id));
+        }
     }
   }, [authStatus]);
 
@@ -423,6 +430,8 @@ const AppContent: React.FC = () => {
                 onViewAttachment={setViewingAttachment}
                 onTogglePin={handleTogglePin}
                 onEdit={handleEditMemory}
+                isAuthenticated={authStatus === 'linked'}
+                onSignIn={login}
               />
             ))}
           </div>
@@ -461,6 +470,8 @@ const AppContent: React.FC = () => {
                     onTogglePin={handleTogglePin}
                     onEdit={handleEditMemory}
                     isDialog={true}
+                    isAuthenticated={authStatus === 'linked'}
+                    onSignIn={login}
                 />
              </div>
           </div>
