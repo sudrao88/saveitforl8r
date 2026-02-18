@@ -14,32 +14,244 @@ if (!GEMINI_API_KEY) {
 
 const MODEL_NAME = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 
+// Google OAuth token info endpoint for validating client tokens
+const GOOGLE_TOKENINFO_URL = 'https://oauth2.googleapis.com/tokeninfo';
+
 const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
-// --- Middleware ---
+// =========================================================================
+// SECURITY MIDDLEWARE
+// =========================================================================
+
+// --- CORS: strict origin checking, no wildcard in production ---
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
   : ['http://localhost:9000'];
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, curl, etc.)
-    if (!origin) return callback(null, true);
-    if (ALLOWED_ORIGINS.includes(origin) || ALLOWED_ORIGINS.includes('*')) {
+    // SECURITY: Reject requests with no Origin header.
+    // Mobile native apps send the configured origin via the client.
+    // Allowing no-origin would let curl/bots bypass CORS entirely.
+    if (!origin) {
+      return callback(new Error('Missing Origin header'));
+    }
+    if (ALLOWED_ORIGINS.includes(origin)) {
       return callback(null, true);
     }
     callback(new Error('Not allowed by CORS'));
   }
 }));
 
-app.use(express.json({ limit: '50mb' }));
+// --- Body size limit: 10MB is generous for enrichment payloads ---
+app.use(express.json({ limit: '10mb' }));
 
-// --- Health Check ---
-app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', model: MODEL_NAME });
+// --- Request ID for log correlation ---
+app.use((req, _res, next) => {
+  req.requestId = crypto.randomUUID();
+  next();
 });
 
-// --- Enrichment Schema (mirrors client-side schema) ---
+// =========================================================================
+// AUTHENTICATION: Validate Google OAuth access token
+// =========================================================================
+// The client already has a Google OAuth token (for Drive sync).
+// We require it on every proxy request to:
+//   1. Verify the caller is a real, authenticated user
+//   2. Extract a stable account identifier for future rate limiting
+//   3. Prevent anonymous abuse of the Gemini API key
+//
+// The token is validated against Google's tokeninfo endpoint.
+// In production, consider caching validated tokens briefly (e.g. 60s)
+// to reduce latency on every request.
+
+const authenticateRequest = async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  const accessToken = authHeader.slice(7);
+  if (!accessToken) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  try {
+    const response = await fetch(`${GOOGLE_TOKENINFO_URL}?access_token=${encodeURIComponent(accessToken)}`);
+    if (!response.ok) {
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+
+    const tokenInfo = await response.json();
+
+    // Verify the token was issued for our app's client ID
+    const expectedClientId = process.env.GOOGLE_CLIENT_ID;
+    if (expectedClientId && tokenInfo.aud !== expectedClientId) {
+      console.warn(`[Auth] Token audience mismatch: expected ${expectedClientId}, got ${tokenInfo.aud}`);
+      return res.status(403).json({ error: 'Token not issued for this application' });
+    }
+
+    // Attach user info for logging and future rate limiting
+    req.userId = tokenInfo.sub || tokenInfo.email || 'unknown';
+    next();
+  } catch (err) {
+    console.error(`[Auth] Token validation failed:`, err.message);
+    return res.status(401).json({ error: 'Token validation failed' });
+  }
+};
+
+// =========================================================================
+// RATE LIMITING: basic in-memory per-user sliding window
+// =========================================================================
+// This is a v1 in-memory limiter. For production at scale, replace with
+// Redis-backed rate limiting (e.g. express-rate-limit + rate-limit-redis).
+
+const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
+const RATE_LIMIT_MAX_REQUESTS = parseInt(process.env.RATE_LIMIT_MAX || '30', 10);
+
+const rateLimitMap = new Map(); // userId -> { timestamps: number[] }
+
+const rateLimiter = (req, res, next) => {
+  const userId = req.userId || 'anonymous';
+  const now = Date.now();
+
+  let entry = rateLimitMap.get(userId);
+  if (!entry) {
+    entry = { timestamps: [] };
+    rateLimitMap.set(userId, entry);
+  }
+
+  // Evict timestamps outside the window
+  entry.timestamps = entry.timestamps.filter(t => now - t < RATE_LIMIT_WINDOW_MS);
+
+  if (entry.timestamps.length >= RATE_LIMIT_MAX_REQUESTS) {
+    console.warn(`[RateLimit] User ${userId} exceeded ${RATE_LIMIT_MAX_REQUESTS} req/min`);
+    return res.status(429).json({ error: 'Too many requests. Please try again later.' });
+  }
+
+  entry.timestamps.push(now);
+  next();
+};
+
+// Periodic cleanup of stale rate limit entries (every 5 minutes)
+setInterval(() => {
+  const now = Date.now();
+  for (const [userId, entry] of rateLimitMap) {
+    entry.timestamps = entry.timestamps.filter(t => now - t < RATE_LIMIT_WINDOW_MS);
+    if (entry.timestamps.length === 0) {
+      rateLimitMap.delete(userId);
+    }
+  }
+}, 5 * 60 * 1000);
+
+// =========================================================================
+// INPUT VALIDATION
+// =========================================================================
+
+const MAX_TEXT_LENGTH = 50_000;        // 50K chars
+const MAX_ATTACHMENTS = 5;
+const MAX_ATTACHMENT_SIZE = 5_000_000; // ~5MB base64
+const MAX_TAGS = 20;
+const MAX_TAG_LENGTH = 100;
+const MAX_MEMORIES_IN_QUERY = 500;
+const MAX_QUERY_LENGTH = 2_000;
+
+const validateEnrichInput = (req, res, next) => {
+  const { text, attachments, location, tags } = req.body;
+
+  if (text !== undefined && text !== null) {
+    if (typeof text !== 'string') {
+      return res.status(400).json({ error: 'text must be a string' });
+    }
+    if (text.length > MAX_TEXT_LENGTH) {
+      return res.status(400).json({ error: `text exceeds maximum length of ${MAX_TEXT_LENGTH}` });
+    }
+  }
+
+  if (attachments !== undefined && attachments !== null) {
+    if (!Array.isArray(attachments)) {
+      return res.status(400).json({ error: 'attachments must be an array' });
+    }
+    if (attachments.length > MAX_ATTACHMENTS) {
+      return res.status(400).json({ error: `Maximum ${MAX_ATTACHMENTS} attachments allowed` });
+    }
+    for (const att of attachments) {
+      if (att.data && typeof att.data === 'string' && att.data.length > MAX_ATTACHMENT_SIZE) {
+        return res.status(400).json({ error: `Attachment exceeds maximum size` });
+      }
+    }
+  }
+
+  if (tags !== undefined && tags !== null) {
+    if (!Array.isArray(tags)) {
+      return res.status(400).json({ error: 'tags must be an array' });
+    }
+    if (tags.length > MAX_TAGS) {
+      return res.status(400).json({ error: `Maximum ${MAX_TAGS} tags allowed` });
+    }
+    for (const tag of tags) {
+      if (typeof tag !== 'string' || tag.length > MAX_TAG_LENGTH) {
+        return res.status(400).json({ error: 'Invalid tag' });
+      }
+    }
+  }
+
+  if (location !== undefined && location !== null) {
+    if (typeof location.latitude !== 'number' || typeof location.longitude !== 'number') {
+      return res.status(400).json({ error: 'location must have numeric latitude and longitude' });
+    }
+    if (location.latitude < -90 || location.latitude > 90 || location.longitude < -180 || location.longitude > 180) {
+      return res.status(400).json({ error: 'Invalid coordinates' });
+    }
+  }
+
+  next();
+};
+
+const validateQueryInput = (req, res, next) => {
+  const { query, memories } = req.body;
+
+  if (!query || typeof query !== 'string') {
+    return res.status(400).json({ error: 'query is required and must be a string' });
+  }
+  if (query.length > MAX_QUERY_LENGTH) {
+    return res.status(400).json({ error: `query exceeds maximum length of ${MAX_QUERY_LENGTH}` });
+  }
+
+  if (!memories || !Array.isArray(memories)) {
+    return res.status(400).json({ error: 'memories is required and must be an array' });
+  }
+  if (memories.length > MAX_MEMORIES_IN_QUERY) {
+    return res.status(400).json({ error: `Maximum ${MAX_MEMORIES_IN_QUERY} memories allowed per query` });
+  }
+
+  next();
+};
+
+// =========================================================================
+// SAFE ERROR RESPONSE
+// =========================================================================
+// SECURITY: Never return raw error.message to the client.
+// Gemini SDK errors can contain the API key, internal URLs, or request IDs
+// that help attackers.
+
+const safeErrorResponse = (res, statusCode, publicMessage, internalError) => {
+  // Log full error server-side for debugging
+  console.error(`[Error] ${publicMessage}:`, internalError?.message || internalError);
+  // Return only a generic message to the client
+  res.status(statusCode).json({ error: publicMessage });
+};
+
+// =========================================================================
+// ROUTES
+// =========================================================================
+
+// --- Health Check (unauthenticated, but no sensitive info) ---
+app.get('/health', (_req, res) => {
+  res.json({ status: 'ok' });
+});
+
+// --- Enrichment Schema ---
 const enrichmentSchema = {
   type: Type.OBJECT,
   properties: {
@@ -79,7 +291,7 @@ const enrichmentSchema = {
 };
 
 // --- POST /api/enrich ---
-app.post('/api/enrich', async (req, res) => {
+app.post('/api/enrich', authenticateRequest, rateLimiter, validateEnrichInput, async (req, res) => {
   try {
     const { text, attachments, location, tags } = req.body;
 
@@ -161,7 +373,6 @@ app.post('/api/enrich', async (req, res) => {
     });
 
     let jsonString = response.text || '{}';
-    const rawResponse = jsonString;
     jsonString = jsonString.replace(/```json/g, '').replace(/```/g, '').trim();
 
     const firstBrace = jsonString.indexOf('{');
@@ -172,27 +383,20 @@ app.post('/api/enrich', async (req, res) => {
 
     const parsedData = JSON.parse(jsonString);
 
-    // Inject audit trail
-    parsedData.audit = {
-      prompt,
-      rawResponse
-    };
+    // SECURITY: Do NOT include the audit trail (prompt + rawResponse) in the
+    // client response. The prompt contains system instructions, and the raw
+    // response could contain error details. Keep audit server-side only.
 
     res.json(parsedData);
   } catch (error) {
-    console.error('Enrichment error:', error);
-    res.status(500).json({ error: 'Enrichment failed', message: error.message });
+    safeErrorResponse(res, 500, 'Enrichment failed', error);
   }
 });
 
 // --- POST /api/query ---
-app.post('/api/query', async (req, res) => {
+app.post('/api/query', authenticateRequest, rateLimiter, validateQueryInput, async (req, res) => {
   try {
     const { query, memories } = req.body;
-
-    if (!query || !memories) {
-      return res.status(400).json({ error: 'Missing required fields: query, memories' });
-    }
 
     const contextBlock = memories
       .filter(m => !m.isPending && !m.processingError)
@@ -235,14 +439,21 @@ app.post('/api/query', async (req, res) => {
       sourceIds
     });
   } catch (error) {
-    console.error('Query error:', error);
-    res.status(500).json({ error: 'Query failed', message: error.message });
+    safeErrorResponse(res, 500, 'Query failed', error);
   }
+});
+
+// =========================================================================
+// GLOBAL ERROR HANDLER
+// =========================================================================
+// Catch-all to prevent any unhandled error from leaking stack traces or
+// internal details to the client.
+app.use((err, _req, res, _next) => {
+  console.error('[Unhandled Error]', err);
+  res.status(500).json({ error: 'Internal server error' });
 });
 
 // --- Start ---
 app.listen(PORT, () => {
   console.log(`SaveItForL8r proxy running on port ${PORT}`);
-  console.log(`Model: ${MODEL_NAME}`);
-  console.log(`Allowed origins: ${ALLOWED_ORIGINS.join(', ')}`);
 });

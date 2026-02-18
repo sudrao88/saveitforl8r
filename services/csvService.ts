@@ -19,9 +19,9 @@ export const memoriesToCSV = (memories: Memory[]): string => {
     const summary = m.enrichment?.summary || '';
     const date = new Date(m.timestamp).toISOString();
     
-    // Clean enrichment data (remove audit)
-    const cleanEnrichment = m.enrichment ? { ...m.enrichment } : null;
-    if (cleanEnrichment && cleanEnrichment.audit) {
+    // Clean enrichment data (remove legacy audit field from pre-proxy data)
+    const cleanEnrichment = m.enrichment ? { ...m.enrichment } as Record<string, unknown> : null;
+    if (cleanEnrichment) {
         delete cleanEnrichment.audit;
     }
 
@@ -113,9 +113,9 @@ export const csvToMemories = (csv: string): Memory[] => {
         const attachments = cols[8] && cols[8] !== 'null' ? JSON.parse(cols[8]) : undefined;
         let enrichment = cols[9] && cols[9] !== 'null' ? JSON.parse(cols[9]) : undefined;
 
-        // Clean imported enrichment too
-        if (enrichment && enrichment.audit) {
-             delete enrichment.audit;
+        // Clean imported enrichment (remove legacy audit field from pre-proxy data)
+        if (enrichment && (enrichment as Record<string, unknown>).audit) {
+             delete (enrichment as Record<string, unknown>).audit;
         }
 
         if (id && !isNaN(timestamp)) {
