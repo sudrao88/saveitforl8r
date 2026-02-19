@@ -74,6 +74,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
   // For Rich Text Mode
   const editorRef = useRef<HTMLDivElement>(null);
   const isInitialized = useRef(false);
+  const pendingEditorContent = useRef<string | null>(null);
 
   // For Checklist Mode
   interface ChecklistItem {
@@ -121,6 +122,15 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
         isInitialized.current = true;
     }
   }, [isChecklistMode, initialContent, editMemory]);
+
+  // Apply pending content when switching from checklist back to rich text
+  useEffect(() => {
+    if (!isChecklistMode && editorRef.current && pendingEditorContent.current !== null) {
+        editorRef.current.innerHTML = pendingEditorContent.current;
+        setIsEmpty(!pendingEditorContent.current);
+        pendingEditorContent.current = null;
+    }
+  }, [isChecklistMode]);
 
   // Focus editor on mount
   useEffect(() => {
@@ -244,13 +254,9 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
   const toggleChecklistMode = () => {
       if (isChecklistMode) {
           const text = checklistItems.map(item => item.text).join('<br>');
+          pendingEditorContent.current = text;
+          isInitialized.current = true;
           setIsChecklistMode(false);
-          setTimeout(() => {
-              if (editorRef.current) {
-                  editorRef.current.innerHTML = text;
-                  setIsEmpty(!text);
-              }
-          }, 0);
       } else {
           const text = editorRef.current?.innerText || '';
           const lines = text.split('\n').filter(l => l.trim().length > 0);
