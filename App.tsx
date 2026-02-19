@@ -34,7 +34,7 @@ const AppContent: React.FC = () => {
   const [view, setView] = useState<ViewMode>(ViewMode.FEED);
   const [isCaptureOpen, setIsCaptureOpen] = useState(false);
   const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
-  const [expandedMemory, setExpandedMemory] = useState<Memory | null>(null);
+  const [expandedMemoryId, setExpandedMemoryId] = useState<string | null>(null);
   const [viewingAttachment, setViewingAttachment] = useState<Attachment | null>(null);
   const [reconcileReport, setReconcileReport] = useState<ReconcileReport | null>(null);
   const [editingMemory, setEditingMemory] = useState<Memory | null>(null);
@@ -66,6 +66,11 @@ const AppContent: React.FC = () => {
     togglePin,
     isLoading
   } = useMemories();
+
+  const expandedMemory = useMemo(() =>
+    expandedMemoryId ? memories.find(m => m.id === expandedMemoryId) ?? null : null,
+    [expandedMemoryId, memories]
+  );
 
   const handleFullRefresh = useCallback(async () => {
       await refreshMemories();
@@ -177,8 +182,8 @@ const AppContent: React.FC = () => {
     const handleBackButton = ({ canGoBack }: { canGoBack: boolean }) => {
       if (viewingAttachment) {
         setViewingAttachment(null);
-      } else if (expandedMemory) {
-        setExpandedMemory(null);
+      } else if (expandedMemoryId) {
+        setExpandedMemoryId(null);
       } else if (isApiKeyModalOpen) {
         setIsApiKeyModalOpen(false);
       } else if (isSettingsOpen) {
@@ -203,7 +208,7 @@ const AppContent: React.FC = () => {
       // Since addListener is async in some versions, but usually returns PluginListenerHandle
       listener.then(handle => handle.remove()).catch(e => console.error(e));
     };
-  }, [viewingAttachment, expandedMemory, isApiKeyModalOpen, isSettingsOpen, editingMemory, isCaptureOpen, view, handleCaptureClose, handleEditClose]);
+  }, [viewingAttachment, expandedMemoryId, isApiKeyModalOpen, isSettingsOpen, editingMemory, isCaptureOpen, view, handleCaptureClose, handleEditClose]);
 
   useEffect(() => {
     if (shareData) {
@@ -250,16 +255,16 @@ const AppContent: React.FC = () => {
     await updateMemory(id, text, attachments, tags, location);
     setEditingMemory(null);
     // Close expanded view if we were editing from there
-    if (expandedMemory?.id === id) {
-      setExpandedMemory(null);
+    if (expandedMemoryId === id) {
+      setExpandedMemoryId(null);
     }
     logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_CREATED, 'updated');
-  }, [updateMemory, expandedMemory]);
+  }, [updateMemory, expandedMemoryId]);
 
   const handleEditMemory = useCallback((memory: Memory) => {
     setEditingMemory(memory);
     // Close expanded view when opening edit
-    setExpandedMemory(null);
+    setExpandedMemoryId(null);
     logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_CREATED, 'edit_started');
   }, []);
 
@@ -304,10 +309,10 @@ const AppContent: React.FC = () => {
 
   const handleDeleteMemory = useCallback((id: string) => {
     handleDelete(id);
-    deleteNoteFromIndex(id); 
+    deleteNoteFromIndex(id);
     logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_DELETED);
-    if (expandedMemory?.id === id) setExpandedMemory(null);
-  }, [handleDelete, expandedMemory, deleteNoteFromIndex]);
+    if (expandedMemoryId === id) setExpandedMemoryId(null);
+  }, [handleDelete, expandedMemoryId, deleteNoteFromIndex]);
 
   const handleRetryMemory = useCallback((id: string) => {
     handleRetry(id);
@@ -454,7 +459,7 @@ const AppContent: React.FC = () => {
                 onDelete={handleDeleteMemory}
                 onRetry={handleRetryMemory}
                 onUpdate={updateMemoryContent}
-                onExpand={setExpandedMemory}
+                onExpand={(m) => setExpandedMemoryId(m.id)}
                 onViewAttachment={setViewingAttachment}
                 onTogglePin={handleTogglePin}
                 onEdit={handleEditMemory}
@@ -480,7 +485,7 @@ const AppContent: React.FC = () => {
         <div className="fixed inset-0 z-[100] bg-gray-950/90 backdrop-blur-md flex flex-col animate-in fade-in duration-300">
           <div className="sticky top-0 z-10 px-4 py-3 border-b border-gray-800 flex items-center justify-between bg-gray-950/50 backdrop-blur-xl pt-[env(safe-area-inset-top)]">
              <div className="flex items-center gap-3">
-                <button onClick={() => setExpandedMemory(null)} className="p-3 -ml-3 rounded-full hover:bg-gray-800 text-gray-400 hover:text-white transition-colors active:scale-95">
+                <button onClick={() => setExpandedMemoryId(null)} className="p-3 -ml-3 rounded-full hover:bg-gray-800 text-gray-400 hover:text-white transition-colors active:scale-95">
                     <X size={24} />
                 </button>
                 <h2 className="text-lg font-bold text-gray-100 truncate max-w-[200px] sm:max-w-md">Memory Detail</h2>
