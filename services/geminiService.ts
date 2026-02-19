@@ -179,9 +179,10 @@ export const queryBrain = async (query: string, memories: Memory[]): Promise<{ a
   `).join("\n---\n");
 
   const systemInstruction = `
-    You are SaveItForL8r. Answer based ONLY on context. 
-    Format: Conversational. 
-    End with: [[SOURCE_IDS: id1, id2]].
+    You are SaveItForL8r. Answer based ONLY on context.
+    Format: Conversational. Do NOT include any memory IDs (UUIDs) in your answer text.
+    At the very end, on its own line, append ONLY: [[SOURCE_IDS: id1, id2]]
+    where id1, id2 are the IDs of the memories you used. Do NOT put IDs anywhere else.
   `;
 
   try {
@@ -197,10 +198,22 @@ export const queryBrain = async (query: string, memories: Memory[]): Promise<{ a
       }
     });
     const text = response.text || "";
-    const match = text.match(/\[\[SOURCE_IDS: (.+?)\]\]/);
+    // Extract source IDs — handle format variations from the model
+    // e.g. [[SOURCE_IDS: id1, id2]], [[SOURCE_IDS:id1,id2]], across multiple lines
+    const match = text.match(/\[\[SOURCE_IDS:\s*([\s\S]+?)\]\]/);
     let sourceIds: string[] = [];
-    if (match) sourceIds = match[1].split(',').map(s => s.trim());
-    return { answer: text.replace(/\[\[SOURCE_IDS: .+?\]\]/, '').trim(), sourceIds };
+    if (match) sourceIds = match[1].split(',').map(s => s.trim()).filter(Boolean);
+
+    let answer = text
+      // Strip the [[SOURCE_IDS: ...]] block (including multiline)
+      .replace(/\[\[SOURCE_IDS:\s*[\s\S]*?\]\]/g, '')
+      // Strip any echoed [ID: uuid] references from context
+      .replace(/\[ID:\s*[a-f0-9-]{36}\]/gi, '')
+      // Strip bare UUID-only lines (memory IDs leaked into output)
+      .replace(/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\s*$/gm, '')
+      .trim();
+
+    return { answer, sourceIds };
   } catch (error) {
     return { answer: "Unable to retrieve memory.", sourceIds: [] };
   }
