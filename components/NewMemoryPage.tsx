@@ -393,9 +393,9 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
   };
 
   return (
-    <div className="min-h-screen bg-gray-900 flex flex-col pt-safe pb-safe" dir="ltr">
+    <div className="fixed inset-0 bg-gray-900 flex flex-col z-50" dir="ltr">
         {/* Header */}
-        <div className="sticky top-0 z-30 bg-gray-900/90 backdrop-blur-md border-b border-gray-800 px-4 py-3 flex items-center justify-between pt-[calc(env(safe-area-inset-top)+12px)]">
+        <div className="shrink-0 bg-gray-900/90 backdrop-blur-md border-b border-gray-800 px-4 py-3 flex items-center justify-between pt-[calc(env(safe-area-inset-top)+12px)]">
             <div className="flex items-center gap-3">
                 <button
                     onClick={handleClose}
@@ -407,16 +407,16 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
             </div>
         </div>
 
-        <main className="flex-1 p-4 sm:p-8 max-w-3xl mx-auto w-full flex flex-col">
+        <main className="flex-1 overflow-y-auto p-4 sm:p-8 max-w-3xl mx-auto w-full flex flex-col">
             
             {/* Editor Area */}
             <div className="min-h-[200px] relative text-left order-1 mb-6" dir="ltr">
                 {isChecklistMode ? (
                     <div className="space-y-3">
                         {checklistItems.map((item, index) => (
-                            <div key={item.id} className="flex items-start gap-4 animate-in fade-in slide-in-from-left-2 duration-200">
-                                <div 
-                                    className="mt-2 text-gray-500 cursor-pointer p-1 -m-1"
+                            <div key={item.id} className="flex items-center gap-3 animate-in fade-in slide-in-from-left-2 duration-200">
+                                <div
+                                    className="shrink-0 text-gray-500 cursor-pointer p-1 -m-1"
                                     onClick={() => setChecklistItems(prev => prev.map(i => i.id === item.id ? { ...i, checked: !i.checked } : i))}
                                 >
                                     <div className={`w-6 h-6 border-2 rounded-lg flex items-center justify-center transition-colors ${item.checked ? 'border-blue-500 bg-blue-500/20' : 'border-gray-600'}`}>
