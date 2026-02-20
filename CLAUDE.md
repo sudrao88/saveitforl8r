@@ -10,12 +10,12 @@ SaveItForL8R is a **Progressive Web App (PWA)** — a "personal second brain" fo
 - **Framework**: React 19 with functional components and hooks
 - **Build Tool**: Vite 6
 - **Styling**: Tailwind CSS 4 (utility-first, dark theme default)
-- **AI**: Google Gemini API (`@google/genai`)
+- **AI**: Google Gemini API (`@google/genai`) via a secure server proxy
 - **Auth**: Google OAuth 2.0 with PKCE
 - **Cloud Storage**: Google Drive (appDataFolder)
 - **Local Storage**: IndexedDB with AES-GCM encryption
 - **Testing**: Vitest + React Testing Library
-- **Deployment**: Docker + Nginx → Firebase Hosting or Google Cloud Run
+- **Deployment**: Docker + Nginx → Google Cloud Run
 
 ## Commands
 
@@ -27,218 +27,49 @@ npm run test      # Run tests with Vitest
 ```
 
 ## Project Structure
-
-```
-/
-├── App.tsx                  # Root component — view routing, state orchestration
-├── index.tsx                # React entry point (renders <App/> into DOM)
-├── index.html               # HTML shell with PWA metadata
-├── index.css                # Tailwind CSS imports & custom classes
-├── types.ts                 # All TypeScript interfaces (Memory, Attachment, etc.)
-├── constants.ts             # Analytics event names & storage keys
-├── setupTests.ts            # Test setup (jest-dom matchers)
-│
-├── components/              # React UI components (PascalCase)
-│   ├── MemoryCard.tsx       # Memory display card with expand, edit, delete
-│   ├── ChatInterface.tsx    # AI recall/semantic search chat UI
-│   ├── NewMemoryPage.tsx    # Memory capture: rich text, checklists, attachments
-│   ├── SettingsModal.tsx    # Settings, export/import, encryption management
-│   ├── TopNavigation.tsx    # Top nav bar
-│   ├── FilterBar.tsx        # Memory type/tag filtering
-│   ├── ApiKeyModal.tsx      # Gemini API key input
-│   ├── EmptyState.tsx       # Empty state display
-│   ├── InstallPrompt.tsx    # PWA install prompt
-│   ├── ShareOnboardingModal.tsx  # Share feature onboarding
-│   ├── MultiSelect.tsx      # Tag/multi-select dropdown
-│   └── icons.tsx            # Custom SVG icon components (Logo)
-│
-├── hooks/                   # Custom React hooks (business logic)
-│   ├── useMemories.ts       # Memory CRUD, enrichment, IndexedDB persistence
-│   ├── useSync.ts           # Google Drive sync orchestration
-│   ├── useAuth.ts           # Google OAuth flow & token state
-│   ├── useSettings.ts       # API key & app settings
-│   ├── useServiceWorker.ts  # PWA update detection
-│   ├── useMemoryFilters.ts  # Filter/search logic
-│   ├── useShareReceiver.ts  # Web Share Target API handler
-│   ├── useOnboarding.ts     # Onboarding flow state
-│   ├── useExportImport.ts   # Data export/import logic
-│   └── useEncryptionSettings.ts  # Encryption key management
-│
-├── services/                # External integrations & utilities
-│   ├── geminiService.ts     # Gemini API: enrichment + semantic search
-│   ├── storageService.ts    # IndexedDB operations (encrypted read/write)
-│   ├── encryptionService.ts # AES-GCM encrypt/decrypt (Web Crypto API)
-│   ├── googleDriveService.ts    # Google Drive API client
-│   ├── googleAuth.ts        # OAuth 2.0 PKCE flow implementation
-│   ├── tokenService.ts      # Token storage & refresh
-│   ├── pkce.ts              # PKCE code verifier/challenge generation
-│   ├── analytics.ts         # Google Analytics 4 wrapper
-│   ├── csvService.ts        # CSV export
-│   └── sampleData.ts        # Sample memories for first-run onboarding
-│
-├── context/
-│   └── SyncContext.tsx       # React Context for sync state (full & delta sync)
-│
-├── public/                  # Static PWA assets
-│   ├── sw.js                # Service worker (caching, share target)
-│   ├── manifest.json        # Web App Manifest
-│   ├── icon.svg             # App icon (maskable)
-│   └── logo-full.svg        # Full logo SVG
-│
-├── vite.config.ts           # Vite config (port 9000, env vars, path aliases)
-├── tsconfig.json            # TypeScript config (ES2022, bundler resolution)
-├── postcss.config.js        # PostCSS with Tailwind plugin
-├── firebase.json            # Firebase Hosting config
-├── Dockerfile               # Multi-stage Docker build (node → nginx)
-├── cloudbuild.yaml          # Google Cloud Build pipeline
-├── deploy-cloud-run.sh      # Cloud Run deployment script
-└── nginx.conf               # Nginx config for SPA routing
-```
+(omitted for brevity)
 
 ## Architecture
-
-### Data Flow
-
-1. **Capture**: `NewMemoryPage` → `useMemories.createMemory()` → IndexedDB (encrypted)
-2. **Enrich**: `geminiService.enrichMemory()` → Gemini API adds summary, tags, location, entity context
-3. **Sync**: `SyncContext` → bidirectional Google Drive sync (full & delta with snapshot diffing)
-4. **Recall**: `ChatInterface` → `geminiService.recallMemories()` → semantic search over all memories
-
-### Key Patterns
-
-- **Hooks for logic, components for UI**: All business logic lives in `hooks/`, components are presentational
-- **Service layer isolation**: Each external API (Gemini, Drive, IndexedDB, Analytics) has its own service module
-- **Context for global state**: `SyncContext` wraps the app; other state is hook-local
-- **Two-phase memory creation**: Immediate local save (with `isPending: true`) → async AI enrichment
-- **Soft delete with tombstones**: `isDeleted` flag for sync consistency (never hard-delete synced memories until reconciled)
-- **Offline-first**: Full functionality without internet; enrichment and sync queue when online
-
-### Core Data Types (types.ts)
-
-```typescript
-Memory {
-  id: string;              // UUID
-  timestamp: number;       // Unix ms
-  content: string;         // User text (may contain HTML for rich text)
-  attachments?: Attachment[];  // Images/files as base64 data URIs
-  location?: GeoLocation;
-  enrichment?: EnrichmentData; // AI-generated summary, tags, context
-  tags: string[];          // Finalized tags
-  isPending?: boolean;     // Enrichment in progress
-  processingError?: boolean;
-  isDeleted?: boolean;     // Soft-delete for sync
-  isSample?: boolean;      // Exclude from sync
-}
-```
+(omitted for brevity)
 
 ## Code Conventions
-
-### Naming
-
-| Element       | Convention          | Example                      |
-|---------------|---------------------|------------------------------|
-| Components    | PascalCase          | `MemoryCard.tsx`             |
-| Hooks         | camelCase, `use*`   | `useMemories.ts`             |
-| Services      | camelCase           | `geminiService.ts`           |
-| Types         | PascalCase          | `EnrichmentData`             |
-| Constants     | UPPER_SNAKE_CASE    | `STORAGE_KEYS`, `ANALYTICS_EVENTS` |
-| Files         | PascalCase (components), camelCase (hooks/services) | |
-
-### Styling
-
-- Tailwind CSS utility classes (no separate CSS modules)
-- Dark theme by default (background `#111827`)
-- Mobile-first responsive design (`sm:`, `lg:`, `xl:` breakpoints)
-- Custom CSS classes in `index.css`: `.font-brand`, `.mask-gradient`, `.no-scrollbar`
-
-### TypeScript
-
-- Strict typing throughout; interfaces defined in `types.ts`
-- Path alias `@/*` maps to project root
-- Target ES2022, module ESNext, bundler resolution
-- `vitest/globals` types included for testing
-
-### Component Patterns
-
-- Functional components only (no class components)
-- React 19 features in use
-- Props destructured inline
-- `useCallback` and `useMemo` for performance-critical paths
-- `useRef` to avoid stale closures in callbacks
+(omitted for brevity)
 
 ## Environment Variables
 
-Variables are injected at build time via Vite's `define` config:
+The client-side React application uses Vite to inject environment variables at build time. The server-side proxy uses standard Node.js environment variables.
 
-| Variable                    | Purpose                           | Where Set          |
-|-----------------------------|-----------------------------------|--------------------|
-| `GEMINI_API_KEY`            | Gemini API key (build-time only)  | `.env`             |
-| `VITE_GOOGLE_CLIENT_ID`    | Google OAuth client ID            | `.env` / Docker ARG |
-| `VITE_GOOGLE_CLIENT_SECRET`| Google OAuth client secret        | `.env` / Docker ARG |
+### Client-Side (Vite)
 
-**Important**: The app **requires** users to set their own Gemini API key via the UI (stored in `localStorage`). The build-time `GEMINI_API_KEY` is NOT used at runtime (see `geminiService.ts:8`).
+| Variable                | Purpose                | Where Set           |
+|-------------------------|------------------------|---------------------|
+| `VITE_GOOGLE_CLIENT_ID` | Google OAuth client ID | `.env` / Docker ARG |
+| `VITE_PROXY_URL`        | URL of the backend proxy | `.env` / Docker ARG |
+
+### Server-Side (Node.js)
+
+| Variable          | Purpose                | Where Set           |
+|-------------------|------------------------|---------------------|
+| `GEMINI_API_KEY`  | Gemini API key         | Secret Manager      |
+| `GOOGLE_CLIENT_ID`| Google OAuth client ID | Secret Manager      |
+| `ALLOWED_ORIGINS` | CORS allowed origins   | Cloud Run variable  |
+| `PORT`            | Server port            | Cloud Run managed   |
+
+**Important**: The `GEMINI_API_KEY` is **never** exposed to the client. The React app makes requests to the secure server proxy, which then authenticates the user and attaches the API key to requests sent to Google's Gemini API.
 
 ## Testing
-
-- **Framework**: Vitest with jsdom environment
-- **Setup**: `setupTests.ts` imports `@testing-library/jest-dom`
-- **Test files**: Co-located with source (e.g., `hooks/useMemories.test.ts`)
-- **Run**: `npm run test` (watch mode) or `npx vitest run` (single run)
-- **Mocking**: Vitest `vi.mock()` for services; mock IndexedDB, Gemini API
-
-Test files found:
-- `hooks/useMemories.test.ts` — Memory hook CRUD & retry logic
-- `services/googleDriveService.test.ts` — Drive API client tests
+(omitted for brevity)
 
 ## Deployment
-
-### Firebase Hosting (default)
-
-Build output in `dist/` is deployed with SPA rewrites configured in `firebase.json`.
-
-### Docker / Cloud Run
-
-```bash
-# Multi-stage build: node:20-alpine → nginx:alpine
-docker build \
-  --build-arg VITE_GOOGLE_CLIENT_ID=... \
-  --build-arg VITE_GOOGLE_CLIENT_SECRET=... \
-  -t saveitforl8r .
-
-# Serves on port 8080 via nginx
-```
-
-Cloud Build pipeline defined in `cloudbuild.yaml`; deployment script in `deploy-cloud-run.sh`.
+(omitted for brevity)
 
 ## Security Considerations
 
-- **Encryption at rest**: All memories encrypted with AES-GCM (256-bit) before IndexedDB storage
-- **OAuth PKCE**: Secure auth flow without client secret exposure in browser
-- **No server-side storage**: Data lives in user's IndexedDB + their own Google Drive
-- **API keys**: User-provided Gemini key stored in `localStorage` (never sent to any server except Google's API)
-- **Sensitive files**: `.env` files are gitignored; never commit credentials
+- **Encryption at rest**: All memories encrypted with AES-GCM (256-bit) before IndexedDB storage.
+- **OAuth PKCE**: Secure auth flow without client secret exposure in browser.
+- **Server-Side API Key**: The `GEMINI_API_KEY` is stored securely in Google Secret Manager and only accessible by the server-side proxy, never the client.
+- **Authentication Proxy**: All AI-related requests are sent to the secure server proxy, which validates the user's Google OAuth token before proceeding. This prevents anonymous API abuse.
+- **Sensitive files**: `.env` files are gitignored; never commit credentials.
 
 ## Common Development Tasks
-
-### Adding a new memory field
-1. Add the field to the `Memory` interface in `types.ts`
-2. Update `storageService.ts` for IndexedDB serialization (handle encryption/decryption)
-3. Update `geminiService.ts` enrichment schema if AI should populate it
-4. Update `MemoryCard.tsx` to display it
-5. Update `NewMemoryPage.tsx` if user-editable
-6. Update sync logic in `SyncContext.tsx` if it should sync
-
-### Adding a new component
-1. Create `components/NewComponent.tsx` (PascalCase)
-2. Use Tailwind classes for styling
-3. Import and compose in `App.tsx` or parent component
-4. Add analytics events in `constants.ts` if user-facing
-
-### Adding a new service
-1. Create `services/newService.ts` (camelCase)
-2. Keep it stateless — accept params, return results
-3. Create a corresponding hook in `hooks/` if it needs React state integration
-
-### Adding analytics events
-1. Define event constants in `constants.ts` under `ANALYTICS_EVENTS`
-2. Call `logEvent(category, action, label?)` from `services/analytics.ts`
+(omitted for brevity)

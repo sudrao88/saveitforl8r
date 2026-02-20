@@ -1,13 +1,30 @@
 steps:
-- name: 'gcr.io/cloud-builders/docker'
-  args:
-    - 'build'
-    - '--build-arg'
-    - 'VITE_GOOGLE_CLIENT_ID=${_VITE_GOOGLE_CLIENT_ID}'
-    - '--build-arg'
-    - 'VITE_GOOGLE_CLIENT_SECRET=${_VITE_GOOGLE_CLIENT_SECRET}'
-    - '-t'
-    - '${_ARTIFACT_REGION}-docker.pkg.dev/$PROJECT_ID/saveitforl8r-repo/saveitforl8r'
-    - '.'
+  # Build the server image
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-server'
+    args:
+      - 'build'
+      - '-t'
+      - '${_ARTIFACT_REGION}-docker.pkg.dev/$PROJECT_ID/saveitforl8r-repo/saveitforl8r-server'
+      - '-f'
+      - 'server/Dockerfile'
+      - 'server/'
+
+  # Build the client image
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-client'
+    args:
+      - 'build'
+      - '--build-arg'
+      - 'VITE_GOOGLE_CLIENT_ID=${_VITE_GOOGLE_CLIENT_ID}'
+      - '--build-arg'
+      - 'VITE_GOOGLE_CLIENT_SECRET=${_VITE_GOOGLE_CLIENT_SECRET}'
+      - '--build-arg'
+      - 'VITE_PROXY_URL=${_VITE_PROXY_URL}' # Pass the proxy URL to the client build
+      - '-t'
+      - '${_ARTIFACT_REGION}-docker.pkg.dev/$PROJECT_ID/saveitforl8r-repo/saveitforl8r-client'
+      - '.'
+
 images:
-- '${_ARTIFACT_REGION}-docker.pkg.dev/$PROJECT_ID/saveitforl8r-repo/saveitforl8r'
+- '${_ARTIFACT_REGION}-docker.pkg.dev/$PROJECT_ID/saveitforl8r-repo/saveitforl8r-server'
+- '${_ARTIFACT_REGION}-docker.pkg.dev/$PROJECT_ID/saveitforl8r-repo/saveitforl8r-client'
