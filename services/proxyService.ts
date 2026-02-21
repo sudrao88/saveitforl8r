@@ -1,7 +1,7 @@
 /**
  * proxyService.ts
  *
- * HTTP client for the SaveItForL8r server proxy.
+ * HTTP client for the SaveItForL8R server proxy.
  * Replaces direct Gemini API calls — the server owns the API key
  * and decides which model to use.
  *
@@ -35,6 +35,7 @@ const getAccessToken = async (): Promise<string | null> => {
 
 interface ProxyRequestOptions {
   signal?: AbortSignal;
+  timeout?: number;
 }
 
 /**
@@ -57,19 +58,34 @@ const postProxy = async <T>(path: string, body: unknown, options?: ProxyRequestO
     headers['Authorization'] = `Bearer ${accessToken}`;
   }
 
-  const res = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
-    signal: options?.signal,
-  });
+  // Set up timeout
+  const timeout = options?.timeout || 30000; // Default 30s timeout
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeout);
 
-  if (!res.ok) {
-    const errorBody = await res.text().catch(() => 'Unknown error');
-    throw new Error(`Proxy error ${res.status}: ${errorBody}`);
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+      signal: options?.signal || controller.signal,
+    });
+
+    clearTimeout(id);
+
+    if (!res.ok) {
+      const errorBody = await res.text().catch(() => 'Unknown error');
+      throw new Error(`Proxy error ${res.status}: ${errorBody}`);
+    }
+
+    return res.json() as Promise<T>;
+  } catch (err: any) {
+    clearTimeout(id);
+    if (err.name === 'AbortError') {
+      throw new Error('Request timed out');
+    }
+    throw err;
   }
-
-  return res.json() as Promise<T>;
 };
 
 export { getProxyUrl, postProxy };

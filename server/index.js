@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
+import { GoogleGenerativeAI, SchemaType, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
 
 const app = express();
 const PORT = process.env.PORT || 8081;
@@ -11,7 +11,9 @@ if (!GEMINI_API_KEY) {
   process.exit(1);
 }
 
-const MODEL_NAME = process.env.GEMINI_MODEL || 'gemini-3-flash-preview';
+const MODEL_NAME = 'gemini-3-flash-preview';
+// Using a confirmed stable model name for fallback
+const FALLBACK_MODEL_NAME = 'gemini-1.5-flash'; 
 const GOOGLE_TOKENINFO_URL = 'https://oauth2.googleapis.com/tokeninfo';
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
@@ -81,82 +83,77 @@ const enrichmentSchema = {
   required: ["summary", "suggestedTags", "locationIsRelevant"]
 };
 
+const queryResponseSchema = {
+  type: SchemaType.OBJECT,
+  properties: {
+    answer: { 
+      type: SchemaType.STRING, 
+      description: "A natural language answer based ONLY on the provided memories. If the answer isn't in the memories, state that you don't know." 
+    },
+    sources: {
+      type: SchemaType.ARRAY,
+      description: "The specific memories used to form this answer.",
+      items: {
+        type: SchemaType.OBJECT,
+        properties: {
+          id: { type: SchemaType.STRING, description: "The unique ID of the memory." },
+          preview: { type: SchemaType.STRING, description: "A short snippet (1-2 sentences) from the memory content that relevant to the answer." }
+        },
+        required: ["id", "preview"]
+      }
+    }
+  },
+  required: ["answer", "sources"]
+};
+
+const safetySettings = [
+  { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+  { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+  { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+  { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+];
+
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
 app.post('/api/enrich', authenticateRequest, async (req, res) => {
+  const startTime = Date.now();
+  const { text, attachments, location, tags } = req.body;
+
   try {
-    const { text, attachments, location, tags } = req.body;
-    console.log(`Enrichment request for user ${req.userId}. Text length: ${text?.length || 0}`);
+    console.log(`[Enrich] Start for user ${req.userId}. Text: "${text?.substring(0, 50)}"`);
     
     const parts = [];
     
-    // Add attachments (images, PDFs, text files)
     if (attachments && Array.isArray(attachments)) {
       for (const att of attachments) {
-        const base64Data = att.data.split(',')[1];
+        if (!att.data) continue;
+        const base64Data = att.data.includes(',') ? att.data.split(',')[1] : att.data;
         if (base64Data) {
           parts.push({ 
-            inlineData: { 
-              data: base64Data, 
-              mimeType: att.mimeType 
-            } 
+            inlineData: { data: base64Data, mimeType: att.mimeType } 
           });
         }
       }
     }
 
-    let prompt = `Analyze this Second Brain entry.
-TASK: Use Google Search to enrich the content using the INPUT TEXT, USER TAGS, and attached DOCUMENTS/IMAGES.
+    let prompt = `TASK: Use Google Search to enrich this entry.
+${text ? `INPUT TEXT: "${text}"` : ''}
+${tags?.length ? `USER TAGS: ${tags.join(', ')}` : ''}
+${location ? `USER GPS: Lat ${location.latitude}, Lng ${location.longitude}` : ''}
 
-SEARCH STRATEGY:
-1. Combine the INPUT TEXT and USER TAGS to form your search queries. The tags provide essential context (e.g., "Movie", "Book", "Restaurant") that disambiguates the text.
-2. If the INPUT TEXT is short or ambiguous, rely on the TAGS to determine the entity type.`;
-
-    if (tags && tags.length > 0) {
-      prompt += `\nUSER TAGS: ${tags.join(', ')}`;
-    }
-
-    if (location) {
-      prompt += `
-USER CURRENT GPS: Lat ${location.latitude}, Lng ${location.longitude}.
-
-LOCATION & SEARCH RULES:
-1. INPUT IS KEY: The INPUT TEXT is the primary search term.
-2. USE GPS CONTEXT: When searching, explicitly include the GPS coordinates in your search query to prioritize results near the user. 
-   - Query format: "${text} near ${location.latitude}, ${location.longitude}"
-3. PLACE IDENTIFICATION: 
-   - If the search result confirms the INPUT TEXT is a specific place/business at this location, set 'locationIsRelevant' to TRUE.
-   - You MUST populate 'locationContext.mapsUri' with the specific Google Maps link found in the search result.
-   - Populate 'locationContext.name' and 'locationContext.address'.
-4. NO GENERIC REVERSE GEOCODING:
-   - Do NOT return the address of the coordinates if the INPUT TEXT does not match the place.
-   - If the user types "Idea", do not return "Starbucks" just because they are there.
-   - If 'locationIsRelevant' is false, leave 'locationContext' empty.
-`;
-    } 
-  
-    prompt += `
-RULES FOR LINKS:
-1. DO NOT generate generic external links (e.g. no IMDB, no Amazon, no Official Website links).
-2. LOCATION/BUSINESS: 'locationContext.mapsUri' MUST be the Google Maps link found in the search result.
-
-ENTITY SPECIFIC INSTRUCTIONS:
-1. MOVIE/TV: Identify Title, Director/Year, and Description.
-2. BOOK: Identify Title, Author, and Description.
-3. LOCATION/BUSINESS: Populate locationContext fully, especially mapsUri.
-
-OUTPUT FORMAT:
-You must return a raw JSON object (no markdown) matching this schema:
-${JSON.stringify(enrichmentSchema, null, 2)}
+RULES:
+1. SEARCH: Find the specific business, place, movie, book, or entity mentioned.
+2. GPS: If user GPS is provided, search near those coordinates for businesses.
+3. MAPS LINK: For places, 'locationContext.mapsUri' MUST be a real Google Maps URL.
+4. JSON: Return ONLY raw JSON matching the schema. lowercase keys. No markdown.
 `;
 
-    if (text) prompt += `\nINPUT TEXT: "${text}"`;
-    
     parts.push({ text: prompt });
 
     const model = genAI.getGenerativeModel({ 
         model: MODEL_NAME,
-        tools: [{ googleSearch: {} }]
+        tools: [{ googleSearch: {} }],
+        safetySettings
     });
 
     const generationConfig = {
@@ -164,38 +161,105 @@ ${JSON.stringify(enrichmentSchema, null, 2)}
       responseSchema: enrichmentSchema,
     };
 
-    // OPTIMIZATION: Disable thinking process if supported by the model
-    if (MODEL_NAME.includes('thinking')) {
-      generationConfig.thinkingConfig = { thinkingBudget: 0 };
-    }
-
-    const result = await model.generateContent({
+    const resultPromise = model.generateContent({
       contents: [{ role: "user", parts }],
       generationConfig
     });
 
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Gemini API timeout')), 25000)
+    );
+
+    const result = await Promise.race([resultPromise, timeoutPromise]);
     const responseText = result.response.text();
-    res.json(JSON.parse(responseText));
+    const duration = Date.now() - startTime;
+    
+    console.log(`[Enrich] API responded in ${duration}ms. Raw response length: ${responseText.length}`);
+
+    const parsed = JSON.parse(responseText);
+    
+    const normalizeKeys = (obj) => {
+      if (Array.isArray(obj)) return obj.map(normalizeKeys);
+      if (obj !== null && typeof obj === 'object') {
+        return Object.keys(obj).reduce((acc, key) => {
+          const lowerKey = key.charAt(0).toLowerCase() + key.slice(1);
+          acc[lowerKey] = normalizeKeys(obj[key]);
+          return acc;
+        }, {});
+      }
+      return obj;
+    };
+
+    res.json(normalizeKeys(parsed));
   } catch (error) {
-    console.error('Enrichment failed error details:', error);
-    res.status(500).json({ 
-      error: 'Enrichment failed', 
-      details: error.message
-    });
+    const duration = Date.now() - startTime;
+    console.error(`[Enrich] Main enrichment failed after ${duration}ms. Error:`, error.message);
+    
+    // Fallback: Try without Google Search if it timed out or failed
+    const fallbackStartTime = Date.now();
+    console.log('[Enrich] Attempting fallback enrichment without Google Search...');
+    try {
+        const fallbackModel = genAI.getGenerativeModel({ model: FALLBACK_MODEL_NAME, safetySettings });
+        const fallbackResult = await fallbackModel.generateContent({
+            contents: [{ role: "user", parts: [{ text: `Summarize and tag this (no search): "${text}" Tags: ${tags?.join(',')}. Return JSON: ${JSON.stringify(enrichmentSchema)}` }] }],
+            generationConfig: { responseMimeType: "application/json", responseSchema: enrichmentSchema }
+        });
+        const fallbackResponseText = fallbackResult.response.text();
+        console.log(`[Enrich] Fallback succeeded in ${Date.now() - fallbackStartTime}ms`);
+        return res.json(JSON.parse(fallbackResponseText));
+    } catch (fallbackError) {
+        console.error('[Enrich] Fallback failed:', fallbackError.message);
+        res.status(500).json({ error: 'Enrichment failed', details: error.message });
+    }
   }
 });
 
 app.post('/api/query', authenticateRequest, async (req, res) => {
   try {
     const { query, memories } = req.body;
-    console.log(`Query request for user ${req.userId}. Query: ${query}`);
     
-    const model = genAI.getGenerativeModel({ model: MODEL_NAME });
-    const context = memories.map(m => m.content).join('\n');
-    const result = await model.generateContent(`Context: ${context}\n\nQuery: ${query}`);
-    res.json({ answer: result.response.text(), sourceIds: [] });
+    if (!memories || !Array.isArray(memories) || memories.length === 0) {
+      return res.json({ 
+        answer: "I don't have any notes to search through yet. Try adding some memories first!", 
+        sources: [] 
+      });
+    }
+
+    const model = genAI.getGenerativeModel({ 
+      model: MODEL_NAME,
+      safetySettings 
+    });
+
+    const context = memories.map(m => `ID: ${m.id}\nContent: ${m.content}`).join('\n---\n');
+    
+    const prompt = `You are a helpful assistant for a personal "second brain" app.
+Your task is to answer the user's query using ONLY the provided memories below.
+
+RULES:
+1. STRICTNESS: Answer ONLY based on the provided memories. Do NOT use outside knowledge.
+2. HONESTY: If the answer is not contained in the memories, clearly state that you don't know based on the available notes.
+3. SOURCES: For every part of your answer, identify which memory (by ID) it came from.
+4. FORMAT: Return your response as JSON matching the specified schema.
+
+MEMORIES:
+${context}
+
+QUERY: ${query}`;
+
+    const result = await model.generateContent({
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: { 
+        responseMimeType: "application/json", 
+        responseSchema: queryResponseSchema 
+      }
+    });
+
+    const responseText = result.response.text();
+    console.log(`[Query] User ${req.userId} query: "${query}". Response length: ${responseText.length}`);
+    
+    res.json(JSON.parse(responseText));
   } catch (error) {
-    console.error('Query failed error details:', error);
+    console.error('Query failed:', error.message);
     res.status(500).json({ error: 'Query failed', details: error.message });
   }
 });

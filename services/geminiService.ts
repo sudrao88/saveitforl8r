@@ -2,6 +2,16 @@
 import { EnrichmentData, Memory, Attachment } from '../types.ts';
 import { postProxy } from './proxyService.ts';
 
+export interface QuerySource {
+  id: string;
+  preview: string;
+}
+
+export interface QueryResponse {
+  answer: string;
+  sources: QuerySource[];
+}
+
 /**
  * Sends memory content to the server proxy for AI enrichment.
  * The server owns the API key and decides which model to use.
@@ -33,7 +43,7 @@ export const enrichInput = async (
 export const queryBrain = async (
   query: string,
   memories: Memory[]
-): Promise<{ answer: string; sourceIds: string[] }> => {
+): Promise<QueryResponse> => {
   try {
     // Strip attachment data from memories to reduce payload size.
     // The server only needs metadata for context building.
@@ -50,13 +60,13 @@ export const queryBrain = async (
         processingError: m.processingError,
       }));
 
-    const result = await postProxy<{ answer: string; sourceIds: string[] }>('/api/query', {
+    const result = await postProxy<QueryResponse>('/api/query', {
       query,
       memories: lightMemories,
     });
     return result;
   } catch (error) {
     console.error('Query Error:', error);
-    return { answer: 'Unable to retrieve memory.', sourceIds: [] };
+    return { answer: 'Unable to retrieve memory.', sources: [] };
   }
 };

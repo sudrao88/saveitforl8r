@@ -10,10 +10,15 @@ interface ChatInterfaceProps {
   onViewAttachment: (attachment: Attachment) => void;
 }
 
+interface Source {
+  id: string;
+  preview: string;
+}
+
 interface Message {
   role: 'user' | 'model';
   text: string;
-  sources?: string[]; // IDs of memories used
+  sources?: Source[]; // Structured sources
   isOffline?: boolean;
 }
 
@@ -95,22 +100,27 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
       const response = await searchFunction(userMsg.text, memories);
       
       if (response.mode === 'online') {
-          const { answer, sourceIds } = response.result;
-          setMessages(prev => [...prev, { role: 'model', text: answer, sources: sourceIds }]);
+          const { answer, sources } = response.result;
+          setMessages(prev => [...prev, { role: 'model', text: answer, sources: sources }]);
       } else if (response.mode === 'offline') {
           const items = response.result;
           const text = items.length > 0
               ? "I found these relevant notes in your offline database:"
               : "I couldn't find any relevant notes in your offline database.";
 
-          const sourceIds = Array.from(new Set(items.map((item: any) =>
+          const uniqueSourceIds = Array.from(new Set(items.map((item: any) =>
             item.metadata?.originalId || item.id
           ))) as string[];
+
+          const sources: Source[] = uniqueSourceIds.map(id => ({
+            id,
+            preview: memories.find(m => m.id === id)?.content?.substring(0, 100) || ""
+          }));
 
           setMessages(prev => [...prev, {
               role: 'model',
               text,
-              sources: sourceIds,
+              sources,
               isOffline: true
           }]);
       } else if (response.mode === 'offline_model_error') {
@@ -203,13 +213,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
                         {msg.isOffline ? 'Relevant Notes' : 'Sources'}
                     </p>
                     <div className="grid grid-cols-1 gap-2">
-                        {msg.sources.map(id => {
-                            const mem = memories.find(m => m.id === id);
+                        {msg.sources.map(source => {
+                            const mem = memories.find(m => m.id === source.id);
                             if (!mem) return null;
                             return (
                                 <button 
-                                    key={id}
-                                    onClick={() => setPreviewMemoryId(id)}
+                                    key={source.id}
+                                    onClick={() => setPreviewMemoryId(source.id)}
                                     className="flex items-center gap-2 p-1.5 bg-gray-900 rounded-lg border border-gray-700 hover:border-blue-500 transition-all text-left shadow-sm group active:scale-[0.98]"
                                 >
                                     {mem.image && (
@@ -217,7 +227,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
                                     )}
                                     <div className="flex-1 overflow-hidden min-w-0">
                                         <p className="text-[10px] font-bold text-gray-200 truncate">
-                                            {mem.enrichment?.summary || mem.content || "Memory Entry"}
+                                            {source.preview || mem.enrichment?.summary || mem.content || "Memory Entry"}
                                         </p>
                                         <p className="text-[9px] text-gray-500">{new Date(mem.timestamp).toLocaleDateString()}</p>
                                     </div>
