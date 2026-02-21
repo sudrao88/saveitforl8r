@@ -29,6 +29,9 @@ interface NewMemoryPageProps {
 
 const SUGGESTED_TAGS = ["Book", "Restaurant", "Place to Visit", "Movie", "Podcast", "Stuff"];
 
+const escapeHtml = (text: string): string =>
+    text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
 const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpdate, initialContent, editMemory }) => {
   const isEditMode = !!editMemory;
 
@@ -74,6 +77,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
   // For Rich Text Mode
   const editorRef = useRef<HTMLDivElement>(null);
   const isInitialized = useRef(false);
+  const pendingEditorContent = useRef<string | null>(null);
 
   // For Checklist Mode
   interface ChecklistItem {
@@ -106,12 +110,21 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
     }
   }, []);
 
-  // Initialize content ONLY once
+  // Populate editor content: pending mode-switch content takes priority, then one-time init
   useEffect(() => {
-    if (!isChecklistMode && editorRef.current && !isInitialized.current) {
+    if (isChecklistMode || !editorRef.current) return;
+
+    if (pendingEditorContent.current !== null) {
+        editorRef.current.innerHTML = pendingEditorContent.current;
+        setIsEmpty(!pendingEditorContent.current);
+        pendingEditorContent.current = null;
+        isInitialized.current = true;
+        return;
+    }
+
+    if (!isInitialized.current) {
         let initialText = '';
         if (editMemory?.content && !editMemory.content.startsWith('<ul class="checklist">')) {
-            // Edit mode with regular content (may contain HTML)
             initialText = editMemory.content;
         } else if (initialContent?.text) {
             initialText = initialContent.text.replace(/\n/g, '<br>');
@@ -243,14 +256,9 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
   // Toggle Checklist Mode
   const toggleChecklistMode = () => {
       if (isChecklistMode) {
-          const text = checklistItems.map(item => item.text).join('<br>');
+          const text = checklistItems.map(item => escapeHtml(item.text)).join('<br>');
+          pendingEditorContent.current = text;
           setIsChecklistMode(false);
-          setTimeout(() => {
-              if (editorRef.current) {
-                  editorRef.current.innerHTML = text;
-                  setIsEmpty(!text);
-              }
-          }, 0);
       } else {
           const text = editorRef.current?.innerText || '';
           const lines = text.split('\n').filter(l => l.trim().length > 0);
@@ -294,7 +302,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
     let currentContent = '';
     if (isChecklistMode) {
       const listItems = checklistItems.map(item =>
-        `<li data-checked="${item.checked}">${item.text}</li>`
+        `<li data-checked="${item.checked}">${escapeHtml(item.text)}</li>`
       ).join('');
       currentContent = checklistItems.length > 0 ? `<ul class="checklist">${listItems}</ul>` : '';
     } else {
@@ -320,7 +328,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
 
     if (isChecklistMode) {
         const listItems = checklistItems.map(item =>
-            `<li data-checked="${item.checked}">${item.text}</li>`
+            `<li data-checked="${item.checked}">${escapeHtml(item.text)}</li>`
         ).join('');
         finalContent = `<ul class="checklist">${listItems}</ul>`;
     } else {
