@@ -28,10 +28,6 @@ export interface EnrichmentData {
   };
   entityContext?: EntityContext;
   suggestedTags: string[];
-  audit?: {
-    prompt: string;
-    rawResponse: string;
-  };
 }
 
 export interface Attachment {

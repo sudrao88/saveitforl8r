@@ -9,7 +9,7 @@ import FilterBar from './components/FilterBar';
 import SettingsModal from './components/SettingsModal';
 import EmptyState from './components/EmptyState';
 import NewMemoryPage from './components/NewMemoryPage';
-import ApiKeyModal from './components/ApiKeyModal';
+
 import ErrorBoundary from './components/ErrorBoundary';
 import { Logo } from './components/icons';
 
@@ -33,8 +33,7 @@ import { handleDeepLink } from './services/googleAuth';
 const AppContent: React.FC = () => {
   const [view, setView] = useState<ViewMode>(ViewMode.FEED);
   const [isCaptureOpen, setIsCaptureOpen] = useState(false);
-  const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
-  const [expandedMemoryId, setExpandedMemoryId] = useState<string | null>(null);
+  const [expandedMemory, setExpandedMemory] = useState<Memory | null>(null);
   const [viewingAttachment, setViewingAttachment] = useState<Attachment | null>(null);
   const [reconcileReport, setReconcileReport] = useState<ReconcileReport | null>(null);
   const [editingMemory, setEditingMemory] = useState<Memory | null>(null);
@@ -67,11 +66,6 @@ const AppContent: React.FC = () => {
     isLoading
   } = useMemories();
 
-  const expandedMemory = useMemo(() =>
-    expandedMemoryId ? memories.find(m => m.id === expandedMemoryId) ?? null : null,
-    [expandedMemoryId, memories]
-  );
-
   const handleFullRefresh = useCallback(async () => {
       await refreshMemories();
       const report = await reconcileEmbeddings();
@@ -86,13 +80,9 @@ const AppContent: React.FC = () => {
     refreshRef.current = handleFullRefresh;
   }, [sync, handleFullRefresh]);
 
-  // Move useSettings hook to be called before useEffect dependencies
   const {
-    apiKeySet,
     isSettingsOpen,
     setIsSettingsOpen,
-    saveKey,
-    clearKey
   } = useSettings();
 
   const handleCaptureClose = useCallback(() => {
@@ -144,6 +134,13 @@ const AppContent: React.FC = () => {
         }).catch(err => {
             console.error('[App] Initial sync failed:', err);
         });
+
+        // Auto-retry enrichment for memories that failed while unauthenticated
+        const pendingIds = memories.filter(m => m.isPending || m.processingError).map(m => m.id);
+        if (pendingIds.length > 0) {
+            console.log(`[App] Auth linked — auto-retrying ${pendingIds.length} failed memories`);
+            pendingIds.forEach(id => handleRetry(id));
+        }
     }
   }, [authStatus]);
 
@@ -182,10 +179,8 @@ const AppContent: React.FC = () => {
     const handleBackButton = ({ canGoBack }: { canGoBack: boolean }) => {
       if (viewingAttachment) {
         setViewingAttachment(null);
-      } else if (expandedMemoryId) {
-        setExpandedMemoryId(null);
-      } else if (isApiKeyModalOpen) {
-        setIsApiKeyModalOpen(false);
+      } else if (expandedMemory) {
+        setExpandedMemory(null);
       } else if (isSettingsOpen) {
         setIsSettingsOpen(false);
       } else if (editingMemory) {
@@ -208,7 +203,7 @@ const AppContent: React.FC = () => {
       // Since addListener is async in some versions, but usually returns PluginListenerHandle
       listener.then(handle => handle.remove()).catch(e => console.error(e));
     };
-  }, [viewingAttachment, expandedMemoryId, isApiKeyModalOpen, isSettingsOpen, editingMemory, isCaptureOpen, view, handleCaptureClose, handleEditClose]);
+  }, [viewingAttachment, expandedMemory, isSettingsOpen, editingMemory, isCaptureOpen, view, handleCaptureClose, handleEditClose]);
 
   useEffect(() => {
     if (shareData) {
@@ -226,24 +221,6 @@ const AppContent: React.FC = () => {
     clearFilters
   } = useMemoryFilters(memories);
 
-  const handleSaveApiKey = useCallback(async (key: string): Promise<void> => {
-    saveKey(key);
-    logEvent(ANALYTICS_EVENTS.SETTINGS.CATEGORY, ANALYTICS_EVENTS.SETTINGS.ACTION_API_KEY_SET, 'Onboarding');
-    setIsApiKeyModalOpen(false);
-    
-    const pendingIds = memories.filter(m => m.isPending || m.processingError).map(m => m.id);
-    
-    const retryPromises = pendingIds.map(async (id) => {
-        try {
-            await handleRetry(id);
-        } catch (error) {
-            console.error(`Failed to retry memory ${id}:`, error);
-        }
-    });
-
-    await Promise.allSettled(retryPromises);
-  }, [saveKey, memories, handleRetry]);
-
   const handleCreateMemory = useCallback(async (text: string, attachments: any[], tags: string[], location?: { latitude: number; longitude: number }) => {
     await createMemory(text, attachments, tags, location);
     setIsCaptureOpen(false);
@@ -255,16 +232,16 @@ const AppContent: React.FC = () => {
     await updateMemory(id, text, attachments, tags, location);
     setEditingMemory(null);
     // Close expanded view if we were editing from there
-    if (expandedMemoryId === id) {
-      setExpandedMemoryId(null);
+    if (expandedMemory?.id === id) {
+      setExpandedMemory(null);
     }
     logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_CREATED, 'updated');
-  }, [updateMemory, expandedMemoryId]);
+  }, [updateMemory, expandedMemory]);
 
   const handleEditMemory = useCallback((memory: Memory) => {
     setEditingMemory(memory);
     // Close expanded view when opening edit
-    setExpandedMemoryId(null);
+    setExpandedMemory(null);
     logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_CREATED, 'edit_started');
   }, []);
 
@@ -309,10 +286,10 @@ const AppContent: React.FC = () => {
 
   const handleDeleteMemory = useCallback((id: string) => {
     handleDelete(id);
-    deleteNoteFromIndex(id);
+    deleteNoteFromIndex(id); 
     logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_DELETED);
-    if (expandedMemoryId === id) setExpandedMemoryId(null);
-  }, [handleDelete, expandedMemoryId, deleteNoteFromIndex]);
+    if (expandedMemory?.id === id) setExpandedMemory(null);
+  }, [handleDelete, expandedMemory, deleteNoteFromIndex]);
 
   const handleRetryMemory = useCallback((id: string) => {
     handleRetry(id);
@@ -333,11 +310,6 @@ const AppContent: React.FC = () => {
     logEvent(ANALYTICS_EVENTS.SETTINGS.CATEGORY, ANALYTICS_EVENTS.SETTINGS.ACTION_CLOSED);
   }, [setIsSettingsOpen]);
 
-  const handleClearKey = useCallback(() => {
-    clearKey();
-    logEvent(ANALYTICS_EVENTS.SETTINGS.CATEGORY, ANALYTICS_EVENTS.SETTINGS.ACTION_API_KEY_CLEARED);
-  }, [clearKey]);
-
   const handleImportSuccess = useCallback(() => {
     handleFullRefresh();
     logEvent(ANALYTICS_EVENTS.DATA.CATEGORY, ANALYTICS_EVENTS.DATA.ACTION_IMPORT_SUCCESS);
@@ -345,11 +317,6 @@ const AppContent: React.FC = () => {
         syncRef.current().then(() => handleFullRefresh());
     } 
   }, [authStatus, handleFullRefresh]);
-
-  const handleAddApiKey = useCallback(() => {
-    setIsSettingsOpen(false); 
-    setIsApiKeyModalOpen(true);
-  }, [setIsSettingsOpen]);
 
   useHotkeys({
     'Mod+k': () => setIsCaptureOpen(true),
@@ -459,12 +426,12 @@ const AppContent: React.FC = () => {
                 onDelete={handleDeleteMemory}
                 onRetry={handleRetryMemory}
                 onUpdate={updateMemoryContent}
-                onExpand={(m) => setExpandedMemoryId(m.id)}
+                onExpand={setExpandedMemory}
                 onViewAttachment={setViewingAttachment}
                 onTogglePin={handleTogglePin}
                 onEdit={handleEditMemory}
-                hasApiKey={apiKeySet}
-                onAddApiKey={handleAddApiKey}
+                isAuthenticated={authStatus === 'linked'}
+                onSignIn={login}
               />
             ))}
           </div>
@@ -485,7 +452,7 @@ const AppContent: React.FC = () => {
         <div className="fixed inset-0 z-[100] bg-gray-950/90 backdrop-blur-md flex flex-col animate-in fade-in duration-300">
           <div className="sticky top-0 z-10 px-4 py-3 border-b border-gray-800 flex items-center justify-between bg-gray-950/50 backdrop-blur-xl pt-[env(safe-area-inset-top)]">
              <div className="flex items-center gap-3">
-                <button onClick={() => setExpandedMemoryId(null)} className="p-3 -ml-3 rounded-full hover:bg-gray-800 text-gray-400 hover:text-white transition-colors active:scale-95">
+                <button onClick={() => setExpandedMemory(null)} className="p-3 -ml-3 rounded-full hover:bg-gray-800 text-gray-400 hover:text-white transition-colors active:scale-95">
                     <X size={24} />
                 </button>
                 <h2 className="text-lg font-bold text-gray-100 truncate max-w-[200px] sm:max-w-md">Memory Detail</h2>
@@ -503,8 +470,8 @@ const AppContent: React.FC = () => {
                     onTogglePin={handleTogglePin}
                     onEdit={handleEditMemory}
                     isDialog={true}
-                    hasApiKey={apiKeySet}
-                    onAddApiKey={handleAddApiKey}
+                    isAuthenticated={authStatus === 'linked'}
+                    onSignIn={login}
                 />
              </div>
           </div>
@@ -565,14 +532,11 @@ const AppContent: React.FC = () => {
       )}
 
       {isSettingsOpen && (
-        <SettingsModal 
+        <SettingsModal
             onClose={handleSettingsClose}
-            clearKey={handleClearKey}
             availableTypes={availableTypes}
             onImportSuccess={handleImportSuccess}
             appVersion={versionToDisplay}
-            hasApiKey={apiKeySet}
-            onAddApiKey={handleAddApiKey}
             syncError={syncError}
             onSyncComplete={handleFullRefresh} 
             modelStatus={modelStatus}
@@ -584,13 +548,6 @@ const AppContent: React.FC = () => {
             lastError={lastError}
             closeWorkerDB={closeWorkerDB}
             reconcileReport={reconcileReport}
-        />
-      )}
-
-      {isApiKeyModalOpen && (
-        <ApiKeyModal
-            onClose={() => setIsApiKeyModalOpen(false)}
-            onSave={handleSaveApiKey}
         />
       )}
 

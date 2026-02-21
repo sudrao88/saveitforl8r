@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { queryBrain } from '../services/geminiService';
 import { Memory } from '../types';
 import { v4 as uuidv4 } from 'uuid';
-import { storage } from '../services/platform';
 
 export interface SearchResultItem {
   id: string;
@@ -132,16 +131,14 @@ export const useAdaptiveSearch = () => {
 
     setIsSearching(true);
 
-    const apiKey = localStorage.getItem('gemini_api_key');
-    const hasKey = !!apiKey;
-
     try {
-      if (isOnline && hasKey) {
+      if (isOnline) {
+        // Online: use server proxy for AI-powered search
         const result = await queryBrain(query, memories);
         setIsSearching(false);
         return { mode: 'online', result };
       } else {
-        // Check if model is available for offline search
+        // Offline: fall back to local embedding model
         if (modelStatus === 'error') {
              setIsSearching(false);
              return {
@@ -178,7 +175,7 @@ export const useAdaptiveSearch = () => {
         setIsSearching(false);
 
         return {
-            mode: (isOnline && !hasKey) ? 'offline_no_key' : 'offline',
+            mode: 'offline',
             result: results
         };
       }

@@ -1,61 +1,95 @@
 #!/bin/bash
 set -e
 
-# Check if gcloud is authenticated
-if ! gcloud auth list --filter=status:ACTIVE --format="value(account)" > /dev/null 2>&1; then
-  echo "Error: No active account found in gcloud."
-  echo "Please run 'gcloud auth login' and then try this script again."
-  exit 1
-fi
+PROJECT_ID="gen-lang-client-0882625776"
+REGIONS=("us-west1" "asia-south1")
+REPO="saveitforl8r-repo"
 
-# Check for .env file
-if [ ! -f .env ]; then
-    echo "Error: .env file not found. Please create one with your secrets."
-    exit 1
-fi
+echo "--- 1. Initializing Project & APIs ---"
+gcloud config set project $PROJECT_ID
+gcloud services enable \
+    run.googleapis.com \
+    cloudbuild.googleapis.com \
+    artifactregistry.googleapis.com \
+    secretmanager.googleapis.com \
+    iam.googleapis.com
 
-SERVICE_NAME="saveitforl8r"
-PROJECT_ID=$(gcloud config get-value project)
-REPO_NAME="saveitforl8r-repo"
+echo "Waiting for APIs..."
+sleep 15
 
-deploy_to_region() {
-  local REGION=$1
-  local ARTIFACT_REGION=$REGION # Assuming artifact region is same as deploy region for simplicity
-  local IMAGE_NAME="$ARTIFACT_REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$SERVICE_NAME"
+PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format="value(projectNumber)")
+COMPUTE_SVC_ACCT="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
 
-  echo "--- Building Container for $REGION ---"
-  gcloud builds submit --config cloudbuild.yaml --substitutions=\
-_VITE_GOOGLE_CLIENT_ID=$(grep VITE_GOOGLE_CLIENT_ID .env | cut -d '=' -f2),\
-_VITE_GOOGLE_CLIENT_SECRET=$(grep VITE_GOOGLE_CLIENT_SECRET .env | cut -d '=' -f2),\
-_ARTIFACT_REGION=$ARTIFACT_REGION
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+    --member="serviceAccount:${COMPUTE_SVC_ACCT}" \
+    --role="roles/secretmanager.secretAccessor" \
+    --condition=None
 
-  echo "--- Deploying to Cloud Run in $REGION ---"
-  gcloud run deploy $SERVICE_NAME \
-    --image "$IMAGE_NAME" \
-    --region "$REGION" \
-    --allow-unauthenticated
+echo "--- 2. Handling Secrets ---"
+function ensure_secret() {
+    if ! gcloud secrets describe $1 &>/dev/null; then
+        read -p "Enter value for $1: " val
+        echo -n "$val" | gcloud secrets create $1 --data-file=-
+    fi
 }
+ensure_secret "GEMINI_API_KEY"
+ensure_secret "VITE_GOOGLE_CLIENT_ID"
+ensure_secret "VITE_GOOGLE_CLIENT_SECRET"
 
-# --- Main Logic ---
-# If a region is provided as an argument, deploy only to that region.
-if [ -n "$1" ]; then
-  echo "Deploying to specified region: $1"
-  deploy_to_region "$1"
-else
-  # If no argument, deploy to all existing regions, or prompt for new one.
-  echo "No region specified. Checking for existing deployments..."
-  EXISTING_REGIONS=$(gcloud run services list --filter="SERVICE:$SERVICE_NAME" --format="value(REGION)")
+GOOGLE_CLIENT_ID=$(gcloud secrets versions access latest --secret=VITE_GOOGLE_CLIENT_ID)
+GOOGLE_CLIENT_SECRET=$(gcloud secrets versions access latest --secret=VITE_GOOGLE_CLIENT_SECRET)
 
-  if [ -z "$EXISTING_REGIONS" ]; then
-    echo "No existing service found. Please specify a region to deploy to."
-    echo "Example: ./deploy-cloud-run.sh us-central1"
-    exit 1
-  fi
-  
-  for REGION in $EXISTING_REGIONS; do
-    echo "Found existing deployment in $REGION. Redeploying..."
-    deploy_to_region "$REGION"
-  done
-fi
+for REGION in "${REGIONS[@]}"; do
+    echo "=========================================="
+    echo "DEPLOYING TO REGION: $REGION"
+    echo "=========================================="
+    
+    if ! gcloud artifacts repositories describe $REPO --location=$REGION &>/dev/null; then
+        gcloud artifacts repositories create $REPO --repository-format=docker --location=$REGION
+    fi
 
-echo "Deployment script finished."
+    SERVER_IMG="${REGION}-docker.pkg.dev/$PROJECT_ID/$REPO/server:latest"
+    CLIENT_IMG="${REGION}-docker.pkg.dev/$PROJECT_ID/$REPO/client:latest"
+
+    echo "--- Building & Deploying Server ($REGION) ---"
+    gcloud builds submit server/ --tag $SERVER_IMG
+
+    gcloud run deploy saveitforl8r-server \
+        --image $SERVER_IMG \
+        --region $REGION \
+        --platform managed \
+        --allow-unauthenticated \
+        --set-secrets="GEMINI_API_KEY=GEMINI_API_KEY:latest,VITE_GOOGLE_CLIENT_ID=VITE_GOOGLE_CLIENT_ID:latest" \
+        --port 8081
+
+    SERVER_URL=$(gcloud run services describe saveitforl8r-server --region $REGION --format="value(status.url)")
+    echo "Server URL ($REGION): $SERVER_URL"
+
+    echo "--- Building & Deploying Client ($REGION) ---"
+    # Create a temporary cloudbuild.yaml to handle build-args correctly
+    cat > temp_cloudbuild.yaml <<EOF
+steps:
+- name: 'gcr.io/cloud-builders/docker'
+  args: [
+    'build',
+    '-t', '\$TAG_NAME',
+    '--build-arg', 'VITE_GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID',
+    '--build-arg', 'VITE_GOOGLE_CLIENT_SECRET=$GOOGLE_CLIENT_SECRET',
+    '--build-arg', 'VITE_PROXY_URL=$SERVER_URL',
+    '.'
+  ]
+images:
+- '\$TAG_NAME'
+EOF
+
+    gcloud builds submit . --config temp_cloudbuild.yaml --substitutions TAG_NAME=$CLIENT_IMG
+    rm temp_cloudbuild.yaml
+
+    gcloud run deploy saveitforl8r-client \
+        --image $CLIENT_IMG \
+        --region $REGION \
+        --platform managed \
+        --allow-unauthenticated
+done
+
+echo "DEPLOIMENTS FINISHED SUCCESSFULLY!"

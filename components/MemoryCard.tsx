@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Trash2, MapPin, Loader2, Clock, ExternalLink, X, Check, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, WifiOff, FileText, Paperclip, ChevronDown, ChevronUp, FileCode, MoreVertical, Search, AlertTriangle, Key, Square, CheckSquare, Maximize2, Eye, Pin, Pencil } from 'lucide-react';
+import { Trash2, Loader2, Clock, ExternalLink, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, WifiOff, FileText, Paperclip, MoreVertical, AlertTriangle, LogIn, Square, CheckSquare, Maximize2, Eye, Pin, Pencil } from 'lucide-react';
 import { Memory, Attachment } from '../types.ts';
 
 interface MemoryCardProps {
@@ -12,8 +12,8 @@ interface MemoryCardProps {
   onTogglePin?: (id: string, isPinned: boolean) => void;
   onEdit?: (memory: Memory) => void;
   isDialog?: boolean;
-  hasApiKey?: boolean;
-  onAddApiKey?: () => void;
+  isAuthenticated?: boolean;
+  onSignIn?: () => void;
 }
 
 
@@ -36,12 +36,11 @@ const linkifyHtml = (html: string): string => {
     }).join('');
 };
 
-const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUpdate, onExpand, onViewAttachment, onTogglePin, onEdit, isDialog, hasApiKey = true, onAddApiKey }) => {
+const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUpdate, onExpand, onViewAttachment, onTogglePin, onEdit, isDialog, isAuthenticated = true, onSignIn }) => {
   const [isConfirming, setIsConfirming] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
-  const [dismissedError, setDismissedError] = useState(false);
   
   const [isTruncated, setIsTruncated] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -68,7 +67,8 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
     month: 'short', day: 'numeric', year: 'numeric'
   });
 
-  const locationContext = memory.enrichment?.locationContext;
+  const enrichment = memory.enrichment;
+  const locationContext = enrichment?.locationContext;
   let targetUri = locationContext?.mapsUri;
   
   if (!targetUri && locationContext?.name) {
@@ -82,11 +82,11 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
     }
   }
 
-  const entity = memory.enrichment?.entityContext;
+  const entity = enrichment?.entityContext;
 
   if (!targetUri) {
-      const query = entity?.title || memory.enrichment?.summary;
-      if (query) {
+      const query = entity?.title || enrichment?.summary;
+      if (query && typeof query === 'string' && !query.includes('{')) {
            targetUri = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
       }
   }
@@ -129,11 +129,22 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
   
   const documents = memory.attachments?.filter(a => a.type === 'file') || [];
   
-  const aiText = entity?.description || memory.enrichment?.summary;
-  const shouldTruncateAI = aiText && aiText.length > 120;
+  // Robust AI text extraction
+  let aiText = entity?.description || enrichment?.summary;
+  if (typeof aiText === 'string' && aiText.startsWith('{')) {
+      // Sometimes AI returns stringified JSON as summary
+      try {
+          const parsed = JSON.parse(aiText);
+          aiText = parsed.description || parsed.summary || aiText;
+      } catch {
+          // Keep as is if not valid JSON
+      }
+  }
+  
+  const shouldTruncateAI = typeof aiText === 'string' && aiText.length > 120;
 
-  const showErrorOverlay = memory.processingError && onRetry && !dismissedError;
-  const showAddKeyOverlay = !hasApiKey && (memory.isPending || !!memory.processingError) && !dismissedError;
+  const showSignInOverlay = !isAuthenticated && (memory.isPending || !!memory.processingError);
+  const showErrorOverlay = memory.processingError && onRetry && !showSignInOverlay;
 
   const isChecklist = memory.content.startsWith('<ul class="checklist">');
   
@@ -206,24 +217,25 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
         ${isDialog ? 'bg-gray-900 border border-gray-800' : 'bg-gray-800/40 border border-gray-700/30 hover:bg-gray-800/60 hover:border-gray-600/50 hover:shadow-lg'}
         ${memory.isPending ? 'opacity-70 border-blue-900/30' : ''}
         ${memory.processingError ? 'border-amber-900/30 bg-amber-900/5' : ''}
-        ${showErrorOverlay || showAddKeyOverlay ? 'min-h-[350px]' : ''}
+        ${showErrorOverlay || showSignInOverlay ? 'min-h-[350px]' : ''}
         `}
       >
-        {/* API Key Overlay */}
-        {showAddKeyOverlay && (
+        {/* Sign In Overlay — shown when enrichment failed due to missing auth */}
+        {showSignInOverlay && (
             <div className="absolute inset-0 z-20 bg-gray-900/95 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-300">
                 <div className="w-12 h-12 bg-blue-900/50 border-4 border-blue-800 rounded-full mb-4 flex items-center justify-center">
-                    <Key size={24} className="text-blue-300" />
+                    <LogIn size={24} className="text-blue-300" />
                 </div>
-                <h4 className="text-gray-100 font-bold mb-1">AI Enrichment Requires an API Key</h4>
+                <h4 className="text-gray-100 font-bold mb-1">Sign in for AI Enrichment</h4>
                 <p className="text-xs text-gray-400 mb-4">
-                    Add your Gemini API key to enable automatic summaries, tagging, and contextual search for this memory.
+                    Sign in with your Google account to enable automatic summaries, tagging, and smart search for your memories.
                 </p>
                 <button
-                    onClick={(e) => { e.stopPropagation(); onAddApiKey?.(); }}
-                    className="w-full max-w-[200px] py-3 text-sm font-bold text-white bg-blue-600 rounded-xl hover:bg-blue-500 transition-colors shadow-lg shadow-blue-500/20 active:scale-95 touch-manipulation"
+                    onClick={(e) => { e.stopPropagation(); onSignIn?.(); }}
+                    className="w-full max-w-[220px] py-3 text-sm font-bold text-white bg-blue-600 rounded-xl hover:bg-blue-500 transition-colors shadow-lg shadow-blue-500/20 active:scale-95 touch-manipulation flex items-center justify-center gap-2"
                 >
-                    Add API Key
+                    <LogIn size={16} />
+                    Sign in with Google
                 </button>
             </div>
         )}
@@ -319,7 +331,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
 
                 {aiText && (
                     <div className="text-sm text-gray-400 font-light leading-relaxed">
-                        <span className={(!isExpanded && shouldTruncateAI) ? 'line-clamp-2' : ''}>{aiText}</span>
+                        <span className={(!isExpanded && shouldTruncateAI) ? 'line-clamp-2' : ''}>{String(aiText)}</span>
                         {shouldTruncateAI && (
                             <button 
                                 onClick={(e) => { e.stopPropagation(); setIsExpanded(!isExpanded); }}
@@ -381,11 +393,9 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                         </button>
                         {isMenuOpen && (
                             <>
-                            {/* Backdrop: z-[55] to be above main content (z-40) but below FAB (z-60) */}
                             <div
                                 className="fixed inset-0 z-[55] cursor-default touch-manipulation"
                                 onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); }}
-                                onTouchStart={(e) => { e.stopPropagation(); setIsMenuOpen(false); }}
                             />
                             <div className="absolute bottom-full right-0 mb-1 w-40 bg-gray-900 border border-gray-700 rounded-xl shadow-xl z-[56] overflow-hidden animate-in slide-in-from-bottom-2 fade-in duration-200">
                                 {onTogglePin && (

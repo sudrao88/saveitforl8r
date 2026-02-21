@@ -1,7 +1,7 @@
 
 import React, { useState, useRef } from 'react';
 
-import { X, Key, Download, Upload, Info, RefreshCw, Cloud, AlertTriangle, AlertCircle, ShieldCheck, LogOut, Settings, Cpu, CheckCircle2, Loader2, Database, ChevronDown, Trash2 } from 'lucide-react';
+import { X, Download, Upload, Info, RefreshCw, Cloud, AlertTriangle, AlertCircle, ShieldCheck, LogOut, Settings, Cpu, CheckCircle2, Loader2, Database, ChevronDown, Trash2 } from 'lucide-react';
 
 import { useExportImport } from '../hooks/useExportImport';
 import { useEncryptionSettings } from '../hooks/useEncryptionSettings';
@@ -13,12 +13,9 @@ import { factoryReset, forceReindexAll, ReconcileReport } from '../services/stor
 // Props interface remains the same as all functionality is preserved
 interface SettingsModalProps {
   onClose: () => void;
-  clearKey: () => void;
   availableTypes: string[];
   onImportSuccess?: () => void;
   appVersion: string | null;
-  hasApiKey: boolean;
-  onAddApiKey: () => void;
   syncError: string | null;
   onSyncComplete?: () => void;
   modelStatus: ModelStatus;
@@ -118,8 +115,8 @@ const FactoryResetModal: React.FC<{ isOpen: boolean; onClose: () => void; onConf
 };
 
 const SettingsModal: React.FC<SettingsModalProps> = (props) => {
-  const { 
-    onClose, clearKey, onImportSuccess, appVersion, hasApiKey, onAddApiKey,
+  const {
+    onClose, onImportSuccess, appVersion,
     syncError, onSyncComplete, modelStatus, downloadProgress, retryDownload,
     embeddingStats, retryFailedEmbeddings, totalMemories, lastError, closeWorkerDB,
     onUpdateReport
@@ -219,19 +216,6 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
 
 
           <SettingsCard title="AI & Index" icon={Cpu}>
-            <SettingsRow>
-              <SettingsInfo label="Gemini API Key" description="Powers AI search, summaries, and enrichment." />
-              <div className="flex items-center gap-2 shrink-0">
-                {hasApiKey ? (
-                  <>
-                    <span className="flex items-center gap-1.5 text-xs text-green-400 bg-green-900/30 px-2 py-1 rounded-md"><CheckCircle2 size={14} /> Set</span>
-                    <button onClick={clearKey} className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors active:scale-95">Clear</button>
-                  </>
-                ) : (
-                  <button onClick={onAddApiKey} className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg transition-colors active:scale-95">Add Key</button>
-                )}
-              </div>
-            </SettingsRow>
             <SettingsRow>
                <SettingsInfo label="Local AI Index" description="On-device model for offline search capabilities." />
                <div className="flex items-center gap-2">

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Send, BrainCircuit, ExternalLink, Bot, Sparkles, WifiOff, Key, Download, FileText } from 'lucide-react';
+import { X, Send, BrainCircuit, ExternalLink, Bot, Sparkles, WifiOff, Download, FileText } from 'lucide-react';
 import { Memory, Attachment } from '../types';
 import MemoryCard from './MemoryCard';
 
@@ -10,12 +10,16 @@ interface ChatInterfaceProps {
   onViewAttachment: (attachment: Attachment) => void;
 }
 
+interface Source {
+  id: string;
+  preview: string;
+}
+
 interface Message {
   role: 'user' | 'model';
   text: string;
-  sources?: string[]; // IDs of memories used
+  sources?: Source[]; // Structured sources
   isOffline?: boolean;
-  missingKey?: boolean;
 }
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, searchFunction, onViewAttachment }) => {
@@ -96,30 +100,28 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
       const response = await searchFunction(userMsg.text, memories);
       
       if (response.mode === 'online') {
-          const { answer, sourceIds } = response.result;
-          setMessages(prev => [...prev, { role: 'model', text: answer, sources: sourceIds }]);
-      } else if (response.mode === 'offline' || response.mode === 'offline_no_key') {
+          const { answer, sources } = response.result;
+          setMessages(prev => [...prev, { role: 'model', text: answer, sources: sources }]);
+      } else if (response.mode === 'offline') {
           const items = response.result;
-          let text = items.length > 0 
-              ? "I found these relevant notes in your offline database:" 
+          const text = items.length > 0
+              ? "I found these relevant notes in your offline database:"
               : "I couldn't find any relevant notes in your offline database.";
-          
-          if (response.mode === 'offline_no_key') {
-              text = items.length > 0
-                  ? "I found these notes using local search. For smarter AI answers, please add your Gemini API Key in Settings."
-                  : "I couldn't find any notes. Add your Gemini API Key in Settings for smarter search.";
-          }
-          
-          const sourceIds = Array.from(new Set(items.map((item: any) => 
+
+          const uniqueSourceIds = Array.from(new Set(items.map((item: any) =>
             item.metadata?.originalId || item.id
           ))) as string[];
+
+          const sources: Source[] = uniqueSourceIds.map(id => ({
+            id,
+            preview: memories.find(m => m.id === id)?.content?.substring(0, 100) || ""
+          }));
 
           setMessages(prev => [...prev, {
               role: 'model',
               text,
-              sources: sourceIds,
-              isOffline: true,
-              missingKey: response.mode === 'offline_no_key'
+              sources,
+              isOffline: true
           }]);
       } else if (response.mode === 'offline_model_error') {
           // Model failed to load - likely offline without cached model
@@ -193,18 +195,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
                 ? 'bg-blue-600 text-white shadow-md' 
                 : 'bg-gray-800 border border-gray-700 text-gray-100 shadow-sm'
             }`}>
-              <div className="flex items-center justify-between mb-1">
-                 {msg.isOffline && !msg.missingKey && (
-                     <span className="flex items-center gap-1 text-[10px] uppercase font-bold text-yellow-500/80 mb-1">
-                        <WifiOff size={10} /> Offline Mode
-                     </span>
-                 )}
-                 {msg.missingKey && (
-                     <span className="flex items-center gap-1 text-[10px] uppercase font-bold text-blue-400/80 mb-1">
-                        <Key size={10} /> Setup Required
-                     </span>
-                 )}
-              </div>
+              {msg.isOffline && (
+                <div className="flex items-center mb-1">
+                   <span className="flex items-center gap-1 text-[10px] uppercase font-bold text-yellow-500/80 mb-1">
+                      <WifiOff size={10} /> Offline Mode
+                   </span>
+                </div>
+              )}
               <div className="whitespace-pre-wrap leading-relaxed font-medium text-sm md:text-base break-words">
                   {msg.text}
               </div>
@@ -216,13 +213,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
                         {msg.isOffline ? 'Relevant Notes' : 'Sources'}
                     </p>
                     <div className="grid grid-cols-1 gap-2">
-                        {msg.sources.map(id => {
-                            const mem = memories.find(m => m.id === id);
+                        {msg.sources.map(source => {
+                            const mem = memories.find(m => m.id === source.id);
                             if (!mem) return null;
                             return (
                                 <button 
-                                    key={id}
-                                    onClick={() => setPreviewMemoryId(id)}
+                                    key={source.id}
+                                    onClick={() => setPreviewMemoryId(source.id)}
                                     className="flex items-center gap-2 p-1.5 bg-gray-900 rounded-lg border border-gray-700 hover:border-blue-500 transition-all text-left shadow-sm group active:scale-[0.98]"
                                 >
                                     {mem.image && (
@@ -230,7 +227,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
                                     )}
                                     <div className="flex-1 overflow-hidden min-w-0">
                                         <p className="text-[10px] font-bold text-gray-200 truncate">
-                                            {mem.enrichment?.summary || mem.content || "Memory Entry"}
+                                            {source.preview || mem.enrichment?.summary || mem.content || "Memory Entry"}
                                         </p>
                                         <p className="text-[9px] text-gray-500">{new Date(mem.timestamp).toLocaleDateString()}</p>
                                     </div>
