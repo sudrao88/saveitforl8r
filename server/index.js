@@ -34,7 +34,7 @@ app.use(
   cors({
     origin: (origin, callback) => {
       // Allow requests with no origin (mobile apps, curl, server-to-server)
-      if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+      if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
         console.error(`[CORS] Blocked request from origin: ${origin}`);
@@ -236,7 +236,7 @@ const validateQueryInput = (req, res, next) => {
 const sanitizeUserInput = (input) => {
   if (!input) return '';
   return input
-    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') // strip control chars (keep \n \t \r)
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, '') // strip C0+C1 control chars (keep \n \t \r)
     .replace(/\n{4,}/g, '\n\n\n'); // limit excessive newlines
 };
 
