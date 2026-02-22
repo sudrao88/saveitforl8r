@@ -38,7 +38,7 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: 'dist', // Ensure this matches capacitor webDir
       target: 'esnext',
-      sourcemap: true
+      sourcemap: false
     },
     worker: {
       format: 'es',

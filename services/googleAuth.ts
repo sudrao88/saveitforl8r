@@ -5,6 +5,11 @@ import { storage, isNative } from './platform';
 import { Browser } from '@capacitor/browser';
 
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+// SECURITY NOTE (Accepted Risk): The client secret is embedded in the JS bundle at build time.
+// For Google OAuth "Web application" client type, the secret is treated as non-confidential.
+// The PKCE flow protects against authorization code interception. The secret alone cannot be
+// used to impersonate users without a valid auth code + verifier. A future BFF refactor
+// could move token exchange to the server proxy to eliminate this exposure entirely.
 const CLIENT_SECRET = import.meta.env.VITE_GOOGLE_CLIENT_SECRET;
 // The hosted PWA URL is required for Native Auth redirection (Bouncer pattern)
 // because Google only accepts http/https redirect URIs for Web Clients.

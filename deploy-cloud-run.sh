@@ -63,6 +63,15 @@ for REGION in "${REGIONS[@]}"; do
         --port 8081
 
     SERVER_URL=$(gcloud run services describe saveitforl8r-server --region $REGION --format="value(status.url)")
+
+    # Get the client URL to set as ALLOWED_ORIGINS on the server
+    CLIENT_URL=$(gcloud run services describe saveitforl8r-client --region $REGION --format="value(status.url)" 2>/dev/null || echo "")
+    if [ -n "$CLIENT_URL" ]; then
+        echo "--- Setting ALLOWED_ORIGINS on server ($REGION) ---"
+        gcloud run services update saveitforl8r-server \
+            --region $REGION \
+            --update-env-vars="ALLOWED_ORIGINS=$CLIENT_URL"
+    fi
     echo "Server URL ($REGION): $SERVER_URL"
 
     echo "--- Building & Deploying Client ($REGION) ---"
