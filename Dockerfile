@@ -13,7 +13,7 @@ ENV VITE_GOOGLE_CLIENT_SECRET=$VITE_GOOGLE_CLIENT_SECRET
 ENV VITE_PROXY_URL=$VITE_PROXY_URL
 
 COPY package*.json ./
-RUN npm install
+RUN npm ci
 COPY . .
 # The build command will now use the environment variables
 RUN npm run build
