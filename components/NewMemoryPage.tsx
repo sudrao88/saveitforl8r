@@ -262,7 +262,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
       } else {
           const text = editorRef.current?.innerText || '';
           const lines = text.split('\n').filter(l => l.trim().length > 0);
-          
+
           if (lines.length === 0) {
               setChecklistItems([{ id: crypto.randomUUID(), text: '', checked: false }]);
           } else {
@@ -271,6 +271,11 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                   text: line,
                   checked: false
               })));
+          }
+          // Clear editor content before switching so the browser-managed
+          // contentEditable text doesn't persist in the reused DOM node.
+          if (editorRef.current) {
+              editorRef.current.innerHTML = '';
           }
           setIsChecklistMode(true);
       }
