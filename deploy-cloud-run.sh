@@ -4,6 +4,7 @@ set -e
 PROJECT_ID="gen-lang-client-0882625776"
 REGIONS=("us-west1" "asia-south1")
 REPO="saveitforl8r-repo"
+SERVER_URL="https://api.saveitforl8r.com"
 
 echo "--- 1. Initializing Project & APIs ---"
 gcloud config set project $PROJECT_ID
@@ -14,8 +15,8 @@ gcloud services enable \
     secretmanager.googleapis.com \
     iam.googleapis.com
 
-echo "Waiting for APIs..."
-sleep 15
+# echo "Waiting for APIs..."
+# sleep 15
 
 PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format="value(projectNumber)")
 COMPUTE_SVC_ACCT="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
@@ -62,20 +63,10 @@ for REGION in "${REGIONS[@]}"; do
         --set-secrets="GEMINI_API_KEY=GEMINI_API_KEY:latest,VITE_GOOGLE_CLIENT_ID=VITE_GOOGLE_CLIENT_ID:latest" \
         --port 8081
 
-    SERVER_URL=$(gcloud run services describe saveitforl8r-server --region $REGION --format="value(status.url)")
-
-    # Get the client URL to set as ALLOWED_ORIGINS on the server
-    CLIENT_URL=$(gcloud run services describe saveitforl8r-client --region $REGION --format="value(status.url)" 2>/dev/null || echo "")
-    if [ -n "$CLIENT_URL" ]; then
-        echo "--- Setting ALLOWED_ORIGINS on server ($REGION) ---"
-        gcloud run services update saveitforl8r-server \
-            --region $REGION \
-            --update-env-vars="ALLOWED_ORIGINS=$CLIENT_URL"
-    fi
-    echo "Server URL ($REGION): $SERVER_URL"
+    # Using global load balancer URL for server
+    echo "Server URL (global): $SERVER_URL"
 
     echo "--- Building & Deploying Client ($REGION) ---"
-    # Create a temporary cloudbuild.yaml to handle build-args correctly
     cat > temp_cloudbuild.yaml <<EOF
 steps:
 - name: 'gcr.io/cloud-builders/docker'
@@ -99,6 +90,32 @@ EOF
         --region $REGION \
         --platform managed \
         --allow-unauthenticated
+
+    # Get the client URL (now it definitely exists)
+    CLIENT_URL=$(gcloud run services describe saveitforl8r-client --region $REGION --format="value(status.url)")
+    
+    # Construct ALLOWED_ORIGINS
+    # Always include https://saveitforl8r.com and the load balancer URL
+    # Also include capacitor://localhost, http://localhost, and https://localhost for native apps
+    
+    ALLOWED_ORIGINS_VAL="https://saveitforl8r.com,https://api.saveitforl8r.com,capacitor://localhost,http://localhost,https://localhost"
+    if [ -n "$CLIENT_URL" ]; then
+        ALLOWED_ORIGINS_VAL="${ALLOWED_ORIGINS_VAL},${CLIENT_URL}"
+    fi
+
+    echo "--- Updating ALLOWED_ORIGINS on server ($REGION) ---"
+    echo "Value: $ALLOWED_ORIGINS_VAL"
+    
+    # Use env-vars-file to avoid comma parsing issues
+    cat > env_vars.yaml <<EOF
+ALLOWED_ORIGINS: "$ALLOWED_ORIGINS_VAL"
+EOF
+
+    gcloud run services update saveitforl8r-server \
+        --region $REGION \
+        --env-vars-file env_vars.yaml
+        
+    rm env_vars.yaml
 done
 
-echo "DEPLOIMENTS FINISHED SUCCESSFULLY!"
+echo "DEPLOYMENTS FINISHED SUCCESSFULLY!"
