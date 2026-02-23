@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Plus, RefreshCw, AlertTriangle, X, Download, Maximize, Minimize, FileText } from 'lucide-react'; 
+import { Plus, RefreshCw, X } from 'lucide-react';
+import GalleryViewer from './components/GalleryViewer';
 import { App as CapacitorApp, URLOpenListenerEvent } from '@capacitor/app';
 import { isNative } from './services/platform';
 import MemoryCard from './components/MemoryCard';
@@ -35,7 +36,7 @@ const AppContent: React.FC = () => {
   const [view, setView] = useState<ViewMode>(ViewMode.FEED);
   const [isCaptureOpen, setIsCaptureOpen] = useState(false);
   const [expandedMemory, setExpandedMemory] = useState<Memory | null>(null);
-  const [viewingAttachment, setViewingAttachment] = useState<Attachment | null>(null);
+  const [viewingGallery, setViewingGallery] = useState<{ attachments: Attachment[]; currentIndex: number } | null>(null);
   const [reconcileReport, setReconcileReport] = useState<ReconcileReport | null>(null);
   const [editingMemory, setEditingMemory] = useState<Memory | null>(null);
   
@@ -178,8 +179,8 @@ const AppContent: React.FC = () => {
     if (!isNative()) return;
 
     const handleBackButton = ({ canGoBack }: { canGoBack: boolean }) => {
-      if (viewingAttachment) {
-        setViewingAttachment(null);
+      if (viewingGallery) {
+        setViewingGallery(null);
       } else if (expandedMemory) {
         setExpandedMemory(null);
       } else if (isSettingsOpen) {
@@ -204,7 +205,7 @@ const AppContent: React.FC = () => {
       // Since addListener is async in some versions, but usually returns PluginListenerHandle
       listener.then(handle => handle.remove()).catch(e => console.error(e));
     };
-  }, [viewingAttachment, expandedMemory, isSettingsOpen, editingMemory, isCaptureOpen, view, handleCaptureClose, handleEditClose]);
+  }, [viewingGallery, expandedMemory, isSettingsOpen, editingMemory, isCaptureOpen, view, handleCaptureClose, handleEditClose]);
 
   useEffect(() => {
     if (shareData) {
@@ -301,6 +302,11 @@ const AppContent: React.FC = () => {
     togglePin(id, isPinned);
   }, [togglePin]);
 
+  const handleViewAttachment = useCallback((attachment: Attachment, allAttachments: Attachment[]) => {
+    const index = allAttachments.findIndex(a => a.id === attachment.id);
+    setViewingGallery({ attachments: allAttachments, currentIndex: Math.max(0, index) });
+  }, []);
+
   const handleOpenCapture = useCallback(() => {
     setIsCaptureOpen(true);
     logEvent(ANALYTICS_EVENTS.NAVIGATION.CATEGORY, ANALYTICS_EVENTS.NAVIGATION.ACTION_CAPTURE_OPENED, 'FAB');
@@ -390,7 +396,7 @@ const AppContent: React.FC = () => {
             memories={displayMemories}
             onClose={handleChatClose}
             searchFunction={search}
-            onViewAttachment={setViewingAttachment}
+            onViewAttachment={handleViewAttachment}
           />
         </ErrorBoundary>
      );
@@ -435,7 +441,7 @@ const AppContent: React.FC = () => {
                 onRetry={handleRetryMemory}
                 onUpdate={updateMemoryContent}
                 onExpand={setExpandedMemory}
-                onViewAttachment={setViewingAttachment}
+                onViewAttachment={handleViewAttachment}
                 onTogglePin={handleTogglePin}
                 onEdit={handleEditMemory}
                 isAuthenticated={authStatus === 'linked'}
@@ -474,7 +480,7 @@ const AppContent: React.FC = () => {
                     onDelete={handleDeleteMemory}
                     onRetry={handleRetryMemory}
                     onUpdate={updateMemoryContent}
-                    onViewAttachment={setViewingAttachment}
+                    onViewAttachment={handleViewAttachment}
                     onTogglePin={handleTogglePin}
                     onEdit={handleEditMemory}
                     isDialog={true}
@@ -486,57 +492,12 @@ const AppContent: React.FC = () => {
         </div>
       )}
 
-      {viewingAttachment && (
-        <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-md flex flex-col animate-in fade-in zoom-in-95 duration-200">
-           <div className="flex items-center justify-between px-4 py-3 bg-black/50 border-b border-white/10 pt-[env(safe-area-inset-top)]">
-              <div className="flex items-center gap-3">
-                 <button onClick={() => setViewingAttachment(null)} className="p-3 -ml-3 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition-colors active:scale-95">
-                    <X size={24} />
-                 </button>
-                 <span className="text-sm font-medium text-gray-200 truncate max-w-[200px] sm:max-w-md">{viewingAttachment.name}</span>
-              </div>
-              <a 
-                href={viewingAttachment.data} 
-                download={viewingAttachment.name}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all active:scale-95"
-              >
-                 <Download size={14} /> Download
-              </a>
-           </div>
-           
-           <div className="flex-1 flex items-center justify-center p-4 overflow-hidden">
-              {viewingAttachment.type === 'image' ? (
-                 <img 
-                    src={viewingAttachment.data} 
-                    alt={viewingAttachment.name} 
-                    className="max-w-full max-h-full object-contain shadow-2xl rounded-lg animate-in zoom-in-90 duration-300"
-                 />
-              ) : viewingAttachment.mimeType === 'application/pdf' ? (
-                 <iframe 
-                    src={viewingAttachment.data} 
-                    className="w-full h-full rounded-lg bg-white shadow-2xl border-none"
-                    title={viewingAttachment.name}
-                 />
-              ) : (
-                 <div className="bg-gray-900 border border-gray-800 p-8 rounded-2xl flex flex-col items-center gap-4 text-center max-w-sm">
-                    <div className="w-16 h-16 bg-gray-800 rounded-2xl flex items-center justify-center">
-                       <FileText size={32} className="text-blue-400" />
-                    </div>
-                    <div>
-                       <h3 className="text-gray-100 font-bold mb-1">{viewingAttachment.name}</h3>
-                       <p className="text-gray-400 text-xs">Preview not available for this file type.</p>
-                    </div>
-                    <a 
-                        href={viewingAttachment.data} 
-                        download={viewingAttachment.name}
-                        className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold transition-all shadow-lg active:scale-95"
-                    >
-                        Download to View
-                    </a>
-                 </div>
-              )}
-           </div>
-        </div>
+      {viewingGallery && (
+        <GalleryViewer
+          attachments={viewingGallery.attachments}
+          initialIndex={viewingGallery.currentIndex}
+          onClose={() => setViewingGallery(null)}
+        />
       )}
 
       {isSettingsOpen && (

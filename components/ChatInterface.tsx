@@ -7,7 +7,7 @@ interface ChatInterfaceProps {
   memories: Memory[];
   onClose: () => void;
   searchFunction: (query: string, memories: Memory[]) => Promise<{ mode: string; result: any; error?: any }>;
-  onViewAttachment: (attachment: Attachment) => void;
+  onViewAttachment: (attachment: Attachment, allAttachments: Attachment[]) => void;
 }
 
 interface Source {

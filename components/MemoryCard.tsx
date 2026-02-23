@@ -8,7 +8,7 @@ interface MemoryCardProps {
   onRetry?: (id: string) => void;
   onUpdate?: (id: string, content: string) => void;
   onExpand?: (memory: Memory) => void;
-  onViewAttachment?: (attachment: Attachment) => void;
+  onViewAttachment?: (attachment: Attachment, allAttachments: Attachment[]) => void;
   onTogglePin?: (id: string, isPinned: boolean) => void;
   onEdit?: (memory: Memory) => void;
   isDialog?: boolean;
@@ -244,7 +244,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
         {displayImages.length > 0 && (
             <div 
                 className={`relative overflow-hidden rounded-t-xl bg-gray-900/50 group/image cursor-zoom-in ${isDialog ? 'max-h-[50vh]' : 'aspect-video sm:aspect-[2/1]'}`}
-                onClick={(e) => { e.stopPropagation(); onViewAttachment?.(displayImages[0]); }}
+                onClick={(e) => { e.stopPropagation(); onViewAttachment?.(displayImages[0], [...displayImages, ...documents]); }}
             >
                 <img 
                     src={displayImages[0].data} 
@@ -350,7 +350,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                     {documents.map((doc, idx) => (
                         <div 
                             key={idx} 
-                            onClick={(e) => { e.stopPropagation(); onViewAttachment?.(doc); }}
+                            onClick={(e) => { e.stopPropagation(); onViewAttachment?.(doc, [...displayImages, ...documents]); }}
                             className="flex items-center gap-2 p-3 rounded-xl bg-gray-900/30 border border-gray-700/30 hover:bg-gray-700/50 transition-colors cursor-pointer group/doc active:scale-[0.98]"
                         >
                             <FileText size={16} className="text-gray-500 group-hover/doc:text-blue-400" />
