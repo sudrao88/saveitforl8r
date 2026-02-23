@@ -286,19 +286,21 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
 
       {/* Memory Preview Modal */}
       {previewMemory && (
-          <div 
+          <div
             className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
             onClick={() => setPreviewMemoryId(null)}
           >
-              <div className="relative w-full max-w-lg animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
-                  <MemoryCard 
-                    memory={previewMemory} 
-                    isDialog={true} 
-                    onViewAttachment={onViewAttachment} 
-                  />
-                  <button 
+              <div className="relative w-full max-w-lg max-h-[80vh] flex flex-col animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+                  <div className="overflow-y-auto flex-1 min-h-0">
+                      <MemoryCard
+                        memory={previewMemory}
+                        isDialog={true}
+                        onViewAttachment={onViewAttachment}
+                      />
+                  </div>
+                  <button
                     onClick={() => setPreviewMemoryId(null)}
-                    className="mt-4 w-full py-3 bg-gray-800 text-white rounded-xl font-bold shadow-xl border border-gray-700 text-sm active:scale-95"
+                    className="mt-4 w-full py-3 bg-gray-800 text-white rounded-xl font-bold shadow-xl border border-gray-700 text-sm active:scale-95 shrink-0"
                   >
                       Close Preview
                   </button>

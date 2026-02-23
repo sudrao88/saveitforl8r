@@ -27,6 +27,7 @@ import { SyncProvider } from './context/SyncContext';
 import { reconcileEmbeddings, ReconcileReport } from './services/storageService';
 import { ViewMode, Memory, Attachment } from './types';
 import { initGA, logPageView, logEvent } from './services/analytics';
+
 import { ANALYTICS_EVENTS } from './constants';
 import { handleDeepLink } from './services/googleAuth';
 
@@ -335,6 +336,13 @@ const AppContent: React.FC = () => {
 
   const activeMemoryCount = useMemo(() => memories.filter(m => !m.isDeleted).length, [memories]);
 
+  // Keep expanded memory in sync with the memories array so checklist
+  // toggles and other content updates are reflected immediately.
+  const liveExpandedMemory = useMemo(() => {
+    if (!expandedMemory) return null;
+    return memories.find(m => m.id === expandedMemory.id) || expandedMemory;
+  }, [expandedMemory, memories]);
+
   const isUpdateAvailable = isNative() ? nativeUpdateAvailable : updateAvailable;
   const versionToDisplay = isNative() ? nativeVersion : appVersion;
 
@@ -448,7 +456,7 @@ const AppContent: React.FC = () => {
         <span className="font-bold text-lg hidden sm:inline">New</span>
       </button>
 
-      {expandedMemory && (
+      {liveExpandedMemory && (
         <div className="fixed inset-0 z-[100] bg-gray-950/90 backdrop-blur-md flex flex-col animate-in fade-in duration-300">
           <div className="sticky top-0 z-10 px-4 py-3 border-b border-gray-800 flex items-center justify-between bg-gray-950/50 backdrop-blur-xl pt-[env(safe-area-inset-top)]">
              <div className="flex items-center gap-3">
@@ -462,7 +470,7 @@ const AppContent: React.FC = () => {
           <div className="flex-1 overflow-y-auto p-4 sm:p-8">
              <div className="max-w-2xl mx-auto pb-20">
                 <MemoryCard
-                    memory={expandedMemory}
+                    memory={liveExpandedMemory}
                     onDelete={handleDeleteMemory}
                     onRetry={handleRetryMemory}
                     onUpdate={updateMemoryContent}
