@@ -2,6 +2,28 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { X, Download, ChevronLeft, ChevronRight, FileText } from 'lucide-react';
 import { Attachment } from '../types';
 
+const MAX_DOT_INDICATORS = 12;
+
+const SAFE_IMAGE_MIMES = new Set([
+  'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml', 'image/bmp', 'image/avif',
+]);
+
+/** Returns a safe src URL for the attachment, or empty string if the data URI is suspicious. */
+function getSafeDataUri(attachment: Attachment): string {
+  const { data, mimeType } = attachment;
+  // Block javascript:, vbscript:, and other dangerous schemes
+  if (!/^data:/i.test(data)) return '';
+  if (attachment.type === 'image') {
+    // Validate the data URI declares an image MIME type
+    const match = data.match(/^data:([^;,]+)/i);
+    if (!match || !SAFE_IMAGE_MIMES.has(match[1].toLowerCase())) return '';
+  } else if (mimeType === 'application/pdf') {
+    const match = data.match(/^data:([^;,]+)/i);
+    if (!match || match[1].toLowerCase() !== 'application/pdf') return '';
+  }
+  return data;
+}
+
 interface GalleryViewerProps {
   attachments: Attachment[];
   initialIndex: number;
@@ -23,7 +45,7 @@ const GalleryViewer: React.FC<GalleryViewerProps> = ({ attachments, initialIndex
       setCurrentIndex(index);
       setSwipeOffset(0);
     }
-  }, [attachments.length]);
+  }, [attachments]);
 
   const goPrev = useCallback(() => goTo(currentIndex - 1), [currentIndex, goTo]);
   const goNext = useCallback(() => goTo(currentIndex + 1), [currentIndex, goTo]);
@@ -72,10 +94,13 @@ const GalleryViewer: React.FC<GalleryViewerProps> = ({ attachments, initialIndex
   };
 
   const renderContent = (attachment: Attachment) => {
+    const safeUri = getSafeDataUri(attachment);
+
     if (attachment.type === 'image') {
+      if (!safeUri) return <p className="text-red-400 text-sm">Unable to display this image.</p>;
       return (
         <img
-          src={attachment.data}
+          src={safeUri}
           alt={attachment.name}
           className="max-w-full max-h-full object-contain shadow-2xl rounded-lg select-none"
           draggable={false}
@@ -83,11 +108,13 @@ const GalleryViewer: React.FC<GalleryViewerProps> = ({ attachments, initialIndex
       );
     }
     if (attachment.mimeType === 'application/pdf') {
+      if (!safeUri) return <p className="text-red-400 text-sm">Unable to display this PDF.</p>;
       return (
         <iframe
-          src={attachment.data}
+          src={safeUri}
           className="w-full h-full rounded-lg bg-white shadow-2xl border-none"
           title={attachment.name}
+          sandbox="allow-same-origin"
         />
       );
     }
@@ -100,13 +127,15 @@ const GalleryViewer: React.FC<GalleryViewerProps> = ({ attachments, initialIndex
           <h3 className="text-gray-100 font-bold mb-1">{attachment.name}</h3>
           <p className="text-gray-400 text-xs">Preview not available for this file type.</p>
         </div>
-        <a
-          href={attachment.data}
-          download={attachment.name}
-          className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold transition-all shadow-lg active:scale-95 text-center"
-        >
-          Download to View
-        </a>
+        {safeUri && (
+          <a
+            href={safeUri}
+            download={attachment.name}
+            className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold transition-all shadow-lg active:scale-95 text-center"
+          >
+            Download to View
+          </a>
+        )}
       </div>
     );
   };
@@ -127,13 +156,15 @@ const GalleryViewer: React.FC<GalleryViewerProps> = ({ attachments, initialIndex
             <span className="text-xs text-gray-500 shrink-0">{currentIndex + 1} of {attachments.length}</span>
           )}
         </div>
-        <a
-          href={current.data}
-          download={current.name}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all active:scale-95 shrink-0"
-        >
-          <Download size={14} /> Download
-        </a>
+        {getSafeDataUri(current) && (
+          <a
+            href={getSafeDataUri(current)}
+            download={current.name}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all active:scale-95 shrink-0"
+          >
+            <Download size={14} /> Download
+          </a>
+        )}
       </div>
 
       {/* Content area with swipe */}
@@ -176,7 +207,7 @@ const GalleryViewer: React.FC<GalleryViewerProps> = ({ attachments, initialIndex
       </div>
 
       {/* Dot indicators */}
-      {attachments.length > 1 && attachments.length <= 12 && (
+      {attachments.length > 1 && attachments.length <= MAX_DOT_INDICATORS && (
         <div className="flex items-center justify-center gap-1.5 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
           {attachments.map((_, idx) => (
             <button
@@ -193,7 +224,7 @@ const GalleryViewer: React.FC<GalleryViewerProps> = ({ attachments, initialIndex
       )}
 
       {/* Counter for many items (no dots) */}
-      {attachments.length > 12 && (
+      {attachments.length > MAX_DOT_INDICATORS && (
         <div className="flex items-center justify-center py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
           <span className="text-xs text-gray-500">{currentIndex + 1} / {attachments.length}</span>
         </div>
