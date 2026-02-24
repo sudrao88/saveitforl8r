@@ -57,7 +57,7 @@ describe('googleAuth', () => {
     });
 
     it('should exchange code for tokens on valid callback', async () => {
-      sessionStorage.setItem('pkce_verifier', 'mock_verifier');
+      localStorage.setItem('pkce_verifier', 'mock_verifier');
 
       Object.defineProperty(window, 'location', {
         value: {
@@ -91,7 +91,7 @@ describe('googleAuth', () => {
     });
 
     it('should throw on token exchange failure', async () => {
-      sessionStorage.setItem('pkce_verifier', 'mock_verifier');
+      localStorage.setItem('pkce_verifier', 'mock_verifier');
 
       Object.defineProperty(window, 'location', {
         value: {

@@ -65,7 +65,7 @@ const wrapper = ({ children }: { children: React.ReactNode }) => (
 describe('SyncContext', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.useFakeTimers();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] });
     // Clear mock storage values
     Object.keys(mockStorageValues).forEach(key => delete mockStorageValues[key]);
   });
@@ -105,15 +105,10 @@ describe('SyncContext', () => {
 
       const { result } = renderHook(() => useSync(), { wrapper });
 
-      let syncPromise: Promise<void>;
       await act(async () => {
-        syncPromise = result.current.sync();
-        // Advance past debounce
-        vi.advanceTimersByTime(2500);
-      });
-
-      await act(async () => {
-        await syncPromise!;
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
       });
 
       // Local-only note should be batch-uploaded via uploadMultipleFiles
@@ -146,14 +141,10 @@ describe('SyncContext', () => {
 
       const { result } = renderHook(() => useSync(), { wrapper });
 
-      let syncPromise: Promise<void>;
       await act(async () => {
-        syncPromise = result.current.sync();
-        vi.advanceTimersByTime(2500);
-      });
-
-      await act(async () => {
-        await syncPromise!;
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
       });
 
       expect(driveService.downloadMultipleFiles).toHaveBeenCalledWith(['drive-file-1']);
@@ -178,14 +169,10 @@ describe('SyncContext', () => {
 
       const { result } = renderHook(() => useSync(), { wrapper });
 
-      let syncPromise: Promise<void>;
       await act(async () => {
-        syncPromise = result.current.sync();
-        vi.advanceTimersByTime(2500);
-      });
-
-      await act(async () => {
-        await syncPromise!;
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
       });
 
       expect(storageService.saveMemory).toHaveBeenCalledWith(remoteMem);
@@ -207,14 +194,10 @@ describe('SyncContext', () => {
 
       const { result } = renderHook(() => useSync(), { wrapper });
 
-      let syncPromise: Promise<void>;
       await act(async () => {
-        syncPromise = result.current.sync();
-        vi.advanceTimersByTime(2500);
-      });
-
-      await act(async () => {
-        await syncPromise!;
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
       });
 
       // Local is newer → should be batch-uploaded with the Drive file ID for PATCH
@@ -245,14 +228,10 @@ describe('SyncContext', () => {
 
       const { result } = renderHook(() => useSync(), { wrapper });
 
-      let syncPromise: Promise<void>;
       await act(async () => {
-        syncPromise = result.current.sync();
-        vi.advanceTimersByTime(2500);
-      });
-
-      await act(async () => {
-        await syncPromise!;
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
       });
 
       expect(storageService.deleteMemory).toHaveBeenCalledWith('mem-1');
@@ -272,14 +251,10 @@ describe('SyncContext', () => {
 
       const { result } = renderHook(() => useSync(), { wrapper });
 
-      let syncPromise: Promise<void>;
       await act(async () => {
-        syncPromise = result.current.sync();
-        vi.advanceTimersByTime(2500);
-      });
-
-      await act(async () => {
-        await syncPromise!;
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
       });
 
       // Should NOT download since snapshot matches → no network call for content
@@ -301,14 +276,10 @@ describe('SyncContext', () => {
 
       const { result } = renderHook(() => useSync(), { wrapper });
 
-      let syncPromise: Promise<void>;
       await act(async () => {
-        syncPromise = result.current.sync();
-        vi.advanceTimersByTime(2500);
-      });
-
-      await act(async () => {
-        await syncPromise!;
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
       });
 
       // Local copy should be deleted because another device removed it from Drive
@@ -324,14 +295,10 @@ describe('SyncContext', () => {
 
       const { result } = renderHook(() => useSync(), { wrapper });
 
-      let syncPromise: Promise<void>;
       await act(async () => {
-        syncPromise = result.current.sync();
-        vi.advanceTimersByTime(2500);
-      });
-
-      await act(async () => {
-        await syncPromise!;
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
       });
 
       // Should delete the remote file by Drive file ID
@@ -410,8 +377,8 @@ describe('SyncContext', () => {
         const syncPromise = result.current.sync().catch(() => {
           // Expected rejection — error state is set internally by SyncContext
         });
-        // Advance past debounce timer
-        vi.advanceTimersByTime(2500);
+        // Advance past debounce timer (async version flushes microtasks properly)
+        await vi.advanceTimersByTimeAsync(2500);
         await syncPromise;
       });
 
@@ -426,7 +393,7 @@ describe('SyncContext', () => {
 
       await act(async () => {
         await result.current.sync();
-        vi.advanceTimersByTime(2500);
+        await vi.advanceTimersByTimeAsync(2500);
       });
 
       // No Drive operations should have been called
