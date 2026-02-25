@@ -142,6 +142,15 @@ const queryLimiter = rateLimit({
   message: { error: 'Rate limit exceeded. Try again later.' },
 });
 
+const rhythmLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 5,
+  keyGenerator: (req) => req.userId || req.ip,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Rate limit exceeded. Try again later.' },
+});
+
 // --- Input validation middleware ---
 
 const ALLOWED_MIME_TYPES = [
@@ -231,6 +240,47 @@ const validateQueryInput = (req, res, next) => {
   next();
 };
 
+const validateRhythmInput = (req, res, next) => {
+  const { text, existingTags, existingEntityTypes } = req.body;
+
+  if (!text || typeof text !== 'string')
+    return res.status(400).json({ error: 'text is required and must be a string' });
+  if (text.length > 500)
+    return res.status(400).json({ error: 'text exceeds maximum length (500 chars)' });
+
+  if (existingTags !== undefined) {
+    if (!Array.isArray(existingTags))
+      return res.status(400).json({ error: 'existingTags must be an array' });
+  }
+
+  if (existingEntityTypes !== undefined) {
+    if (!Array.isArray(existingEntityTypes))
+      return res.status(400).json({ error: 'existingEntityTypes must be an array' });
+  }
+
+  next();
+};
+
+const validateSynthesizeInput = (req, res, next) => {
+  const { notes, momentType, momentTitle, temporalWindow } = req.body;
+
+  if (!notes || !Array.isArray(notes))
+    return res.status(400).json({ error: 'notes is required and must be an array' });
+  if (notes.length > 50)
+    return res.status(400).json({ error: 'Too many notes (max 50)' });
+
+  if (!momentType || typeof momentType !== 'string')
+    return res.status(400).json({ error: 'momentType is required and must be a string' });
+
+  if (!momentTitle || typeof momentTitle !== 'string')
+    return res.status(400).json({ error: 'momentTitle is required and must be a string' });
+
+  if (temporalWindow !== undefined && typeof temporalWindow !== 'string')
+    return res.status(400).json({ error: 'temporalWindow must be a string' });
+
+  next();
+};
+
 // --- Input sanitization ---
 
 const sanitizeUserInput = (input) => {
@@ -310,6 +360,42 @@ const enrichmentSchema = {
       items: { type: Type.STRING },
       description: '3-5 suggested short tags.',
     },
+    temporalContext: {
+      type: Type.OBJECT,
+      description: 'Temporal relevance extracted from the input. Populate if the note has any time-related context (trips, appointments, events, seasons, birthdays, deadlines). Look for temporal-hint HTML comments in the input.',
+      properties: {
+        relevantAt: {
+          type: Type.OBJECT,
+          description: 'When this note is temporally relevant.',
+          properties: {
+            start: {
+              type: Type.STRING,
+              description: 'ISO date or fuzzy date string (e.g. "2026-04", "summer 2026", "2026-02-26").',
+            },
+            end: {
+              type: Type.STRING,
+              description: 'End of range for trips/seasons (e.g. "2026-04-10").',
+            },
+            isRecurring: {
+              type: Type.BOOLEAN,
+              description: 'True for birthdays, anniversaries, annual events.',
+            },
+            recurrenceRule: {
+              type: Type.STRING,
+              description: 'Recurrence pattern: "yearly", "monthly", "weekly".',
+            },
+          },
+        },
+        urgency: {
+          type: Type.STRING,
+          description: 'How urgent: "low", "medium", or "high".',
+        },
+        inferenceConfidence: {
+          type: Type.NUMBER,
+          description: 'Confidence in the temporal inference, 0 to 1. Set to 0 if no temporal context found.',
+        },
+      },
+    },
   },
   required: ['summary', 'suggestedTags', 'locationIsRelevant'],
 };
@@ -343,6 +429,131 @@ const queryResponseSchema = {
     },
   },
   required: ['answer', 'sources'],
+};
+
+const rhythmResponseSchema = {
+  type: Type.OBJECT,
+  properties: {
+    matchers: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          field: {
+            type: Type.STRING,
+            description: "One of 'entityType', 'tag', or 'keyword'.",
+          },
+          value: { type: Type.STRING },
+        },
+        required: ['field', 'value'],
+      },
+      description: 'Matchers to identify which notes this rhythm applies to.',
+    },
+    cadence: {
+      type: Type.OBJECT,
+      properties: {
+        frequency: {
+          type: Type.STRING,
+          description:
+            "The repeat frequency (e.g. 'daily', 'weekly', 'monthly', 'contextual').",
+        },
+        daysOfWeek: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: "Days of the week (e.g. ['monday', 'wednesday']).",
+        },
+        timeOfDay: {
+          type: Type.STRING,
+          description: "Preferred time of day (e.g. 'morning', 'evening').",
+        },
+        surfaceOffsetHours: {
+          type: Type.NUMBER,
+          description: 'How many hours before the event to surface the note.',
+        },
+        months: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: "Specific months (e.g. ['december', 'january']).",
+        },
+        contextTrigger: {
+          type: Type.STRING,
+          description:
+            "A contextual trigger instead of a fixed schedule (e.g. 'when near a grocery store').",
+        },
+      },
+      required: ['frequency'],
+    },
+    inferredLabel: {
+      type: Type.STRING,
+      description:
+        'A short human-readable label for this rhythm (e.g. "Weekly meal prep reminder").',
+    },
+  },
+  required: ['matchers', 'cadence', 'inferredLabel'],
+};
+
+const synthesisResponseSchema = {
+  type: Type.OBJECT,
+  properties: {
+    format: {
+      type: Type.STRING,
+      description: 'The format/type of the synthesized output.',
+    },
+    title: { type: Type.STRING, description: 'Title of the synthesized moment.' },
+    subtitle: {
+      type: Type.STRING,
+      description: 'Optional subtitle for additional context.',
+    },
+    sections: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          heading: {
+            type: Type.STRING,
+            description: 'Section heading.',
+          },
+          items: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                label: { type: Type.STRING, description: 'Item label.' },
+                detail: {
+                  type: Type.STRING,
+                  description: 'Optional detail or description.',
+                },
+                link: {
+                  type: Type.STRING,
+                  description: 'Optional link/URL.',
+                },
+                sourceNoteId: {
+                  type: Type.STRING,
+                  description: 'ID of the source note this item came from.',
+                },
+                completable: {
+                  type: Type.BOOLEAN,
+                  description: 'Whether this item can be marked as complete.',
+                },
+                completed: {
+                  type: Type.BOOLEAN,
+                  description: 'Whether this item is completed.',
+                },
+              },
+              required: ['label', 'sourceNoteId'],
+            },
+          },
+        },
+        required: ['heading', 'items'],
+      },
+    },
+    generatedFrom: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+      description: 'IDs of the notes used to generate this synthesis.',
+    },
+  },
+  required: ['format', 'title', 'sections', 'generatedFrom'],
 };
 
 // --- Build enrichment prompts (system instruction separated from user content) ---
@@ -385,6 +596,13 @@ ENTITY SPECIFIC INSTRUCTIONS:
 1. MOVIE/TV: Identify Title, Director/Year, and Description.
 2. BOOK: Identify Title, Author, and Description.
 3. LOCATION/BUSINESS: Populate locationContext fully, especially mapsUri.
+
+TEMPORAL CONTEXT EXTRACTION:
+1. Extract temporal relevance from the input when present (trips, appointments, events, deadlines, seasons, birthdays).
+2. Look for "<!-- temporal-hint: ... -->" HTML comments — these contain user-provided timing hints.
+3. Set 'temporalContext.inferenceConfidence' to your confidence level (0-1). Use 0 if no temporal context found.
+4. Examples: "Trip to Tokyo in April" → start: "2026-04", type "trip". "Questions for Dr Patel on Thursday" → start: next Thursday ISO date.
+5. For recurring events (birthdays, anniversaries), set isRecurring: true and recurrenceRule.
 
 OUTPUT FORMAT:
 You must return a raw JSON object (no markdown) matching this schema:
@@ -622,6 +840,222 @@ app.post(
         error.message
       );
       res.status(500).json({ error: 'Query failed' });
+    }
+  }
+);
+
+// --- Parse-rhythm endpoint ---
+
+app.post(
+  '/api/parse-rhythm',
+  authenticateRequest,
+  validateRhythmInput,
+  rhythmLimiter,
+  async (req, res) => {
+    const startTime = Date.now();
+    const { text, existingTags, existingEntityTypes } = req.body;
+
+    const systemPrompt = `You are a rhythm parser for a personal notes app. Given a natural-language habit description and lists of existing tags and entity types, extract a structured schedule. The matchers should use actual tags and entity types from the user's data when possible. Return JSON matching the schema.`;
+
+    let userContent = `RHYTHM DESCRIPTION: ${sanitizeUserInput(text)}`;
+    if (existingTags && existingTags.length > 0) {
+      userContent += `\nEXISTING TAGS: ${sanitizeUserInput(existingTags.join(', '))}`;
+    }
+    if (existingEntityTypes && existingEntityTypes.length > 0) {
+      userContent += `\nEXISTING ENTITY TYPES: ${sanitizeUserInput(existingEntityTypes.join(', '))}`;
+    }
+
+    try {
+      console.log(
+        `[ParseRhythm] [${req.requestId}] user=${req.userId} text="${text?.substring(0, 50)}"`
+      );
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
+
+      try {
+        const response = await ai.models.generateContent({
+          model: MODEL_NAME,
+          contents: [{ role: 'user', parts: [{ text: userContent }] }],
+          config: {
+            systemInstruction: systemPrompt,
+            responseMimeType: 'application/json',
+            responseSchema: rhythmResponseSchema,
+            thinkingConfig: { thinkingBudget: 0 },
+          },
+          requestOptions: { signal: controller.signal },
+        });
+        clearTimeout(timeout);
+
+        const responseText = response.text || '{}';
+        const duration = Date.now() - startTime;
+        console.log(
+          `[ParseRhythm] [${req.requestId}] API responded in ${duration}ms. Response length: ${responseText.length}`
+        );
+
+        res.json(JSON.parse(responseText));
+      } catch (primaryError) {
+        clearTimeout(timeout);
+        throw primaryError;
+      }
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      console.error(
+        `[ParseRhythm] [${req.requestId}] Primary failed after ${duration}ms:`,
+        error.message
+      );
+
+      // Fallback: retry with a stable model
+      const fallbackStartTime = Date.now();
+      console.log(
+        `[ParseRhythm] [${req.requestId}] Attempting fallback...`
+      );
+
+      try {
+        const fallbackController = new AbortController();
+        const fallbackTimeout = setTimeout(
+          () => fallbackController.abort(),
+          GEMINI_TIMEOUT_MS
+        );
+
+        const response = await ai.models.generateContent({
+          model: FALLBACK_MODEL_NAME,
+          contents: [{ role: 'user', parts: [{ text: userContent }] }],
+          config: {
+            systemInstruction: systemPrompt,
+            responseMimeType: 'application/json',
+            responseSchema: rhythmResponseSchema,
+            thinkingConfig: { thinkingBudget: 0 },
+          },
+          requestOptions: { signal: fallbackController.signal },
+        });
+        clearTimeout(fallbackTimeout);
+
+        const fallbackText = response.text || '{}';
+        console.log(
+          `[ParseRhythm] [${req.requestId}] Fallback succeeded in ${Date.now() - fallbackStartTime}ms`
+        );
+        res.json(JSON.parse(fallbackText));
+      } catch (fallbackError) {
+        console.error(
+          `[ParseRhythm] [${req.requestId}] Fallback also failed:`,
+          fallbackError.message
+        );
+        res.status(500).json({ error: 'Rhythm parsing failed' });
+      }
+    }
+  }
+);
+
+// --- Synthesize endpoint ---
+
+app.post(
+  '/api/synthesize',
+  authenticateRequest,
+  validateSynthesizeInput,
+  queryLimiter,
+  async (req, res) => {
+    const startTime = Date.now();
+    const { notes, momentType, momentTitle, temporalWindow } = req.body;
+
+    const systemPrompt = `You are a synthesis engine for a personal second-brain app. Given a set of related notes, produce a coherent, actionable ${sanitizeUserInput(momentType)} titled '${sanitizeUserInput(momentTitle)}'. The output should be practically useful — something the user can act on immediately. Do not add information not present in the notes. Do not hallucinate details.`;
+
+    // Build user content from the notes array
+    const notesContext = notes
+      .map(
+        (n) =>
+          `[ID: ${sanitizeUserInput(String(n.id))}]
+[CONTENT]: ${sanitizeUserInput(n.content || '')}
+[TAGS]: ${sanitizeUserInput((n.tags || []).join(', '))}
+[SUMMARY]: ${sanitizeUserInput(n.enrichment?.summary || 'N/A')}
+[ENTITY]: ${sanitizeUserInput(n.enrichment?.entityContext?.title || 'N/A')} (${sanitizeUserInput(n.enrichment?.entityContext?.type || '')})
+[DESCRIPTION]: ${sanitizeUserInput(n.enrichment?.entityContext?.description || 'N/A')}`
+      )
+      .join('\n---\n');
+
+    let userContent = `NOTES:\n${notesContext}`;
+    if (temporalWindow) {
+      userContent += `\n\nTEMPORAL WINDOW: ${sanitizeUserInput(temporalWindow)}`;
+    }
+
+    try {
+      console.log(
+        `[Synthesize] [${req.requestId}] user=${req.userId} momentType="${momentType}" momentTitle="${momentTitle?.substring(0, 50)}" notes=${notes.length}`
+      );
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
+
+      try {
+        const response = await ai.models.generateContent({
+          model: MODEL_NAME,
+          contents: [{ role: 'user', parts: [{ text: userContent }] }],
+          config: {
+            systemInstruction: systemPrompt,
+            responseMimeType: 'application/json',
+            responseSchema: synthesisResponseSchema,
+            thinkingConfig: { thinkingBudget: 0 },
+          },
+          requestOptions: { signal: controller.signal },
+        });
+        clearTimeout(timeout);
+
+        const responseText = response.text || '{}';
+        const duration = Date.now() - startTime;
+        console.log(
+          `[Synthesize] [${req.requestId}] API responded in ${duration}ms. Response length: ${responseText.length}`
+        );
+
+        res.json(JSON.parse(responseText));
+      } catch (primaryError) {
+        clearTimeout(timeout);
+        throw primaryError;
+      }
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      console.error(
+        `[Synthesize] [${req.requestId}] Primary failed after ${duration}ms:`,
+        error.message
+      );
+
+      // Fallback: retry with a stable model
+      const fallbackStartTime = Date.now();
+      console.log(
+        `[Synthesize] [${req.requestId}] Attempting fallback...`
+      );
+
+      try {
+        const fallbackController = new AbortController();
+        const fallbackTimeout = setTimeout(
+          () => fallbackController.abort(),
+          GEMINI_TIMEOUT_MS
+        );
+
+        const response = await ai.models.generateContent({
+          model: FALLBACK_MODEL_NAME,
+          contents: [{ role: 'user', parts: [{ text: userContent }] }],
+          config: {
+            systemInstruction: systemPrompt,
+            responseMimeType: 'application/json',
+            responseSchema: synthesisResponseSchema,
+            thinkingConfig: { thinkingBudget: 0 },
+          },
+          requestOptions: { signal: fallbackController.signal },
+        });
+        clearTimeout(fallbackTimeout);
+
+        const fallbackText = response.text || '{}';
+        console.log(
+          `[Synthesize] [${req.requestId}] Fallback succeeded in ${Date.now() - fallbackStartTime}ms`
+        );
+        res.json(JSON.parse(fallbackText));
+      } catch (fallbackError) {
+        console.error(
+          `[Synthesize] [${req.requestId}] Fallback also failed:`,
+          fallbackError.message
+        );
+        res.status(500).json({ error: 'Synthesis failed' });
+      }
     }
   }
 );

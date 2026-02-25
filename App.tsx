@@ -7,6 +7,8 @@ import MemoryCard from './components/MemoryCard';
 import ChatInterface from './components/ChatInterface';
 import TopNavigation from './components/TopNavigation';
 import FilterBar from './components/FilterBar';
+import MomentsStrip from './components/MomentsStrip';
+import MomentSheet from './components/MomentSheet';
 import SettingsModal from './components/SettingsModal';
 import EmptyState from './components/EmptyState';
 import NewMemoryPage from './components/NewMemoryPage';
@@ -23,10 +25,11 @@ import { useSync } from './hooks/useSync';
 import { useAuth } from './hooks/useAuth';
 import { useAdaptiveSearch } from './hooks/useAdaptiveSearch';
 import { useHotkeys } from './hooks/useHotkeys';
+import { useMoments } from './hooks/useMoments';
 import useNativeOTA from './hooks/useNativeOTA';
 import { SyncProvider } from './context/SyncContext';
 import { reconcileEmbeddings, ReconcileReport } from './services/storageService';
-import { ViewMode, Memory, Attachment } from './types';
+import { ViewMode, Memory, Attachment, MomentCluster } from './types';
 import { initGA, logPageView, logEvent } from './services/analytics';
 
 import { ANALYTICS_EVENTS } from './constants';
@@ -39,7 +42,9 @@ const AppContent: React.FC = () => {
   const [viewingGallery, setViewingGallery] = useState<{ attachments: Attachment[]; currentIndex: number } | null>(null);
   const [reconcileReport, setReconcileReport] = useState<ReconcileReport | null>(null);
   const [editingMemory, setEditingMemory] = useState<Memory | null>(null);
-  
+  const [activeMoment, setActiveMoment] = useState<MomentCluster | null>(null);
+  const [showAllMoments, setShowAllMoments] = useState(false);
+
   const { updateAvailable, updateApp, appVersion } = useServiceWorker();
   const {
       enableRemoteMode,
@@ -67,6 +72,29 @@ const AppContent: React.FC = () => {
     togglePin,
     isLoading
   } = useMemories();
+
+  const {
+    surfacedMoments,
+    allClusters,
+    loadSynthesis,
+    markViewed,
+    dismissMoment,
+    setFrequencyOverride,
+    metaMap,
+    synthesesMap,
+  } = useMoments(memories);
+
+  const handleMomentTap = useCallback((cluster: MomentCluster) => {
+    setActiveMoment(cluster);
+  }, []);
+
+  const handleMomentClose = useCallback(() => {
+    setActiveMoment(null);
+  }, []);
+
+  const handleShowAllMoments = useCallback(() => {
+    setShowAllMoments(true);
+  }, []);
 
   const handleFullRefresh = useCallback(async () => {
       await refreshMemories();
@@ -181,6 +209,10 @@ const AppContent: React.FC = () => {
     const handleBackButton = ({ canGoBack }: { canGoBack: boolean }) => {
       if (viewingGallery) {
         setViewingGallery(null);
+      } else if (activeMoment) {
+        setActiveMoment(null);
+      } else if (showAllMoments) {
+        setShowAllMoments(false);
       } else if (expandedMemory) {
         setExpandedMemory(null);
       } else if (isSettingsOpen) {
@@ -205,7 +237,7 @@ const AppContent: React.FC = () => {
       // Since addListener is async in some versions, but usually returns PluginListenerHandle
       listener.then(handle => handle.remove()).catch(e => console.error(e));
     };
-  }, [viewingGallery, expandedMemory, isSettingsOpen, editingMemory, isCaptureOpen, view, handleCaptureClose, handleEditClose]);
+  }, [viewingGallery, expandedMemory, isSettingsOpen, editingMemory, isCaptureOpen, view, activeMoment, showAllMoments, handleCaptureClose, handleEditClose]);
 
   useEffect(() => {
     if (shareData) {
@@ -417,7 +449,15 @@ const AppContent: React.FC = () => {
             isOtaDownloading={isOtaDownloading}
           />
 
-          <FilterBar 
+          <MomentsStrip
+            moments={surfacedMoments}
+            metaMap={metaMap}
+            synthesesMap={synthesesMap}
+            onMomentTap={handleMomentTap}
+            onShowAll={handleShowAllMoments}
+          />
+
+          <FilterBar
             availableTypes={availableTypes}
             filterType={filterType}
             setFilterType={handleSetFilterType}
@@ -518,6 +558,58 @@ const AppContent: React.FC = () => {
             closeWorkerDB={closeWorkerDB}
             reconcileReport={reconcileReport}
         />
+      )}
+
+      {activeMoment && (
+        <MomentSheet
+          cluster={activeMoment}
+          memories={memories}
+          meta={metaMap.get(activeMoment.id)}
+          onClose={handleMomentClose}
+          loadSynthesis={loadSynthesis}
+          onMarkViewed={markViewed}
+          onDismiss={dismissMoment}
+          onFrequencyOverride={setFrequencyOverride}
+        />
+      )}
+
+      {showAllMoments && (
+        <div className="fixed inset-0 z-[100] bg-gray-950/95 backdrop-blur-md flex flex-col animate-in fade-in duration-300">
+          <div className="sticky top-0 z-10 px-4 py-3 border-b border-gray-800 flex items-center justify-between bg-gray-950/80 backdrop-blur-xl pt-[env(safe-area-inset-top)]">
+            <div className="flex items-center gap-3">
+              <button onClick={() => setShowAllMoments(false)} className="p-3 -ml-3 rounded-full hover:bg-gray-800 text-gray-400 hover:text-white transition-colors active:scale-95">
+                <X size={24} />
+              </button>
+              <h2 className="text-lg font-bold text-gray-100">All Moments</h2>
+            </div>
+            <span className="text-xs text-gray-500">{allClusters.length} clusters</span>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 sm:p-8">
+            <div className="max-w-2xl mx-auto space-y-3">
+              {allClusters.length === 0 ? (
+                <div className="text-center py-12">
+                  <p className="text-gray-400">No moments yet. Save more notes to create clusters.</p>
+                </div>
+              ) : (
+                allClusters.map(cluster => (
+                  <button
+                    key={cluster.id}
+                    onClick={() => { setShowAllMoments(false); setActiveMoment(cluster); }}
+                    className="w-full text-left p-4 bg-gray-800/50 border border-gray-700/50 rounded-xl hover:border-gray-600/50 transition-all active:scale-[0.98] flex items-center gap-4"
+                  >
+                    <div className="w-12 h-12 rounded-full bg-gray-700/50 flex items-center justify-center text-xl shrink-0">
+                      {cluster.type === 'itinerary' ? '✈️' : cluster.type === 'list' ? '📝' : cluster.type === 'meal-plan' ? '🍳' : cluster.type === 'gift-guide' ? '🎁' : cluster.type === 'curriculum' ? '🎓' : cluster.type === 'brief' ? '📋' : '💡'}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-gray-200 truncate">{cluster.title}</p>
+                      <p className="text-xs text-gray-400">{cluster.noteIds.length} notes · {cluster.type}</p>
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {isOtaDownloading && (

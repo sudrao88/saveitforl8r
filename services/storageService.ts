@@ -1,11 +1,14 @@
 
-import { Memory } from '../types.ts';
+import { Memory, Rhythm, MomentMeta, MomentSynthesis } from '../types.ts';
 import { encryptData, decryptData, EncryptedPayload } from './encryptionService';
 import { db } from './db';
 
 const DB_NAME = 'SaveItForL8rDB';
 const STORE_NAME = 'memories';
-const DB_VERSION = 1;
+const RHYTHMS_STORE = 'rhythms';
+const MOMENT_META_STORE = 'momentMeta';
+const MOMENT_SYNTHESIS_STORE = 'momentSyntheses';
+const DB_VERSION = 2;
 
 export interface ReconcileReport {
     total: number;
@@ -21,14 +24,24 @@ export interface ReconcileReport {
 const openDB = (): Promise<IDBDatabase> => {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
-    
+
     request.onupgradeneeded = (event) => {
       const dbInstance = (event.target as IDBOpenDBRequest).result;
       if (!dbInstance.objectStoreNames.contains(STORE_NAME)) {
         dbInstance.createObjectStore(STORE_NAME, { keyPath: 'id' });
       }
+      // Moments feature stores (added in v2)
+      if (!dbInstance.objectStoreNames.contains(RHYTHMS_STORE)) {
+        dbInstance.createObjectStore(RHYTHMS_STORE, { keyPath: 'id' });
+      }
+      if (!dbInstance.objectStoreNames.contains(MOMENT_META_STORE)) {
+        dbInstance.createObjectStore(MOMENT_META_STORE, { keyPath: 'momentId' });
+      }
+      if (!dbInstance.objectStoreNames.contains(MOMENT_SYNTHESIS_STORE)) {
+        dbInstance.createObjectStore(MOMENT_SYNTHESIS_STORE, { keyPath: 'momentId' });
+      }
     };
-    
+
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
   });
@@ -260,6 +273,104 @@ export const forceReindexAll = async (): Promise<ReconcileReport> => {
     }
 };
 
+// --- Rhythms CRUD ---
+
+export const getRhythms = async (): Promise<Rhythm[]> => {
+  try {
+    const dbInstance = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = dbInstance.transaction(RHYTHMS_STORE, 'readonly');
+      const store = tx.objectStore(RHYTHMS_STORE);
+      const request = store.getAll();
+      request.onsuccess = () => resolve(request.result as Rhythm[]);
+      request.onerror = () => reject(request.error);
+    });
+  } catch (error) {
+    console.error("Failed to get rhythms:", error);
+    return [];
+  }
+};
+
+export const saveRhythm = async (rhythm: Rhythm): Promise<void> => {
+  const dbInstance = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = dbInstance.transaction(RHYTHMS_STORE, 'readwrite');
+    const store = tx.objectStore(RHYTHMS_STORE);
+    store.put(rhythm);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+};
+
+export const deleteRhythm = async (id: string): Promise<void> => {
+  const dbInstance = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = dbInstance.transaction(RHYTHMS_STORE, 'readwrite');
+    const store = tx.objectStore(RHYTHMS_STORE);
+    store.delete(id);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+};
+
+// --- MomentMeta CRUD ---
+
+export const getAllMomentMeta = async (): Promise<MomentMeta[]> => {
+  try {
+    const dbInstance = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = dbInstance.transaction(MOMENT_META_STORE, 'readonly');
+      const store = tx.objectStore(MOMENT_META_STORE);
+      const request = store.getAll();
+      request.onsuccess = () => resolve(request.result as MomentMeta[]);
+      request.onerror = () => reject(request.error);
+    });
+  } catch (error) {
+    console.error("Failed to get moment meta:", error);
+    return [];
+  }
+};
+
+export const saveMomentMeta = async (meta: MomentMeta): Promise<void> => {
+  const dbInstance = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = dbInstance.transaction(MOMENT_META_STORE, 'readwrite');
+    const store = tx.objectStore(MOMENT_META_STORE);
+    store.put(meta);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+};
+
+// --- MomentSynthesis Cache ---
+
+export const getMomentSynthesis = async (momentId: string): Promise<MomentSynthesis | null> => {
+  try {
+    const dbInstance = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = dbInstance.transaction(MOMENT_SYNTHESIS_STORE, 'readonly');
+      const store = tx.objectStore(MOMENT_SYNTHESIS_STORE);
+      const request = store.get(momentId);
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(request.error);
+    });
+  } catch (error) {
+    console.error("Failed to get moment synthesis:", error);
+    return null;
+  }
+};
+
+export const saveMomentSynthesis = async (synthesis: MomentSynthesis): Promise<void> => {
+  const dbInstance = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = dbInstance.transaction(MOMENT_SYNTHESIS_STORE, 'readwrite');
+    const store = tx.objectStore(MOMENT_SYNTHESIS_STORE);
+    store.put(synthesis);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+};
+
 export const factoryReset = async () => {
     try {
         console.log("Starting Factory Reset...");
@@ -278,7 +389,7 @@ export const factoryReset = async () => {
         localStorage.clear();
 
         const dbsToReset = [
-            { name: 'SaveItForL8rDB', stores: ['memories'] },
+            { name: 'SaveItForL8rDB', stores: ['memories', 'rhythms', 'momentMeta', 'momentSyntheses'] },
             { name: 'SaveItForL8rRAG', stores: ['vectors', 'processingQueue'] },
             { name: 'auth_db', stores: ['tokens'] },
             { name: 'saveitforl8r-share', stores: ['shares'] }
