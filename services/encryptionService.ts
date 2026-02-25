@@ -25,15 +25,15 @@ const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
   return window.btoa(binary);
 };
 
-// Convert Base64 string to ArrayBuffer for crypto operations
-const base64ToArrayBuffer = (base64: string): ArrayBuffer => {
+// Convert Base64 string to Uint8Array for crypto operations
+const base64ToArrayBuffer = (base64: string): Uint8Array => {
   const binary_string = window.atob(base64);
   const len = binary_string.length;
   const bytes = new Uint8Array(len);
   for (let i = 0; i < len; i++) {
     bytes[i] = binary_string.charCodeAt(i);
   }
-  return bytes.buffer;
+  return bytes;
 };
 
 // Open the dedicated keystore IndexedDB
