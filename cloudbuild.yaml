@@ -149,7 +149,7 @@ steps:
         if [ -n "$$CLIENT_URL" ]; then
           ALLOWED_ORIGINS="$$ALLOWED_ORIGINS,$$CLIENT_URL"
         fi
-        gcloud run services update saveitforl8r-server --region us-west1 --update-env-vars "ALLOWED_ORIGINS=$$ALLOWED_ORIGINS"
+        gcloud run services update saveitforl8r-server --region us-west1 --update-env-vars "^##^ALLOWED_ORIGINS=$$ALLOWED_ORIGINS"
 
   # Update Server config in asia-south1
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -163,7 +163,7 @@ steps:
         if [ -n "$$CLIENT_URL" ]; then
           ALLOWED_ORIGINS="$$ALLOWED_ORIGINS,$$CLIENT_URL"
         fi
-        gcloud run services update saveitforl8r-server --region asia-south1 --update-env-vars "ALLOWED_ORIGINS=$$ALLOWED_ORIGINS"
+        gcloud run services update saveitforl8r-server --region asia-south1 --update-env-vars "^##^ALLOWED_ORIGINS=$$ALLOWED_ORIGINS"
 
 options:
   logging: CLOUD_LOGGING_ONLY
