@@ -115,6 +115,21 @@ const hasRichFormatting = (html: string): boolean => {
 // Configure marked for clean output with line-break support
 marked.setOptions({ breaks: true, gfm: true });
 
+const ToolbarButton: React.FC<{
+  onClick: () => void;
+  title: string;
+  isActive?: boolean;
+  children: React.ReactNode;
+}> = ({ onClick, title, isActive = false, children }) => (
+  <button
+    onClick={onClick}
+    className={`p-2.5 rounded-xl transition-colors active:scale-95 shrink-0 ${isActive ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`}
+    title={title}
+  >
+    {children}
+  </button>
+);
+
 const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpdate, initialContent, editMemory }) => {
   const isEditMode = !!editMemory;
 
@@ -545,9 +560,9 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
         </div>
 
         <main className="flex-1 overflow-y-auto p-4 sm:p-8 max-w-3xl mx-auto w-full flex flex-col">
-            
+
             {/* Editor Area */}
-            <div className="min-h-[200px] relative text-left order-1 mb-6" dir="ltr">
+            <div className="flex-1 min-h-[200px] relative text-left order-1 mb-6" dir="ltr">
                 {isChecklistMode ? (
                     <div className="space-y-3">
                         {checklistItems.map((item, index) => (
@@ -640,84 +655,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                 </div>
             )}
 
-            {/* Toolbar Area - order-3 */}
-            <div className="flex flex-col gap-4 border-gray-800 pt-0 order-3 sticky bottom-0 pb-[env(safe-area-inset-bottom)] sm:relative z-20 bg-gray-900/95 transition-all duration-200">
-                 {/* Combined Toolbar */}
-                 <div className="flex flex-nowrap items-center gap-3 bg-gray-800/90 backdrop-blur-md p-2 rounded-2xl border border-gray-700/50 shadow-xl overflow-x-auto no-scrollbar">
-                    {/* Attachments Button */}
-                    <button 
-                        onClick={() => fileInputRef.current?.click()}
-                        className="p-2.5 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-xl transition-colors active:scale-95 shrink-0"
-                        title="Add Attachment"
-                    >
-                        <Paperclip size={20} />
-                    </button>
-                    <input 
-                        type="file" 
-                        ref={fileInputRef} 
-                        onChange={handleFileSelect} 
-                        className="hidden" 
-                        multiple 
-                        accept="image/*,.pdf,.txt,.md"
-                    />
-
-                    <div className="w-px h-6 bg-gray-700/50 mx-1 shrink-0"></div>
-
-                    {/* Formatting Controls (Only in Normal Mode) */}
-                    {!isChecklistMode && (
-                        <>
-                            <button
-                                onClick={() => execFormat('bold')}
-                                className={`p-2.5 rounded-xl transition-colors active:scale-95 shrink-0 ${isFormatActive('bold') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`}
-                                title="Bold"
-                            >
-                                <Bold size={20} />
-                            </button>
-                            <button
-                                onClick={() => execFormat('italic')}
-                                className={`p-2.5 rounded-xl transition-colors active:scale-95 shrink-0 ${isFormatActive('italic') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`}
-                                title="Italic"
-                            >
-                                <Italic size={20} />
-                            </button>
-                            <button
-                                onClick={() => execFormat('underline')}
-                                className={`p-2.5 rounded-xl transition-colors active:scale-95 shrink-0 ${isFormatActive('underline') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`}
-                                title="Underline"
-                            >
-                                <Underline size={20} />
-                            </button>
-                            <div className="w-px h-6 bg-gray-700/50 mx-1 shrink-0"></div>
-                            <button
-                                onClick={() => execFormat('formatBlock', 'H1')}
-                                className={`p-2.5 rounded-xl transition-colors active:scale-95 shrink-0 ${isFormatActive('H1') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`}
-                                title="Heading 1"
-                            >
-                                <Heading1 size={20} />
-                            </button>
-                            <button
-                                onClick={() => execFormat('formatBlock', 'H2')}
-                                className={`p-2.5 rounded-xl transition-colors active:scale-95 shrink-0 ${isFormatActive('H2') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`}
-                                title="Heading 2"
-                            >
-                                <Heading2 size={20} />
-                            </button>
-                            <div className="w-px h-6 bg-gray-700/50 mx-1 shrink-0"></div>
-                        </>
-                    )}
-
-                    {/* Checklist Toggle */}
-                    <button
-                        onClick={toggleChecklistMode}
-                        className={`p-2.5 rounded-xl transition-colors active:scale-95 shrink-0 ${isChecklistMode ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`}
-                        title="Checklist Mode"
-                    >
-                        <CheckSquare size={20} />
-                    </button>
-                 </div>
-            </div>
-            
-            <div className="pt-4 order-4 pb-20 sm:pb-0">
+            <div className="pt-4 order-3 pb-4">
                <hr className="border-gray-800 mb-6" />
 
                {/* Tags Interface */}
@@ -784,6 +722,54 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                </div>
             </div>
         </main>
+
+        {/* Toolbar Area - Fixed at bottom, outside scrollable area */}
+        <div className="shrink-0 px-4 sm:px-8 pb-[env(safe-area-inset-bottom)] bg-gray-900 border-t border-gray-800 max-w-3xl mx-auto w-full">
+             <div className="flex flex-nowrap items-center gap-3 bg-gray-800/90 backdrop-blur-md p-2 rounded-2xl border border-gray-700/50 shadow-xl overflow-x-auto no-scrollbar my-2">
+                {/* Attachments Button */}
+                <ToolbarButton onClick={() => fileInputRef.current?.click()} title="Add Attachment">
+                    <Paperclip size={20} />
+                </ToolbarButton>
+                <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileSelect}
+                    className="hidden"
+                    multiple
+                    accept="image/*,.pdf,.txt,.md"
+                />
+
+                <div className="w-px h-6 bg-gray-700/50 mx-1 shrink-0"></div>
+
+                {/* Formatting Controls (Only in Normal Mode) */}
+                {!isChecklistMode && (
+                    <>
+                        <ToolbarButton onClick={() => execFormat('bold')} title="Bold" isActive={isFormatActive('bold')}>
+                            <Bold size={20} />
+                        </ToolbarButton>
+                        <ToolbarButton onClick={() => execFormat('italic')} title="Italic" isActive={isFormatActive('italic')}>
+                            <Italic size={20} />
+                        </ToolbarButton>
+                        <ToolbarButton onClick={() => execFormat('underline')} title="Underline" isActive={isFormatActive('underline')}>
+                            <Underline size={20} />
+                        </ToolbarButton>
+                        <div className="w-px h-6 bg-gray-700/50 mx-1 shrink-0"></div>
+                        <ToolbarButton onClick={() => execFormat('formatBlock', 'H1')} title="Heading 1" isActive={isFormatActive('H1')}>
+                            <Heading1 size={20} />
+                        </ToolbarButton>
+                        <ToolbarButton onClick={() => execFormat('formatBlock', 'H2')} title="Heading 2" isActive={isFormatActive('H2')}>
+                            <Heading2 size={20} />
+                        </ToolbarButton>
+                        <div className="w-px h-6 bg-gray-700/50 mx-1 shrink-0"></div>
+                    </>
+                )}
+
+                {/* Checklist Toggle */}
+                <ToolbarButton onClick={toggleChecklistMode} title="Checklist Mode" isActive={isChecklistMode}>
+                    <CheckSquare size={20} />
+                </ToolbarButton>
+             </div>
+        </div>
 
         {/* Discard Changes Confirmation Dialog */}
         {showDiscardConfirm && (
