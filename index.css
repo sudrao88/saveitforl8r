@@ -24,7 +24,6 @@ body {
   color: #f3f4f6;
   overscroll-behavior-y: none; /* Prevent pull-to-refresh on mobile */
   
-  padding-top: var(--sat);
   padding-right: var(--sar);
   padding-bottom: var(--sab);
   padding-left: var(--sal);
