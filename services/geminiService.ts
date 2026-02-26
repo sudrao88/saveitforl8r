@@ -1,5 +1,5 @@
 
-import { EnrichmentData, Memory, Attachment } from '../types.ts';
+import { EnrichmentData, Memory, Attachment, ChatMessage } from '../types.ts';
 import { postProxy } from './proxyService.ts';
 
 export interface QuerySource {
@@ -42,7 +42,8 @@ export const enrichInput = async (
  */
 export const queryBrain = async (
   query: string,
-  memories: Memory[]
+  memories: Memory[],
+  history: ChatMessage[] = []
 ): Promise<QueryResponse> => {
   try {
     // Strip attachment data from memories to reduce payload size.
@@ -63,6 +64,7 @@ export const queryBrain = async (
     const result = await postProxy<QueryResponse>('/api/query', {
       query,
       memories: lightMemories,
+      history,
     });
     return result;
   } catch (error) {

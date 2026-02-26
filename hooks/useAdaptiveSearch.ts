@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { queryBrain } from '../services/geminiService';
-import { Memory } from '../types';
+import { Memory, ChatMessage } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
 export interface SearchResultItem {
@@ -124,7 +124,7 @@ export const useAdaptiveSearch = () => {
       }
   };
 
-  const search = useCallback(async (query: string, memories: Memory[] = []): Promise<{ mode: string; result: any; error?: any }> => {
+  const search = useCallback(async (query: string, memories: Memory[] = [], history: ChatMessage[] = []): Promise<{ mode: string; result: any; error?: any }> => {
     if (!query.trim()) {
       return { mode: 'empty', result: [] };
     }
@@ -134,7 +134,7 @@ export const useAdaptiveSearch = () => {
     try {
       if (isOnline) {
         // Online: use server proxy for AI-powered search
-        const result = await queryBrain(query, memories);
+        const result = await queryBrain(query, memories, history);
         setIsSearching(false);
         return { mode: 'online', result };
       } else {
