@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getMemories, deleteMemory, saveMemory, getMemory } from '../services/storageService';
-import { enrichInput } from '../services/geminiService';
+import { enrichInput, fetchPendingEnrichments } from '../services/geminiService';
 import { Memory, Attachment } from '../types';
 import { SAMPLE_MEMORIES } from '../services/sampleData';
 import { useSync } from './useSync';
@@ -80,6 +80,7 @@ export const useMemories = () => {
   const { sync, syncFile } = useSync();
   const { authStatus } = useAuth();
   const mounted = useRef(false);
+  const recoveryAttemptedRef = useRef(false);
 
   const refreshMemories = useCallback(async () => {
     try {
@@ -112,6 +113,53 @@ export const useMemories = () => {
         mounted.current = true;
     }
   }, [refreshMemories]);
+
+  // Auto-recover pending enrichments on app load
+  useEffect(() => {
+    if (isLoading || recoveryAttemptedRef.current) return;
+    recoveryAttemptedRef.current = true;
+
+    const pendingMemories = memories.filter(m => m.isPending && !m.isSample);
+    if (pendingMemories.length === 0) return;
+
+    console.log(`[Recovery] Found ${pendingMemories.length} pending memories, attempting recovery...`);
+
+    const recover = async () => {
+      try {
+        const ids = pendingMemories.map(m => m.id);
+        const results = await fetchPendingEnrichments(ids);
+
+        for (const memory of pendingMemories) {
+          const enrichment = results[memory.id];
+          if (enrichment) {
+            // Result found in server — apply it
+            const allTags = Array.from(new Set([...memory.tags, ...enrichment.suggestedTags]));
+            const updatedMemory: Memory = {
+              ...memory,
+              enrichment,
+              tags: allTags,
+              isPending: false,
+              processingError: false,
+              timestamp: Date.now(),
+            };
+            await saveMemory(updatedMemory);
+            setMemories(prev => prev.map(m => m.id === memory.id ? updatedMemory : m));
+            console.log(`[Recovery] Recovered enrichment for ${memory.id}`);
+          } else {
+            // Not found (expired or never completed) — mark for retry
+            const failedMemory: Memory = { ...memory, isPending: false, processingError: true };
+            await saveMemory(failedMemory);
+            setMemories(prev => prev.map(m => m.id === memory.id ? failedMemory : m));
+            console.log(`[Recovery] No result for ${memory.id}, marked for retry`);
+          }
+        }
+      } catch (err) {
+        console.error('[Recovery] Auto-recovery failed:', err);
+      }
+    };
+
+    recover();
+  }, [isLoading, memories]);
 
   // Helper for single file sync - Memoized
   const trySyncFile = useCallback(async (memory: Memory) => {
@@ -171,7 +219,8 @@ export const useMemories = () => {
             memory.content,
             attachments,
             memory.location,
-            memory.tags
+            memory.tags,
+            memory.id
         );
 
         const allTags = Array.from(new Set([...memory.tags, ...enrichment.suggestedTags]));
@@ -221,7 +270,7 @@ export const useMemories = () => {
       };
 
       // 2. Schedule background enrichment via server proxy
-      const enrichmentPromise = enrichInput(text, attachments, location, tags);
+      const enrichmentPromise = enrichInput(text, attachments, location, tags, memoryId);
 
       // 3. Update UI immediately (showing loading state) and save local pending state
       setMemories(prev => [newMemory, ...prev]);
@@ -341,7 +390,7 @@ export const useMemories = () => {
 
       // Trigger Background Enrichment via server proxy
       console.log(`[Update] Triggering enrichment for ${id}`);
-      enrichInput(text, attachments, updatedMemory.location, tags)
+      enrichInput(text, attachments, updatedMemory.location, tags, id)
         .then(async (enrichment) => {
             if (!enrichment) return;
 
@@ -389,6 +438,35 @@ export const useMemories = () => {
       console.log("App is back online.");
       // Trigger sync if linked
       if (authStatus === 'linked') sync();
+
+      // Recover pending enrichments from server
+      const pendingItems = memories.filter(m => m.isPending && !m.isSample);
+      if (pendingItems.length > 0) {
+          console.log(`[Online-Recovery] Recovering ${pendingItems.length} pending items...`);
+          try {
+              const ids = pendingItems.map(m => m.id);
+              const results = await fetchPendingEnrichments(ids);
+              for (const memory of pendingItems) {
+                  const enrichment = results[memory.id];
+                  if (enrichment) {
+                      const allTags = Array.from(new Set([...memory.tags, ...enrichment.suggestedTags]));
+                      const updatedMemory: Memory = {
+                          ...memory, enrichment, tags: allTags,
+                          isPending: false, processingError: false, timestamp: Date.now(),
+                      };
+                      await saveMemory(updatedMemory);
+                      setMemories(prev => prev.map(m => m.id === memory.id ? updatedMemory : m));
+                  } else {
+                      // Not found — fall through to retry below
+                      const failedMemory: Memory = { ...memory, isPending: false, processingError: true };
+                      await saveMemory(failedMemory);
+                      setMemories(prev => prev.map(m => m.id === memory.id ? failedMemory : m));
+                  }
+              }
+          } catch (err) {
+              console.error('[Online-Recovery] Failed:', err);
+          }
+      }
 
       // Auto-retry enrichment for failed memories
       const failures = memories.filter(m => m.processingError);

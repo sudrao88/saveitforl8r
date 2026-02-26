@@ -4,6 +4,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { GoogleGenAI, Type } from '@google/genai';
+import { Firestore } from '@google-cloud/firestore';
 
 const app = express();
 const PORT = process.env.PORT || 8081;
@@ -19,6 +20,41 @@ const MODEL_NAME = 'gemini-3-flash-preview';
 const FALLBACK_MODEL_NAME = 'gemini-2.0-flash';
 const GOOGLE_TOKENINFO_URL = 'https://oauth2.googleapis.com/tokeninfo';
 const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+
+// --- Firestore for durable enrichment results ---
+
+const ENRICHMENT_COLLECTION = 'enrichment-results';
+const ENRICHMENT_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const ENRICHMENT_FAILED_TTL_MS = 24 * 60 * 60 * 1000; // 1 day for failures
+
+let db;
+try {
+  db = new Firestore();
+  console.log('Firestore initialized for enrichment result persistence');
+} catch (err) {
+  console.warn('Firestore initialization failed (enrichment recovery disabled):', err.message);
+}
+
+/**
+ * Persists an enrichment result to Firestore (fire-and-forget).
+ * Allows clients to recover results if they disconnect before receiving the response.
+ */
+const persistEnrichmentResult = (memoryId, userId, status, result) => {
+  if (!db || !memoryId) return;
+
+  const doc = {
+    userId,
+    status,
+    createdAt: Date.now(),
+    expireAt: new Date(Date.now() + (status === 'completed' ? ENRICHMENT_TTL_MS : ENRICHMENT_FAILED_TTL_MS)),
+  };
+  if (result) doc.result = result;
+
+  db.collection(ENRICHMENT_COLLECTION)
+    .doc(memoryId)
+    .set(doc)
+    .catch((err) => console.error(`[Firestore] Failed to persist result for ${memoryId}:`, err.message));
+};
 
 // --- Security middleware ---
 
@@ -152,8 +188,16 @@ const ALLOWED_MIME_TYPES = [
   'application/pdf',
 ];
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const validateEnrichInput = (req, res, next) => {
-  const { text, attachments, tags, location } = req.body;
+  const { text, attachments, tags, location, memoryId } = req.body;
+
+  if (memoryId !== undefined) {
+    if (typeof memoryId !== 'string' || !UUID_REGEX.test(memoryId)) {
+      return res.status(400).json({ error: 'memoryId must be a valid UUID' });
+    }
+  }
 
   if (text !== undefined && text !== null) {
     if (typeof text !== 'string')
@@ -517,7 +561,7 @@ app.post(
   enrichLimiter,
   async (req, res) => {
     const startTime = Date.now();
-    const { text, attachments, location, tags } = req.body;
+    const { text, attachments, location, tags, memoryId } = req.body;
 
     // Build parts array (attachments first, then user text content)
     const parts = [];
@@ -582,6 +626,7 @@ app.post(
         );
 
         const parsed = parseJsonResponse(responseText);
+        persistEnrichmentResult(memoryId, req.userId, 'completed', parsed);
         res.json(parsed);
       } catch (primaryError) {
         clearTimeout(timeout);
@@ -629,14 +674,107 @@ app.post(
         console.log(
           `[Enrich] [${req.requestId}] Fallback succeeded in ${Date.now() - fallbackStartTime}ms`
         );
-        res.json(parseJsonResponse(fallbackText));
+        const fallbackParsed = parseJsonResponse(fallbackText);
+        persistEnrichmentResult(memoryId, req.userId, 'completed', fallbackParsed);
+        res.json(fallbackParsed);
       } catch (fallbackError) {
         console.error(
           `[Enrich] [${req.requestId}] Fallback also failed:`,
           fallbackError.message
         );
+        persistEnrichmentResult(memoryId, req.userId, 'failed', null);
         res.status(500).json({ error: 'Enrichment failed' });
       }
+    }
+  }
+);
+
+// --- Enrichment results recovery endpoint ---
+
+const resultsLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 10,
+  keyGenerator: (req) => req.userId || req.ip,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Rate limit exceeded. Try again later.' },
+});
+
+const validateResultsInput = (req, res, next) => {
+  const { memoryIds } = req.body;
+
+  if (!memoryIds || !Array.isArray(memoryIds)) {
+    return res.status(400).json({ error: 'memoryIds must be an array' });
+  }
+  if (memoryIds.length === 0) {
+    return res.status(400).json({ error: 'memoryIds must not be empty' });
+  }
+  if (memoryIds.length > 50) {
+    return res.status(400).json({ error: 'Maximum 50 memoryIds allowed' });
+  }
+  for (const id of memoryIds) {
+    if (typeof id !== 'string' || !UUID_REGEX.test(id)) {
+      return res.status(400).json({ error: `Invalid memoryId: ${id}` });
+    }
+  }
+
+  next();
+};
+
+app.post(
+  '/api/enrich/results',
+  authenticateRequest,
+  validateResultsInput,
+  resultsLimiter,
+  async (req, res) => {
+    const { memoryIds } = req.body;
+
+    if (!db) {
+      return res.status(503).json({ error: 'Result recovery unavailable' });
+    }
+
+    try {
+      console.log(
+        `[Results] [${req.requestId}] user=${req.userId} memoryIds=${memoryIds.length}`
+      );
+
+      const docRefs = memoryIds.map((id) =>
+        db.collection(ENRICHMENT_COLLECTION).doc(id)
+      );
+      const snapshots = await db.getAll(...docRefs);
+
+      const results = {};
+      for (let i = 0; i < memoryIds.length; i++) {
+        const snap = snapshots[i];
+        if (!snap.exists) {
+          results[memoryIds[i]] = { status: 'not_found' };
+          continue;
+        }
+
+        const data = snap.data();
+
+        // Security: only return results owned by the authenticated user
+        if (data.userId !== req.userId) {
+          results[memoryIds[i]] = { status: 'not_found' };
+          continue;
+        }
+
+        if (data.status === 'completed' && data.result) {
+          results[memoryIds[i]] = { status: 'completed', data: data.result };
+        } else if (data.status === 'failed') {
+          results[memoryIds[i]] = { status: 'failed' };
+        } else {
+          results[memoryIds[i]] = { status: data.status || 'unknown' };
+        }
+      }
+
+      res.json({ results });
+    } catch (error) {
+      console.error(
+        `[Results] [${req.requestId}] Failed:`,
+        error.message
+      );
+      res.status(500).json({ error: 'Failed to fetch enrichment results' });
     }
   }
 );
