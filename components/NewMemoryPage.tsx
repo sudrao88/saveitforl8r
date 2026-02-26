@@ -115,6 +115,21 @@ const hasRichFormatting = (html: string): boolean => {
 // Configure marked for clean output with line-break support
 marked.setOptions({ breaks: true, gfm: true });
 
+const ToolbarButton: React.FC<{
+  onClick: () => void;
+  title: string;
+  isActive?: boolean;
+  children: React.ReactNode;
+}> = ({ onClick, title, isActive = false, children }) => (
+  <button
+    onClick={onClick}
+    className={`p-2.5 rounded-xl transition-colors active:scale-95 shrink-0 ${isActive ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`}
+    title={title}
+  >
+    {children}
+  </button>
+);
+
 const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpdate, initialContent, editMemory }) => {
   const isEditMode = !!editMemory;
 
@@ -712,13 +727,9 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
         <div className="shrink-0 px-4 sm:px-8 pb-[env(safe-area-inset-bottom)] bg-gray-900 border-t border-gray-800 max-w-3xl mx-auto w-full">
              <div className="flex flex-nowrap items-center gap-3 bg-gray-800/90 backdrop-blur-md p-2 rounded-2xl border border-gray-700/50 shadow-xl overflow-x-auto no-scrollbar my-2">
                 {/* Attachments Button */}
-                <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="p-2.5 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-xl transition-colors active:scale-95 shrink-0"
-                    title="Add Attachment"
-                >
+                <ToolbarButton onClick={() => fileInputRef.current?.click()} title="Add Attachment">
                     <Paperclip size={20} />
-                </button>
+                </ToolbarButton>
                 <input
                     type="file"
                     ref={fileInputRef}
@@ -733,54 +744,30 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                 {/* Formatting Controls (Only in Normal Mode) */}
                 {!isChecklistMode && (
                     <>
-                        <button
-                            onClick={() => execFormat('bold')}
-                            className={`p-2.5 rounded-xl transition-colors active:scale-95 shrink-0 ${isFormatActive('bold') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`}
-                            title="Bold"
-                        >
+                        <ToolbarButton onClick={() => execFormat('bold')} title="Bold" isActive={isFormatActive('bold')}>
                             <Bold size={20} />
-                        </button>
-                        <button
-                            onClick={() => execFormat('italic')}
-                            className={`p-2.5 rounded-xl transition-colors active:scale-95 shrink-0 ${isFormatActive('italic') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`}
-                            title="Italic"
-                        >
+                        </ToolbarButton>
+                        <ToolbarButton onClick={() => execFormat('italic')} title="Italic" isActive={isFormatActive('italic')}>
                             <Italic size={20} />
-                        </button>
-                        <button
-                            onClick={() => execFormat('underline')}
-                            className={`p-2.5 rounded-xl transition-colors active:scale-95 shrink-0 ${isFormatActive('underline') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`}
-                            title="Underline"
-                        >
+                        </ToolbarButton>
+                        <ToolbarButton onClick={() => execFormat('underline')} title="Underline" isActive={isFormatActive('underline')}>
                             <Underline size={20} />
-                        </button>
+                        </ToolbarButton>
                         <div className="w-px h-6 bg-gray-700/50 mx-1 shrink-0"></div>
-                        <button
-                            onClick={() => execFormat('formatBlock', 'H1')}
-                            className={`p-2.5 rounded-xl transition-colors active:scale-95 shrink-0 ${isFormatActive('H1') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`}
-                            title="Heading 1"
-                        >
+                        <ToolbarButton onClick={() => execFormat('formatBlock', 'H1')} title="Heading 1" isActive={isFormatActive('H1')}>
                             <Heading1 size={20} />
-                        </button>
-                        <button
-                            onClick={() => execFormat('formatBlock', 'H2')}
-                            className={`p-2.5 rounded-xl transition-colors active:scale-95 shrink-0 ${isFormatActive('H2') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`}
-                            title="Heading 2"
-                        >
+                        </ToolbarButton>
+                        <ToolbarButton onClick={() => execFormat('formatBlock', 'H2')} title="Heading 2" isActive={isFormatActive('H2')}>
                             <Heading2 size={20} />
-                        </button>
+                        </ToolbarButton>
                         <div className="w-px h-6 bg-gray-700/50 mx-1 shrink-0"></div>
                     </>
                 )}
 
                 {/* Checklist Toggle */}
-                <button
-                    onClick={toggleChecklistMode}
-                    className={`p-2.5 rounded-xl transition-colors active:scale-95 shrink-0 ${isChecklistMode ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`}
-                    title="Checklist Mode"
-                >
+                <ToolbarButton onClick={toggleChecklistMode} title="Checklist Mode" isActive={isChecklistMode}>
                     <CheckSquare size={20} />
-                </button>
+                </ToolbarButton>
              </div>
         </div>
 
