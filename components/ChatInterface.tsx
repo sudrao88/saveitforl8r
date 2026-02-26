@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Send, BrainCircuit, ExternalLink, Bot, Sparkles, WifiOff, Download, FileText } from 'lucide-react';
-import { Memory, Attachment } from '../types';
+import { Memory, Attachment, ChatMessage } from '../types';
 import MemoryCard from './MemoryCard';
 
 interface ChatInterfaceProps {
   memories: Memory[];
   onClose: () => void;
-  searchFunction: (query: string, memories: Memory[]) => Promise<{ mode: string; result: any; error?: any }>;
+  searchFunction: (query: string, memories: Memory[], history?: ChatMessage[]) => Promise<{ mode: string; result: any; error?: any }>;
   onViewAttachment: (attachment: Attachment, allAttachments: Attachment[]) => void;
 }
 
@@ -82,14 +82,24 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
       }
   }, [query]);
 
+  const MAX_HISTORY_TURNS = 10;
+
   const handleSend = async () => {
     if (!query.trim() || loading) return;
 
     const userMsg: Message = { role: 'user', text: query };
+
+    // Build conversation history from current messages (before adding the new user message).
+    // Strip sources and isOffline — server only needs role + text.
+    // Cap to most recent MAX_HISTORY_TURNS messages.
+    const history: ChatMessage[] = messages
+      .slice(-MAX_HISTORY_TURNS)
+      .map(m => ({ role: m.role, text: m.text.substring(0, 2000) }));
+
     setMessages(prev => [...prev, userMsg]);
     setQuery('');
     setLoading(true);
-    
+
     // Reset textarea height
     if (textareaRef.current) {
         textareaRef.current.style.height = 'auto';
@@ -97,7 +107,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
     }
 
     try {
-      const response = await searchFunction(userMsg.text, memories);
+      const response = await searchFunction(userMsg.text, memories, history);
       
       if (response.mode === 'online') {
           const { answer, sources } = response.result;
