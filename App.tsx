@@ -388,17 +388,26 @@ const AppContent: React.FC = () => {
 
   if (view === ViewMode.RECALL) {
      return (
-        <ErrorBoundary
-          fallbackTitle="Brain Search encountered an error"
-          fallbackMessage="The AI search feature hit an unexpected issue. Your memories are safe — try reloading."
-        >
-          <ChatInterface
-            memories={displayMemories}
-            onClose={handleChatClose}
-            searchFunction={search}
-            onViewAttachment={handleViewAttachment}
-          />
-        </ErrorBoundary>
+        <>
+          <ErrorBoundary
+            fallbackTitle="Brain Search encountered an error"
+            fallbackMessage="The AI search feature hit an unexpected issue. Your memories are safe — try reloading."
+          >
+            <ChatInterface
+              memories={displayMemories}
+              onClose={handleChatClose}
+              searchFunction={search}
+              onViewAttachment={handleViewAttachment}
+            />
+          </ErrorBoundary>
+          {viewingGallery && (
+            <GalleryViewer
+              attachments={viewingGallery.attachments}
+              initialIndex={viewingGallery.currentIndex}
+              onClose={() => setViewingGallery(null)}
+            />
+          )}
+        </>
      );
   }
 
