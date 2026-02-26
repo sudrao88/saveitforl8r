@@ -35,7 +35,7 @@ const escapeHtml = (text: string): string =>
 
 /** Heuristically detect whether plain text contains markdown formatting. */
 const looksLikeMarkdown = (text: string): boolean => {
-    const mdPatterns = [
+    return [
         /^#{1,6}\s/m,            // Headings: # text
         /\*\*[^*]+\*\*/,         // Bold: **text**
         /__[^_]+__/,             // Bold: __text__
@@ -46,13 +46,7 @@ const looksLikeMarkdown = (text: string): boolean => {
         /^>/m,                   // Blockquotes: > text
         /`[^`]+`/,               // Inline code: `code`
         /^```/m,                 // Code blocks: ```
-    ];
-
-    let matchCount = 0;
-    for (const pattern of mdPatterns) {
-        if (pattern.test(text)) matchCount++;
-    }
-    return matchCount >= 1;
+    ].some(pattern => pattern.test(text));
 };
 
 const ALLOWED_TAGS = new Set([
@@ -60,6 +54,8 @@ const ALLOWED_TAGS = new Set([
     'UL', 'OL', 'LI', 'A', 'BLOCKQUOTE', 'PRE', 'CODE', 'DIV', 'SPAN',
     'S', 'STRIKE', 'DEL', 'SUB', 'SUP', 'TABLE', 'THEAD', 'TBODY', 'TR', 'TH', 'TD',
 ]);
+
+const SAFE_URL_PROTOCOLS = /^(https?:|mailto:|tel:)/i;
 
 /** Sanitize pasted HTML: keep structural formatting, strip styles & unwanted elements. */
 const sanitizePastedHtml = (html: string): string => {
@@ -76,10 +72,14 @@ const sanitizePastedHtml = (html: string): string => {
         let newEl: Element;
         if (ALLOWED_TAGS.has(el.tagName)) {
             newEl = document.createElement(el.tagName);
-            if (el.tagName === 'A' && el.getAttribute('href')) {
-                newEl.setAttribute('href', el.getAttribute('href')!);
-                newEl.setAttribute('target', '_blank');
-                newEl.setAttribute('rel', 'noopener noreferrer');
+            if (el.tagName === 'A') {
+                const href = el.getAttribute('href') || '';
+                if (SAFE_URL_PROTOCOLS.test(href)) {
+                    newEl.setAttribute('href', href);
+                    newEl.setAttribute('target', '_blank');
+                    newEl.setAttribute('rel', 'noopener noreferrer');
+                }
+                // Unsafe protocols (javascript:, data:, etc.) are silently dropped
             }
         } else {
             newEl = document.createElement('span');
@@ -266,15 +266,25 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
         // Rich text paste (Word, Google Docs, web pages) — sanitize & preserve formatting
         htmlToInsert = sanitizePastedHtml(html);
     } else if (plainText && looksLikeMarkdown(plainText)) {
-        // Plain text with markdown syntax — convert to HTML
-        htmlToInsert = marked.parse(plainText) as string;
+        // Plain text with markdown syntax — convert to HTML, then sanitize to prevent XSS
+        htmlToInsert = sanitizePastedHtml(marked.parse(plainText) as string);
     } else if (plainText) {
         // Plain text without markdown — insert with line breaks preserved
         htmlToInsert = escapeHtml(plainText).replace(/\n/g, '<br>');
     }
 
     if (htmlToInsert) {
-        document.execCommand('insertHTML', false, htmlToInsert);
+        const selection = window.getSelection();
+        if (selection && selection.rangeCount > 0) {
+            const range = selection.getRangeAt(0);
+            range.deleteContents();
+            const fragment = range.createContextualFragment(htmlToInsert);
+            range.insertNode(fragment);
+            // Move cursor to end of inserted content
+            range.collapse(false);
+            selection.removeAllRanges();
+            selection.addRange(range);
+        }
     }
 
     setIsEmpty(!editorRef.current?.innerText.trim());
