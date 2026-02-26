@@ -83,6 +83,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
   }, [query]);
 
   const MAX_HISTORY_TURNS = 10;
+  const MAX_TURN_TEXT_LENGTH = 4000;
 
   const handleSend = async () => {
     if (!query.trim() || loading) return;
@@ -91,10 +92,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
 
     // Build conversation history from current messages (before adding the new user message).
     // Strip sources and isOffline — server only needs role + text.
-    // Cap to most recent MAX_HISTORY_TURNS messages.
+    // Cap to most recent MAX_HISTORY_TURNS messages, truncate text to match server limit.
     const history: ChatMessage[] = messages
       .slice(-MAX_HISTORY_TURNS)
-      .map(m => ({ role: m.role, text: m.text.substring(0, 2000) }));
+      .map(m => ({ role: m.role, text: m.text.substring(0, MAX_TURN_TEXT_LENGTH) }));
 
     setMessages(prev => [...prev, userMsg]);
     setQuery('');

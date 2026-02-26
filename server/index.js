@@ -253,7 +253,8 @@ const validateQueryInput = (req, res, next) => {
 
 const sanitizeUserInput = (input) => {
   if (!input) return '';
-  return input
+  const str = typeof input === 'string' ? input : String(input);
+  return str
     .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, '') // strip C0+C1 control chars (keep \n \t \r)
     .replace(/\n{4,}/g, '\n\n\n'); // limit excessive newlines
 };
@@ -663,8 +664,9 @@ app.post(
 // --- Normalize conversation history for Gemini multi-turn format ---
 
 /**
- * Ensure history alternates user/model, starts with user.
- * Removes trailing user turn (current query will be the final user turn).
+ * Ensure history alternates user/model and starts with a user turn.
+ * Consecutive same-role turns are skipped to satisfy Gemini's strict
+ * alternation requirement.
  */
 const normalizeHistory = (history) => {
   if (!history || history.length === 0) return [];
@@ -675,9 +677,6 @@ const normalizeHistory = (history) => {
     if (normalized.length === 0 && turn.role !== 'user') continue;
     normalized.push(turn);
     lastRole = turn.role;
-  }
-  if (normalized.length > 0 && normalized[normalized.length - 1].role === 'user') {
-    normalized.pop();
   }
   return normalized;
 };
@@ -720,20 +719,20 @@ app.post(
       // Build multi-turn contents array for Gemini
       const normalizedHistory = normalizeHistory(history);
       const contents = [];
+      const sanitizedQuery = sanitizeUserInput(query);
 
       if (normalizedHistory.length > 0) {
+        // Replay history turns, prepending memory context to the first user turn
         let firstUserHandled = false;
         for (const turn of normalizedHistory) {
           const sanitizedText = sanitizeUserInput(turn.text);
-          if (!firstUserHandled && turn.role === 'user') {
-            // First user turn gets memories context prepended
+          if (turn.role === 'user' && !firstUserHandled) {
             contents.push({
               role: 'user',
               parts: [{ text: `MEMORIES:\n${context}\n\nQUERY:\n${sanitizedText}` }],
             });
             firstUserHandled = true;
           } else if (turn.role === 'model') {
-            // Model turns wrapped as JSON to match response schema
             contents.push({
               role: 'model',
               parts: [{ text: JSON.stringify({ answer: sanitizedText, sources: [] }) }],
@@ -745,16 +744,24 @@ app.post(
             });
           }
         }
-        // Current query as the final user turn
-        contents.push({
-          role: 'user',
-          parts: [{ text: `FOLLOW-UP QUERY:\n${sanitizeUserInput(query)}` }],
-        });
+
+        // Append the current query. If the last history turn was a user turn
+        // (e.g. a prior response failed), merge into a single user turn to
+        // satisfy Gemini's strict user/model alternation requirement.
+        const lastEntry = contents[contents.length - 1];
+        if (lastEntry && lastEntry.role === 'user') {
+          lastEntry.parts[0].text += `\n\nFOLLOW-UP QUERY:\n${sanitizedQuery}`;
+        } else {
+          contents.push({
+            role: 'user',
+            parts: [{ text: `FOLLOW-UP QUERY:\n${sanitizedQuery}` }],
+          });
+        }
       } else {
         // No history — original single-turn behavior
         contents.push({
           role: 'user',
-          parts: [{ text: `MEMORIES:\n${context}\n\nQUERY:\n${sanitizeUserInput(query)}` }],
+          parts: [{ text: `MEMORIES:\n${context}\n\nQUERY:\n${sanitizedQuery}` }],
         });
       }
 
