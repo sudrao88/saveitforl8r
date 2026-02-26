@@ -562,7 +562,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
         <main className="flex-1 overflow-y-auto p-4 sm:p-8 max-w-3xl mx-auto w-full flex flex-col">
 
             {/* Editor Area */}
-            <div className="min-h-[200px] relative text-left order-1 mb-6" dir="ltr">
+            <div className="min-h-[200px] flex-1 overflow-y-auto relative text-left order-1 mb-6" dir="ltr">
                 {isChecklistMode ? (
                     <div className="space-y-3">
                         {checklistItems.map((item, index) => (
@@ -656,7 +656,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
             )}
 
             {/* Toolbar Area - Inline, above tags */}
-            <div className="order-3 mb-4">
+            <div className="order-3 mb-4 shrink-0">
                  <div className="flex flex-nowrap items-center gap-3 bg-gray-800/90 backdrop-blur-md p-2 rounded-2xl border border-gray-700/50 shadow-xl overflow-x-auto no-scrollbar">
                     {/* Attachments Button */}
                     <ToolbarButton onClick={() => fileInputRef.current?.click()} title="Add Attachment">
