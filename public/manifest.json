@@ -1,6 +1,8 @@
 {
-  "name": "SaveItForL8R",
+  "name": "SaveItForL8R — AI Note Taking & Personal Second Brain",
   "short_name": "SaveItForL8R",
+  "description": "Free AI-powered note taking app. Google Gemini automatically enriches, tags, and organizes your notes, images, and files. Encrypted personal second brain with offline support.",
+  "categories": ["productivity", "utilities", "education"],
   "start_url": "./",
   "display": "standalone",
   "background_color": "#111827",
