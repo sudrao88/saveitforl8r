@@ -2,6 +2,31 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Trash2, Loader2, Clock, ExternalLink, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, WifiOff, FileText, Paperclip, MoreVertical, AlertTriangle, LogIn, Square, CheckSquare, Maximize2, Eye, Pin, Pencil, Lightbulb, CircleCheck } from 'lucide-react';
 import { Memory, Attachment } from '../types.ts';
 
+interface EnrichmentSectionProps {
+  icon: React.ReactNode;
+  label: string;
+  items: string[];
+  textClass?: string;
+  bulletClass?: string;
+}
+
+const EnrichmentSection: React.FC<EnrichmentSectionProps> = ({ icon, label, items, textClass = 'text-gray-400', bulletClass = 'text-gray-600' }) => (
+  <div className="pt-1 space-y-1.5">
+    <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-500">
+      {icon}
+      {label}
+    </span>
+    <ul className="space-y-1">
+      {items.map((item, idx) => (
+        <li key={idx} className={`flex items-start gap-2 text-sm ${textClass} font-light leading-relaxed`}>
+          <span className={`${bulletClass} mt-1.5 shrink-0`}>&#8226;</span>
+          <span>{item}</span>
+        </li>
+      ))}
+    </ul>
+  </div>
+);
+
 interface MemoryCardProps {
   memory: Memory;
   onDelete?: (id: string) => void;
@@ -346,38 +371,22 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
 
             {/* Key Points */}
             {enrichment?.keyPoints && enrichment.keyPoints.length > 0 && (
-                <div className="pt-1 space-y-1.5">
-                    <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-500">
-                        <Lightbulb size={12} className="text-amber-500" />
-                        Key Points
-                    </span>
-                    <ul className="space-y-1">
-                        {enrichment.keyPoints.map((point, idx) => (
-                            <li key={idx} className="flex items-start gap-2 text-sm text-gray-400 font-light leading-relaxed">
-                                <span className="text-gray-600 mt-1.5 shrink-0">&#8226;</span>
-                                <span>{point}</span>
-                            </li>
-                        ))}
-                    </ul>
-                </div>
+                <EnrichmentSection
+                    icon={<Lightbulb size={12} className="text-amber-500" />}
+                    label="Key Points"
+                    items={enrichment.keyPoints}
+                />
             )}
 
             {/* Action Items */}
             {enrichment?.actionItems && enrichment.actionItems.length > 0 && (
-                <div className="pt-1 space-y-1.5">
-                    <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-500">
-                        <CircleCheck size={12} className="text-blue-400" />
-                        Action Items
-                    </span>
-                    <ul className="space-y-1">
-                        {enrichment.actionItems.map((item, idx) => (
-                            <li key={idx} className="flex items-start gap-2 text-sm text-blue-300/80 font-light leading-relaxed">
-                                <span className="text-blue-500/50 mt-1.5 shrink-0">&#8226;</span>
-                                <span>{item}</span>
-                            </li>
-                        ))}
-                    </ul>
-                </div>
+                <EnrichmentSection
+                    icon={<CircleCheck size={12} className="text-blue-400" />}
+                    label="Action Items"
+                    items={enrichment.actionItems}
+                    textClass="text-blue-300/80"
+                    bulletClass="text-blue-500/50"
+                />
             )}
 
             {/* Documents */}
