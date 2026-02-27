@@ -3,18 +3,80 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <title>SaveItForL8R - Personal Second Brain</title>
-    
+    <title>SaveItForL8R — AI Note Taking App | Personal Second Brain Powered by Gemini</title>
+    <meta name="description" content="SaveItForL8R is a free AI-powered note taking app that uses Google Gemini to automatically enrich, organize, and recall your notes, images, and files. Your encrypted personal second brain." />
+    <meta name="keywords" content="AI note taking, AI notes app, Gemini note taking, Google Gemini AI tool, personal second brain, AI-powered notes, smart note taking app, encrypted notes, AI memory app, personal knowledge base, save it for later, note taking with AI, AI organization tool, digital second brain, PWA note app" />
+    <link rel="canonical" href="https://saveitforl8r.com/" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="SaveItForL8R" />
+    <meta property="og:title" content="SaveItForL8R — AI Note Taking App | Personal Second Brain Powered by Gemini" />
+    <meta property="og:description" content="Capture notes, images, and files — then let Google Gemini AI automatically enrich, tag, and organize everything. Free, encrypted, and installable as a PWA." />
+    <meta property="og:url" content="https://saveitforl8r.com/" />
+    <meta property="og:image" content="https://saveitforl8r.com/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="SaveItForL8R — AI-powered note taking and personal second brain app" />
+    <meta property="og:locale" content="en_US" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="SaveItForL8R — AI Note Taking App Powered by Gemini" />
+    <meta name="twitter:description" content="Your personal second brain. Capture anything, let AI organize everything. Powered by Google Gemini, encrypted, and free." />
+    <meta name="twitter:image" content="https://saveitforl8r.com/og-image.png" />
+    <meta name="twitter:image:alt" content="SaveItForL8R — AI-powered note taking and personal second brain app" />
+
+    <!-- Additional SEO -->
+    <meta name="robots" content="index, follow" />
+    <meta name="author" content="SaveItForL8R" />
+    <meta name="application-name" content="SaveItForL8R" />
+
+    <!-- JSON-LD Structured Data -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "SaveItForL8R",
+      "alternateName": "Save It For Later",
+      "url": "https://saveitforl8r.com/",
+      "description": "AI-powered note taking app that uses Google Gemini to automatically enrich, organize, and recall your notes, images, and files. Your encrypted personal second brain.",
+      "applicationCategory": "ProductivityApplication",
+      "operatingSystem": "Web, Android, iOS",
+      "browserRequirements": "Requires a modern web browser with JavaScript enabled",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "featureList": [
+        "AI-powered note enrichment with Google Gemini",
+        "Automatic tagging and organization",
+        "Encrypted local storage with AES-256",
+        "Google Drive cloud sync",
+        "Natural language search powered by AI",
+        "Image and file attachment support",
+        "Installable Progressive Web App",
+        "Offline support"
+      ],
+      "screenshot": "https://saveitforl8r.com/og-image.png",
+      "softwareHelp": {
+        "@type": "CreativeWork",
+        "url": "https://saveitforl8r.com/"
+      }
+    }
+    </script>
+
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" type="image/svg+xml" href="/logo-full.svg" />
     <link rel="apple-touch-icon" href="/icon.svg" />
     <meta name="theme-color" content="#000000" />
-    
+
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="SaveItForL8R" />
-    
+
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -48,9 +110,25 @@
     <div id="root">
        <!-- App Shell / Loading Screen -->
        <div class="splash-container">
-          <img src="/logo-full.svg" alt="Logo" class="splash-logo" />
+          <img src="/logo-full.svg" alt="SaveItForL8R logo" class="splash-logo" />
        </div>
     </div>
+    <noscript>
+      <div style="max-width:700px;margin:40px auto;padding:0 20px;color:#e5e7eb;font-family:system-ui,sans-serif;">
+        <h1>SaveItForL8R — AI Note Taking &amp; Personal Second Brain</h1>
+        <p>SaveItForL8R is a free, AI-powered note taking app that uses <strong>Google Gemini</strong> to automatically enrich, tag, and organize your notes, images, and files.</p>
+        <h2>Features</h2>
+        <ul>
+          <li><strong>AI-Powered Enrichment</strong> — Google Gemini analyzes your notes and adds context, tags, and summaries automatically.</li>
+          <li><strong>Smart Search</strong> — Ask questions in natural language and find exactly what you saved.</li>
+          <li><strong>Encrypted Storage</strong> — All your memories are encrypted with AES-256 before being stored.</li>
+          <li><strong>Google Drive Sync</strong> — Optionally back up your encrypted data to Google Drive.</li>
+          <li><strong>Installable PWA</strong> — Install as a native-like app on any device with offline support.</li>
+          <li><strong>Image &amp; File Support</strong> — Save photos, PDFs, text files, and more alongside your notes.</li>
+        </ul>
+        <p>Please enable JavaScript to use SaveItForL8R.</p>
+      </div>
+    </noscript>
     <script type="module" src="/index.tsx"></script>
     <script>
        if ('serviceWorker' in navigator) {
