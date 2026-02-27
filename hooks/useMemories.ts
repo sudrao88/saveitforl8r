@@ -180,12 +180,15 @@ export const useMemories = () => {
   // --- Enrichment polling ---
   // Polls the server for completed enrichment results when memories are pending.
   // Uses a single batched request for all pending memories.
-  const POLL_INTERVAL_MS = 3_000;
+  // Fibonacci backoff: 2s, 3s, 4s, 6s, 9s, 13s, 19s, 28s, ... up to 2 min total.
   const ENRICHMENT_TIMEOUT_MS = 120_000;
 
   const startEnrichmentPolling = useCallback(() => {
     if (pollingActiveRef.current) return;
     pollingActiveRef.current = true;
+
+    let prevDelay = 1_000;
+    let currDelay = 2_000;
 
     const poll = async () => {
       if (!pollingActiveRef.current) return;
@@ -249,13 +252,17 @@ export const useMemories = () => {
       // Re-check if there are still pending items before scheduling next poll
       const stillPending = memoriesRef.current.filter(m => m.isPending && !m.isSample);
       if (stillPending.length > 0 && pollingActiveRef.current) {
-        setTimeout(poll, POLL_INTERVAL_MS);
+        const nextDelay = prevDelay + currDelay;
+        prevDelay = currDelay;
+        currDelay = nextDelay;
+        setTimeout(poll, nextDelay);
       } else {
         pollingActiveRef.current = false;
       }
     };
 
-    setTimeout(poll, POLL_INTERVAL_MS);
+    // First poll at 2s
+    setTimeout(poll, 2_000);
   }, [authStatus, syncFile]);
 
   // Auto-start polling if there are pending memories (e.g., after recovery leaves some as "processing")
