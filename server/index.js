@@ -259,32 +259,69 @@ const sanitizeUserInput = (input) => {
     .replace(/\n{4,}/g, '\n\n\n'); // limit excessive newlines
 };
 
-// --- URL detection for urlContext tool selection ---
+// --- URL detection and validation for urlContext tool selection ---
 
 const URL_REGEX = /https?:\/\/[^\s<>"']+/g;
+
+// Block URLs targeting internal/private networks (SSRF prevention)
+const isPublicUrl = (urlString) => {
+  try {
+    const parsed = new URL(urlString);
+    const hostname = parsed.hostname.toLowerCase();
+
+    // Block non-HTTP(S) schemes
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+
+    // Block localhost and loopback
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') return false;
+    if (hostname.endsWith('.local') || hostname.endsWith('.internal')) return false;
+
+    // Block private IP ranges (RFC 1918) and link-local
+    const ipv4Match = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+    if (ipv4Match) {
+      const [, a, b] = ipv4Match.map(Number);
+      if (a === 10) return false;                         // 10.0.0.0/8
+      if (a === 172 && b >= 16 && b <= 31) return false;  // 172.16.0.0/12
+      if (a === 192 && b === 168) return false;            // 192.168.0.0/16
+      if (a === 169 && b === 254) return false;            // 169.254.0.0/16 (link-local)
+      if (a === 0) return false;                           // 0.0.0.0/8
+      if (a === 127) return false;                         // 127.0.0.0/8
+    }
+
+    // Block cloud metadata endpoints
+    if (hostname === '169.254.169.254') return false;
+    if (hostname === 'metadata.google.internal') return false;
+
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 const extractUrls = (text) => {
   if (!text) return [];
   const rawMatches = text.match(URL_REGEX) || [];
-  return rawMatches.map((url) => {
-    // Strip trailing punctuation that's likely not part of the URL
-    let cleaned = url.replace(/[.,;:!?'"]+$/, '');
-    // Strip trailing ')' only if unbalanced (preserves Wikipedia-style URLs)
-    while (
-      cleaned.endsWith(')') &&
-      (cleaned.split('(').length - 1) < (cleaned.split(')').length - 1)
-    ) {
-      cleaned = cleaned.slice(0, -1);
-    }
-    // Strip trailing ']' only if unbalanced
-    while (
-      cleaned.endsWith(']') &&
-      (cleaned.split('[').length - 1) < (cleaned.split(']').length - 1)
-    ) {
-      cleaned = cleaned.slice(0, -1);
-    }
-    return cleaned;
-  });
+  return rawMatches
+    .map((url) => {
+      // Strip trailing punctuation that's likely not part of the URL
+      let cleaned = url.replace(/[.,;:!?'"]+$/, '');
+      // Strip trailing ')' only if unbalanced (preserves Wikipedia-style URLs)
+      while (
+        cleaned.endsWith(')') &&
+        (cleaned.split('(').length - 1) < (cleaned.split(')').length - 1)
+      ) {
+        cleaned = cleaned.slice(0, -1);
+      }
+      // Strip trailing ']' only if unbalanced
+      while (
+        cleaned.endsWith(']') &&
+        (cleaned.split('[').length - 1) < (cleaned.split(')').length - 1)
+      ) {
+        cleaned = cleaned.slice(0, -1);
+      }
+      return cleaned;
+    })
+    .filter(isPublicUrl);
 };
 
 // --- Schemas (used in prompt text for enrichment, structured output for query) ---
@@ -756,6 +793,18 @@ const FOCUS_INSTRUCTIONS = {
     '\nSOURCE ATTRIBUTION: Identify the source, author, or origin of the content if discernible.',
 };
 
+// Sanitize AI-generated strings before embedding in downstream prompts.
+// Strips control characters and truncates to prevent prompt injection.
+const sanitizeForPromptEmbedding = (str, maxLength = 200) => {
+  if (!str || typeof str !== 'string') return '';
+  return str
+    .replace(/[\x00-\x1f\x7f]/g, '') // strip control characters
+    .replace(/\n{2,}/g, ' ')          // collapse multiple newlines
+    .replace(/[`$\\]/g, '')           // strip characters that could escape prompt context
+    .trim()
+    .slice(0, maxLength);
+};
+
 const buildSmartEnrichmentPrompt = (classification, tags, location, text, urls) => {
   const {
     contentType,
@@ -765,8 +814,10 @@ const buildSmartEnrichmentPrompt = (classification, tags, location, text, urls) 
     searchRecommendation,
   } = classification;
 
+  const safeBrief = sanitizeForPromptEmbedding(contentBrief);
+
   let systemPrompt = `You are an AI enrichment engine for a personal "second brain" app.
-CONTEXT: ${contentBrief}
+CONTEXT: ${safeBrief}
 
 `;
 
@@ -792,7 +843,7 @@ Use the URL Context tool to retrieve the content from the URL(s) above. If the U
       searchRecommendation.value === 'medium')
   ) {
     const entityList = detectedEntities
-      .map((e) => `"${e.name}" (${e.type})`)
+      .map((e) => `"${sanitizeForPromptEmbedding(e.name, 100)}" (${sanitizeForPromptEmbedding(e.type, 30)})`)
       .join(', ');
     systemPrompt += `\n\nENTITY LOOKUP: Search for and provide details on: ${entityList}`;
     systemPrompt +=
@@ -951,6 +1002,8 @@ app.post(
             config: {
               systemInstruction: URL_CLASSIFICATION_SYSTEM_PROMPT,
               tools: [{ urlContext: {} }, { googleSearch: {} }],
+              responseMimeType: 'application/json',
+              responseSchema: classificationSchema,
               thinkingConfig: { thinkingBudget: 0 },
             },
             requestOptions: { signal: classifyController.signal },
@@ -958,7 +1011,7 @@ app.post(
           clearTimeout(classifyTimeout);
 
           const classifyText = classifyResponse.text || '{}';
-          classification = parseJsonResponse(classifyText);
+          classification = JSON.parse(classifyText);
           console.log(
             `[Classify] [${req.requestId}] URL type=${classification.contentType} search=${classification.searchRecommendation?.value} focus=[${classification.suggestedEnrichmentFocus?.join(',')}] (${Date.now() - startTime}ms)`
           );
