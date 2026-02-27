@@ -180,7 +180,7 @@ export const useMemories = () => {
   // --- Enrichment polling ---
   // Polls the server for completed enrichment results when memories are pending.
   // Uses a single batched request for all pending memories.
-  const POLL_INTERVAL_MS = 8_000;
+  const POLL_INTERVAL_MS = 3_000;
   const ENRICHMENT_TIMEOUT_MS = 120_000;
 
   const startEnrichmentPolling = useCallback(() => {
