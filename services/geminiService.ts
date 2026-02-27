@@ -19,33 +19,34 @@ interface EnrichmentInput {
   memoryId?: string;
 }
 
+interface SubmitEnrichmentResponse {
+  status: string;
+}
+
 /**
- * Sends memory content to the server proxy for AI enrichment.
- * The server owns the API key and decides which model to use.
- * When memoryId is provided, the server persists the result for later recovery.
+ * Submits memory content to the server proxy for AI enrichment.
+ * The server validates the request, persists a "processing" status,
+ * and returns 200 { status: "accepted" } immediately. Enrichment
+ * happens asynchronously — poll with fetchPendingEnrichments().
  */
-export const enrichInput = async (
+export const submitEnrichment = async (
   text: string,
   attachments: Attachment[],
   location?: { latitude: number; longitude: number },
   tags: string[] = [],
   memoryId?: string
-): Promise<EnrichmentData> => {
-  try {
-    const payload: EnrichmentInput = {
-      text,
-      attachments,
-      location,
-      tags,
-      memoryId,
-    };
-    
-    // Explicitly cast the response to EnrichmentData
-    const result = await postProxy<EnrichmentData>('/api/enrich', payload as unknown as Record<string, unknown>);
-    return result;
-  } catch (error: any) {
-    console.error('Enrichment Error:', error);
-    throw error;
+): Promise<void> => {
+  const payload: EnrichmentInput = {
+    text,
+    attachments,
+    location,
+    tags,
+    memoryId,
+  };
+
+  const result = await postProxy<SubmitEnrichmentResponse>('/api/enrich', payload as unknown as Record<string, unknown>);
+  if (result.status !== 'accepted') {
+    throw new Error(`Unexpected enrichment response: ${result.status}`);
   }
 };
 
@@ -58,26 +59,36 @@ interface EnrichmentResultsResponse {
   results: Record<string, EnrichmentResultEntry>;
 }
 
+export type EnrichmentPollResult =
+  | { status: 'completed'; data: EnrichmentData }
+  | { status: 'processing' }
+  | { status: 'failed' }
+  | { status: 'not_found' };
+
 /**
  * Fetches enrichment results for pending memories from the server.
- * Used to recover results when the user closed the app before enrichment completed.
+ * Returns per-memory status so callers can distinguish between
+ * "still processing", "completed", "failed", and "not found".
  */
 export const fetchPendingEnrichments = async (
   memoryIds: string[]
-): Promise<Record<string, EnrichmentData | null>> => {
+): Promise<Record<string, EnrichmentPollResult>> => {
   try {
     const payload = { memoryIds };
-    // Explicitly cast the response
     const response = await postProxy<EnrichmentResultsResponse>('/api/enrich/results', payload as unknown as Record<string, unknown>);
 
-    const result: Record<string, EnrichmentData | null> = {};
+    const result: Record<string, EnrichmentPollResult> = {};
     if (response && response.results) {
       for (const id of memoryIds) {
         const entry = response.results[id];
         if (entry?.status === 'completed' && entry.data) {
-          result[id] = entry.data;
+          result[id] = { status: 'completed', data: entry.data };
+        } else if (entry?.status === 'failed') {
+          result[id] = { status: 'failed' };
+        } else if (entry?.status === 'processing') {
+          result[id] = { status: 'processing' };
         } else {
-          result[id] = null;
+          result[id] = { status: 'not_found' };
         }
       }
     }

@@ -38,6 +38,8 @@ vi.mock('../hooks/useAuth', () => ({
 describe('useMemories', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default mock for fetchPendingEnrichments (recovery effect calls this for pending memories)
+    (geminiService.fetchPendingEnrichments as any).mockResolvedValue({});
   });
 
   it('should load memories on mount', async () => {
@@ -60,7 +62,7 @@ describe('useMemories', () => {
   it('should refresh memories', async () => {
     const mockMemories1 = [{ id: '1', content: 'test', timestamp: 123, tags: [] }];
     const mockMemories2 = [{ id: '2', content: 'test2', timestamp: 124, tags: [] }];
-    
+
     (storageService.getMemories as any)
         .mockResolvedValueOnce(mockMemories1)
         .mockResolvedValueOnce(mockMemories2);
@@ -99,13 +101,11 @@ describe('useMemories', () => {
     expect(result.current.memories).toEqual([]);
   });
 
-  it('should handle retry memory', async () => {
-    const mockMemories = [{ id: '1', content: 'test', timestamp: 123, tags: [], isPending: true }];
-    // We need to return valid object for test to pass
-    const mockEnrichment = { suggestedTags: ['new'], locationIsRelevant: false };
+  it('should handle retry memory — set isPending after server accepts', async () => {
+    const mockMemories = [{ id: '1', content: 'test', timestamp: 123, tags: [], processingError: true }];
 
     (storageService.getMemories as any).mockResolvedValue(mockMemories);
-    (geminiService.enrichInput as any).mockResolvedValue(mockEnrichment);
+    (geminiService.submitEnrichment as any).mockResolvedValue(undefined);
     (storageService.saveMemory as any).mockResolvedValue(undefined);
 
     const { result } = renderHook(() => useMemories());
@@ -118,20 +118,44 @@ describe('useMemories', () => {
         await result.current.handleRetry('1');
     });
 
-    expect(geminiService.enrichInput).toHaveBeenCalled();
+    // submitEnrichment should have been called (not enrichInput)
+    expect(geminiService.submitEnrichment).toHaveBeenCalled();
     expect(storageService.saveMemory).toHaveBeenCalled();
-    
+
+    // After server accepted, memory should be in isPending state (waiting for polling to resolve)
+    const updatedMemory = result.current.memories.find(m => m.id === '1');
+    expect(updatedMemory?.isPending).toBe(true);
+    expect(updatedMemory?.processingError).toBe(false);
+  });
+
+  it('should not set isPending when retry submission fails', async () => {
+    const mockMemories = [{ id: '1', content: 'test', timestamp: 123, tags: [], processingError: true }];
+
+    (storageService.getMemories as any).mockResolvedValue(mockMemories);
+    (geminiService.submitEnrichment as any).mockRejectedValue(new Error('Auth failed'));
+    (storageService.saveMemory as any).mockResolvedValue(undefined);
+
+    const { result } = renderHook(() => useMemories());
+
+    await waitFor(() => {
+        expect(result.current.memories).toEqual(mockMemories);
+    });
+
+    await act(async () => {
+        await result.current.handleRetry('1');
+    });
+
+    // Memory should remain in error state, NOT show "Enriching..."
     const updatedMemory = result.current.memories.find(m => m.id === '1');
     expect(updatedMemory?.isPending).toBe(false);
-    expect(updatedMemory?.tags).toContain('new');
+    expect(updatedMemory?.processingError).toBe(true);
   });
 
   it('should retry failed memories when back online', async () => {
     const mockMemories = [{ id: '1', content: 'test', timestamp: 123, tags: [], processingError: true }];
-    const mockEnrichment = { suggestedTags: ['new'], locationIsRelevant: false };
 
     (storageService.getMemories as any).mockResolvedValue(mockMemories);
-    (geminiService.enrichInput as any).mockResolvedValue(mockEnrichment);
+    (geminiService.submitEnrichment as any).mockResolvedValue(undefined);
     (storageService.saveMemory as any).mockResolvedValue(undefined);
 
     const { result } = renderHook(() => useMemories());
@@ -145,26 +169,10 @@ describe('useMemories', () => {
         window.dispatchEvent(new Event('online'));
     });
 
-    // Note: The logic in useMemories for online listener might just trigger refresh, not retry logic directly unless implemented.
-    // Let's check useMemories implementation.
-    // It calls sync() and refreshMemories(). It doesn't seem to iterate and retry enrichment automatically 
-    // unless handleRetry is called. 
-    // Wait, createMemory adds offline listener? No.
-    // useMemories has an effect for online? 
-    // Yes: useEffect(() => { ... window.addEventListener('online', ... sync()... }, [sync]);
-    
-    // The test expects "retry failed memories". Does useMemories actually do that?
-    // Looking at useMemories.ts:
-    // It seems it only logs "App is back online." and calls sync().
-    // It does NOT seem to auto-retry enrichment for existing failed items unless sync handles it (it handles upload, not enrichment).
-    // Enrichment happens in `handleRetry` or `createMemory`.
-    
-    // So this test might fail if the expectation is auto-enrichment.
-    // However, I see the test expects enrichInput to be called.
-    // If the test was passing before, maybe I missed something.
-    // Ah, `useMemories.ts` handles it?
-    // Let's assume the test is correct about intent, but maybe the implementation is missing or I should fix the test expectation if logic changed.
-    
-    // For now, I just want to fix the "SyncProvider" error.
+    // The online handler calls handleRetry for failed memories,
+    // which calls submitEnrichment
+    await waitFor(() => {
+        expect(geminiService.submitEnrichment).toHaveBeenCalled();
+    });
   });
 });

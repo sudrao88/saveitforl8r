@@ -580,8 +580,30 @@ app.post(
   validateEnrichInput,
   enrichLimiter,
   async (req, res) => {
-    const startTime = Date.now();
     const { text, attachments, location, tags, memoryId } = req.body;
+
+    // Persist "processing" status so the client can poll for results
+    if (db && memoryId) {
+      try {
+        await db.collection(ENRICHMENT_COLLECTION).doc(memoryId).set({
+          userId: req.userId,
+          status: 'processing',
+          createdAt: Date.now(),
+          expireAt: new Date(Date.now() + ENRICHMENT_TTL_MS),
+        });
+      } catch (err) {
+        console.error(
+          `[Enrich] [${req.requestId}] Failed to persist processing status:`,
+          err.message
+        );
+      }
+    }
+
+    // Acknowledge receipt immediately — enrichment continues in the background
+    res.json({ status: 'accepted' });
+
+    // --- Background enrichment processing ---
+    const startTime = Date.now();
 
     // Build parts array (attachments first, then user text content)
     const parts = [];
@@ -642,12 +664,11 @@ app.post(
         const responseText = response.text || '{}';
         const duration = Date.now() - startTime;
         console.log(
-          `[Enrich] [${req.requestId}] API responded in ${duration}ms. Response length: ${responseText.length}`
+          `[Enrich] [${req.requestId}] Completed in ${duration}ms. Response length: ${responseText.length}`
         );
 
         const parsed = parseJsonResponse(responseText);
         persistEnrichmentResult(memoryId, req.userId, 'completed', parsed);
-        res.json(parsed);
       } catch (primaryError) {
         clearTimeout(timeout);
         throw primaryError;
@@ -696,14 +717,12 @@ app.post(
         );
         const fallbackParsed = parseJsonResponse(fallbackText);
         persistEnrichmentResult(memoryId, req.userId, 'completed', fallbackParsed);
-        res.json(fallbackParsed);
       } catch (fallbackError) {
         console.error(
           `[Enrich] [${req.requestId}] Fallback also failed:`,
           fallbackError.message
         );
         persistEnrichmentResult(memoryId, req.userId, 'failed', null);
-        res.status(500).json({ error: 'Enrichment failed' });
       }
     }
   }
