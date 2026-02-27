@@ -1,5 +1,4 @@
-
-import { EnrichmentData, Memory, Attachment } from '../types.ts';
+import { EnrichmentData, Memory, Attachment, ChatMessage } from '../types.ts';
 import { postProxy } from './proxyService.ts';
 
 export interface QuerySource {
@@ -10,6 +9,14 @@ export interface QuerySource {
 export interface QueryResponse {
   answer: string;
   sources: QuerySource[];
+}
+
+interface EnrichmentInput {
+  text: string;
+  attachments: Attachment[];
+  location?: { latitude: number; longitude: number };
+  tags: string[];
+  memoryId?: string;
 }
 
 /**
@@ -25,13 +32,16 @@ export const enrichInput = async (
   memoryId?: string
 ): Promise<EnrichmentData> => {
   try {
-    const result = await postProxy<EnrichmentData>('/api/enrich', {
+    const payload: EnrichmentInput = {
       text,
       attachments,
       location,
       tags,
       memoryId,
-    });
+    };
+    
+    // Explicitly cast the response to EnrichmentData
+    const result = await postProxy<EnrichmentData>('/api/enrich', payload as unknown as Record<string, unknown>);
     return result;
   } catch (error: any) {
     console.error('Enrichment Error:', error);
@@ -56,17 +66,19 @@ export const fetchPendingEnrichments = async (
   memoryIds: string[]
 ): Promise<Record<string, EnrichmentData | null>> => {
   try {
-    const response = await postProxy<EnrichmentResultsResponse>('/api/enrich/results', {
-      memoryIds,
-    });
+    const payload = { memoryIds };
+    // Explicitly cast the response
+    const response = await postProxy<EnrichmentResultsResponse>('/api/enrich/results', payload as unknown as Record<string, unknown>);
 
     const result: Record<string, EnrichmentData | null> = {};
-    for (const id of memoryIds) {
-      const entry = response.results[id];
-      if (entry?.status === 'completed' && entry.data) {
-        result[id] = entry.data;
-      } else {
-        result[id] = null;
+    if (response && response.results) {
+      for (const id of memoryIds) {
+        const entry = response.results[id];
+        if (entry?.status === 'completed' && entry.data) {
+          result[id] = entry.data;
+        } else {
+          result[id] = null;
+        }
       }
     }
     return result;
@@ -76,18 +88,36 @@ export const fetchPendingEnrichments = async (
   }
 };
 
+interface LightMemory {
+  id: string;
+  timestamp: number;
+  content: string;
+  tags: string[];
+  enrichment?: EnrichmentData;
+  attachments: { name: string }[];
+  isPending?: boolean;
+  processingError?: boolean;
+}
+
+interface QueryPayload {
+  query: string;
+  memories: LightMemory[];
+  history: ChatMessage[];
+}
+
 /**
  * Sends a query + memory context to the server proxy for AI-powered recall.
  * The server owns the API key and decides which model to use.
  */
 export const queryBrain = async (
   query: string,
-  memories: Memory[]
+  memories: Memory[],
+  history: ChatMessage[] = []
 ): Promise<QueryResponse> => {
   try {
     // Strip attachment data from memories to reduce payload size.
     // The server only needs metadata for context building.
-    const lightMemories = memories
+    const lightMemories: LightMemory[] = memories
       .filter(m => !m.isPending && !m.processingError)
       .map(m => ({
         id: m.id,
@@ -100,10 +130,14 @@ export const queryBrain = async (
         processingError: m.processingError,
       }));
 
-    const result = await postProxy<QueryResponse>('/api/query', {
+    const payload: QueryPayload = {
       query,
       memories: lightMemories,
-    });
+      history,
+    };
+
+    // Explicitly cast the response
+    const result = await postProxy<QueryResponse>('/api/query', payload as unknown as Record<string, unknown>);
     return result;
   } catch (error) {
     console.error('Query Error:', error);
