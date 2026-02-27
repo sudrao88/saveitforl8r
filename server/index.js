@@ -568,6 +568,92 @@ const parseJsonResponse = (raw) => {
   return JSON.parse(jsonString);
 };
 
+// --- Validate and sanitize LLM enrichment output ---
+
+/** Strip HTML tags and control characters from a string. */
+const sanitizeString = (str) => {
+  if (typeof str !== 'string') return '';
+  return str
+    .replace(/<[^>]*>/g, '')       // Strip HTML tags
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') // Strip control chars (preserve \n, \r, \t)
+    .trim();
+};
+
+const MAX_STRING_LEN = 2_000;
+const MAX_TAG_LEN = 100;
+const MAX_TAGS = 20;
+
+/**
+ * Validates and sanitizes a parsed LLM enrichment result to conform to
+ * the EnrichmentData schema. Strips HTML, enforces type constraints,
+ * and caps string lengths to prevent injection and data abuse.
+ */
+const sanitizeEnrichmentResult = (parsed) => {
+  if (!parsed || typeof parsed !== 'object') {
+    return { summary: '', suggestedTags: [] };
+  }
+
+  const result = {
+    summary: sanitizeString(parsed.summary).substring(0, MAX_STRING_LEN),
+    suggestedTags: [],
+  };
+
+  // Optional string fields
+  if (typeof parsed.visualDescription === 'string') {
+    result.visualDescription = sanitizeString(parsed.visualDescription).substring(0, MAX_STRING_LEN);
+  }
+
+  // locationIsRelevant (boolean)
+  if (typeof parsed.locationIsRelevant === 'boolean') {
+    result.locationIsRelevant = parsed.locationIsRelevant;
+  }
+
+  // locationContext (validated sub-object)
+  if (parsed.locationContext && typeof parsed.locationContext === 'object') {
+    const loc = parsed.locationContext;
+    const sanitizedLoc = {};
+    for (const key of ['name', 'address', 'website', 'operatingHours', 'mapsUri']) {
+      if (typeof loc[key] === 'string') {
+        sanitizedLoc[key] = sanitizeString(loc[key]).substring(0, MAX_STRING_LEN);
+      }
+    }
+    if (typeof loc.latitude === 'number' && isFinite(loc.latitude)) {
+      sanitizedLoc.latitude = loc.latitude;
+    }
+    if (typeof loc.longitude === 'number' && isFinite(loc.longitude)) {
+      sanitizedLoc.longitude = loc.longitude;
+    }
+    if (Object.keys(sanitizedLoc).length > 0) {
+      result.locationContext = sanitizedLoc;
+    }
+  }
+
+  // entityContext (validated sub-object)
+  if (parsed.entityContext && typeof parsed.entityContext === 'object') {
+    const ent = parsed.entityContext;
+    const sanitizedEnt = {};
+    for (const key of ['type', 'title', 'subtitle', 'description', 'rating']) {
+      if (typeof ent[key] === 'string') {
+        sanitizedEnt[key] = sanitizeString(ent[key]).substring(0, MAX_STRING_LEN);
+      }
+    }
+    if (sanitizedEnt.type) {
+      result.entityContext = sanitizedEnt;
+    }
+  }
+
+  // suggestedTags (array of strings)
+  if (Array.isArray(parsed.suggestedTags)) {
+    result.suggestedTags = parsed.suggestedTags
+      .filter((t) => typeof t === 'string')
+      .map((t) => sanitizeString(t).substring(0, MAX_TAG_LEN))
+      .filter((t) => t.length > 0)
+      .slice(0, MAX_TAGS);
+  }
+
+  return result;
+};
+
 // --- Health check ---
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
@@ -580,8 +666,39 @@ app.post(
   validateEnrichInput,
   enrichLimiter,
   async (req, res) => {
-    const startTime = Date.now();
     const { text, attachments, location, tags, memoryId } = req.body;
+
+    // Persist "processing" status so the client can poll for results
+    if (db && memoryId) {
+      try {
+        // Verify ownership: if a document already exists, it must belong to this user
+        const existingDoc = await db.collection(ENRICHMENT_COLLECTION).doc(memoryId).get();
+        if (existingDoc.exists && existingDoc.data().userId !== req.userId) {
+          console.warn(
+            `[Enrich] [${req.requestId}] Ownership mismatch for memoryId=${memoryId}, user=${req.userId}`
+          );
+          return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        await db.collection(ENRICHMENT_COLLECTION).doc(memoryId).set({
+          userId: req.userId,
+          status: 'processing',
+          createdAt: Date.now(),
+          expireAt: new Date(Date.now() + ENRICHMENT_TTL_MS),
+        });
+      } catch (err) {
+        console.error(
+          `[Enrich] [${req.requestId}] Failed to persist processing status:`,
+          err.message
+        );
+      }
+    }
+
+    // Acknowledge receipt immediately — enrichment continues in the background
+    res.json({ status: 'accepted' });
+
+    // --- Background enrichment processing ---
+    const startTime = Date.now();
 
     // Build parts array (attachments first, then user text content)
     const parts = [];
@@ -642,12 +759,12 @@ app.post(
         const responseText = response.text || '{}';
         const duration = Date.now() - startTime;
         console.log(
-          `[Enrich] [${req.requestId}] API responded in ${duration}ms. Response length: ${responseText.length}`
+          `[Enrich] [${req.requestId}] Completed in ${duration}ms. Response length: ${responseText.length}`
         );
 
         const parsed = parseJsonResponse(responseText);
-        persistEnrichmentResult(memoryId, req.userId, 'completed', parsed);
-        res.json(parsed);
+        const sanitized = sanitizeEnrichmentResult(parsed);
+        persistEnrichmentResult(memoryId, req.userId, 'completed', sanitized);
       } catch (primaryError) {
         clearTimeout(timeout);
         throw primaryError;
@@ -695,15 +812,14 @@ app.post(
           `[Enrich] [${req.requestId}] Fallback succeeded in ${Date.now() - fallbackStartTime}ms`
         );
         const fallbackParsed = parseJsonResponse(fallbackText);
-        persistEnrichmentResult(memoryId, req.userId, 'completed', fallbackParsed);
-        res.json(fallbackParsed);
+        const sanitizedFallback = sanitizeEnrichmentResult(fallbackParsed);
+        persistEnrichmentResult(memoryId, req.userId, 'completed', sanitizedFallback);
       } catch (fallbackError) {
         console.error(
           `[Enrich] [${req.requestId}] Fallback also failed:`,
           fallbackError.message
         );
         persistEnrichmentResult(memoryId, req.userId, 'failed', null);
-        res.status(500).json({ error: 'Enrichment failed' });
       }
     }
   }
