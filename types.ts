@@ -28,6 +28,15 @@ export interface EnrichmentData {
   };
   entityContext?: EntityContext;
   suggestedTags: string[];
+  // Smart enrichment fields (populated based on content classification)
+  keyPoints?: string[];
+  actionItems?: string[];
+  decisions?: string[];
+  openQuestions?: string[];
+  themes?: string[];
+  sentiment?: string;
+  contentType?: string;
+  enrichmentStrategy?: string;
 }
 
 export interface Attachment {
