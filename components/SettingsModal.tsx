@@ -76,7 +76,7 @@ const FactoryResetModal: React.FC<{ isOpen: boolean; onClose: () => void; onConf
     const isConfirmed = confirmationText === 'DELETE';
 
     return (
-        <div className="absolute inset-0 z-20 flex items-center justify-center bg-gray-900/80 backdrop-blur-md animate-in fade-in duration-300 p-4">
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/80 backdrop-blur-md animate-in fade-in duration-300 p-4">
             <div className="bg-red-900/20 border border-red-800 rounded-2xl max-w-sm w-full p-6 shadow-2xl text-center">
                 <div className="w-14 h-14 bg-red-900/50 border-4 border-red-800 rounded-full mx-auto flex items-center justify-center">
                     <AlertTriangle size={32} className="text-red-300" />
@@ -167,9 +167,9 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
   return (
     <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in duration-200">
       {/* Modal container: Use calc with safe-area for Safari incognito compatibility */}
-      <div className="bg-gray-900 border border-gray-700 rounded-t-3xl sm:rounded-3xl max-w-2xl w-full shadow-2xl relative flex flex-col overflow-hidden animate-in slide-in-from-bottom-10 sm:zoom-in-95 duration-200"
+      <div className="bg-black border border-gray-700 rounded-t-3xl sm:rounded-3xl max-w-2xl w-full shadow-2xl relative flex flex-col overflow-hidden animate-in slide-in-from-bottom-10 sm:zoom-in-95 duration-200"
            style={{ maxHeight: 'calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 16px)' }}>
-        <div className="p-4 sm:p-6 border-b border-gray-700 flex items-center justify-between shrink-0 bg-gray-900 z-10 pt-[max(16px,env(safe-area-inset-top))] sm:pt-6">
+        <div className="p-4 sm:p-6 border-b border-gray-700 flex items-center justify-between shrink-0 bg-black z-10 pt-[max(16px,env(safe-area-inset-top))] sm:pt-6">
           <div className="flex items-center gap-3">
              <div className="w-10 h-10 bg-gray-800 rounded-xl flex items-center justify-center text-gray-300 shrink-0"><Settings size={20} /></div>
              <div>
@@ -294,7 +294,7 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
           </div>
         </div>
         
-        {appVersion && <div className="text-center py-2 border-t border-gray-700 text-[10px] font-mono text-gray-500 shrink-0 bg-gray-900">Version: {appVersion}</div>}
+        {appVersion && <div className="text-center py-2 border-t border-gray-700 text-[10px] font-mono text-gray-500 shrink-0 bg-black">Version: {appVersion}</div>}
         
         <FactoryResetModal 
             isOpen={isResetModalOpen}
