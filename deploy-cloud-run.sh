@@ -32,18 +32,6 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
     --role="roles/datastore.user" \
     --condition=None
 
-# Create Firestore database if it doesn't exist (us-central1 for low latency from both regions)
-if ! gcloud firestore databases describe --database="(default)" &>/dev/null; then
-    echo "Creating Firestore database..."
-    gcloud firestore databases create --location=us-central1
-fi
-
-# Configure TTL policy on enrichment-results collection (idempotent)
-gcloud firestore fields ttls update expireAt \
-    --collection-group=enrichment-results \
-    --enable-ttl \
-    --database="(default)" 2>/dev/null || true
-
 echo "--- 2. Handling Secrets ---"
 function ensure_secret() {
     if ! gcloud secrets describe $1 &>/dev/null; then
