@@ -38,7 +38,19 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: 'dist', // Ensure this matches capacitor webDir
       target: 'esnext',
-      sourcemap: false
+      sourcemap: false,
+      rollupOptions: {
+        output: {
+          // Split large vendor dependencies into separate chunks so they
+          // can be cached independently. Keeps the main bundle lean.
+          manualChunks: {
+            'vendor-react': ['react', 'react-dom'],
+            'vendor-marked': ['marked'],
+            'vendor-dexie': ['dexie'],
+            'vendor-pdf': ['pdfjs-dist'],
+          },
+        },
+      },
     },
     worker: {
       format: 'es',
