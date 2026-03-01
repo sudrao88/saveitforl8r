@@ -20,7 +20,7 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #111827;
+  background-color: #000000;
   color: #f3f4f6;
   overscroll-behavior-y: none; /* Prevent pull-to-refresh on mobile */
   

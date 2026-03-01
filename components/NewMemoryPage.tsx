@@ -545,9 +545,9 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
   };
 
   return (
-    <div className="fixed inset-0 bg-gray-900 flex flex-col z-50" dir="ltr">
+    <div className="fixed inset-0 bg-black flex flex-col z-50" dir="ltr">
         {/* Header */}
-        <div className="shrink-0 bg-gray-900/90 backdrop-blur-md border-b border-gray-800 px-4 py-3 flex items-center justify-between pt-[calc(env(safe-area-inset-top)+12px)]">
+        <div className="shrink-0 bg-black/90 backdrop-blur-md border-b border-gray-800 px-4 py-3 flex items-center justify-between pt-[calc(env(safe-area-inset-top)+12px)]">
             <div className="flex items-center gap-3">
                 <button
                     onClick={handleClose}

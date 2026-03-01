@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getMemories, deleteMemory, saveMemory, getMemory } from '../services/storageService';
-import { enrichInput, fetchPendingEnrichments } from '../services/geminiService';
+import { submitEnrichment, fetchPendingEnrichments } from '../services/geminiService';
 import { Memory, Attachment } from '../types';
 import { SAMPLE_MEMORIES } from '../services/sampleData';
 import { useSync } from './useSync';
@@ -81,6 +81,11 @@ export const useMemories = () => {
   const { authStatus } = useAuth();
   const mounted = useRef(false);
   const recoveryAttemptedRef = useRef(false);
+  const pollingActiveRef = useRef(false);
+  const memoriesRef = useRef(memories);
+
+  // Keep memoriesRef in sync for use inside polling closure
+  useEffect(() => { memoriesRef.current = memories; }, [memories]);
 
   const refreshMemories = useCallback(async () => {
     try {
@@ -130,13 +135,13 @@ export const useMemories = () => {
         const results = await fetchPendingEnrichments(ids);
 
         for (const memory of pendingMemories) {
-          const enrichment = results[memory.id];
-          if (enrichment) {
+          const result = results[memory.id];
+          if (result?.status === 'completed') {
             // Result found in server — apply it
-            const allTags = Array.from(new Set([...memory.tags, ...enrichment.suggestedTags]));
+            const allTags = Array.from(new Set([...memory.tags, ...result.data.suggestedTags]));
             const updatedMemory: Memory = {
               ...memory,
-              enrichment,
+              enrichment: result.data,
               tags: allTags,
               isPending: false,
               processingError: false,
@@ -145,8 +150,11 @@ export const useMemories = () => {
             await saveMemory(updatedMemory);
             setMemories(prev => prev.map(m => m.id === memory.id ? updatedMemory : m));
             console.log(`[Recovery] Recovered enrichment for ${memory.id}`);
+          } else if (result?.status === 'processing') {
+            // Still processing — leave as pending, polling will pick it up
+            console.log(`[Recovery] ${memory.id} still processing, will poll`);
           } else {
-            // Not found (expired or never completed) — mark for retry
+            // Not found or failed — mark for retry
             const failedMemory: Memory = { ...memory, isPending: false, processingError: true };
             await saveMemory(failedMemory);
             setMemories(prev => prev.map(m => m.id === memory.id ? failedMemory : m));
@@ -168,6 +176,102 @@ export const useMemories = () => {
           syncFile(memory).catch(err => console.error("Single file sync failed:", err));
       }
   }, [authStatus, syncFile]);
+
+  // --- Enrichment polling ---
+  // Polls the server for completed enrichment results when memories are pending.
+  // Uses a single batched request for all pending memories.
+  // Fibonacci backoff: 2s, 3s, 4s, 6s, 9s, 13s, 19s, 28s, ... up to 2 min total.
+  const ENRICHMENT_TIMEOUT_MS = 120_000;
+
+  const startEnrichmentPolling = useCallback(() => {
+    if (pollingActiveRef.current) return;
+    pollingActiveRef.current = true;
+
+    let prevDelay = 1_000;
+    let currDelay = 2_000;
+
+    const poll = async () => {
+      if (!pollingActiveRef.current) return;
+
+      const pending = memoriesRef.current.filter(m => m.isPending && !m.isSample);
+      if (pending.length === 0) {
+        pollingActiveRef.current = false;
+        return;
+      }
+
+      try {
+        const ids = pending.map(m => m.id);
+        const results = await fetchPendingEnrichments(ids);
+
+        for (const memory of pending) {
+          const result = results[memory.id];
+          if (result?.status === 'completed') {
+            const current = await getMemory(memory.id);
+            if (!current || current.isDeleted) continue;
+
+            const allTags = Array.from(new Set([...current.tags, ...result.data.suggestedTags]));
+            const updatedMemory: Memory = {
+              ...current,
+              enrichment: result.data,
+              tags: allTags,
+              isPending: false,
+              processingError: false,
+              timestamp: Date.now(),
+            };
+            await saveMemory(updatedMemory);
+            setMemories(prev => prev.map(m => m.id === memory.id ? updatedMemory : m));
+            console.log(`[Poll] Enrichment complete for ${memory.id}`);
+
+            if (authStatus === 'linked') {
+              syncFile(updatedMemory).catch(err => console.error("Sync failed:", err));
+            }
+          } else if (result?.status === 'failed') {
+            const current = await getMemory(memory.id);
+            if (!current || current.isDeleted) continue;
+
+            const failedMemory: Memory = { ...current, isPending: false, processingError: true };
+            await saveMemory(failedMemory);
+            setMemories(prev => prev.map(m => m.id === memory.id ? failedMemory : m));
+            console.log(`[Poll] Enrichment failed for ${memory.id}`);
+          } else if (Date.now() - memory.timestamp > ENRICHMENT_TIMEOUT_MS) {
+            // Timed out waiting for result
+            const current = await getMemory(memory.id);
+            if (!current || current.isDeleted) continue;
+
+            const failedMemory: Memory = { ...current, isPending: false, processingError: true };
+            await saveMemory(failedMemory);
+            setMemories(prev => prev.map(m => m.id === memory.id ? failedMemory : m));
+            console.log(`[Poll] Enrichment timed out for ${memory.id}`);
+          }
+          // status === 'processing' or 'not_found' (not timed out) → keep polling
+        }
+      } catch (err) {
+        console.error('[Poll] Failed to poll for enrichment results:', err);
+      }
+
+      // Re-check if there are still pending items before scheduling next poll
+      const stillPending = memoriesRef.current.filter(m => m.isPending && !m.isSample);
+      if (stillPending.length > 0 && pollingActiveRef.current) {
+        const nextDelay = prevDelay + currDelay;
+        prevDelay = currDelay;
+        currDelay = nextDelay;
+        setTimeout(poll, nextDelay);
+      } else {
+        pollingActiveRef.current = false;
+      }
+    };
+
+    // First poll at 2s
+    setTimeout(poll, 2_000);
+  }, [authStatus, syncFile]);
+
+  // Auto-start polling if there are pending memories (e.g., after recovery leaves some as "processing")
+  useEffect(() => {
+    const hasPending = memories.some(m => m.isPending && !m.isSample);
+    if (hasPending && !pollingActiveRef.current) {
+      startEnrichmentPolling();
+    }
+  }, [memories, startEnrichmentPolling]);
 
   const handleDelete = useCallback(async (id: string) => {
     setMemories(prev => prev.map(m => m.id === id ? { ...m, isDeleting: true } : m));
@@ -199,7 +303,8 @@ export const useMemories = () => {
   }, [refreshMemories, trySyncFile]);
 
   const handleRetry = useCallback(async (id: string) => {
-    setMemories(prev => prev.map(m => m.id === id ? { ...m, isPending: true, processingError: false } : m));
+    // Clear error state but don't show "Enriching..." yet
+    setMemories(prev => prev.map(m => m.id === id ? { ...m, processingError: false } : m));
     const memory = memories.find(m => m.id === id);
     if (!memory) return;
 
@@ -215,7 +320,8 @@ export const useMemories = () => {
             });
         }
 
-        const enrichment = await enrichInput(
+        // Submit enrichment — only set isPending after the server confirms receipt
+        await submitEnrichment(
             memory.content,
             attachments,
             memory.location,
@@ -223,30 +329,23 @@ export const useMemories = () => {
             memory.id
         );
 
-        const allTags = Array.from(new Set([...memory.tags, ...enrichment.suggestedTags]));
-        const updatedMemory: Memory = {
+        // Server accepted (200) — now show "Enriching..." and poll for results
+        const pendingMemory: Memory = {
             ...memory,
-            enrichment,
-            tags: allTags,
-            isPending: false,
+            isPending: true,
             processingError: false,
-            location: memory.location,
             attachments: attachments.filter(a => a.id !== 'legacy-img'),
-            timestamp: Date.now()
         };
-
-        await saveMemory(updatedMemory);
-        setMemories(prev => prev.map(m => m.id === id ? updatedMemory : m));
-
-        // Sync enriched file
-        await trySyncFile(updatedMemory);
+        await saveMemory(pendingMemory);
+        setMemories(prev => prev.map(m => m.id === id ? pendingMemory : m));
+        startEnrichmentPolling();
     } catch (error) {
         console.error("Retry failed for memory", id, error);
         const failedMemory = { ...memory, isPending: false, processingError: true };
         await saveMemory(failedMemory);
         setMemories(prev => prev.map(m => m.id === id ? failedMemory : m));
     }
-  }, [memories, trySyncFile]);
+  }, [memories, trySyncFile, startEnrichmentPolling]);
 
   const createMemory = useCallback(async (
     text: string,
@@ -254,7 +353,7 @@ export const useMemories = () => {
     tags: string[],
     location?: { latitude: number; longitude: number; accuracy?: number }
   ) => {
-      // 1. Prepare initial memory object
+      // 1. Prepare initial memory object — no isPending yet
       const memoryId = crypto.randomUUID();
       const timestamp = Date.now();
 
@@ -265,48 +364,31 @@ export const useMemories = () => {
         attachments,
         tags,
         location,
-        isPending: true,
+        isPending: false,
         processingError: false
       };
 
-      // 2. Schedule background enrichment via server proxy
-      const enrichmentPromise = enrichInput(text, attachments, location, tags, memoryId);
-
-      // 3. Update UI immediately (showing loading state) and save local pending state
+      // 2. Show the card immediately (without "Enriching..." state) and save locally
       setMemories(prev => [newMemory, ...prev]);
       saveMemory(newMemory).catch(err => console.error("Failed to save pending memory", err));
 
-      // 4. Handle Enrichment Result (asynchronously)
-      enrichmentPromise
-        .then(async (enrichment) => {
-            if (!enrichment) return;
-
-            // Check if memory still exists (wasn't deleted while enriching)
+      // 3. Submit enrichment to server — show "Enriching..." only after 200 confirmed
+      submitEnrichment(text, attachments, location, tags, memoryId)
+        .then(async () => {
+            // Server accepted (200) — now show "Enriching..." and start polling
             const current = await getMemory(memoryId);
-            if (!current || current.isDeleted) {
-                console.log("Memory deleted during enrichment, aborting save.");
-                return;
-            }
+            if (!current || current.isDeleted) return;
 
-            const allTags = Array.from(new Set([...tags, ...enrichment.suggestedTags]));
-            const updatedMemory: Memory = {
+            const pendingMemory: Memory = {
                 ...newMemory,
-                enrichment,
-                tags: allTags,
-                isPending: false,
-                timestamp: Date.now()
+                isPending: true,
             };
-
-            // Save and update UI with enriched data
-            await saveMemory(updatedMemory);
-            setMemories(prev => prev.map(m => m.id === memoryId ? updatedMemory : m));
-            console.log("Enrichment complete, syncing single file...");
-
-            // Sync Enriched File
-            await trySyncFile(updatedMemory);
+            await saveMemory(pendingMemory);
+            setMemories(prev => prev.map(m => m.id === memoryId ? pendingMemory : m));
+            startEnrichmentPolling();
         })
         .catch(async (err) => {
-            console.error("Enrichment failed:", err);
+            console.error("Enrichment submission failed:", err);
             const current = await getMemory(memoryId);
             if (!current || current.isDeleted) return;
 
@@ -321,7 +403,7 @@ export const useMemories = () => {
 
       // Return immediately so the modal can close
       return Promise.resolve();
-  }, [trySyncFile]);
+  }, [trySyncFile, startEnrichmentPolling]);
 
   const updateMemoryContent = useCallback(async (id: string, newContent: string) => {
       setMemories(prev => prev.map(m => m.id === id ? { ...m, content: newContent } : m));
@@ -367,6 +449,7 @@ export const useMemories = () => {
           return;
       }
 
+      // Update content immediately — no isPending yet
       const updatedMemory: Memory = {
         ...existing,
         content: text,
@@ -374,12 +457,12 @@ export const useMemories = () => {
         tags,
         location: location || existing.location,
         enrichment: undefined, // Clear old enrichment to force re-processing
-        isPending: true,
+        isPending: false,
         processingError: false,
         timestamp: Date.now()
       };
 
-      // Update UI immediately to show "Enriching..." state
+      // Update UI with new content (without "Enriching..." state)
       setMemories(prev => prev.map(m => m.id === id ? updatedMemory : m));
 
       // Save locally so if app closes, we at least have the text update
@@ -388,36 +471,24 @@ export const useMemories = () => {
       // Sync immediately (save the text changes even before enrichment finishes)
       await trySyncFile(updatedMemory);
 
-      // Trigger Background Enrichment via server proxy
-      console.log(`[Update] Triggering enrichment for ${id}`);
-      enrichInput(text, attachments, updatedMemory.location, tags, id)
-        .then(async (enrichment) => {
-            if (!enrichment) return;
-
+      // Submit enrichment — show "Enriching..." only after the server confirms receipt
+      console.log(`[Update] Submitting enrichment for ${id}`);
+      submitEnrichment(text, attachments, updatedMemory.location, tags, id)
+        .then(async () => {
+            // Server accepted (200) — now show "Enriching..." and start polling
             const current = await getMemory(id);
-            if (!current || current.isDeleted) {
-                console.log("Memory deleted during enrichment, aborting save.");
-                return;
-            }
+            if (!current || current.isDeleted) return;
 
-            const allTags = Array.from(new Set([...tags, ...enrichment.suggestedTags]));
-            const enrichedMemory: Memory = {
+            const pendingMemory: Memory = {
                 ...updatedMemory,
-                enrichment,
-                tags: allTags,
-                isPending: false,
-                processingError: false,
-                timestamp: Date.now()
+                isPending: true,
             };
-
-            await saveMemory(enrichedMemory);
-            setMemories(prev => prev.map(m => m.id === id ? enrichedMemory : m));
-            console.log("Update enrichment complete, syncing enriched version...");
-
-            await trySyncFile(enrichedMemory);
+            await saveMemory(pendingMemory);
+            setMemories(prev => prev.map(m => m.id === id ? pendingMemory : m));
+            startEnrichmentPolling();
         })
         .catch(async (err) => {
-            console.error("Update enrichment failed:", err);
+            console.error("Update enrichment submission failed:", err);
             const current = await getMemory(id);
             if (!current || current.isDeleted) return;
 
@@ -431,7 +502,7 @@ export const useMemories = () => {
         });
 
       return Promise.resolve();
-  }, [trySyncFile]);
+  }, [trySyncFile, startEnrichmentPolling]);
 
   useEffect(() => {
     const handleOnline = async () => {
@@ -447,17 +518,20 @@ export const useMemories = () => {
               const ids = pendingItems.map(m => m.id);
               const results = await fetchPendingEnrichments(ids);
               for (const memory of pendingItems) {
-                  const enrichment = results[memory.id];
-                  if (enrichment) {
-                      const allTags = Array.from(new Set([...memory.tags, ...enrichment.suggestedTags]));
+                  const result = results[memory.id];
+                  if (result?.status === 'completed') {
+                      const allTags = Array.from(new Set([...memory.tags, ...result.data.suggestedTags]));
                       const updatedMemory: Memory = {
-                          ...memory, enrichment, tags: allTags,
+                          ...memory, enrichment: result.data, tags: allTags,
                           isPending: false, processingError: false, timestamp: Date.now(),
                       };
                       await saveMemory(updatedMemory);
                       setMemories(prev => prev.map(m => m.id === memory.id ? updatedMemory : m));
+                  } else if (result?.status === 'processing') {
+                      // Still processing — polling will pick it up
+                      startEnrichmentPolling();
                   } else {
-                      // Not found — fall through to retry below
+                      // Not found or failed — mark for retry
                       const failedMemory: Memory = { ...memory, isPending: false, processingError: true };
                       await saveMemory(failedMemory);
                       setMemories(prev => prev.map(m => m.id === memory.id ? failedMemory : m));
@@ -478,7 +552,7 @@ export const useMemories = () => {
 
     window.addEventListener('online', handleOnline);
     return () => window.removeEventListener('online', handleOnline);
-  }, [sync, authStatus, memories, handleRetry]);
+  }, [sync, authStatus, memories, handleRetry, startEnrichmentPolling]);
 
   return {
     memories,
