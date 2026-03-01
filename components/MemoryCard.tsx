@@ -1,6 +1,31 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Trash2, Loader2, Clock, ExternalLink, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, WifiOff, FileText, Paperclip, MoreVertical, AlertTriangle, LogIn, Square, CheckSquare, Maximize2, Eye, Pin, Pencil } from 'lucide-react';
+import { Trash2, Loader2, Clock, ExternalLink, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, WifiOff, FileText, Paperclip, MoreVertical, AlertTriangle, LogIn, Square, CheckSquare, Maximize2, Eye, Pin, Pencil, Lightbulb, CircleCheck } from 'lucide-react';
 import { Memory, Attachment } from '../types.ts';
+
+interface EnrichmentSectionProps {
+  icon: React.ReactNode;
+  label: string;
+  items: string[];
+  textClass?: string;
+  bulletClass?: string;
+}
+
+const EnrichmentSection: React.FC<EnrichmentSectionProps> = ({ icon, label, items, textClass = 'text-gray-400', bulletClass = 'text-gray-600' }) => (
+  <div className="pt-1 space-y-1.5">
+    <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-500">
+      {icon}
+      {label}
+    </span>
+    <ul className="space-y-1">
+      {items.map((item, idx) => (
+        <li key={idx} className={`flex items-start gap-2 text-sm ${textClass} font-light leading-relaxed`}>
+          <span className={`${bulletClass} mt-1.5 shrink-0`}>&#8226;</span>
+          <span>{item}</span>
+        </li>
+      ))}
+    </ul>
+  </div>
+);
 
 interface MemoryCardProps {
   memory: Memory;
@@ -41,6 +66,9 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
   const [isExpanded, setIsExpanded] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  const [showSummary, setShowSummary] = useState(false);
+  const [showKeyPoints, setShowKeyPoints] = useState(false);
+  const [showActionItems, setShowActionItems] = useState(false);
   
   const [isTruncated, setIsTruncated] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -280,6 +308,17 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
              {memory.processingError && <WifiOff size={12} className="text-amber-500" />}
           </div>
 
+          {/* AI Title — below entity type, above user content */}
+          {entity?.title && (
+              <div className="mb-1">
+                  <h3 className="text-lg font-semibold text-gray-100 leading-tight">{entity.title}</h3>
+                  <div className="flex items-center gap-2 mt-1">
+                      {entity.subtitle && <span className="text-xs text-gray-400">{entity.subtitle}</span>}
+                      {entity.rating && <span className="text-[10px] px-1.5 py-0.5 bg-yellow-500/10 text-yellow-500 rounded font-medium">★ {entity.rating}</span>}
+                  </div>
+              </div>
+          )}
+
           <div className="space-y-3 flex-1 flex flex-col">
             {/* User Content with Mask-based Fade */}
             {memory.content && (
@@ -308,41 +347,83 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                 </div>
             )}
 
-            {/* AI Summary */}
-            <div className="space-y-3 mt-auto">
-                {(entity?.title) && (
-                    <div className="pt-1">
-                        {targetUri ? (
-                            <a href={targetUri} target="_blank" rel="noopener noreferrer" className="group/link inline-flex items-start gap-2 active:opacity-70 transition-all p-1 -m-1 rounded-lg hover:bg-white/5">
-                                <h3 className="text-lg font-bold text-blue-400 leading-tight underline decoration-blue-500/30 underline-offset-4 decoration-2">
-                                    {entity.title}
-                                </h3>
-                                <ExternalLink size={16} className="mt-0.5 text-blue-500/70 shrink-0" />
-                            </a>
-                        ) : (
-                            <h3 className="text-lg font-semibold text-gray-100 leading-tight">{entity.title}</h3>
-                        )}
-                        <div className="flex items-center gap-2 mt-1">
-                            {entity.subtitle && <span className="text-xs text-gray-400">{entity.subtitle}</span>}
-                            {entity.rating && <span className="text-[10px] px-1.5 py-0.5 bg-yellow-500/10 text-yellow-500 rounded font-medium">★ {entity.rating}</span>}
-                        </div>
-                    </div>
-                )}
-
-                {aiText && (
-                    <div className="text-sm text-gray-400 font-light leading-relaxed">
-                        <span className={(!isExpanded && shouldTruncateAI) ? 'line-clamp-2' : ''}>{String(aiText)}</span>
-                        {shouldTruncateAI && (
-                            <button 
-                                onClick={(e) => { e.stopPropagation(); setIsExpanded(!isExpanded); }}
-                                className="text-[10px] font-bold text-gray-500 hover:text-blue-400 uppercase tracking-wide mt-2 p-2 -ml-2 hover:bg-white/5 rounded-lg transition-colors"
+            {/* Enrichment Icon Row + Expandable Sections */}
+            {(aiText || (enrichment?.keyPoints && enrichment.keyPoints.length > 0) || (enrichment?.actionItems && enrichment.actionItems.length > 0) || targetUri) && (
+                <div className="space-y-2 mt-auto">
+                    <div className="flex items-center gap-1">
+                        {aiText && (
+                            <button
+                                onClick={(e) => { e.stopPropagation(); setShowSummary(!showSummary); }}
+                                title="Summary"
+                                className={`p-2 rounded-lg transition-colors ${showSummary ? 'bg-gray-700/60 text-gray-200' : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'}`}
                             >
-                                {isExpanded ? 'Show Less' : 'Read More'}
+                                <FileText size={16} />
                             </button>
                         )}
+                        {enrichment?.keyPoints && enrichment.keyPoints.length > 0 && (
+                            <button
+                                onClick={(e) => { e.stopPropagation(); setShowKeyPoints(!showKeyPoints); }}
+                                title="Key Points"
+                                className={`p-2 rounded-lg transition-colors ${showKeyPoints ? 'bg-amber-900/30 text-amber-400' : 'text-gray-500 hover:text-amber-400 hover:bg-white/5'}`}
+                            >
+                                <Lightbulb size={16} />
+                            </button>
+                        )}
+                        {enrichment?.actionItems && enrichment.actionItems.length > 0 && (
+                            <button
+                                onClick={(e) => { e.stopPropagation(); setShowActionItems(!showActionItems); }}
+                                title="Action Items"
+                                className={`p-2 rounded-lg transition-colors ${showActionItems ? 'bg-blue-900/30 text-blue-400' : 'text-gray-500 hover:text-blue-400 hover:bg-white/5'}`}
+                            >
+                                <CircleCheck size={16} />
+                            </button>
+                        )}
+                        {targetUri && (
+                            <a
+                                href={targetUri}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                title="Open Link"
+                                className="p-2 rounded-lg text-gray-500 hover:text-blue-400 hover:bg-white/5 transition-colors"
+                            >
+                                <ExternalLink size={16} />
+                            </a>
+                        )}
                     </div>
-                )}
-            </div>
+
+                    {/* Expandable Summary */}
+                    {showSummary && aiText && (
+                        <div className="text-sm text-gray-400 font-light leading-relaxed pl-1 animate-in fade-in slide-in-from-top-1 duration-200">
+                            {String(aiText)}
+                        </div>
+                    )}
+
+                    {/* Expandable Key Points */}
+                    {showKeyPoints && enrichment?.keyPoints && enrichment.keyPoints.length > 0 && (
+                        <div className="animate-in fade-in slide-in-from-top-1 duration-200">
+                            <EnrichmentSection
+                                icon={<Lightbulb size={12} className="text-amber-500" />}
+                                label="Key Points"
+                                items={enrichment.keyPoints}
+                            />
+                        </div>
+                    )}
+
+                    {/* Expandable Action Items */}
+                    {showActionItems && enrichment?.actionItems && enrichment.actionItems.length > 0 && (
+                        <div className="animate-in fade-in slide-in-from-top-1 duration-200">
+                            <EnrichmentSection
+                                icon={<CircleCheck size={12} className="text-blue-400" />}
+                                label="Action Items"
+                                items={enrichment.actionItems}
+                                textClass="text-blue-300/80"
+                                bulletClass="text-blue-500/50"
+                            />
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Documents */}
             {documents.length > 0 && (
