@@ -516,6 +516,17 @@ const MAX_STRING_LEN = 2_000;
 const MAX_TAG_LEN = 100;
 const MAX_TAGS = 20;
 
+/** Sanitize and truncate all string-valued keys from `obj`. */
+const sanitizeObjectStrings = (obj, keys, maxLen = MAX_STRING_LEN) => {
+  const result = {};
+  for (const key of keys) {
+    if (typeof obj[key] === 'string') {
+      result[key] = sanitizeString(obj[key]).substring(0, maxLen);
+    }
+  }
+  return result;
+};
+
 export const sanitizeEnrichmentResult = (parsed) => {
   if (!parsed || typeof parsed !== 'object') {
     return { summary: '', suggestedTags: [] };
@@ -535,25 +546,14 @@ export const sanitizeEnrichmentResult = (parsed) => {
 
   if (parsed.locationContext && typeof parsed.locationContext === 'object') {
     const loc = parsed.locationContext;
-    const sanitizedLoc = {};
-    for (const key of ['name', 'address', 'website', 'operatingHours', 'mapsUri']) {
-      if (typeof loc[key] === 'string') {
-        sanitizedLoc[key] = sanitizeString(loc[key]).substring(0, MAX_STRING_LEN);
-      }
-    }
+    const sanitizedLoc = sanitizeObjectStrings(loc, ['name', 'address', 'website', 'operatingHours', 'mapsUri']);
     if (typeof loc.latitude === 'number' && isFinite(loc.latitude)) sanitizedLoc.latitude = loc.latitude;
     if (typeof loc.longitude === 'number' && isFinite(loc.longitude)) sanitizedLoc.longitude = loc.longitude;
     if (Object.keys(sanitizedLoc).length > 0) result.locationContext = sanitizedLoc;
   }
 
   if (parsed.entityContext && typeof parsed.entityContext === 'object') {
-    const ent = parsed.entityContext;
-    const sanitizedEnt = {};
-    for (const key of ['type', 'title', 'subtitle', 'description', 'rating']) {
-      if (typeof ent[key] === 'string') {
-        sanitizedEnt[key] = sanitizeString(ent[key]).substring(0, MAX_STRING_LEN);
-      }
-    }
+    const sanitizedEnt = sanitizeObjectStrings(parsed.entityContext, ['type', 'title', 'subtitle', 'description', 'rating']);
     if (sanitizedEnt.type) result.entityContext = sanitizedEnt;
   }
 

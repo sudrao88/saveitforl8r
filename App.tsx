@@ -17,6 +17,16 @@ const ChatInterface = lazy(() => import('./components/ChatInterface'));
 const SettingsModal = lazy(() => import('./components/SettingsModal'));
 const NewMemoryPage = lazy(() => import('./components/NewMemoryPage'));
 
+const SuspenseFallback = () => (
+  <div className="fixed inset-0 bg-black flex items-center justify-center">
+    <div className="flex gap-1.5 items-center">
+      <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+      <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+      <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></div>
+    </div>
+  </div>
+);
+
 import { useMemories } from './hooks/useMemories';
 import { useSettings } from './hooks/useSettings';
 import { useMemoryFilters } from './hooks/useMemoryFilters';
@@ -370,7 +380,7 @@ const AppContent: React.FC = () => {
 
   if (editingMemory) {
     return (
-      <Suspense fallback={null}>
+      <Suspense fallback={<SuspenseFallback />}>
         <NewMemoryPage
           onClose={handleEditClose}
           onCreate={handleCreateMemory}
@@ -383,7 +393,7 @@ const AppContent: React.FC = () => {
 
   if (isCaptureOpen) {
     return (
-      <Suspense fallback={null}>
+      <Suspense fallback={<SuspenseFallback />}>
         <NewMemoryPage
           onClose={handleCaptureClose}
           onCreate={handleCreateMemory}
@@ -400,7 +410,7 @@ const AppContent: React.FC = () => {
             fallbackTitle="Brain Search encountered an error"
             fallbackMessage="The AI search feature hit an unexpected issue. Your memories are safe — try reloading."
           >
-            <Suspense fallback={null}>
+            <Suspense fallback={<SuspenseFallback />}>
               <ChatInterface
                 memories={displayMemories}
                 onClose={handleChatClose}
@@ -410,7 +420,7 @@ const AppContent: React.FC = () => {
             </Suspense>
           </ErrorBoundary>
           {viewingGallery && (
-            <Suspense fallback={null}>
+            <Suspense fallback={<SuspenseFallback />}>
               <GalleryViewer
                 attachments={viewingGallery.attachments}
                 initialIndex={viewingGallery.currentIndex}
@@ -513,7 +523,7 @@ const AppContent: React.FC = () => {
       )}
 
       {viewingGallery && (
-        <Suspense fallback={null}>
+        <Suspense fallback={<SuspenseFallback />}>
           <GalleryViewer
             attachments={viewingGallery.attachments}
             initialIndex={viewingGallery.currentIndex}
@@ -523,7 +533,7 @@ const AppContent: React.FC = () => {
       )}
 
       {isSettingsOpen && (
-        <Suspense fallback={null}>
+        <Suspense fallback={<SuspenseFallback />}>
           <SettingsModal
               onClose={handleSettingsClose}
               availableTypes={availableTypes}
