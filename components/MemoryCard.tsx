@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
-import { Trash2, Loader2, Clock, ExternalLink, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, WifiOff, FileText, Paperclip, MoreVertical, AlertTriangle, LogIn, Square, CheckSquare, Maximize2, Eye, Pin, Pencil, Lightbulb, CircleCheck } from 'lucide-react';
+import { Trash2, Loader2, Clock, ExternalLink, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, WifiOff, FileText, Paperclip, MoreVertical, AlertTriangle, LogIn, Square, CheckSquare, Maximize2, Eye, Pin, Pencil, Lightbulb, CircleCheck, UtensilsCrossed, ListOrdered, ThumbsUp, ThumbsDown, DollarSign, MapPin, CalendarDays, ClipboardList, MessageSquare, Users, Mic, Code, Heart, Scale, GraduationCap, Briefcase, Music, Film, BookOpenCheck, Bookmark, Phone, Mail, ScrollText, Tag, Clock3, Flame, Quote } from 'lucide-react';
 import { Memory, Attachment } from '../types.ts';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 
@@ -27,6 +27,190 @@ const EnrichmentSection: React.FC<EnrichmentSectionProps> = ({ icon, label, item
     </ul>
   </div>
 );
+
+interface EnrichmentDetailProps {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  textClass?: string;
+}
+
+const EnrichmentDetail: React.FC<EnrichmentDetailProps> = ({ icon, label, value, textClass = 'text-gray-400' }) => (
+  <div className="pt-1 space-y-1">
+    <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-500">
+      {icon}
+      {label}
+    </span>
+    <p className={`text-sm ${textClass} font-light leading-relaxed`}>{value}</p>
+  </div>
+);
+
+interface SectionConfig {
+  key: string;
+  label: string;
+  icon: React.ReactNode;
+  type: 'list' | 'detail';
+  textClass?: string;
+  bulletClass?: string;
+}
+
+type EnrichmentFields = Record<string, string | string[] | undefined>;
+
+const getContentTypeSections = (contentType: string | undefined, enrichment: EnrichmentFields): SectionConfig[] => {
+  const sections: SectionConfig[] = [];
+
+  const has = (field: string) => {
+    const v = enrichment[field];
+    if (Array.isArray(v)) return v.length > 0;
+    return typeof v === 'string' && v.length > 0;
+  };
+
+  switch (contentType) {
+    case 'recipe':
+      if (has('ingredients')) sections.push({ key: 'ingredients', label: 'Ingredients', icon: <UtensilsCrossed size={12} className="text-orange-400" />, type: 'list', textClass: 'text-orange-300/80', bulletClass: 'text-orange-500/50' });
+      if (has('instructions')) sections.push({ key: 'instructions', label: 'Instructions', icon: <ListOrdered size={12} className="text-green-400" />, type: 'list', textClass: 'text-green-300/80', bulletClass: 'text-green-500/50' });
+      break;
+
+    case 'article_blog':
+      if (has('keyPoints')) sections.push({ key: 'keyPoints', label: 'Key Points', icon: <Lightbulb size={12} className="text-amber-500" />, type: 'list' });
+      break;
+
+    case 'product':
+      if (has('pros')) sections.push({ key: 'pros', label: 'Pros', icon: <ThumbsUp size={12} className="text-green-400" />, type: 'list', textClass: 'text-green-300/80', bulletClass: 'text-green-500/50' });
+      if (has('cons')) sections.push({ key: 'cons', label: 'Cons', icon: <ThumbsDown size={12} className="text-red-400" />, type: 'list', textClass: 'text-red-300/80', bulletClass: 'text-red-500/50' });
+      if (has('price')) sections.push({ key: 'price', label: 'Price', icon: <DollarSign size={12} className="text-emerald-400" />, type: 'detail' });
+      if (has('whereToBuy')) sections.push({ key: 'whereToBuy', label: 'Where to Buy', icon: <ShoppingBag size={12} className="text-blue-400" />, type: 'detail' });
+      break;
+
+    case 'event':
+      if (has('date')) sections.push({ key: 'date', label: 'Date', icon: <CalendarDays size={12} className="text-blue-400" />, type: 'detail' });
+      if (has('rsvpStatus')) sections.push({ key: 'rsvpStatus', label: 'RSVP Status', icon: <ClipboardList size={12} className="text-purple-400" />, type: 'detail' });
+      break;
+
+    case 'place_restaurant':
+      if (has('menuHighlights')) sections.push({ key: 'menuHighlights', label: 'Menu Highlights', icon: <UtensilsCrossed size={12} className="text-orange-400" />, type: 'list', textClass: 'text-orange-300/80', bulletClass: 'text-orange-500/50' });
+      if (has('ratings')) sections.push({ key: 'ratings', label: 'Ratings', icon: <Star size={12} className="text-yellow-500" />, type: 'detail' });
+      break;
+
+    case 'video':
+      if (has('keyMoments')) sections.push({ key: 'keyMoments', label: 'Key Moments', icon: <Film size={12} className="text-purple-400" />, type: 'list', textClass: 'text-purple-300/80', bulletClass: 'text-purple-500/50' });
+      if (has('transcriptSummary')) sections.push({ key: 'transcriptSummary', label: 'Transcript Summary', icon: <FileText size={12} className="text-gray-400" />, type: 'detail' });
+      break;
+
+    case 'social_media_post':
+      if (has('author')) sections.push({ key: 'author', label: 'Author', icon: <Users size={12} className="text-blue-400" />, type: 'detail' });
+      if (has('engagement')) sections.push({ key: 'engagement', label: 'Engagement', icon: <MessageSquare size={12} className="text-pink-400" />, type: 'detail' });
+      if (has('relatedPosts')) sections.push({ key: 'relatedPosts', label: 'Related Posts', icon: <Bookmark size={12} className="text-gray-400" />, type: 'list' });
+      break;
+
+    case 'research_academic':
+      if (has('methodology')) sections.push({ key: 'methodology', label: 'Methodology', icon: <ClipboardList size={12} className="text-indigo-400" />, type: 'detail' });
+      if (has('keyFindings')) sections.push({ key: 'keyFindings', label: 'Key Findings', icon: <Lightbulb size={12} className="text-amber-500" />, type: 'list' });
+      if (has('citations')) sections.push({ key: 'citations', label: 'Citations', icon: <BookOpenCheck size={12} className="text-gray-400" />, type: 'list' });
+      break;
+
+    case 'job_listing':
+      if (has('company')) sections.push({ key: 'company', label: 'Company', icon: <Briefcase size={12} className="text-blue-400" />, type: 'detail' });
+      if (has('role')) sections.push({ key: 'role', label: 'Role', icon: <Users size={12} className="text-purple-400" />, type: 'detail' });
+      if (has('requirements')) sections.push({ key: 'requirements', label: 'Requirements', icon: <ClipboardList size={12} className="text-amber-400" />, type: 'list' });
+      if (has('salary')) sections.push({ key: 'salary', label: 'Salary', icon: <DollarSign size={12} className="text-emerald-400" />, type: 'detail' });
+      break;
+
+    case 'travel':
+      if (has('itinerary')) sections.push({ key: 'itinerary', label: 'Itinerary', icon: <MapPin size={12} className="text-blue-400" />, type: 'list', textClass: 'text-blue-300/80', bulletClass: 'text-blue-500/50' });
+      if (has('costEstimate')) sections.push({ key: 'costEstimate', label: 'Cost Estimate', icon: <DollarSign size={12} className="text-emerald-400" />, type: 'detail' });
+      if (has('packingList')) sections.push({ key: 'packingList', label: 'Packing List', icon: <ClipboardList size={12} className="text-orange-400" />, type: 'list' });
+      break;
+
+    case 'music':
+      if (has('artist')) sections.push({ key: 'artist', label: 'Artist', icon: <Music size={12} className="text-pink-400" />, type: 'detail' });
+      if (has('album')) sections.push({ key: 'album', label: 'Album', icon: <Music size={12} className="text-purple-400" />, type: 'detail' });
+      if (has('genre')) sections.push({ key: 'genre', label: 'Genre', icon: <Tag size={12} className="text-blue-400" />, type: 'detail' });
+      if (has('mood')) sections.push({ key: 'mood', label: 'Mood', icon: <Flame size={12} className="text-orange-400" />, type: 'detail' });
+      break;
+
+    case 'book':
+      if (has('author')) sections.push({ key: 'author', label: 'Author', icon: <Users size={12} className="text-amber-500" />, type: 'detail' });
+      if (has('genre')) sections.push({ key: 'genre', label: 'Genre', icon: <Tag size={12} className="text-blue-400" />, type: 'detail' });
+      if (has('themes')) sections.push({ key: 'themes', label: 'Themes', icon: <Lightbulb size={12} className="text-purple-400" />, type: 'list' });
+      if (has('ratings')) sections.push({ key: 'ratings', label: 'Rating', icon: <Star size={12} className="text-yellow-500" />, type: 'detail' });
+      break;
+
+    case 'movie_tv':
+      if (has('cast')) sections.push({ key: 'cast', label: 'Cast', icon: <Users size={12} className="text-purple-400" />, type: 'list' });
+      if (has('genre')) sections.push({ key: 'genre', label: 'Genre', icon: <Tag size={12} className="text-blue-400" />, type: 'detail' });
+      if (has('ratings')) sections.push({ key: 'ratings', label: 'Rating', icon: <Star size={12} className="text-yellow-500" />, type: 'detail' });
+      if (has('whereToWatch')) sections.push({ key: 'whereToWatch', label: 'Where to Watch', icon: <Tv size={12} className="text-green-400" />, type: 'detail' });
+      break;
+
+    case 'podcast':
+      if (has('host')) sections.push({ key: 'host', label: 'Host', icon: <Mic size={12} className="text-red-400" />, type: 'detail' });
+      if (has('keyTopics')) sections.push({ key: 'keyTopics', label: 'Key Topics', icon: <Lightbulb size={12} className="text-amber-500" />, type: 'list' });
+      if (has('episodeLength')) sections.push({ key: 'episodeLength', label: 'Episode Length', icon: <Clock3 size={12} className="text-gray-400" />, type: 'detail' });
+      break;
+
+    case 'personal_note':
+      if (has('actionItems')) sections.push({ key: 'actionItems', label: 'Action Items', icon: <CircleCheck size={12} className="text-blue-400" />, type: 'list', textClass: 'text-blue-300/80', bulletClass: 'text-blue-500/50' });
+      if (has('keyPoints')) sections.push({ key: 'keyPoints', label: 'Key Points', icon: <Lightbulb size={12} className="text-amber-500" />, type: 'list' });
+      break;
+
+    case 'quote':
+      if (has('author')) sections.push({ key: 'author', label: 'Author', icon: <Quote size={12} className="text-amber-500" />, type: 'detail' });
+      if (has('source')) sections.push({ key: 'source', label: 'Source', icon: <BookOpen size={12} className="text-blue-400" />, type: 'detail' });
+      if (has('context')) sections.push({ key: 'context', label: 'Context', icon: <FileText size={12} className="text-gray-400" />, type: 'detail' });
+      break;
+
+    case 'snippet':
+      if (has('language')) sections.push({ key: 'language', label: 'Language', icon: <Code size={12} className="text-green-400" />, type: 'detail' });
+      if (has('purpose')) sections.push({ key: 'purpose', label: 'Purpose', icon: <FileText size={12} className="text-blue-400" />, type: 'detail' });
+      if (has('dependencies')) sections.push({ key: 'dependencies', label: 'Dependencies', icon: <ClipboardList size={12} className="text-orange-400" />, type: 'list' });
+      break;
+
+    case 'contact':
+      if (has('contactName')) sections.push({ key: 'contactName', label: 'Name', icon: <Users size={12} className="text-blue-400" />, type: 'detail' });
+      if (has('phone')) sections.push({ key: 'phone', label: 'Phone', icon: <Phone size={12} className="text-green-400" />, type: 'detail' });
+      if (has('email')) sections.push({ key: 'email', label: 'Email', icon: <Mail size={12} className="text-purple-400" />, type: 'detail' });
+      if (has('contactNotes')) sections.push({ key: 'contactNotes', label: 'Notes', icon: <FileText size={12} className="text-gray-400" />, type: 'detail' });
+      break;
+
+    case 'health':
+      if (has('condition')) sections.push({ key: 'condition', label: 'Condition', icon: <Heart size={12} className="text-red-400" />, type: 'detail' });
+      if (has('recommendations')) sections.push({ key: 'recommendations', label: 'Recommendations', icon: <ClipboardList size={12} className="text-green-400" />, type: 'list' });
+      if (has('followUp')) sections.push({ key: 'followUp', label: 'Follow-up', icon: <CalendarDays size={12} className="text-blue-400" />, type: 'detail' });
+      break;
+
+    case 'financial':
+      if (has('amount')) sections.push({ key: 'amount', label: 'Amount', icon: <DollarSign size={12} className="text-emerald-400" />, type: 'detail' });
+      if (has('category')) sections.push({ key: 'category', label: 'Category', icon: <Tag size={12} className="text-blue-400" />, type: 'detail' });
+      if (has('dueDate')) sections.push({ key: 'dueDate', label: 'Due Date', icon: <CalendarDays size={12} className="text-red-400" />, type: 'detail' });
+      break;
+
+    case 'legal':
+      if (has('documentType')) sections.push({ key: 'documentType', label: 'Document Type', icon: <ScrollText size={12} className="text-amber-500" />, type: 'detail' });
+      if (has('keyClauses')) sections.push({ key: 'keyClauses', label: 'Key Clauses', icon: <ClipboardList size={12} className="text-blue-400" />, type: 'list' });
+      if (has('deadlines')) sections.push({ key: 'deadlines', label: 'Deadlines', icon: <CalendarDays size={12} className="text-red-400" />, type: 'list' });
+      break;
+
+    case 'educational':
+      if (has('subject')) sections.push({ key: 'subject', label: 'Subject', icon: <GraduationCap size={12} className="text-blue-400" />, type: 'detail' });
+      if (has('keyConcepts')) sections.push({ key: 'keyConcepts', label: 'Key Concepts', icon: <Lightbulb size={12} className="text-amber-500" />, type: 'list' });
+      if (has('studyNotes')) sections.push({ key: 'studyNotes', label: 'Study Notes', icon: <BookOpen size={12} className="text-green-400" />, type: 'list' });
+      break;
+
+    case 'comparison':
+      if (has('pros')) sections.push({ key: 'pros', label: 'Pros', icon: <ThumbsUp size={12} className="text-green-400" />, type: 'list', textClass: 'text-green-300/80', bulletClass: 'text-green-500/50' });
+      if (has('cons')) sections.push({ key: 'cons', label: 'Cons', icon: <ThumbsDown size={12} className="text-red-400" />, type: 'list', textClass: 'text-red-300/80', bulletClass: 'text-red-500/50' });
+      break;
+
+    default:
+      // Fallback for general, meeting_notes, journal, recommendation, idea, task_list, observation, reference, review, wishlist, project, learning
+      if (has('keyPoints')) sections.push({ key: 'keyPoints', label: 'Key Points', icon: <Lightbulb size={12} className="text-amber-500" />, type: 'list' });
+      if (has('actionItems')) sections.push({ key: 'actionItems', label: 'Action Items', icon: <CircleCheck size={12} className="text-blue-400" />, type: 'list', textClass: 'text-blue-300/80', bulletClass: 'text-blue-500/50' });
+      break;
+  }
+
+  return sections;
+};
 
 interface MemoryCardProps {
   memory: Memory;
@@ -67,8 +251,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
   const [isExpanded, setIsExpanded] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
-  const [showKeyPoints, setShowKeyPoints] = useState(false);
-  const [showActionItems, setShowActionItems] = useState(false);
+  const [expandedSection, setExpandedSection] = useState<string | null>(null);
 
   const [isTruncated, setIsTruncated] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -341,82 +524,84 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
             )}
 
             {/* Enrichment Icon Row + Expandable Sections */}
-            {(aiText || (enrichment?.keyPoints && enrichment.keyPoints.length > 0) || (enrichment?.actionItems && enrichment.actionItems.length > 0) || targetUri) && (
-                <div className="space-y-2 mt-auto">
-                    <div className="flex items-center gap-1">
-                        {aiText && (
-                            <button
-                                onClick={(e) => { e.stopPropagation(); setShowSummary(!showSummary); }}
-                                title="Summary"
-                                className={`p-2 rounded-lg transition-colors ${showSummary ? 'bg-gray-700/60 text-gray-200' : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'}`}
-                            >
-                                <FileText size={16} />
-                            </button>
+            {(() => {
+                const typeSections = enrichment ? getContentTypeSections(enrichment.contentType, enrichment as unknown as EnrichmentFields) : [];
+                const hasAnyCTA = aiText || typeSections.length > 0 || targetUri;
+                if (!hasAnyCTA) return null;
+
+                return (
+                    <div className="space-y-2 mt-auto">
+                        <div className="flex items-center gap-1 flex-wrap">
+                            {aiText && (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); setShowSummary(!showSummary); }}
+                                    title="Summary"
+                                    className={`p-2 rounded-lg transition-colors ${showSummary ? 'bg-gray-700/60 text-gray-200' : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'}`}
+                                >
+                                    <FileText size={16} />
+                                </button>
+                            )}
+                            {typeSections.map((section) => (
+                                <button
+                                    key={section.key}
+                                    onClick={(e) => { e.stopPropagation(); setExpandedSection(expandedSection === section.key ? null : section.key); }}
+                                    title={section.label}
+                                    className={`p-2 rounded-lg transition-colors ${expandedSection === section.key ? 'bg-gray-700/60 text-gray-200' : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'}`}
+                                >
+                                    {/* Icons in sections are size 12; scale up for button display */}
+                                    <span className="[&>svg]:w-4 [&>svg]:h-4">{section.icon}</span>
+                                </button>
+                            ))}
+                            {targetUri && (
+                                <a
+                                    href={targetUri}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                    title="Open Link"
+                                    className="p-2 rounded-lg text-gray-500 hover:text-blue-400 hover:bg-white/5 transition-colors"
+                                >
+                                    <ExternalLink size={16} />
+                                </a>
+                            )}
+                        </div>
+
+                        {/* Expandable Summary */}
+                        {showSummary && aiText && (
+                            <div className="text-sm text-gray-400 font-light leading-relaxed pl-1 animate-in fade-in slide-in-from-top-1 duration-200">
+                                {String(aiText)}
+                            </div>
                         )}
-                        {enrichment?.keyPoints && enrichment.keyPoints.length > 0 && (
-                            <button
-                                onClick={(e) => { e.stopPropagation(); setShowKeyPoints(!showKeyPoints); }}
-                                title="Key Points"
-                                className={`p-2 rounded-lg transition-colors ${showKeyPoints ? 'bg-amber-900/30 text-amber-400' : 'text-gray-500 hover:text-amber-400 hover:bg-white/5'}`}
-                            >
-                                <Lightbulb size={16} />
-                            </button>
-                        )}
-                        {enrichment?.actionItems && enrichment.actionItems.length > 0 && (
-                            <button
-                                onClick={(e) => { e.stopPropagation(); setShowActionItems(!showActionItems); }}
-                                title="Action Items"
-                                className={`p-2 rounded-lg transition-colors ${showActionItems ? 'bg-blue-900/30 text-blue-400' : 'text-gray-500 hover:text-blue-400 hover:bg-white/5'}`}
-                            >
-                                <CircleCheck size={16} />
-                            </button>
-                        )}
-                        {targetUri && (
-                            <a
-                                href={targetUri}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                onClick={(e) => e.stopPropagation()}
-                                title="Open Link"
-                                className="p-2 rounded-lg text-gray-500 hover:text-blue-400 hover:bg-white/5 transition-colors"
-                            >
-                                <ExternalLink size={16} />
-                            </a>
-                        )}
+
+                        {/* Expandable Type-Specific Sections */}
+                        {typeSections.map((section) => {
+                            if (expandedSection !== section.key) return null;
+                            const value = (enrichment as unknown as EnrichmentFields)?.[section.key];
+                            if (!value) return null;
+
+                            return (
+                                <div key={section.key} className="animate-in fade-in slide-in-from-top-1 duration-200">
+                                    {section.type === 'list' && Array.isArray(value) ? (
+                                        <EnrichmentSection
+                                            icon={section.icon}
+                                            label={section.label}
+                                            items={value as string[]}
+                                            textClass={section.textClass}
+                                            bulletClass={section.bulletClass}
+                                        />
+                                    ) : (
+                                        <EnrichmentDetail
+                                            icon={section.icon}
+                                            label={section.label}
+                                            value={String(value)}
+                                        />
+                                    )}
+                                </div>
+                            );
+                        })}
                     </div>
-
-                    {/* Expandable Summary */}
-                    {showSummary && aiText && (
-                        <div className="text-sm text-gray-400 font-light leading-relaxed pl-1 animate-in fade-in slide-in-from-top-1 duration-200">
-                            {String(aiText)}
-                        </div>
-                    )}
-
-                    {/* Expandable Key Points */}
-                    {showKeyPoints && enrichment?.keyPoints && enrichment.keyPoints.length > 0 && (
-                        <div className="animate-in fade-in slide-in-from-top-1 duration-200">
-                            <EnrichmentSection
-                                icon={<Lightbulb size={12} className="text-amber-500" />}
-                                label="Key Points"
-                                items={enrichment.keyPoints}
-                            />
-                        </div>
-                    )}
-
-                    {/* Expandable Action Items */}
-                    {showActionItems && enrichment?.actionItems && enrichment.actionItems.length > 0 && (
-                        <div className="animate-in fade-in slide-in-from-top-1 duration-200">
-                            <EnrichmentSection
-                                icon={<CircleCheck size={12} className="text-blue-400" />}
-                                label="Action Items"
-                                items={enrichment.actionItems}
-                                textClass="text-blue-300/80"
-                                bulletClass="text-blue-500/50"
-                            />
-                        </div>
-                    )}
-                </div>
-            )}
+                );
+            })()}
 
             {/* Documents */}
             {documents.length > 0 && (
