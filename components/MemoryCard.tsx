@@ -45,7 +45,7 @@ const EnrichmentDetail: React.FC<EnrichmentDetailProps> = ({ icon, label, value,
   </div>
 );
 
-interface SectionConfig {
+interface SectionDef {
   key: string;
   label: string;
   icon: React.ReactNode;
@@ -56,160 +56,136 @@ interface SectionConfig {
 
 type EnrichmentFields = Record<string, string | string[] | undefined>;
 
-const getContentTypeSections = (contentType: string | undefined, enrichment: EnrichmentFields): SectionConfig[] => {
-  const sections: SectionConfig[] = [];
+// Data-driven config map: contentType → section definitions
+const SECTION_CONFIG_MAP: Record<string, SectionDef[]> = {
+  recipe: [
+    { key: 'ingredients', label: 'Ingredients', icon: <UtensilsCrossed size={12} className="text-orange-400" />, type: 'list', textClass: 'text-orange-300/80', bulletClass: 'text-orange-500/50' },
+    { key: 'instructions', label: 'Instructions', icon: <ListOrdered size={12} className="text-green-400" />, type: 'list', textClass: 'text-green-300/80', bulletClass: 'text-green-500/50' },
+  ],
+  article_blog: [
+    { key: 'keyPoints', label: 'Key Points', icon: <Lightbulb size={12} className="text-amber-500" />, type: 'list' },
+  ],
+  product: [
+    { key: 'pros', label: 'Pros', icon: <ThumbsUp size={12} className="text-green-400" />, type: 'list', textClass: 'text-green-300/80', bulletClass: 'text-green-500/50' },
+    { key: 'cons', label: 'Cons', icon: <ThumbsDown size={12} className="text-red-400" />, type: 'list', textClass: 'text-red-300/80', bulletClass: 'text-red-500/50' },
+    { key: 'price', label: 'Price', icon: <DollarSign size={12} className="text-emerald-400" />, type: 'detail' },
+    { key: 'whereToBuy', label: 'Where to Buy', icon: <ShoppingBag size={12} className="text-blue-400" />, type: 'detail' },
+  ],
+  event: [
+    { key: 'date', label: 'Date', icon: <CalendarDays size={12} className="text-blue-400" />, type: 'detail' },
+    { key: 'rsvpStatus', label: 'RSVP Status', icon: <ClipboardList size={12} className="text-purple-400" />, type: 'detail' },
+  ],
+  place_restaurant: [
+    { key: 'menuHighlights', label: 'Menu Highlights', icon: <UtensilsCrossed size={12} className="text-orange-400" />, type: 'list', textClass: 'text-orange-300/80', bulletClass: 'text-orange-500/50' },
+    { key: 'ratings', label: 'Ratings', icon: <Star size={12} className="text-yellow-500" />, type: 'detail' },
+  ],
+  video: [
+    { key: 'keyMoments', label: 'Key Moments', icon: <Film size={12} className="text-purple-400" />, type: 'list', textClass: 'text-purple-300/80', bulletClass: 'text-purple-500/50' },
+    { key: 'transcriptSummary', label: 'Transcript Summary', icon: <FileText size={12} className="text-gray-400" />, type: 'detail' },
+  ],
+  social_media_post: [
+    { key: 'author', label: 'Author', icon: <Users size={12} className="text-blue-400" />, type: 'detail' },
+    { key: 'engagement', label: 'Engagement', icon: <MessageSquare size={12} className="text-pink-400" />, type: 'detail' },
+    { key: 'relatedPosts', label: 'Related Posts', icon: <Bookmark size={12} className="text-gray-400" />, type: 'list' },
+  ],
+  research_academic: [
+    { key: 'methodology', label: 'Methodology', icon: <ClipboardList size={12} className="text-indigo-400" />, type: 'detail' },
+    { key: 'keyFindings', label: 'Key Findings', icon: <Lightbulb size={12} className="text-amber-500" />, type: 'list' },
+    { key: 'citations', label: 'Citations', icon: <BookOpenCheck size={12} className="text-gray-400" />, type: 'list' },
+  ],
+  job_listing: [
+    { key: 'company', label: 'Company', icon: <Briefcase size={12} className="text-blue-400" />, type: 'detail' },
+    { key: 'role', label: 'Role', icon: <Users size={12} className="text-purple-400" />, type: 'detail' },
+    { key: 'requirements', label: 'Requirements', icon: <ClipboardList size={12} className="text-amber-400" />, type: 'list' },
+    { key: 'salary', label: 'Salary', icon: <DollarSign size={12} className="text-emerald-400" />, type: 'detail' },
+  ],
+  travel: [
+    { key: 'itinerary', label: 'Itinerary', icon: <MapPin size={12} className="text-blue-400" />, type: 'list', textClass: 'text-blue-300/80', bulletClass: 'text-blue-500/50' },
+    { key: 'costEstimate', label: 'Cost Estimate', icon: <DollarSign size={12} className="text-emerald-400" />, type: 'detail' },
+    { key: 'packingList', label: 'Packing List', icon: <ClipboardList size={12} className="text-orange-400" />, type: 'list' },
+  ],
+  music: [
+    { key: 'artist', label: 'Artist', icon: <Music size={12} className="text-pink-400" />, type: 'detail' },
+    { key: 'album', label: 'Album', icon: <Music size={12} className="text-purple-400" />, type: 'detail' },
+    { key: 'genre', label: 'Genre', icon: <Tag size={12} className="text-blue-400" />, type: 'detail' },
+    { key: 'mood', label: 'Mood', icon: <Flame size={12} className="text-orange-400" />, type: 'detail' },
+  ],
+  book: [
+    { key: 'author', label: 'Author', icon: <Users size={12} className="text-amber-500" />, type: 'detail' },
+    { key: 'genre', label: 'Genre', icon: <Tag size={12} className="text-blue-400" />, type: 'detail' },
+    { key: 'themes', label: 'Themes', icon: <Lightbulb size={12} className="text-purple-400" />, type: 'list' },
+    { key: 'ratings', label: 'Rating', icon: <Star size={12} className="text-yellow-500" />, type: 'detail' },
+  ],
+  movie_tv: [
+    { key: 'cast', label: 'Cast', icon: <Users size={12} className="text-purple-400" />, type: 'list' },
+    { key: 'genre', label: 'Genre', icon: <Tag size={12} className="text-blue-400" />, type: 'detail' },
+    { key: 'ratings', label: 'Rating', icon: <Star size={12} className="text-yellow-500" />, type: 'detail' },
+    { key: 'whereToWatch', label: 'Where to Watch', icon: <Tv size={12} className="text-green-400" />, type: 'detail' },
+  ],
+  podcast: [
+    { key: 'host', label: 'Host', icon: <Mic size={12} className="text-red-400" />, type: 'detail' },
+    { key: 'keyTopics', label: 'Key Topics', icon: <Lightbulb size={12} className="text-amber-500" />, type: 'list' },
+    { key: 'episodeLength', label: 'Episode Length', icon: <Clock3 size={12} className="text-gray-400" />, type: 'detail' },
+  ],
+  personal_note: [
+    { key: 'actionItems', label: 'Action Items', icon: <CircleCheck size={12} className="text-blue-400" />, type: 'list', textClass: 'text-blue-300/80', bulletClass: 'text-blue-500/50' },
+    { key: 'keyPoints', label: 'Key Points', icon: <Lightbulb size={12} className="text-amber-500" />, type: 'list' },
+  ],
+  quote: [
+    { key: 'author', label: 'Author', icon: <Quote size={12} className="text-amber-500" />, type: 'detail' },
+    { key: 'source', label: 'Source', icon: <BookOpen size={12} className="text-blue-400" />, type: 'detail' },
+    { key: 'context', label: 'Context', icon: <FileText size={12} className="text-gray-400" />, type: 'detail' },
+  ],
+  snippet: [
+    { key: 'language', label: 'Language', icon: <Code size={12} className="text-green-400" />, type: 'detail' },
+    { key: 'purpose', label: 'Purpose', icon: <FileText size={12} className="text-blue-400" />, type: 'detail' },
+    { key: 'dependencies', label: 'Dependencies', icon: <ClipboardList size={12} className="text-orange-400" />, type: 'list' },
+  ],
+  contact: [
+    { key: 'contactName', label: 'Name', icon: <Users size={12} className="text-blue-400" />, type: 'detail' },
+    { key: 'phone', label: 'Phone', icon: <Phone size={12} className="text-green-400" />, type: 'detail' },
+    { key: 'email', label: 'Email', icon: <Mail size={12} className="text-purple-400" />, type: 'detail' },
+    { key: 'contactNotes', label: 'Notes', icon: <FileText size={12} className="text-gray-400" />, type: 'detail' },
+  ],
+  health: [
+    { key: 'condition', label: 'Condition', icon: <Heart size={12} className="text-red-400" />, type: 'detail' },
+    { key: 'recommendations', label: 'Recommendations', icon: <ClipboardList size={12} className="text-green-400" />, type: 'list' },
+    { key: 'followUp', label: 'Follow-up', icon: <CalendarDays size={12} className="text-blue-400" />, type: 'detail' },
+  ],
+  financial: [
+    { key: 'amount', label: 'Amount', icon: <DollarSign size={12} className="text-emerald-400" />, type: 'detail' },
+    { key: 'category', label: 'Category', icon: <Tag size={12} className="text-blue-400" />, type: 'detail' },
+    { key: 'dueDate', label: 'Due Date', icon: <CalendarDays size={12} className="text-red-400" />, type: 'detail' },
+  ],
+  legal: [
+    { key: 'documentType', label: 'Document Type', icon: <ScrollText size={12} className="text-amber-500" />, type: 'detail' },
+    { key: 'keyClauses', label: 'Key Clauses', icon: <ClipboardList size={12} className="text-blue-400" />, type: 'list' },
+    { key: 'deadlines', label: 'Deadlines', icon: <CalendarDays size={12} className="text-red-400" />, type: 'list' },
+  ],
+  educational: [
+    { key: 'subject', label: 'Subject', icon: <GraduationCap size={12} className="text-blue-400" />, type: 'detail' },
+    { key: 'keyConcepts', label: 'Key Concepts', icon: <Lightbulb size={12} className="text-amber-500" />, type: 'list' },
+    { key: 'studyNotes', label: 'Study Notes', icon: <BookOpen size={12} className="text-green-400" />, type: 'list' },
+  ],
+  comparison: [
+    { key: 'pros', label: 'Pros', icon: <ThumbsUp size={12} className="text-green-400" />, type: 'list', textClass: 'text-green-300/80', bulletClass: 'text-green-500/50' },
+    { key: 'cons', label: 'Cons', icon: <ThumbsDown size={12} className="text-red-400" />, type: 'list', textClass: 'text-red-300/80', bulletClass: 'text-red-500/50' },
+  ],
+};
 
-  const has = (field: string) => {
-    const v = enrichment[field];
+// Default sections for content types without a specific config
+const DEFAULT_SECTIONS: SectionDef[] = [
+  { key: 'keyPoints', label: 'Key Points', icon: <Lightbulb size={12} className="text-amber-500" />, type: 'list' },
+  { key: 'actionItems', label: 'Action Items', icon: <CircleCheck size={12} className="text-blue-400" />, type: 'list', textClass: 'text-blue-300/80', bulletClass: 'text-blue-500/50' },
+];
+
+const getContentTypeSections = (contentType: string | undefined, enrichment: EnrichmentFields): SectionDef[] => {
+  const defs = (contentType && SECTION_CONFIG_MAP[contentType]) || DEFAULT_SECTIONS;
+  return defs.filter((def) => {
+    const v = enrichment[def.key];
     if (Array.isArray(v)) return v.length > 0;
     return typeof v === 'string' && v.length > 0;
-  };
-
-  switch (contentType) {
-    case 'recipe':
-      if (has('ingredients')) sections.push({ key: 'ingredients', label: 'Ingredients', icon: <UtensilsCrossed size={12} className="text-orange-400" />, type: 'list', textClass: 'text-orange-300/80', bulletClass: 'text-orange-500/50' });
-      if (has('instructions')) sections.push({ key: 'instructions', label: 'Instructions', icon: <ListOrdered size={12} className="text-green-400" />, type: 'list', textClass: 'text-green-300/80', bulletClass: 'text-green-500/50' });
-      break;
-
-    case 'article_blog':
-      if (has('keyPoints')) sections.push({ key: 'keyPoints', label: 'Key Points', icon: <Lightbulb size={12} className="text-amber-500" />, type: 'list' });
-      break;
-
-    case 'product':
-      if (has('pros')) sections.push({ key: 'pros', label: 'Pros', icon: <ThumbsUp size={12} className="text-green-400" />, type: 'list', textClass: 'text-green-300/80', bulletClass: 'text-green-500/50' });
-      if (has('cons')) sections.push({ key: 'cons', label: 'Cons', icon: <ThumbsDown size={12} className="text-red-400" />, type: 'list', textClass: 'text-red-300/80', bulletClass: 'text-red-500/50' });
-      if (has('price')) sections.push({ key: 'price', label: 'Price', icon: <DollarSign size={12} className="text-emerald-400" />, type: 'detail' });
-      if (has('whereToBuy')) sections.push({ key: 'whereToBuy', label: 'Where to Buy', icon: <ShoppingBag size={12} className="text-blue-400" />, type: 'detail' });
-      break;
-
-    case 'event':
-      if (has('date')) sections.push({ key: 'date', label: 'Date', icon: <CalendarDays size={12} className="text-blue-400" />, type: 'detail' });
-      if (has('rsvpStatus')) sections.push({ key: 'rsvpStatus', label: 'RSVP Status', icon: <ClipboardList size={12} className="text-purple-400" />, type: 'detail' });
-      break;
-
-    case 'place_restaurant':
-      if (has('menuHighlights')) sections.push({ key: 'menuHighlights', label: 'Menu Highlights', icon: <UtensilsCrossed size={12} className="text-orange-400" />, type: 'list', textClass: 'text-orange-300/80', bulletClass: 'text-orange-500/50' });
-      if (has('ratings')) sections.push({ key: 'ratings', label: 'Ratings', icon: <Star size={12} className="text-yellow-500" />, type: 'detail' });
-      break;
-
-    case 'video':
-      if (has('keyMoments')) sections.push({ key: 'keyMoments', label: 'Key Moments', icon: <Film size={12} className="text-purple-400" />, type: 'list', textClass: 'text-purple-300/80', bulletClass: 'text-purple-500/50' });
-      if (has('transcriptSummary')) sections.push({ key: 'transcriptSummary', label: 'Transcript Summary', icon: <FileText size={12} className="text-gray-400" />, type: 'detail' });
-      break;
-
-    case 'social_media_post':
-      if (has('author')) sections.push({ key: 'author', label: 'Author', icon: <Users size={12} className="text-blue-400" />, type: 'detail' });
-      if (has('engagement')) sections.push({ key: 'engagement', label: 'Engagement', icon: <MessageSquare size={12} className="text-pink-400" />, type: 'detail' });
-      if (has('relatedPosts')) sections.push({ key: 'relatedPosts', label: 'Related Posts', icon: <Bookmark size={12} className="text-gray-400" />, type: 'list' });
-      break;
-
-    case 'research_academic':
-      if (has('methodology')) sections.push({ key: 'methodology', label: 'Methodology', icon: <ClipboardList size={12} className="text-indigo-400" />, type: 'detail' });
-      if (has('keyFindings')) sections.push({ key: 'keyFindings', label: 'Key Findings', icon: <Lightbulb size={12} className="text-amber-500" />, type: 'list' });
-      if (has('citations')) sections.push({ key: 'citations', label: 'Citations', icon: <BookOpenCheck size={12} className="text-gray-400" />, type: 'list' });
-      break;
-
-    case 'job_listing':
-      if (has('company')) sections.push({ key: 'company', label: 'Company', icon: <Briefcase size={12} className="text-blue-400" />, type: 'detail' });
-      if (has('role')) sections.push({ key: 'role', label: 'Role', icon: <Users size={12} className="text-purple-400" />, type: 'detail' });
-      if (has('requirements')) sections.push({ key: 'requirements', label: 'Requirements', icon: <ClipboardList size={12} className="text-amber-400" />, type: 'list' });
-      if (has('salary')) sections.push({ key: 'salary', label: 'Salary', icon: <DollarSign size={12} className="text-emerald-400" />, type: 'detail' });
-      break;
-
-    case 'travel':
-      if (has('itinerary')) sections.push({ key: 'itinerary', label: 'Itinerary', icon: <MapPin size={12} className="text-blue-400" />, type: 'list', textClass: 'text-blue-300/80', bulletClass: 'text-blue-500/50' });
-      if (has('costEstimate')) sections.push({ key: 'costEstimate', label: 'Cost Estimate', icon: <DollarSign size={12} className="text-emerald-400" />, type: 'detail' });
-      if (has('packingList')) sections.push({ key: 'packingList', label: 'Packing List', icon: <ClipboardList size={12} className="text-orange-400" />, type: 'list' });
-      break;
-
-    case 'music':
-      if (has('artist')) sections.push({ key: 'artist', label: 'Artist', icon: <Music size={12} className="text-pink-400" />, type: 'detail' });
-      if (has('album')) sections.push({ key: 'album', label: 'Album', icon: <Music size={12} className="text-purple-400" />, type: 'detail' });
-      if (has('genre')) sections.push({ key: 'genre', label: 'Genre', icon: <Tag size={12} className="text-blue-400" />, type: 'detail' });
-      if (has('mood')) sections.push({ key: 'mood', label: 'Mood', icon: <Flame size={12} className="text-orange-400" />, type: 'detail' });
-      break;
-
-    case 'book':
-      if (has('author')) sections.push({ key: 'author', label: 'Author', icon: <Users size={12} className="text-amber-500" />, type: 'detail' });
-      if (has('genre')) sections.push({ key: 'genre', label: 'Genre', icon: <Tag size={12} className="text-blue-400" />, type: 'detail' });
-      if (has('themes')) sections.push({ key: 'themes', label: 'Themes', icon: <Lightbulb size={12} className="text-purple-400" />, type: 'list' });
-      if (has('ratings')) sections.push({ key: 'ratings', label: 'Rating', icon: <Star size={12} className="text-yellow-500" />, type: 'detail' });
-      break;
-
-    case 'movie_tv':
-      if (has('cast')) sections.push({ key: 'cast', label: 'Cast', icon: <Users size={12} className="text-purple-400" />, type: 'list' });
-      if (has('genre')) sections.push({ key: 'genre', label: 'Genre', icon: <Tag size={12} className="text-blue-400" />, type: 'detail' });
-      if (has('ratings')) sections.push({ key: 'ratings', label: 'Rating', icon: <Star size={12} className="text-yellow-500" />, type: 'detail' });
-      if (has('whereToWatch')) sections.push({ key: 'whereToWatch', label: 'Where to Watch', icon: <Tv size={12} className="text-green-400" />, type: 'detail' });
-      break;
-
-    case 'podcast':
-      if (has('host')) sections.push({ key: 'host', label: 'Host', icon: <Mic size={12} className="text-red-400" />, type: 'detail' });
-      if (has('keyTopics')) sections.push({ key: 'keyTopics', label: 'Key Topics', icon: <Lightbulb size={12} className="text-amber-500" />, type: 'list' });
-      if (has('episodeLength')) sections.push({ key: 'episodeLength', label: 'Episode Length', icon: <Clock3 size={12} className="text-gray-400" />, type: 'detail' });
-      break;
-
-    case 'personal_note':
-      if (has('actionItems')) sections.push({ key: 'actionItems', label: 'Action Items', icon: <CircleCheck size={12} className="text-blue-400" />, type: 'list', textClass: 'text-blue-300/80', bulletClass: 'text-blue-500/50' });
-      if (has('keyPoints')) sections.push({ key: 'keyPoints', label: 'Key Points', icon: <Lightbulb size={12} className="text-amber-500" />, type: 'list' });
-      break;
-
-    case 'quote':
-      if (has('author')) sections.push({ key: 'author', label: 'Author', icon: <Quote size={12} className="text-amber-500" />, type: 'detail' });
-      if (has('source')) sections.push({ key: 'source', label: 'Source', icon: <BookOpen size={12} className="text-blue-400" />, type: 'detail' });
-      if (has('context')) sections.push({ key: 'context', label: 'Context', icon: <FileText size={12} className="text-gray-400" />, type: 'detail' });
-      break;
-
-    case 'snippet':
-      if (has('language')) sections.push({ key: 'language', label: 'Language', icon: <Code size={12} className="text-green-400" />, type: 'detail' });
-      if (has('purpose')) sections.push({ key: 'purpose', label: 'Purpose', icon: <FileText size={12} className="text-blue-400" />, type: 'detail' });
-      if (has('dependencies')) sections.push({ key: 'dependencies', label: 'Dependencies', icon: <ClipboardList size={12} className="text-orange-400" />, type: 'list' });
-      break;
-
-    case 'contact':
-      if (has('contactName')) sections.push({ key: 'contactName', label: 'Name', icon: <Users size={12} className="text-blue-400" />, type: 'detail' });
-      if (has('phone')) sections.push({ key: 'phone', label: 'Phone', icon: <Phone size={12} className="text-green-400" />, type: 'detail' });
-      if (has('email')) sections.push({ key: 'email', label: 'Email', icon: <Mail size={12} className="text-purple-400" />, type: 'detail' });
-      if (has('contactNotes')) sections.push({ key: 'contactNotes', label: 'Notes', icon: <FileText size={12} className="text-gray-400" />, type: 'detail' });
-      break;
-
-    case 'health':
-      if (has('condition')) sections.push({ key: 'condition', label: 'Condition', icon: <Heart size={12} className="text-red-400" />, type: 'detail' });
-      if (has('recommendations')) sections.push({ key: 'recommendations', label: 'Recommendations', icon: <ClipboardList size={12} className="text-green-400" />, type: 'list' });
-      if (has('followUp')) sections.push({ key: 'followUp', label: 'Follow-up', icon: <CalendarDays size={12} className="text-blue-400" />, type: 'detail' });
-      break;
-
-    case 'financial':
-      if (has('amount')) sections.push({ key: 'amount', label: 'Amount', icon: <DollarSign size={12} className="text-emerald-400" />, type: 'detail' });
-      if (has('category')) sections.push({ key: 'category', label: 'Category', icon: <Tag size={12} className="text-blue-400" />, type: 'detail' });
-      if (has('dueDate')) sections.push({ key: 'dueDate', label: 'Due Date', icon: <CalendarDays size={12} className="text-red-400" />, type: 'detail' });
-      break;
-
-    case 'legal':
-      if (has('documentType')) sections.push({ key: 'documentType', label: 'Document Type', icon: <ScrollText size={12} className="text-amber-500" />, type: 'detail' });
-      if (has('keyClauses')) sections.push({ key: 'keyClauses', label: 'Key Clauses', icon: <ClipboardList size={12} className="text-blue-400" />, type: 'list' });
-      if (has('deadlines')) sections.push({ key: 'deadlines', label: 'Deadlines', icon: <CalendarDays size={12} className="text-red-400" />, type: 'list' });
-      break;
-
-    case 'educational':
-      if (has('subject')) sections.push({ key: 'subject', label: 'Subject', icon: <GraduationCap size={12} className="text-blue-400" />, type: 'detail' });
-      if (has('keyConcepts')) sections.push({ key: 'keyConcepts', label: 'Key Concepts', icon: <Lightbulb size={12} className="text-amber-500" />, type: 'list' });
-      if (has('studyNotes')) sections.push({ key: 'studyNotes', label: 'Study Notes', icon: <BookOpen size={12} className="text-green-400" />, type: 'list' });
-      break;
-
-    case 'comparison':
-      if (has('pros')) sections.push({ key: 'pros', label: 'Pros', icon: <ThumbsUp size={12} className="text-green-400" />, type: 'list', textClass: 'text-green-300/80', bulletClass: 'text-green-500/50' });
-      if (has('cons')) sections.push({ key: 'cons', label: 'Cons', icon: <ThumbsDown size={12} className="text-red-400" />, type: 'list', textClass: 'text-red-300/80', bulletClass: 'text-red-500/50' });
-      break;
-
-    default:
-      // Fallback for general, meeting_notes, journal, recommendation, idea, task_list, observation, reference, review, wishlist, project, learning
-      if (has('keyPoints')) sections.push({ key: 'keyPoints', label: 'Key Points', icon: <Lightbulb size={12} className="text-amber-500" />, type: 'list' });
-      if (has('actionItems')) sections.push({ key: 'actionItems', label: 'Action Items', icon: <CircleCheck size={12} className="text-blue-400" />, type: 'list', textClass: 'text-blue-300/80', bulletClass: 'text-blue-500/50' });
-      break;
-  }
-
-  return sections;
+  });
 };
 
 interface MemoryCardProps {
@@ -525,7 +501,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
 
             {/* Enrichment Icon Row + Expandable Sections */}
             {(() => {
-                const typeSections = enrichment ? getContentTypeSections(enrichment.contentType, enrichment as unknown as EnrichmentFields) : [];
+                const typeSections = enrichment ? getContentTypeSections(enrichment.contentType, enrichment as EnrichmentFields) : [];
                 const hasAnyCTA = aiText || typeSections.length > 0 || targetUri;
                 if (!hasAnyCTA) return null;
 
@@ -576,7 +552,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                         {/* Expandable Type-Specific Sections */}
                         {typeSections.map((section) => {
                             if (expandedSection !== section.key) return null;
-                            const value = (enrichment as unknown as EnrichmentFields)?.[section.key];
+                            const value = (enrichment as EnrichmentFields)?.[section.key];
                             if (!value) return null;
 
                             return (

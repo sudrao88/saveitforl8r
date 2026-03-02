@@ -14,6 +14,7 @@ export interface EntityContext {
 }
 
 export interface EnrichmentData {
+  [key: string]: unknown;
   summary: string;
   visualDescription?: string; // For images
   locationIsRelevant?: boolean;
