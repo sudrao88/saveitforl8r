@@ -14,6 +14,7 @@ export interface EntityContext {
 }
 
 export interface EnrichmentData {
+  [key: string]: unknown;
   summary: string;
   visualDescription?: string; // For images
   locationIsRelevant?: boolean;
@@ -37,6 +38,63 @@ export interface EnrichmentData {
   sentiment?: string;
   contentType?: string;
   enrichmentStrategy?: string;
+
+  // Content-type-specific fields
+  ingredients?: string[];        // recipe
+  instructions?: string[];       // recipe
+  pros?: string[];               // product, comparison
+  cons?: string[];               // product, comparison
+  price?: string;                // product, wishlist
+  whereToBuy?: string;           // product, wishlist
+  date?: string;                 // event
+  rsvpStatus?: string;           // event
+  menuHighlights?: string[];     // place/restaurant
+  ratings?: string;              // place/restaurant, book, movie/tv
+  keyMoments?: string[];         // video
+  transcriptSummary?: string;    // video, podcast
+  author?: string;               // social_media_post, quote, book, research
+  engagement?: string;           // social_media_post
+  relatedPosts?: string[];       // social_media_post
+  methodology?: string;          // research/academic
+  keyFindings?: string[];        // research/academic
+  citations?: string[];          // research/academic
+  company?: string;              // job_listing
+  role?: string;                 // job_listing
+  requirements?: string[];       // job_listing
+  salary?: string;               // job_listing
+  itinerary?: string[];          // travel
+  costEstimate?: string;         // travel
+  packingList?: string[];        // travel
+  artist?: string;               // music
+  album?: string;                // music
+  genre?: string;                // music, book, movie/tv
+  mood?: string;                 // music
+  cast?: string[];               // movie/tv
+  whereToWatch?: string;         // movie/tv
+  host?: string;                 // podcast
+  keyTopics?: string[];          // podcast
+  episodeLength?: string;        // podcast
+  source?: string;               // quote
+  context?: string;              // quote
+  language?: string;             // code_snippet
+  purpose?: string;              // code_snippet
+  dependencies?: string[];       // code_snippet
+  contactName?: string;          // contact
+  phone?: string;                // contact
+  email?: string;                // contact
+  contactNotes?: string;         // contact
+  condition?: string;            // health
+  recommendations?: string[];    // health
+  followUp?: string;             // health
+  amount?: string;               // financial
+  category?: string;             // financial
+  dueDate?: string;              // financial
+  documentType?: string;         // legal
+  keyClauses?: string[];         // legal
+  deadlines?: string[];          // legal
+  subject?: string;              // educational
+  keyConcepts?: string[];        // educational
+  studyNotes?: string[];         // educational
 }
 
 export interface Attachment {
