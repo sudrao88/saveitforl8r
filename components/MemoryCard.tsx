@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { Trash2, Loader2, Clock, ExternalLink, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, WifiOff, FileText, Paperclip, MoreVertical, AlertTriangle, LogIn, Square, CheckSquare, Maximize2, Eye, Pin, Pencil, Lightbulb, CircleCheck } from 'lucide-react';
 import { Memory, Attachment } from '../types.ts';
+import { useOnlineStatus } from '../hooks/useOnlineStatus';
 
 interface EnrichmentSectionProps {
   icon: React.ReactNode;
@@ -65,13 +66,16 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
   const [isConfirming, setIsConfirming] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [showSummary, setShowSummary] = useState(false);
   const [showKeyPoints, setShowKeyPoints] = useState(false);
   const [showActionItems, setShowActionItems] = useState(false);
-  
+
   const [isTruncated, setIsTruncated] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
+
+  // Shared online/offline state — single global listener instead of per-card
+  const isOnline = useOnlineStatus();
+  const isOffline = !isOnline;
 
   useEffect(() => {
     if (!isDialog && contentRef.current) {
@@ -79,17 +83,6 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
       setIsTruncated(hasOverflow);
     }
   }, [memory.content, isDialog]);
-
-  useEffect(() => {
-    const handleOnline = () => setIsOffline(false);
-    const handleOffline = () => setIsOffline(true);
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    return () => {
-        window.removeEventListener('online', handleOnline);
-        window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
 
   const dateStr = new Date(memory.timestamp).toLocaleDateString(undefined, {
     month: 'short', day: 'numeric', year: 'numeric'
@@ -524,4 +517,4 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
   );
 };
 
-export default MemoryCard;
+export default memo(MemoryCard);

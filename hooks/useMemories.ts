@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getMemories, deleteMemory, saveMemory, getMemory } from '../services/storageService';
-import { submitEnrichment, fetchPendingEnrichments } from '../services/geminiService';
+import { submitEnrichment } from '../services/geminiService';
 import { Memory, Attachment } from '../types';
 import { SAMPLE_MEMORIES } from '../services/sampleData';
 import { useSync } from './useSync';
 import { useAuth } from './useAuth';
+import { useEnrichmentPolling } from './useEnrichmentPolling';
 import { storage } from '../services/platform';
 
 // Module-level lock to prevent concurrent sample seeding
@@ -81,11 +82,30 @@ export const useMemories = () => {
   const { authStatus } = useAuth();
   const mounted = useRef(false);
   const recoveryAttemptedRef = useRef(false);
-  const pollingActiveRef = useRef(false);
   const memoriesRef = useRef(memories);
 
   // Keep memoriesRef in sync for use inside polling closure
   useEffect(() => { memoriesRef.current = memories; }, [memories]);
+
+  // Helper for single file sync - Memoized
+  const trySyncFile = useCallback(async (memory: Memory) => {
+      if (authStatus === 'linked') {
+          console.log(`[Auto-Sync] Triggering single file sync for ${memory.id}`);
+          syncFile(memory).catch(err => console.error("Single file sync failed:", err));
+      }
+  }, [authStatus, syncFile]);
+
+  // Enrichment polling — extracted into a dedicated hook to eliminate
+  // duplicated result-handling logic that was in 3 separate places.
+  const { startPolling, recoverPending } = useEnrichmentPolling({
+    memoriesRef,
+    setMemories,
+    onEnrichmentComplete: useCallback((memory: Memory) => {
+      if (authStatus === 'linked') {
+        syncFile(memory).catch(err => console.error("Sync failed:", err));
+      }
+    }, [authStatus, syncFile]),
+  });
 
   const refreshMemories = useCallback(async () => {
     try {
@@ -128,150 +148,16 @@ export const useMemories = () => {
     if (pendingMemories.length === 0) return;
 
     console.log(`[Recovery] Found ${pendingMemories.length} pending memories, attempting recovery...`);
-
-    const recover = async () => {
-      try {
-        const ids = pendingMemories.map(m => m.id);
-        const results = await fetchPendingEnrichments(ids);
-
-        for (const memory of pendingMemories) {
-          const result = results[memory.id];
-          if (result?.status === 'completed') {
-            // Result found in server — apply it
-            const allTags = Array.from(new Set([...memory.tags, ...result.data.suggestedTags]));
-            const updatedMemory: Memory = {
-              ...memory,
-              enrichment: result.data,
-              tags: allTags,
-              isPending: false,
-              processingError: false,
-              timestamp: Date.now(),
-            };
-            await saveMemory(updatedMemory);
-            setMemories(prev => prev.map(m => m.id === memory.id ? updatedMemory : m));
-            console.log(`[Recovery] Recovered enrichment for ${memory.id}`);
-          } else if (result?.status === 'processing') {
-            // Still processing — leave as pending, polling will pick it up
-            console.log(`[Recovery] ${memory.id} still processing, will poll`);
-          } else {
-            // Not found or failed — mark for retry
-            const failedMemory: Memory = { ...memory, isPending: false, processingError: true };
-            await saveMemory(failedMemory);
-            setMemories(prev => prev.map(m => m.id === memory.id ? failedMemory : m));
-            console.log(`[Recovery] No result for ${memory.id}, marked for retry`);
-          }
-        }
-      } catch (err) {
-        console.error('[Recovery] Auto-recovery failed:', err);
-      }
-    };
-
-    recover();
-  }, [isLoading, memories]);
-
-  // Helper for single file sync - Memoized
-  const trySyncFile = useCallback(async (memory: Memory) => {
-      if (authStatus === 'linked') {
-          console.log(`[Auto-Sync] Triggering single file sync for ${memory.id}`);
-          syncFile(memory).catch(err => console.error("Single file sync failed:", err));
-      }
-  }, [authStatus, syncFile]);
-
-  // --- Enrichment polling ---
-  // Polls the server for completed enrichment results when memories are pending.
-  // Uses a single batched request for all pending memories.
-  // Fibonacci backoff: 2s, 3s, 4s, 6s, 9s, 13s, 19s, 28s, ... up to 2 min total.
-  const ENRICHMENT_TIMEOUT_MS = 120_000;
-
-  const startEnrichmentPolling = useCallback(() => {
-    if (pollingActiveRef.current) return;
-    pollingActiveRef.current = true;
-
-    let prevDelay = 1_000;
-    let currDelay = 2_000;
-
-    const poll = async () => {
-      if (!pollingActiveRef.current) return;
-
-      const pending = memoriesRef.current.filter(m => m.isPending && !m.isSample);
-      if (pending.length === 0) {
-        pollingActiveRef.current = false;
-        return;
-      }
-
-      try {
-        const ids = pending.map(m => m.id);
-        const results = await fetchPendingEnrichments(ids);
-
-        for (const memory of pending) {
-          const result = results[memory.id];
-          if (result?.status === 'completed') {
-            const current = await getMemory(memory.id);
-            if (!current || current.isDeleted) continue;
-
-            const allTags = Array.from(new Set([...current.tags, ...result.data.suggestedTags]));
-            const updatedMemory: Memory = {
-              ...current,
-              enrichment: result.data,
-              tags: allTags,
-              isPending: false,
-              processingError: false,
-              timestamp: Date.now(),
-            };
-            await saveMemory(updatedMemory);
-            setMemories(prev => prev.map(m => m.id === memory.id ? updatedMemory : m));
-            console.log(`[Poll] Enrichment complete for ${memory.id}`);
-
-            if (authStatus === 'linked') {
-              syncFile(updatedMemory).catch(err => console.error("Sync failed:", err));
-            }
-          } else if (result?.status === 'failed') {
-            const current = await getMemory(memory.id);
-            if (!current || current.isDeleted) continue;
-
-            const failedMemory: Memory = { ...current, isPending: false, processingError: true };
-            await saveMemory(failedMemory);
-            setMemories(prev => prev.map(m => m.id === memory.id ? failedMemory : m));
-            console.log(`[Poll] Enrichment failed for ${memory.id}`);
-          } else if (Date.now() - memory.timestamp > ENRICHMENT_TIMEOUT_MS) {
-            // Timed out waiting for result
-            const current = await getMemory(memory.id);
-            if (!current || current.isDeleted) continue;
-
-            const failedMemory: Memory = { ...current, isPending: false, processingError: true };
-            await saveMemory(failedMemory);
-            setMemories(prev => prev.map(m => m.id === memory.id ? failedMemory : m));
-            console.log(`[Poll] Enrichment timed out for ${memory.id}`);
-          }
-          // status === 'processing' or 'not_found' (not timed out) → keep polling
-        }
-      } catch (err) {
-        console.error('[Poll] Failed to poll for enrichment results:', err);
-      }
-
-      // Re-check if there are still pending items before scheduling next poll
-      const stillPending = memoriesRef.current.filter(m => m.isPending && !m.isSample);
-      if (stillPending.length > 0 && pollingActiveRef.current) {
-        const nextDelay = prevDelay + currDelay;
-        prevDelay = currDelay;
-        currDelay = nextDelay;
-        setTimeout(poll, nextDelay);
-      } else {
-        pollingActiveRef.current = false;
-      }
-    };
-
-    // First poll at 2s
-    setTimeout(poll, 2_000);
-  }, [authStatus, syncFile]);
+    recoverPending(pendingMemories);
+  }, [isLoading, memories, recoverPending]);
 
   // Auto-start polling if there are pending memories (e.g., after recovery leaves some as "processing")
   useEffect(() => {
     const hasPending = memories.some(m => m.isPending && !m.isSample);
-    if (hasPending && !pollingActiveRef.current) {
-      startEnrichmentPolling();
+    if (hasPending) {
+      startPolling();
     }
-  }, [memories, startEnrichmentPolling]);
+  }, [memories, startPolling]);
 
   const handleDelete = useCallback(async (id: string) => {
     setMemories(prev => prev.map(m => m.id === id ? { ...m, isDeleting: true } : m));
@@ -302,10 +188,13 @@ export const useMemories = () => {
     }
   }, [refreshMemories, trySyncFile]);
 
+  // FIX: handleRetry previously captured stale `memories` state via closure.
+  // Now reads from memoriesRef to always get the latest state, preventing
+  // retry failures when the memories array has been updated between renders.
   const handleRetry = useCallback(async (id: string) => {
     // Clear error state but don't show "Enriching..." yet
     setMemories(prev => prev.map(m => m.id === id ? { ...m, processingError: false } : m));
-    const memory = memories.find(m => m.id === id);
+    const memory = memoriesRef.current.find(m => m.id === id);
     if (!memory) return;
 
     try {
@@ -338,14 +227,14 @@ export const useMemories = () => {
         };
         await saveMemory(pendingMemory);
         setMemories(prev => prev.map(m => m.id === id ? pendingMemory : m));
-        startEnrichmentPolling();
+        startPolling();
     } catch (error) {
         console.error("Retry failed for memory", id, error);
         const failedMemory = { ...memory, isPending: false, processingError: true };
         await saveMemory(failedMemory);
         setMemories(prev => prev.map(m => m.id === id ? failedMemory : m));
     }
-  }, [memories, trySyncFile, startEnrichmentPolling]);
+  }, [trySyncFile, startPolling]);
 
   const createMemory = useCallback(async (
     text: string,
@@ -385,7 +274,7 @@ export const useMemories = () => {
             };
             await saveMemory(pendingMemory);
             setMemories(prev => prev.map(m => m.id === memoryId ? pendingMemory : m));
-            startEnrichmentPolling();
+            startPolling();
         })
         .catch(async (err) => {
             console.error("Enrichment submission failed:", err);
@@ -403,7 +292,7 @@ export const useMemories = () => {
 
       // Return immediately so the modal can close
       return Promise.resolve();
-  }, [trySyncFile, startEnrichmentPolling]);
+  }, [trySyncFile, startPolling]);
 
   const updateMemoryContent = useCallback(async (id: string, newContent: string) => {
       setMemories(prev => prev.map(m => m.id === id ? { ...m, content: newContent } : m));
@@ -485,7 +374,7 @@ export const useMemories = () => {
             };
             await saveMemory(pendingMemory);
             setMemories(prev => prev.map(m => m.id === id ? pendingMemory : m));
-            startEnrichmentPolling();
+            startPolling();
         })
         .catch(async (err) => {
             console.error("Update enrichment submission failed:", err);
@@ -502,8 +391,10 @@ export const useMemories = () => {
         });
 
       return Promise.resolve();
-  }, [trySyncFile, startEnrichmentPolling]);
+  }, [trySyncFile, startPolling]);
 
+  // Online recovery — uses the extracted recoverPending instead of
+  // re-implementing the completed/failed/processing logic inline.
   useEffect(() => {
     const handleOnline = async () => {
       console.log("App is back online.");
@@ -511,39 +402,14 @@ export const useMemories = () => {
       if (authStatus === 'linked') sync();
 
       // Recover pending enrichments from server
-      const pendingItems = memories.filter(m => m.isPending && !m.isSample);
+      const pendingItems = memoriesRef.current.filter(m => m.isPending && !m.isSample);
       if (pendingItems.length > 0) {
           console.log(`[Online-Recovery] Recovering ${pendingItems.length} pending items...`);
-          try {
-              const ids = pendingItems.map(m => m.id);
-              const results = await fetchPendingEnrichments(ids);
-              for (const memory of pendingItems) {
-                  const result = results[memory.id];
-                  if (result?.status === 'completed') {
-                      const allTags = Array.from(new Set([...memory.tags, ...result.data.suggestedTags]));
-                      const updatedMemory: Memory = {
-                          ...memory, enrichment: result.data, tags: allTags,
-                          isPending: false, processingError: false, timestamp: Date.now(),
-                      };
-                      await saveMemory(updatedMemory);
-                      setMemories(prev => prev.map(m => m.id === memory.id ? updatedMemory : m));
-                  } else if (result?.status === 'processing') {
-                      // Still processing — polling will pick it up
-                      startEnrichmentPolling();
-                  } else {
-                      // Not found or failed — mark for retry
-                      const failedMemory: Memory = { ...memory, isPending: false, processingError: true };
-                      await saveMemory(failedMemory);
-                      setMemories(prev => prev.map(m => m.id === memory.id ? failedMemory : m));
-                  }
-              }
-          } catch (err) {
-              console.error('[Online-Recovery] Failed:', err);
-          }
+          await recoverPending(pendingItems);
       }
 
       // Auto-retry enrichment for failed memories
-      const failures = memories.filter(m => m.processingError);
+      const failures = memoriesRef.current.filter(m => m.processingError);
       if (failures.length > 0) {
           console.log(`[Auto-Retry] Retrying ${failures.length} items...`);
           failures.forEach(m => handleRetry(m.id));
@@ -552,7 +418,7 @@ export const useMemories = () => {
 
     window.addEventListener('online', handleOnline);
     return () => window.removeEventListener('online', handleOnline);
-  }, [sync, authStatus, memories, handleRetry, startEnrichmentPolling]);
+  }, [sync, authStatus, handleRetry, recoverPending]);
 
   return {
     memories,

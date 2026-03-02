@@ -116,6 +116,11 @@ interface QueryPayload {
   history: ChatMessage[];
 }
 
+// Cap the number of memories sent in query context.
+// Keeps payload under ~1 MB even with large collections.
+// Memories are already sorted by recency, so this sends the most relevant.
+const MAX_QUERY_MEMORIES = 200;
+
 /**
  * Sends a query + memory context to the server proxy for AI-powered recall.
  * The server owns the API key and decides which model to use.
@@ -126,10 +131,10 @@ export const queryBrain = async (
   history: ChatMessage[] = []
 ): Promise<QueryResponse> => {
   try {
-    // Strip attachment data from memories to reduce payload size.
-    // The server only needs metadata for context building.
+    // Strip attachment data and cap count to keep payload manageable.
     const lightMemories: LightMemory[] = memories
       .filter(m => !m.isPending && !m.processingError)
+      .slice(0, MAX_QUERY_MEMORIES)
       .map(m => ({
         id: m.id,
         timestamp: m.timestamp,

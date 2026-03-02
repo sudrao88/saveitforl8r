@@ -1,18 +1,31 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
 import { Plus, RefreshCw, X } from 'lucide-react';
-import GalleryViewer from './components/GalleryViewer';
 import { App as CapacitorApp, URLOpenListenerEvent } from '@capacitor/app';
 import { isNative } from './services/platform';
 import MemoryCard from './components/MemoryCard';
-import ChatInterface from './components/ChatInterface';
 import TopNavigation from './components/TopNavigation';
 import FilterBar from './components/FilterBar';
-import SettingsModal from './components/SettingsModal';
 import EmptyState from './components/EmptyState';
-import NewMemoryPage from './components/NewMemoryPage';
 
 import ErrorBoundary from './components/ErrorBoundary';
 import { Logo } from './components/icons';
+
+// Lazy-load heavy components that are rendered conditionally.
+// This reduces the initial JS bundle, making first paint faster.
+const GalleryViewer = lazy(() => import('./components/GalleryViewer'));
+const ChatInterface = lazy(() => import('./components/ChatInterface'));
+const SettingsModal = lazy(() => import('./components/SettingsModal'));
+const NewMemoryPage = lazy(() => import('./components/NewMemoryPage'));
+
+const SuspenseFallback = () => (
+  <div className="fixed inset-0 bg-black flex items-center justify-center">
+    <div className="flex gap-1.5 items-center">
+      <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+      <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+      <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></div>
+    </div>
+  </div>
+);
 
 import { useMemories } from './hooks/useMemories';
 import { useSettings } from './hooks/useSettings';
@@ -367,22 +380,26 @@ const AppContent: React.FC = () => {
 
   if (editingMemory) {
     return (
-      <NewMemoryPage
-        onClose={handleEditClose}
-        onCreate={handleCreateMemory}
-        onUpdate={handleUpdateMemory}
-        editMemory={editingMemory}
-      />
+      <Suspense fallback={<SuspenseFallback />}>
+        <NewMemoryPage
+          onClose={handleEditClose}
+          onCreate={handleCreateMemory}
+          onUpdate={handleUpdateMemory}
+          editMemory={editingMemory}
+        />
+      </Suspense>
     );
   }
 
   if (isCaptureOpen) {
     return (
-      <NewMemoryPage
-        onClose={handleCaptureClose}
-        onCreate={handleCreateMemory}
-        initialContent={shareData || undefined}
-      />
+      <Suspense fallback={<SuspenseFallback />}>
+        <NewMemoryPage
+          onClose={handleCaptureClose}
+          onCreate={handleCreateMemory}
+          initialContent={shareData || undefined}
+        />
+      </Suspense>
     );
   }
 
@@ -393,19 +410,23 @@ const AppContent: React.FC = () => {
             fallbackTitle="Brain Search encountered an error"
             fallbackMessage="The AI search feature hit an unexpected issue. Your memories are safe — try reloading."
           >
-            <ChatInterface
-              memories={displayMemories}
-              onClose={handleChatClose}
-              searchFunction={search}
-              onViewAttachment={handleViewAttachment}
-            />
+            <Suspense fallback={<SuspenseFallback />}>
+              <ChatInterface
+                memories={displayMemories}
+                onClose={handleChatClose}
+                searchFunction={search}
+                onViewAttachment={handleViewAttachment}
+              />
+            </Suspense>
           </ErrorBoundary>
           {viewingGallery && (
-            <GalleryViewer
-              attachments={viewingGallery.attachments}
-              initialIndex={viewingGallery.currentIndex}
-              onClose={() => setViewingGallery(null)}
-            />
+            <Suspense fallback={<SuspenseFallback />}>
+              <GalleryViewer
+                attachments={viewingGallery.attachments}
+                initialIndex={viewingGallery.currentIndex}
+                onClose={() => setViewingGallery(null)}
+              />
+            </Suspense>
           )}
         </>
      );
@@ -502,31 +523,35 @@ const AppContent: React.FC = () => {
       )}
 
       {viewingGallery && (
-        <GalleryViewer
-          attachments={viewingGallery.attachments}
-          initialIndex={viewingGallery.currentIndex}
-          onClose={() => setViewingGallery(null)}
-        />
+        <Suspense fallback={<SuspenseFallback />}>
+          <GalleryViewer
+            attachments={viewingGallery.attachments}
+            initialIndex={viewingGallery.currentIndex}
+            onClose={() => setViewingGallery(null)}
+          />
+        </Suspense>
       )}
 
       {isSettingsOpen && (
-        <SettingsModal
-            onClose={handleSettingsClose}
-            availableTypes={availableTypes}
-            onImportSuccess={handleImportSuccess}
-            appVersion={versionToDisplay}
-            syncError={syncError}
-            onSyncComplete={handleFullRefresh} 
-            modelStatus={modelStatus}
-            downloadProgress={downloadProgress}
-            retryDownload={retryDownload}
-            embeddingStats={embeddingStats}
-            retryFailedEmbeddings={retryFailedEmbeddings}
-            totalMemories={activeMemoryCount}
-            lastError={lastError}
-            closeWorkerDB={closeWorkerDB}
-            reconcileReport={reconcileReport}
-        />
+        <Suspense fallback={<SuspenseFallback />}>
+          <SettingsModal
+              onClose={handleSettingsClose}
+              availableTypes={availableTypes}
+              onImportSuccess={handleImportSuccess}
+              appVersion={versionToDisplay}
+              syncError={syncError}
+              onSyncComplete={handleFullRefresh}
+              modelStatus={modelStatus}
+              downloadProgress={downloadProgress}
+              retryDownload={retryDownload}
+              embeddingStats={embeddingStats}
+              retryFailedEmbeddings={retryFailedEmbeddings}
+              totalMemories={activeMemoryCount}
+              lastError={lastError}
+              closeWorkerDB={closeWorkerDB}
+              reconcileReport={reconcileReport}
+          />
+        </Suspense>
       )}
 
       {isOtaDownloading && (
