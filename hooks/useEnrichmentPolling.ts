@@ -16,10 +16,17 @@ export const applyEnrichmentResult = async (
   memory: Memory,
   result: { status: string; data?: any } | undefined
 ): Promise<{ updated: Memory; action: 'completed' | 'failed' } | null> => {
-  if (result?.status === 'completed' && result.data) {
-    const current = await getMemory(memory.id);
-    if (!current || current.isDeleted) return null;
+  const needsUpdate =
+    (result?.status === 'completed' && result.data) ||
+    result?.status === 'failed' ||
+    ((!result || result.status === 'not_found') && Date.now() - memory.timestamp > ENRICHMENT_TIMEOUT_MS);
 
+  if (!needsUpdate) return null; // Still processing, no change
+
+  const current = await getMemory(memory.id);
+  if (!current || current.isDeleted) return null;
+
+  if (result?.status === 'completed' && result.data) {
     const allTags = Array.from(new Set([...current.tags, ...result.data.suggestedTags]));
     const updatedMemory: Memory = {
       ...current,
@@ -33,28 +40,10 @@ export const applyEnrichmentResult = async (
     return { updated: updatedMemory, action: 'completed' };
   }
 
-  if (result?.status === 'failed') {
-    const current = await getMemory(memory.id);
-    if (!current || current.isDeleted) return null;
-
-    const failedMemory: Memory = { ...current, isPending: false, processingError: true };
-    await saveMemory(failedMemory);
-    return { updated: failedMemory, action: 'failed' };
-  }
-
-  // Timeout check — mark as failed if waiting too long
-  if (!result || result.status === 'not_found') {
-    if (Date.now() - memory.timestamp > ENRICHMENT_TIMEOUT_MS) {
-      const current = await getMemory(memory.id);
-      if (!current || current.isDeleted) return null;
-
-      const failedMemory: Memory = { ...current, isPending: false, processingError: true };
-      await saveMemory(failedMemory);
-      return { updated: failedMemory, action: 'failed' };
-    }
-  }
-
-  return null; // Still processing, no change
+  // Failed or timed out
+  const failedMemory: Memory = { ...current, isPending: false, processingError: true };
+  await saveMemory(failedMemory);
+  return { updated: failedMemory, action: 'failed' };
 };
 
 interface UseEnrichmentPollingOptions {
