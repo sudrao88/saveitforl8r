@@ -565,6 +565,25 @@ export const sanitizeEnrichmentResult = (parsed) => {
       .slice(0, MAX_TAGS);
   }
 
+  // Smart enrichment fields (string arrays)
+  for (const field of ['keyPoints', 'actionItems', 'decisions', 'openQuestions', 'themes']) {
+    if (Array.isArray(parsed[field])) {
+      const sanitized = parsed[field]
+        .filter((item) => typeof item === 'string')
+        .map((item) => sanitizeString(item).substring(0, MAX_STRING_LEN))
+        .filter((item) => item.length > 0);
+      if (sanitized.length > 0) result[field] = sanitized;
+    }
+  }
+
+  // Smart enrichment fields (strings)
+  for (const field of ['sentiment', 'contentType', 'enrichmentStrategy']) {
+    if (typeof parsed[field] === 'string') {
+      const sanitized = sanitizeString(parsed[field]).substring(0, MAX_STRING_LEN);
+      if (sanitized.length > 0) result[field] = sanitized;
+    }
+  }
+
   return result;
 };
 
