@@ -259,7 +259,7 @@ export const useMemories = () => {
 
       // 2. Show the card immediately (without "Enriching..." state) and save locally
       setMemories(prev => [newMemory, ...prev]);
-      saveMemory(newMemory).catch(err => console.error("Failed to save pending memory", err));
+      await saveMemory(newMemory);
 
       // 3. Submit enrichment to server — show "Enriching..." only after 200 confirmed
       submitEnrichment(text, attachments, location, tags, memoryId)
