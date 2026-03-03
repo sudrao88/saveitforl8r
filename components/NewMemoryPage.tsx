@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Send, Paperclip, FileText, X, Tag as TagIcon, Loader2, ArrowLeft, Bold, Italic, Underline, Heading1, Heading2, CheckSquare, Plus, AlertTriangle, Calendar } from 'lucide-react';
+import { Send, Paperclip, FileText, X, Tag as TagIcon, Loader2, ArrowLeft, Bold, Italic, Underline, Heading1, Heading2, CheckSquare, Plus, AlertTriangle } from 'lucide-react';
 import { marked } from 'marked';
 import { Attachment, Memory } from '../types';
 import { isNative } from '../services/platform';
@@ -156,8 +156,6 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
   const [tagInput, setTagInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
-  const [whenExpanded, setWhenExpanded] = useState(false);
-  const [whenInput, setWhenInput] = useState('');
 
   // Store initial values for change detection
   const initialValuesRef = useRef({
@@ -481,11 +479,6 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
         finalContent = editorRef.current?.innerHTML || '';
     }
 
-    // Append temporal hint if provided (parsed by enrichment LLM)
-    if (whenInput.trim()) {
-      finalContent += `\n<!-- temporal-hint: ${escapeHtml(whenInput.trim())} -->`;
-    }
-
     if ((!finalContent.trim() && attachments.length === 0) || isProcessing) return;
 
     setIsProcessing(true);
@@ -756,63 +749,6 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                           );
                       })}
                   </div>
-               </div>
-
-               {/* When? — Temporal Relevance */}
-               <div className="mt-6 space-y-3">
-                  {!whenExpanded ? (
-                    <button
-                      onClick={() => setWhenExpanded(true)}
-                      className="flex items-center gap-2 text-sm text-gray-400 hover:text-gray-200 transition-colors py-1"
-                    >
-                      <Calendar size={16} />
-                      <span className="font-medium">When?</span>
-                    </button>
-                  ) : (
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-2">
-                        <Calendar size={16} className="text-gray-400" />
-                        <span className="text-sm font-semibold text-gray-400 uppercase tracking-wider">When is this relevant?</span>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {[
-                          { label: 'Today', value: 'today' },
-                          { label: 'This weekend', value: 'this weekend' },
-                          { label: 'Next week', value: 'next week' },
-                        ].map(chip => (
-                          <button
-                            key={chip.value}
-                            onClick={() => setWhenInput(chip.value)}
-                            className={`px-4 py-2 rounded-full text-xs font-bold border transition-all active:scale-95 ${
-                              whenInput === chip.value
-                                ? 'bg-blue-600/20 text-blue-400 border-blue-500/30'
-                                : 'bg-gray-800 text-gray-400 border-gray-700 hover:border-gray-500 hover:text-gray-200'
-                            }`}
-                          >
-                            {chip.label}
-                          </button>
-                        ))}
-                      </div>
-                      <div className="flex items-center gap-2 bg-gray-800/50 px-4 py-2 rounded-2xl border border-gray-700/50 focus-within:border-blue-500/50 focus-within:bg-gray-800 transition-all">
-                        <Calendar size={16} className="text-gray-500 shrink-0" />
-                        <input
-                          type="text"
-                          value={whenInput}
-                          onChange={(e) => setWhenInput(e.target.value)}
-                          placeholder={"e.g. march, summer, mum's birthday"}
-                          className="bg-transparent text-sm text-white placeholder-gray-500 focus:outline-none flex-1 py-1"
-                        />
-                        {whenInput && (
-                          <button
-                            onClick={() => setWhenInput('')}
-                            className="text-gray-500 hover:text-gray-300 p-1"
-                          >
-                            <X size={14} />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  )}
                </div>
 
                <hr className="border-gray-800 my-6" />

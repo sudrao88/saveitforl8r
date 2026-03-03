@@ -14,7 +14,7 @@ interface MomentBubbleProps {
   onTap: (moment: Moment) => void;
 }
 
-function getMomentIcon(type: string, objective: string): string {
+export function getMomentIcon(type: string, objective: string): string {
   switch (type) {
     case 'itinerary':
       return '✈️';

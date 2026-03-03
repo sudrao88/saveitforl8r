@@ -8,6 +8,7 @@ import FilterBar from './components/FilterBar';
 import MomentsStrip from './components/MomentsStrip';
 import MomentSheet from './components/MomentSheet';
 import MomentCreationDialog from './components/MomentCreationDialog';
+import AllMomentsSheet from './components/AllMomentsSheet';
 import EmptyState from './components/EmptyState';
 
 import ErrorBoundary from './components/ErrorBoundary';
@@ -132,15 +133,26 @@ const AppContent: React.FC = () => {
     setShowAllMoments(true);
   }, []);
 
+  const handleSelectMomentFromList = useCallback((moment: Moment) => {
+    setShowAllMoments(false);
+    setActiveMoment(moment);
+  }, []);
+
   const handleNewMoment = useCallback(() => {
     setShowCreateMoment(true);
   }, []);
 
+  const [momentError, setMomentError] = useState<string | null>(null);
+
   const handleCreateMomentSubmit = useCallback(async (objective: string) => {
+    setMomentError(null);
     const moment = await createNewMoment(objective, memories);
     setShowCreateMoment(false);
     if (moment) {
       setActiveMoment(moment);
+    } else {
+      setMomentError('Failed to create moment. Please check your connection and try again.');
+      setTimeout(() => setMomentError(null), 5000);
     }
   }, [createNewMoment, memories]);
 
@@ -647,42 +659,16 @@ const AppContent: React.FC = () => {
       />
 
       {showAllMoments && (
-        <div className="fixed inset-0 z-[100] bg-gray-950/95 backdrop-blur-md flex flex-col animate-in fade-in duration-300">
-          <div className="sticky top-0 z-10 px-4 py-3 border-b border-gray-800 flex items-center justify-between bg-gray-950/80 backdrop-blur-xl pt-[env(safe-area-inset-top)]">
-            <div className="flex items-center gap-3">
-              <button onClick={() => setShowAllMoments(false)} className="p-3 -ml-3 rounded-full hover:bg-gray-800 text-gray-400 hover:text-white transition-colors active:scale-95">
-                <X size={24} />
-              </button>
-              <h2 className="text-lg font-bold text-gray-100">All Moments</h2>
-            </div>
-            <span className="text-xs text-gray-500">{moments.length} moments</span>
-          </div>
-          <div className="flex-1 overflow-y-auto p-4 sm:p-8">
-            <div className="max-w-2xl mx-auto space-y-3">
-              {moments.length === 0 ? (
-                <div className="text-center py-12">
-                  <p className="text-gray-400">No moments yet. Tap "New" to create one from your notes.</p>
-                </div>
-              ) : (
-                moments.map(moment => (
-                  <button
-                    key={moment.id}
-                    onClick={() => { setShowAllMoments(false); setActiveMoment(moment); }}
-                    className="w-full text-left p-4 bg-gray-800/50 border border-gray-700/50 rounded-xl hover:border-gray-600/50 transition-all active:scale-[0.98] flex items-center gap-4"
-                  >
-                    <div className="w-12 h-12 rounded-full bg-gray-700/50 flex items-center justify-center text-xl shrink-0">
-                      {moment.type === 'itinerary' ? '✈️' : moment.type === 'list' ? '📝' : moment.type === 'meal-plan' ? '🍳' : moment.type === 'gift-guide' ? '🎁' : moment.type === 'curriculum' ? '🎓' : moment.type === 'brief' ? '📋' : '💡'}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-gray-200 truncate">{moment.title}</p>
-                      <p className="text-xs text-gray-400">{moment.noteIds.length} notes · {moment.type}</p>
-                      <p className="text-xs text-gray-500 truncate mt-0.5">{moment.objective}</p>
-                    </div>
-                  </button>
-                ))
-              )}
-            </div>
-          </div>
+        <AllMomentsSheet
+          moments={moments}
+          onClose={() => setShowAllMoments(false)}
+          onSelectMoment={handleSelectMomentFromList}
+        />
+      )}
+
+      {momentError && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[200] bg-red-900/90 border border-red-700/50 text-red-200 px-4 py-3 rounded-xl text-sm font-medium shadow-lg animate-in fade-in slide-in-from-top-2 duration-300 max-w-sm text-center backdrop-blur-md">
+          {momentError}
         </div>
       )}
 

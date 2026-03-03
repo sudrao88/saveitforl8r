@@ -6,7 +6,7 @@
  * Triggers re-synthesis when new notes have been added since last synthesis.
  */
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   X,
   Loader2,
@@ -43,6 +43,12 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
   const [error, setError] = useState(false);
   const [completedItems, setCompletedItems] = useState<Set<string>>(new Set());
 
+  // Keep refs to latest props so the effect always uses current values
+  const momentRef = useRef(moment);
+  const memoriesRef = useRef(memories);
+  momentRef.current = moment;
+  memoriesRef.current = memories;
+
   useEffect(() => {
     let cancelled = false;
 
@@ -50,7 +56,7 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
       setIsLoading(true);
       setError(false);
       try {
-        const result = await loadSynthesis(moment, memories);
+        const result = await loadSynthesis(momentRef.current, memoriesRef.current);
         if (!cancelled) {
           setSynthesis(result);
           if (!result) setError(true);
@@ -67,7 +73,7 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [moment.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [moment.id, moment.noteIds.length, loadSynthesis]);
 
   const handleRetry = useCallback(async () => {
     setIsLoading(true);
