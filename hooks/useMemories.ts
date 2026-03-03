@@ -260,6 +260,7 @@ export const useMemories = () => {
       // 2. Show the card immediately (without "Enriching..." state) and save locally
       setMemories(prev => [newMemory, ...prev]);
       await saveMemory(newMemory);
+      trySyncFile(newMemory);  // Sync immediately on save, before enrichment
 
       // 3. Submit enrichment to server — show "Enriching..." only after 200 confirmed
       submitEnrichment(text, attachments, location, tags, memoryId)
