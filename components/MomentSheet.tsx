@@ -2,22 +2,21 @@
  * MomentSheet.tsx
  *
  * Full-screen synthesis detail sheet. Opens when user taps a Moment bubble.
- * Handles loading, caching, synthesis display, inline feedback, and item completion.
+ * Handles loading, caching, synthesis display, and item completion.
+ * Triggers re-synthesis when new notes have been added since last synthesis.
  */
 
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   X,
   Loader2,
-  Clock,
-  ChevronUp,
-  ChevronDown,
+  Trash2,
   ExternalLink,
   Check,
+  RefreshCw,
 } from 'lucide-react';
 import {
-  MomentCluster,
-  MomentMeta,
+  Moment,
   SynthesisResponse,
   SynthesisSection,
   SynthesisItem,
@@ -25,32 +24,25 @@ import {
 } from '../types';
 
 interface MomentSheetProps {
-  cluster: MomentCluster;
+  moment: Moment;
   memories: Memory[];
-  meta?: MomentMeta;
   onClose: () => void;
-  loadSynthesis: (cluster: MomentCluster, memories: Memory[]) => Promise<SynthesisResponse | null>;
-  onMarkViewed: (momentId: string) => Promise<void>;
-  onDismiss: (momentId: string) => Promise<void>;
-  onFrequencyOverride: (momentId: string, override: 'more' | 'less' | null) => Promise<void>;
+  loadSynthesis: (moment: Moment, memories: Memory[]) => Promise<SynthesisResponse | null>;
+  onDelete: (momentId: string) => Promise<void>;
 }
 
 const MomentSheet: React.FC<MomentSheetProps> = ({
-  cluster,
+  moment,
   memories,
-  meta,
   onClose,
   loadSynthesis,
-  onMarkViewed,
-  onDismiss,
-  onFrequencyOverride,
+  onDelete,
 }) => {
   const [synthesis, setSynthesis] = useState<SynthesisResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(false);
   const [completedItems, setCompletedItems] = useState<Set<string>>(new Set());
 
-  // Load synthesis on mount
   useEffect(() => {
     let cancelled = false;
 
@@ -58,7 +50,7 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
       setIsLoading(true);
       setError(false);
       try {
-        const result = await loadSynthesis(cluster, memories);
+        const result = await loadSynthesis(moment, memories);
         if (!cancelled) {
           setSynthesis(result);
           if (!result) setError(true);
@@ -71,18 +63,17 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
     };
 
     load();
-    onMarkViewed(cluster.id);
 
     return () => {
       cancelled = true;
     };
-  }, [cluster.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [moment.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleRetry = useCallback(async () => {
     setIsLoading(true);
     setError(false);
     try {
-      const result = await loadSynthesis(cluster, memories);
+      const result = await loadSynthesis(moment, memories);
       setSynthesis(result);
       if (!result) setError(true);
     } catch {
@@ -90,7 +81,7 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [cluster, memories, loadSynthesis]);
+  }, [moment, memories, loadSynthesis]);
 
   const toggleItemComplete = useCallback((itemKey: string) => {
     setCompletedItems(prev => {
@@ -104,10 +95,10 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
     });
   }, []);
 
-  const handleDismiss = useCallback(() => {
-    onDismiss(cluster.id);
+  const handleDelete = useCallback(() => {
+    onDelete(moment.id);
     onClose();
-  }, [cluster.id, onDismiss, onClose]);
+  }, [moment.id, onDelete, onClose]);
 
   return (
     <div className="fixed inset-0 z-[100] bg-gray-950/95 backdrop-blur-md flex flex-col animate-in fade-in duration-300">
@@ -122,7 +113,7 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
           </button>
           <div>
             <h2 className="text-lg font-bold text-gray-100 truncate max-w-[200px] sm:max-w-md">
-              {cluster.title}
+              {moment.title}
             </h2>
             {synthesis?.subtitle && (
               <p className="text-xs text-gray-400">{synthesis.subtitle}</p>
@@ -130,8 +121,15 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
           </div>
         </div>
         <div className="flex items-center gap-2 text-xs text-gray-500">
-          <span>{cluster.noteIds.length} notes</span>
+          <span>{moment.noteIds.length} notes</span>
         </div>
+      </div>
+
+      {/* Objective banner */}
+      <div className="px-4 sm:px-8 py-2 bg-gray-900/50 border-b border-gray-800/50 max-w-2xl mx-auto w-full">
+        <p className="text-xs text-gray-400 italic truncate">
+          {moment.objective}
+        </p>
       </div>
 
       {/* Content */}
@@ -139,7 +137,6 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
         <div className="max-w-2xl mx-auto p-4 sm:p-8 pb-32">
           {isLoading && (
             <div className="space-y-6 animate-pulse">
-              {/* Skeleton UI */}
               {[1, 2, 3].map(i => (
                 <div key={i} className="space-y-3">
                   <div className="h-6 bg-gray-800 rounded-lg w-48" />
@@ -178,7 +175,6 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
 
           {synthesis && !isLoading && (
             <>
-              {/* Sections */}
               <div className="space-y-6">
                 {synthesis.sections.map((section, sIdx) => (
                   <SectionView
@@ -191,39 +187,23 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
                 ))}
               </div>
 
-              {/* Frequency Feedback */}
+              {/* Actions */}
               <div className="mt-8 pt-6 border-t border-gray-800">
-                <div className="flex items-center gap-2 text-xs text-gray-500 mb-3">
-                  <Clock size={14} />
-                  <span>Show me this:</span>
-                </div>
                 <div className="flex gap-2">
-                  <FeedbackButton
-                    label="More often"
-                    icon={<ChevronUp size={14} />}
-                    active={meta?.frequencyOverride === 'more'}
-                    onClick={() =>
-                      onFrequencyOverride(
-                        cluster.id,
-                        meta?.frequencyOverride === 'more' ? null : 'more'
-                      )
-                    }
-                  />
-                  <FeedbackButton
-                    label="Less often"
-                    icon={<ChevronDown size={14} />}
-                    active={meta?.frequencyOverride === 'less'}
-                    onClick={() =>
-                      onFrequencyOverride(
-                        cluster.id,
-                        meta?.frequencyOverride === 'less' ? null : 'less'
-                      )
-                    }
-                  />
-                  <FeedbackButton
-                    label="Not now"
-                    onClick={handleDismiss}
-                  />
+                  <button
+                    onClick={handleRetry}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-gray-800 text-gray-400 border border-gray-700 hover:border-gray-500 hover:text-gray-200 transition-all active:scale-95"
+                  >
+                    <RefreshCw size={14} />
+                    Re-synthesize
+                  </button>
+                  <button
+                    onClick={handleDelete}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-red-900/20 text-red-400 border border-red-800/30 hover:border-red-600/50 hover:text-red-300 transition-all active:scale-95"
+                  >
+                    <Trash2 size={14} />
+                    Delete moment
+                  </button>
                 </div>
               </div>
             </>
@@ -321,27 +301,6 @@ const ItemView: React.FC<{
       </a>
     )}
   </div>
-);
-
-// --- Feedback Button ---
-
-const FeedbackButton: React.FC<{
-  label: string;
-  icon?: React.ReactNode;
-  active?: boolean;
-  onClick: () => void;
-}> = ({ label, icon, active, onClick }) => (
-  <button
-    onClick={onClick}
-    className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all active:scale-95 ${
-      active
-        ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
-        : 'bg-gray-800 text-gray-400 border border-gray-700 hover:border-gray-500 hover:text-gray-200'
-    }`}
-  >
-    {icon}
-    {label}
-  </button>
 );
 
 export default MomentSheet;

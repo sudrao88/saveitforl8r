@@ -2,39 +2,35 @@
  * MomentBubble.tsx
  *
  * Individual story bubble in the Moments strip.
- * Shows a circular avatar with icon, label, and state ring.
+ * Shows a circular avatar with icon, label, and note count.
  */
 
 import React from 'react';
-import { MomentCluster, MomentMeta, MomentSynthesis } from '../types';
-import { daysUntilWindowStart } from '../services/cadenceEngine';
+import { Moment, MomentSynthesis } from '../types';
 
 interface MomentBubbleProps {
-  cluster: MomentCluster;
-  meta?: MomentMeta;
+  moment: Moment;
   synthesis?: MomentSynthesis;
-  onTap: (cluster: MomentCluster) => void;
+  onTap: (moment: Moment) => void;
 }
 
-// Map MomentType → emoji icon
-function getMomentIcon(type: string, tags: string[]): string {
+function getMomentIcon(type: string, objective: string): string {
   switch (type) {
     case 'itinerary':
       return '✈️';
     case 'brief':
       return '📋';
     case 'list': {
-      // Contextual icon based on entity type or tags
-      const joined = tags.join(' ').toLowerCase();
-      if (joined.includes('restaurant') || joined.includes('food') || joined.includes('dining'))
+      const lower = objective.toLowerCase();
+      if (lower.includes('restaurant') || lower.includes('food') || lower.includes('café') || lower.includes('cafe') || lower.includes('dining'))
         return '🍜';
-      if (joined.includes('movie') || joined.includes('tv') || joined.includes('show'))
+      if (lower.includes('movie') || lower.includes('tv') || lower.includes('show'))
         return '🎬';
-      if (joined.includes('book') || joined.includes('read'))
+      if (lower.includes('book') || lower.includes('read'))
         return '📚';
-      if (joined.includes('music') || joined.includes('song'))
+      if (lower.includes('music') || lower.includes('song'))
         return '🎵';
-      if (joined.includes('product') || joined.includes('shop'))
+      if (lower.includes('product') || lower.includes('shop'))
         return '🛍️';
       return '📝';
     }
@@ -52,70 +48,37 @@ function getMomentIcon(type: string, tags: string[]): string {
   }
 }
 
-// Truncate to max chars
 function truncateLabel(text: string, max: number = 10): string {
   return text.length > max ? text.slice(0, max - 1) + '…' : text;
 }
 
 const MomentBubble: React.FC<MomentBubbleProps> = ({
-  cluster,
-  meta,
+  moment,
   synthesis,
   onTap,
 }) => {
-  const icon = getMomentIcon(cluster.type, cluster.aggregatedTags);
-  const label = truncateLabel(cluster.title);
-  const noteCount = cluster.noteIds.length;
+  const icon = getMomentIcon(moment.type, moment.objective);
+  const label = truncateLabel(moment.title);
+  const noteCount = moment.noteIds.length;
 
-  // Determine ring state
-  const isViewed =
-    meta?.lastViewedAt != null &&
-    synthesis != null &&
-    synthesis.inputHash === cluster.inputHash;
+  // Determine ring state: blue if has new notes since last synthesis, grey if up-to-date
+  const hasNewNotes = synthesis
+    ? synthesis.inputHash !== moment.inputHash
+    : true;
 
-  const isApproaching =
-    cluster.clusterCriteria.temporalWindow != null &&
-    daysUntilWindowStart(cluster.clusterCriteria.temporalWindow, new Date()) <= 7 &&
-    daysUntilWindowStart(cluster.clusterCriteria.temporalWindow, new Date()) >= 0;
-
-  // Sub-label
-  let subLabel: string;
-  if (cluster.clusterCriteria.temporalWindow) {
-    const days = daysUntilWindowStart(
-      cluster.clusterCriteria.temporalWindow,
-      new Date()
-    );
-    if (days <= 0) subLabel = 'Now';
-    else if (days === 1) subLabel = 'Tomorrow';
-    else subLabel = `${days} days`;
-  } else {
-    subLabel = `${noteCount} note${noteCount !== 1 ? 's' : ''}`;
-  }
-
-  // Ring classes
-  let ringClass: string;
-  if (isApproaching) {
-    ringClass = 'ring-2 ring-amber-400 animate-pulse';
-  } else if (isViewed) {
-    ringClass = 'ring-2 ring-gray-600';
-  } else {
-    ringClass = 'ring-2 ring-blue-500';
-  }
-
-  // Gradient background based on type
-  const bgGradient = isApproaching
-    ? 'bg-gradient-to-br from-amber-900/60 to-amber-800/40'
-    : 'bg-gradient-to-br from-gray-800 to-gray-700';
+  const ringClass = hasNewNotes
+    ? 'ring-2 ring-blue-500'
+    : 'ring-2 ring-gray-600';
 
   return (
     <button
-      onClick={() => onTap(cluster)}
+      onClick={() => onTap(moment)}
       className="flex flex-col items-center gap-1.5 shrink-0 group touch-manipulation"
     >
       <div
-        className={`w-16 h-16 rounded-full flex items-center justify-center ${bgGradient} ${ringClass} transition-all group-active:scale-95`}
+        className={`w-16 h-16 rounded-full flex items-center justify-center bg-gradient-to-br from-gray-800 to-gray-700 ${ringClass} transition-all group-active:scale-95`}
       >
-        <span className="text-2xl" role="img" aria-label={cluster.type}>
+        <span className="text-2xl" role="img" aria-label={moment.type}>
           {icon}
         </span>
       </div>
@@ -123,7 +86,7 @@ const MomentBubble: React.FC<MomentBubbleProps> = ({
         {label}
       </span>
       <span className="text-[10px] text-gray-500 leading-tight">
-        {subLabel}
+        {noteCount} note{noteCount !== 1 ? 's' : ''}
       </span>
     </button>
   );

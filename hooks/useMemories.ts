@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getMemories, deleteMemory, saveMemory, getMemory } from '../services/storageService';
 import { enrichInput } from '../services/geminiService';
-import { Memory, Attachment } from '../types';
+import { Memory, Attachment, Moment } from '../types';
 import { SAMPLE_MEMORIES } from '../services/sampleData';
 import { useSync } from './useSync';
 import { useAuth } from './useAuth';
@@ -80,6 +80,16 @@ export const useMemories = () => {
   const { sync, syncFile } = useSync();
   const { authStatus } = useAuth();
   const mounted = useRef(false);
+  const momentsRef = useRef<Moment[]>([]);
+  const onNoteMatchedMomentsRef = useRef<((momentId: string, noteId: string) => Promise<void>) | undefined>(undefined);
+
+  const setMomentsRef = useCallback((moments: Moment[]) => {
+    momentsRef.current = moments;
+  }, []);
+
+  const setOnNoteMatchedMoments = useCallback((cb: (momentId: string, noteId: string) => Promise<void>) => {
+    onNoteMatchedMomentsRef.current = cb;
+  }, []);
 
   const refreshMemories = useCallback(async () => {
     try {
@@ -167,11 +177,16 @@ export const useMemories = () => {
             });
         }
 
+        const momentsMeta = momentsRef.current
+          .filter(m => !m.isDeleted)
+          .map(m => ({ id: m.id, objective: m.objective }));
+
         const enrichment = await enrichInput(
             memory.content,
             attachments,
             memory.location,
-            memory.tags
+            memory.tags,
+            momentsMeta.length > 0 ? momentsMeta : undefined
         );
 
         const allTags = Array.from(new Set([...memory.tags, ...enrichment.suggestedTags]));
@@ -221,7 +236,10 @@ export const useMemories = () => {
       };
 
       // 2. Schedule background enrichment via server proxy
-      const enrichmentPromise = enrichInput(text, attachments, location, tags);
+      const momentsMeta = momentsRef.current
+        .filter(m => !m.isDeleted)
+        .map(m => ({ id: m.id, objective: m.objective }));
+      const enrichmentPromise = enrichInput(text, attachments, location, tags, momentsMeta.length > 0 ? momentsMeta : undefined);
 
       // 3. Update UI immediately (showing loading state) and save local pending state
       setMemories(prev => [newMemory, ...prev]);
@@ -252,6 +270,15 @@ export const useMemories = () => {
             await saveMemory(updatedMemory);
             setMemories(prev => prev.map(m => m.id === memoryId ? updatedMemory : m));
             console.log("Enrichment complete, syncing single file...");
+
+            // Handle moment matching from enrichment response
+            if (enrichment.matchedMomentIds && enrichment.matchedMomentIds.length > 0 && onNoteMatchedMomentsRef.current) {
+                for (const momentId of enrichment.matchedMomentIds) {
+                    onNoteMatchedMomentsRef.current(momentId, memoryId).catch(err =>
+                      console.error(`[Moments] Failed to add note to moment ${momentId}:`, err)
+                    );
+                }
+            }
 
             // Sync Enriched File
             await trySyncFile(updatedMemory);
@@ -341,7 +368,10 @@ export const useMemories = () => {
 
       // Trigger Background Enrichment via server proxy
       console.log(`[Update] Triggering enrichment for ${id}`);
-      enrichInput(text, attachments, updatedMemory.location, tags)
+      const updateMomentsMeta = momentsRef.current
+        .filter(m => !m.isDeleted)
+        .map(m => ({ id: m.id, objective: m.objective }));
+      enrichInput(text, attachments, updatedMemory.location, tags, updateMomentsMeta.length > 0 ? updateMomentsMeta : undefined)
         .then(async (enrichment) => {
             if (!enrichment) return;
 
@@ -364,6 +394,15 @@ export const useMemories = () => {
             await saveMemory(enrichedMemory);
             setMemories(prev => prev.map(m => m.id === id ? enrichedMemory : m));
             console.log("Update enrichment complete, syncing enriched version...");
+
+            // Handle moment matching from enrichment response
+            if (enrichment.matchedMomentIds && enrichment.matchedMomentIds.length > 0 && onNoteMatchedMomentsRef.current) {
+                for (const momentId of enrichment.matchedMomentIds) {
+                    onNoteMatchedMomentsRef.current(momentId, id).catch(err =>
+                      console.error(`[Moments] Failed to add note to moment ${momentId}:`, err)
+                    );
+                }
+            }
 
             await trySyncFile(enrichedMemory);
         })
@@ -411,6 +450,8 @@ export const useMemories = () => {
     updateMemory,
     updateMemoryContent,
     togglePin,
-    isLoading
+    isLoading,
+    setMomentsRef,
+    setOnNoteMatchedMoments,
   };
 };

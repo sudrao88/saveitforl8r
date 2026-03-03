@@ -1,81 +1,89 @@
 /**
  * useMoments.ts
  *
- * React hook combining the clustering engine, cadence engine, and synthesis cache.
- * Recomputes clusters whenever memories change. Surfacing runs on every render.
+ * React hook for managing user-created moments.
+ * Moments are explicit synthesis objectives created by the user.
+ * Notes are matched to moments during enrichment, and synthesis
+ * is regenerated on-demand when new notes are added.
  */
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Memory,
-  MomentCluster,
-  MomentMeta,
+  Moment,
   MomentSynthesis,
-  Rhythm,
+  MomentType,
   SynthesisResponse,
 } from '../types';
-import { buildClusters, computeInputHash } from '../services/clusteringEngine';
-import { shouldSurface, rankClusters } from '../services/cadenceEngine';
 import {
-  getRhythms,
-  saveRhythm,
-  deleteRhythm as deleteRhythmStorage,
-  getAllMomentMeta,
-  saveMomentMeta,
+  getMoments,
+  saveMoment,
   getMomentSynthesis,
   saveMomentSynthesis,
 } from '../services/storageService';
-import { postProxy } from '../services/proxyService';
+import { createMoment as createMomentApi, synthesizeMoment } from '../services/geminiService';
+
+// Synchronous fast hash for cache invalidation (djb2)
+function fastHash(input: string): string {
+  let hash = 5381;
+  for (let i = 0; i < input.length; i++) {
+    hash = ((hash << 5) + hash + input.charCodeAt(i)) & 0xffffffff;
+  }
+  return 'mh_' + (hash >>> 0).toString(16);
+}
+
+function computeInputHash(noteIds: string[], memories: Memory[]): string {
+  const inputs = noteIds
+    .slice()
+    .sort()
+    .map(id => {
+      const m = memories.find(n => n.id === id);
+      return m ? `${id}:${m.timestamp}` : id;
+    })
+    .join('|');
+  return fastHash(inputs);
+}
 
 interface UseMomentsReturn {
-  /** Clusters currently surfaced in the strip */
-  surfacedMoments: MomentCluster[];
-  /** All clusters (including non-surfaced) */
-  allClusters: MomentCluster[];
-  /** Rhythms */
-  rhythms: Rhythm[];
-  /** Load synthesis for a moment (cache-aware) */
-  loadSynthesis: (cluster: MomentCluster, memories: Memory[]) => Promise<SynthesisResponse | null>;
-  /** Current synthesis loading state */
+  /** All active moments */
+  moments: Moment[];
+  /** Create a new moment from an objective */
+  createNewMoment: (objective: string, memories: Memory[]) => Promise<Moment | null>;
+  /** Load synthesis for a moment (cache-aware, triggers re-synthesis if new notes) */
+  loadSynthesis: (moment: Moment, memories: Memory[]) => Promise<SynthesisResponse | null>;
+  /** Current synthesis loading state (moment ID or null) */
   synthesisLoading: string | null;
-  /** Mark a moment as viewed */
-  markViewed: (momentId: string) => Promise<void>;
-  /** Dismiss a moment */
-  dismissMoment: (momentId: string) => Promise<void>;
-  /** Set frequency override */
-  setFrequencyOverride: (momentId: string, override: 'more' | 'less' | null) => Promise<void>;
-  /** Add a new rhythm */
-  addRhythm: (text: string, existingTags: string[], existingEntityTypes: string[]) => Promise<Rhythm | null>;
-  /** Remove a rhythm */
-  removeRhythm: (id: string) => Promise<void>;
-  /** Toggle rhythm active state */
-  toggleRhythm: (id: string) => Promise<void>;
-  /** Meta map for UI state checks */
-  metaMap: Map<string, MomentMeta>;
-  /** Cached synthesis map */
+  /** Current moment creation loading state */
+  creating: boolean;
+  /** Add a note to a moment (called when enrichment matches) */
+  addNoteToMoment: (momentId: string, noteId: string) => Promise<void>;
+  /** Soft-delete a moment */
+  deleteMoment: (momentId: string) => Promise<void>;
+  /** Cached synthesis map for UI state */
   synthesesMap: Map<string, MomentSynthesis>;
+  /** Callback to sync a moment to Drive */
+  onMomentChanged?: (moment: Moment) => void;
+  /** Set the sync callback */
+  setOnMomentChanged: (cb: (moment: Moment) => void) => void;
 }
 
 export const useMoments = (memories: Memory[]): UseMomentsReturn => {
-  const [rhythms, setRhythms] = useState<Rhythm[]>([]);
-  const [metas, setMetas] = useState<MomentMeta[]>([]);
+  const [momentsList, setMomentsList] = useState<Moment[]>([]);
   const [synthesesMap, setSynthesesMap] = useState<Map<string, MomentSynthesis>>(new Map());
   const [synthesisLoading, setSynthesisLoading] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
   const loaded = useRef(false);
+  const onMomentChangedRef = useRef<((moment: Moment) => void) | undefined>(undefined);
 
-  // Load persisted data on mount
+  // Load persisted moments on mount
   useEffect(() => {
     if (loaded.current) return;
     loaded.current = true;
 
     const loadData = async () => {
       try {
-        const [loadedRhythms, loadedMetas] = await Promise.all([
-          getRhythms(),
-          getAllMomentMeta(),
-        ]);
-        setRhythms(loadedRhythms);
-        setMetas(loadedMetas);
+        const loadedMoments = await getMoments();
+        setMomentsList(loadedMoments);
       } catch (err) {
         console.error('[Moments] Failed to load persisted data:', err);
       }
@@ -83,96 +91,119 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
     loadData();
   }, []);
 
-  // Build meta map
-  const metaMap = useMemo(() => {
-    const map = new Map<string, MomentMeta>();
-    for (const m of metas) {
-      map.set(m.momentId, m);
-    }
-    return map;
-  }, [metas]);
+  const setOnMomentChanged = useCallback((cb: (moment: Moment) => void) => {
+    onMomentChangedRef.current = cb;
+  }, []);
 
-  // Compute all clusters (runs whenever memories or metas change)
-  const allClusters = useMemo(() => {
-    if (memories.length === 0) return [];
-    return buildClusters(memories, metas);
-  }, [memories, metas]);
+  // Create a new moment
+  const createNewMoment = useCallback(
+    async (objective: string, currentMemories: Memory[]): Promise<Moment | null> => {
+      setCreating(true);
+      try {
+        const result = await createMomentApi(objective, currentMemories);
 
-  // Determine which clusters to surface right now
-  const surfacedMoments = useMemo(() => {
-    const now = new Date();
-    const surfaced = allClusters.filter(c =>
-      shouldSurface(c, rhythms, metaMap, now)
-    );
-    return rankClusters(surfaced, metaMap, now);
-  }, [allClusters, rhythms, metaMap]);
+        const moment: Moment = {
+          id: crypto.randomUUID(),
+          objective,
+          title: result.title,
+          type: (result.type || 'general') as MomentType,
+          noteIds: result.usedNoteIds || [],
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          lastSynthesizedAt: Date.now(),
+        };
 
-  // Load synthesis (cache-aware)
+        // Compute input hash for the initial note set
+        moment.inputHash = computeInputHash(moment.noteIds, currentMemories);
+
+        // Save moment
+        await saveMoment(moment);
+        setMomentsList(prev => [...prev, moment]);
+
+        // Save synthesis
+        if (result.synthesis) {
+          const stored: MomentSynthesis = {
+            momentId: moment.id,
+            inputHash: moment.inputHash,
+            content: result.synthesis,
+            generatedAt: Date.now(),
+            noteIds: moment.noteIds,
+          };
+          await saveMomentSynthesis(stored);
+          setSynthesesMap(prev => {
+            const next = new Map(prev);
+            next.set(moment.id, stored);
+            return next;
+          });
+        }
+
+        // Trigger sync
+        onMomentChangedRef.current?.(moment);
+
+        return moment;
+      } catch (err) {
+        console.error('[Moments] Failed to create moment:', err);
+        return null;
+      } finally {
+        setCreating(false);
+      }
+    },
+    []
+  );
+
+  // Load synthesis (cache-aware; re-synthesizes if notes have changed)
   const loadSynthesis = useCallback(
-    async (
-      cluster: MomentCluster,
-      currentMemories: Memory[]
-    ): Promise<SynthesisResponse | null> => {
-      const currentHash = computeInputHash(cluster.noteIds, currentMemories);
+    async (moment: Moment, currentMemories: Memory[]): Promise<SynthesisResponse | null> => {
+      const currentHash = computeInputHash(moment.noteIds, currentMemories);
 
       // Check in-memory cache first
-      const cached = synthesesMap.get(cluster.id);
+      const cached = synthesesMap.get(moment.id);
       if (cached && cached.inputHash === currentHash) {
         return cached.content;
       }
 
       // Check IndexedDB
-      const persisted = await getMomentSynthesis(cluster.id);
+      const persisted = await getMomentSynthesis(moment.id);
       if (persisted && persisted.inputHash === currentHash) {
         setSynthesesMap(prev => {
           const next = new Map(prev);
-          next.set(cluster.id, persisted);
+          next.set(moment.id, persisted);
           return next;
         });
         return persisted.content;
       }
 
-      // Cache miss — call server
-      setSynthesisLoading(cluster.id);
+      // Cache miss — re-synthesize
+      setSynthesisLoading(moment.id);
       try {
-        const notes = cluster.noteIds
-          .map(id => currentMemories.find(m => m.id === id))
-          .filter((m): m is Memory => !!m)
-          .map(m => ({
-            id: m.id,
-            content: m.content,
-            tags: m.tags,
-            enrichment: m.enrichment
-              ? {
-                  summary: m.enrichment.summary,
-                  locationContext: m.enrichment.locationContext,
-                  temporalContext: m.enrichment.temporalContext,
-                  entityContext: m.enrichment.entityContext,
-                }
-              : undefined,
-          }));
-
-        const synthesis = await postProxy<SynthesisResponse>('/api/synthesize', {
-          notes,
-          momentType: cluster.type,
-          momentTitle: cluster.title,
-          temporalWindow: cluster.clusterCriteria.temporalWindow || null,
-        });
+        const synthesis = await synthesizeMoment(moment, currentMemories);
 
         const stored: MomentSynthesis = {
-          momentId: cluster.id,
+          momentId: moment.id,
           inputHash: currentHash,
           content: synthesis,
           generatedAt: Date.now(),
-          noteIds: cluster.noteIds,
+          noteIds: moment.noteIds,
         };
+
+        // Update moment's hash and synthesis timestamp
+        const updatedMoment: Moment = {
+          ...moment,
+          inputHash: currentHash,
+          lastSynthesizedAt: Date.now(),
+          updatedAt: Date.now(),
+        };
+        await saveMoment(updatedMoment);
+        setMomentsList(prev => prev.map(m => m.id === moment.id ? updatedMoment : m));
 
         await saveMomentSynthesis(stored);
         setSynthesesMap(prev => {
           const next = new Map(prev);
-          next.set(cluster.id, stored);
+          next.set(moment.id, stored);
           return next;
         });
+
+        onMomentChangedRef.current?.(updatedMoment);
 
         return synthesis;
       } catch (err) {
@@ -185,143 +216,70 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
     [synthesesMap]
   );
 
-  // Mark a moment as viewed
-  const markViewed = useCallback(
+  // Add a note to a moment (called when enrichment matches)
+  const addNoteToMoment = useCallback(
+    async (momentId: string, noteId: string) => {
+      const moment = momentsList.find(m => m.id === momentId);
+      if (!moment) return;
+      if (moment.noteIds.includes(noteId)) return;
+
+      const updated: Moment = {
+        ...moment,
+        noteIds: [...moment.noteIds, noteId],
+        updatedAt: Date.now(),
+      };
+
+      await saveMoment(updated);
+      setMomentsList(prev => prev.map(m => m.id === momentId ? updated : m));
+      onMomentChangedRef.current?.(updated);
+    },
+    [momentsList]
+  );
+
+  // Soft-delete a moment
+  const deleteMoment = useCallback(
     async (momentId: string) => {
-      const existing = metaMap.get(momentId) || {
-        momentId,
-        dismissCount: 0,
-        completedNoteIds: [],
+      const moment = momentsList.find(m => m.id === momentId);
+      if (!moment) return;
+
+      const tombstone: Moment = {
+        ...moment,
+        isDeleted: true,
+        updatedAt: Date.now(),
       };
-      const updated: MomentMeta = {
-        ...existing,
-        lastViewedAt: Date.now(),
-      };
-      await saveMomentMeta(updated);
-      setMetas(prev =>
-        prev.some(m => m.momentId === momentId)
-          ? prev.map(m => (m.momentId === momentId ? updated : m))
-          : [...prev, updated]
-      );
+
+      await saveMoment(tombstone);
+      setMomentsList(prev => prev.filter(m => m.id !== momentId));
+      onMomentChangedRef.current?.(tombstone);
     },
-    [metaMap]
+    [momentsList]
   );
 
-  // Dismiss a moment
-  const dismissMoment = useCallback(
-    async (momentId: string) => {
-      const existing = metaMap.get(momentId) || {
-        momentId,
-        dismissCount: 0,
-        completedNoteIds: [],
-      };
-      const updated: MomentMeta = {
-        ...existing,
-        dismissCount: existing.dismissCount + 1,
-        lastSurfacedAt: Date.now(),
-      };
-      await saveMomentMeta(updated);
-      setMetas(prev =>
-        prev.some(m => m.momentId === momentId)
-          ? prev.map(m => (m.momentId === momentId ? updated : m))
-          : [...prev, updated]
-      );
-    },
-    [metaMap]
-  );
-
-  // Set frequency override
-  const setFrequencyOverride = useCallback(
-    async (momentId: string, override: 'more' | 'less' | null) => {
-      const existing = metaMap.get(momentId) || {
-        momentId,
-        dismissCount: 0,
-        completedNoteIds: [],
-      };
-      const updated: MomentMeta = {
-        ...existing,
-        frequencyOverride: override,
-        dismissCount: 0, // Reset dismiss count on explicit preference
-      };
-      await saveMomentMeta(updated);
-      setMetas(prev =>
-        prev.some(m => m.momentId === momentId)
-          ? prev.map(m => (m.momentId === momentId ? updated : m))
-          : [...prev, updated]
-      );
-    },
-    [metaMap]
-  );
-
-  // Add a new rhythm (calls parse-rhythm endpoint)
-  const addRhythm = useCallback(
-    async (
-      text: string,
-      existingTags: string[],
-      existingEntityTypes: string[]
-    ): Promise<Rhythm | null> => {
-      try {
-        const parsed = await postProxy<{
-          matchers: Rhythm['parsed']['matchers'];
-          cadence: Rhythm['parsed']['cadence'];
-          inferredLabel: string;
-        }>('/api/parse-rhythm', {
-          text,
-          existingTags,
-          existingEntityTypes,
-        });
-
-        const rhythm: Rhythm = {
-          id: crypto.randomUUID(),
-          natural: text,
-          parsed,
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-          isActive: true,
-        };
-
-        await saveRhythm(rhythm);
-        setRhythms(prev => [...prev, rhythm]);
-        return rhythm;
-      } catch (err) {
-        console.error('[Moments] Failed to add rhythm:', err);
-        return null;
-      }
-    },
-    []
-  );
-
-  // Remove a rhythm
-  const removeRhythm = useCallback(async (id: string) => {
-    await deleteRhythmStorage(id);
-    setRhythms(prev => prev.filter(r => r.id !== id));
+  // Refresh moments from storage (used after sync)
+  const refreshMoments = useCallback(async () => {
+    try {
+      const loadedMoments = await getMoments();
+      setMomentsList(loadedMoments);
+    } catch (err) {
+      console.error('[Moments] Failed to refresh:', err);
+    }
   }, []);
 
-  // Toggle rhythm active state
-  const toggleRhythm = useCallback(
-    async (id: string) => {
-      const rhythm = rhythms.find(r => r.id === id);
-      if (!rhythm) return;
-      const updated = { ...rhythm, isActive: !rhythm.isActive, updatedAt: Date.now() };
-      await saveRhythm(updated);
-      setRhythms(prev => prev.map(r => (r.id === id ? updated : r)));
-    },
-    [rhythms]
+  // Filter to active moments only
+  const moments = useMemo(
+    () => momentsList.filter(m => !m.isDeleted).sort((a, b) => b.updatedAt - a.updatedAt),
+    [momentsList]
   );
 
   return {
-    surfacedMoments,
-    allClusters,
-    rhythms,
+    moments,
+    createNewMoment,
     loadSynthesis,
     synthesisLoading,
-    markViewed,
-    dismissMoment,
-    setFrequencyOverride,
-    addRhythm,
-    removeRhythm,
-    toggleRhythm,
-    metaMap,
+    creating,
+    addNoteToMoment,
+    deleteMoment,
     synthesesMap,
+    setOnMomentChanged,
   };
 };

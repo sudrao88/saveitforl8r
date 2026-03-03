@@ -9,6 +9,7 @@ import TopNavigation from './components/TopNavigation';
 import FilterBar from './components/FilterBar';
 import MomentsStrip from './components/MomentsStrip';
 import MomentSheet from './components/MomentSheet';
+import MomentCreationDialog from './components/MomentCreationDialog';
 import SettingsModal from './components/SettingsModal';
 import EmptyState from './components/EmptyState';
 import NewMemoryPage from './components/NewMemoryPage';
@@ -29,7 +30,7 @@ import { useMoments } from './hooks/useMoments';
 import useNativeOTA from './hooks/useNativeOTA';
 import { SyncProvider } from './context/SyncContext';
 import { reconcileEmbeddings, ReconcileReport } from './services/storageService';
-import { ViewMode, Memory, Attachment, MomentCluster } from './types';
+import { ViewMode, Memory, Attachment, Moment } from './types';
 import { initGA, logPageView, logEvent } from './services/analytics';
 
 import { ANALYTICS_EVENTS } from './constants';
@@ -42,8 +43,9 @@ const AppContent: React.FC = () => {
   const [viewingGallery, setViewingGallery] = useState<{ attachments: Attachment[]; currentIndex: number } | null>(null);
   const [reconcileReport, setReconcileReport] = useState<ReconcileReport | null>(null);
   const [editingMemory, setEditingMemory] = useState<Memory | null>(null);
-  const [activeMoment, setActiveMoment] = useState<MomentCluster | null>(null);
+  const [activeMoment, setActiveMoment] = useState<Moment | null>(null);
   const [showAllMoments, setShowAllMoments] = useState(false);
+  const [showCreateMoment, setShowCreateMoment] = useState(false);
 
   const { updateAvailable, updateApp, appVersion } = useServiceWorker();
   const {
@@ -70,22 +72,43 @@ const AppContent: React.FC = () => {
     updateMemory,
     updateMemoryContent,
     togglePin,
-    isLoading
+    isLoading,
+    setMomentsRef,
+    setOnNoteMatchedMoments,
   } = useMemories();
 
   const {
-    surfacedMoments,
-    allClusters,
+    moments,
+    createNewMoment,
     loadSynthesis,
-    markViewed,
-    dismissMoment,
-    setFrequencyOverride,
-    metaMap,
+    synthesisLoading,
+    creating: momentCreating,
+    addNoteToMoment,
+    deleteMoment,
     synthesesMap,
+    setOnMomentChanged,
   } = useMoments(memories);
 
-  const handleMomentTap = useCallback((cluster: MomentCluster) => {
-    setActiveMoment(cluster);
+  const { syncMoment } = useSync();
+
+  // Wire up moments ref and callback for enrichment-time moment matching
+  useEffect(() => {
+    setMomentsRef(moments);
+  }, [moments, setMomentsRef]);
+
+  useEffect(() => {
+    setOnNoteMatchedMoments(addNoteToMoment);
+  }, [addNoteToMoment, setOnNoteMatchedMoments]);
+
+  // Wire up moment sync callback
+  useEffect(() => {
+    setOnMomentChanged((moment: Moment) => {
+      syncMoment(moment).catch(err => console.error('[Sync] Moment sync failed:', err));
+    });
+  }, [syncMoment, setOnMomentChanged]);
+
+  const handleMomentTap = useCallback((moment: Moment) => {
+    setActiveMoment(moment);
   }, []);
 
   const handleMomentClose = useCallback(() => {
@@ -95,6 +118,18 @@ const AppContent: React.FC = () => {
   const handleShowAllMoments = useCallback(() => {
     setShowAllMoments(true);
   }, []);
+
+  const handleNewMoment = useCallback(() => {
+    setShowCreateMoment(true);
+  }, []);
+
+  const handleCreateMomentSubmit = useCallback(async (objective: string) => {
+    const moment = await createNewMoment(objective, memories);
+    setShowCreateMoment(false);
+    if (moment) {
+      setActiveMoment(moment);
+    }
+  }, [createNewMoment, memories]);
 
   const handleFullRefresh = useCallback(async () => {
       await refreshMemories();
@@ -450,10 +485,10 @@ const AppContent: React.FC = () => {
           />
 
           <MomentsStrip
-            moments={surfacedMoments}
-            metaMap={metaMap}
+            moments={moments}
             synthesesMap={synthesesMap}
             onMomentTap={handleMomentTap}
+            onNewMoment={handleNewMoment}
             onShowAll={handleShowAllMoments}
           />
 
@@ -562,16 +597,20 @@ const AppContent: React.FC = () => {
 
       {activeMoment && (
         <MomentSheet
-          cluster={activeMoment}
+          moment={activeMoment}
           memories={memories}
-          meta={metaMap.get(activeMoment.id)}
           onClose={handleMomentClose}
           loadSynthesis={loadSynthesis}
-          onMarkViewed={markViewed}
-          onDismiss={dismissMoment}
-          onFrequencyOverride={setFrequencyOverride}
+          onDelete={deleteMoment}
         />
       )}
+
+      <MomentCreationDialog
+        isOpen={showCreateMoment}
+        isCreating={momentCreating}
+        onClose={() => setShowCreateMoment(false)}
+        onCreate={handleCreateMomentSubmit}
+      />
 
       {showAllMoments && (
         <div className="fixed inset-0 z-[100] bg-gray-950/95 backdrop-blur-md flex flex-col animate-in fade-in duration-300">
@@ -582,27 +621,28 @@ const AppContent: React.FC = () => {
               </button>
               <h2 className="text-lg font-bold text-gray-100">All Moments</h2>
             </div>
-            <span className="text-xs text-gray-500">{allClusters.length} clusters</span>
+            <span className="text-xs text-gray-500">{moments.length} moments</span>
           </div>
           <div className="flex-1 overflow-y-auto p-4 sm:p-8">
             <div className="max-w-2xl mx-auto space-y-3">
-              {allClusters.length === 0 ? (
+              {moments.length === 0 ? (
                 <div className="text-center py-12">
-                  <p className="text-gray-400">No moments yet. Save more notes to create clusters.</p>
+                  <p className="text-gray-400">No moments yet. Tap "New" to create one from your notes.</p>
                 </div>
               ) : (
-                allClusters.map(cluster => (
+                moments.map(moment => (
                   <button
-                    key={cluster.id}
-                    onClick={() => { setShowAllMoments(false); setActiveMoment(cluster); }}
+                    key={moment.id}
+                    onClick={() => { setShowAllMoments(false); setActiveMoment(moment); }}
                     className="w-full text-left p-4 bg-gray-800/50 border border-gray-700/50 rounded-xl hover:border-gray-600/50 transition-all active:scale-[0.98] flex items-center gap-4"
                   >
                     <div className="w-12 h-12 rounded-full bg-gray-700/50 flex items-center justify-center text-xl shrink-0">
-                      {cluster.type === 'itinerary' ? '✈️' : cluster.type === 'list' ? '📝' : cluster.type === 'meal-plan' ? '🍳' : cluster.type === 'gift-guide' ? '🎁' : cluster.type === 'curriculum' ? '🎓' : cluster.type === 'brief' ? '📋' : '💡'}
+                      {moment.type === 'itinerary' ? '✈️' : moment.type === 'list' ? '📝' : moment.type === 'meal-plan' ? '🍳' : moment.type === 'gift-guide' ? '🎁' : moment.type === 'curriculum' ? '🎓' : moment.type === 'brief' ? '📋' : '💡'}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-gray-200 truncate">{cluster.title}</p>
-                      <p className="text-xs text-gray-400">{cluster.noteIds.length} notes · {cluster.type}</p>
+                      <p className="font-semibold text-gray-200 truncate">{moment.title}</p>
+                      <p className="text-xs text-gray-400">{moment.noteIds.length} notes · {moment.type}</p>
+                      <p className="text-xs text-gray-500 truncate mt-0.5">{moment.objective}</p>
                     </div>
                   </button>
                 ))
