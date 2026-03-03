@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Send, BrainCircuit, ExternalLink, Bot, Sparkles, WifiOff, Download, FileText } from 'lucide-react';
-import { Memory, Attachment } from '../types';
+import { Memory, Attachment, ChatMessage } from '../types';
 import MemoryCard from './MemoryCard';
 
 interface ChatInterfaceProps {
   memories: Memory[];
   onClose: () => void;
-  searchFunction: (query: string, memories: Memory[]) => Promise<{ mode: string; result: any; error?: any }>;
+  searchFunction: (query: string, memories: Memory[], history?: ChatMessage[]) => Promise<{ mode: string; result: any; error?: any }>;
   onViewAttachment: (attachment: Attachment, allAttachments: Attachment[]) => void;
 }
 
@@ -82,14 +82,25 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
       }
   }, [query]);
 
+  const MAX_HISTORY_TURNS = 10;
+  const MAX_TURN_TEXT_LENGTH = 4000;
+
   const handleSend = async () => {
     if (!query.trim() || loading) return;
 
     const userMsg: Message = { role: 'user', text: query };
+
+    // Build conversation history from current messages (before adding the new user message).
+    // Strip sources and isOffline — server only needs role + text.
+    // Cap to most recent MAX_HISTORY_TURNS messages, truncate text to match server limit.
+    const history: ChatMessage[] = messages
+      .slice(-MAX_HISTORY_TURNS)
+      .map(m => ({ role: m.role, text: m.text.substring(0, MAX_TURN_TEXT_LENGTH) }));
+
     setMessages(prev => [...prev, userMsg]);
     setQuery('');
     setLoading(true);
-    
+
     // Reset textarea height
     if (textareaRef.current) {
         textareaRef.current.style.height = 'auto';
@@ -97,7 +108,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
     }
 
     try {
-      const response = await searchFunction(userMsg.text, memories);
+      const response = await searchFunction(userMsg.text, memories, history);
       
       if (response.mode === 'online') {
           const { answer, sources } = response.result;
@@ -155,14 +166,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
 
   return (
     <>
-    <div className="fixed inset-0 z-[60] bg-gray-900" aria-hidden="true" style={{ height: '100vh', touchAction: 'none' }} />
-    
-    <div 
-        className="fixed left-0 right-0 z-[61] flex flex-col overflow-hidden bg-gray-900"
+    <div className="fixed inset-0 z-[60] bg-black" aria-hidden="true" style={{ height: '100vh', touchAction: 'none' }} />
+
+    <div
+        className="fixed left-0 right-0 z-[61] flex flex-col overflow-hidden bg-black"
         style={{ height: viewport.height, top: viewport.top }}
     >
       {/* Header */}
-      <div className="flex-none border-b border-gray-800 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] flex items-center justify-between bg-gray-900 z-10 shadow-sm shrink-0">
+      <div className="flex-none border-b border-gray-800 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] flex items-center justify-between bg-black z-10 shadow-sm shrink-0">
         <div className="flex items-center gap-2">
             <BrainCircuit size={24} className="text-blue-500" />
             <h2 className="text-lg font-bold text-gray-100">Brain Search</h2>
@@ -175,7 +186,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
       {/* Messages Area */}
       <div 
         ref={messagesEndRef} 
-        className="flex-1 overflow-y-auto p-4 md:px-20 lg:px-64 space-y-6 bg-gray-900 overscroll-contain"
+        className="flex-1 overflow-y-auto p-4 md:px-20 lg:px-64 space-y-6 bg-black overscroll-contain"
         style={{ overscrollBehaviorY: 'contain' }}
       >
         {messages.length === 0 && (
@@ -252,7 +263,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
 
       {/* Input Area */}
       <div 
-        className="flex-none w-full bg-gray-900 border-t border-gray-800 shrink-0 z-20"
+        className="flex-none w-full bg-black border-t border-gray-800 shrink-0 z-20"
         style={{ 
             paddingBottom: 'max(1rem, env(safe-area-inset-bottom))',
             paddingTop: '1rem',

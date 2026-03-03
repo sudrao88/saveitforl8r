@@ -19,9 +19,18 @@ export interface ReconcileReport {
     timestamp: number;
 }
 
-// Open (or create) the IndexedDB database
+// Singleton IndexedDB connection — avoids opening a new connection per operation.
+// Under load (hundreds of memories, rapid saves during sync), this eliminates
+// connection churn and prevents browser IDB connection pool exhaustion.
+let cachedDB: IDBDatabase | null = null;
+let dbOpenPromise: Promise<IDBDatabase> | null = null;
+
 const openDB = (): Promise<IDBDatabase> => {
-  return new Promise((resolve, reject) => {
+  if (cachedDB) return Promise.resolve(cachedDB);
+  // Deduplicate concurrent open requests during startup
+  if (dbOpenPromise) return dbOpenPromise;
+
+  dbOpenPromise = new Promise<IDBDatabase>((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
 
     request.onupgradeneeded = (event) => {
@@ -44,9 +53,20 @@ const openDB = (): Promise<IDBDatabase> => {
       }
     };
 
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      cachedDB = request.result;
+      cachedDB.onclose = () => { cachedDB = null; };
+      cachedDB.onversionchange = () => { cachedDB?.close(); cachedDB = null; };
+      dbOpenPromise = null;
+      resolve(cachedDB);
+    };
+    request.onerror = () => {
+      dbOpenPromise = null;
+      reject(request.error);
+    };
   });
+
+  return dbOpenPromise;
 };
 
 // Helper: Convert StoredMemory to Application Memory
@@ -364,6 +384,8 @@ export const factoryReset = async () => {
     try {
         console.log("Starting Factory Reset...");
         try { db.close(); } catch (e) {}
+        // Close the singleton IDB connection so deleteDatabase can proceed
+        try { cachedDB?.close(); cachedDB = null; } catch (e) {}
 
         if ('serviceWorker' in navigator) {
             const registrations = await navigator.serviceWorker.getRegistrations();

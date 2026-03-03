@@ -1,5 +1,5 @@
 
-import { EnrichmentData, Memory, Attachment, Moment, SynthesisResponse } from '../types.ts';
+import { EnrichmentData, Memory, Attachment, ChatMessage, Moment, SynthesisResponse } from '../types.ts';
 import { postProxy } from './proxyService.ts';
 
 export interface QuerySource {
@@ -19,31 +19,119 @@ export interface CreateMomentResponse {
   synthesis: SynthesisResponse;
 }
 
+interface EnrichmentInput {
+  text: string;
+  attachments: Attachment[];
+  location?: { latitude: number; longitude: number };
+  tags: string[];
+  memoryId?: string;
+  moments?: { id: string; objective: string }[];
+}
+
+interface SubmitEnrichmentResponse {
+  status: string;
+}
+
 /**
- * Sends memory content to the server proxy for AI enrichment.
+ * Submits memory content to the server proxy for AI enrichment.
+ * The server validates the request, persists a "processing" status,
+ * and returns 200 { status: "accepted" } immediately. Enrichment
+ * happens asynchronously — poll with fetchPendingEnrichments().
  * Optionally includes moments metadata for moment-matching phase.
  */
-export const enrichInput = async (
+export const submitEnrichment = async (
   text: string,
   attachments: Attachment[],
   location?: { latitude: number; longitude: number },
   tags: string[] = [],
+  memoryId?: string,
   moments?: { id: string; objective: string }[]
-): Promise<EnrichmentData> => {
-  try {
-    const result = await postProxy<EnrichmentData>('/api/enrich', {
-      text,
-      attachments,
-      location,
-      tags,
-      moments,
-    });
-    return result;
-  } catch (error: any) {
-    console.error('Enrichment Error:', error);
-    throw error;
+): Promise<void> => {
+  const payload: EnrichmentInput = {
+    text,
+    attachments,
+    location,
+    tags,
+    memoryId,
+    moments,
+  };
+
+  const result = await postProxy<SubmitEnrichmentResponse>('/api/enrich', payload as unknown as Record<string, unknown>);
+  if (result.status !== 'accepted') {
+    throw new Error(`Unexpected enrichment response: ${result.status}`);
   }
 };
+
+interface EnrichmentResultEntry {
+  status: 'completed' | 'failed' | 'not_found' | string;
+  data?: EnrichmentData;
+}
+
+interface EnrichmentResultsResponse {
+  results: Record<string, EnrichmentResultEntry>;
+}
+
+export type EnrichmentPollResult =
+  | { status: 'completed'; data: EnrichmentData }
+  | { status: 'processing' }
+  | { status: 'failed' }
+  | { status: 'not_found' };
+
+/**
+ * Fetches enrichment results for pending memories from the server.
+ * Returns per-memory status so callers can distinguish between
+ * "still processing", "completed", "failed", and "not found".
+ */
+export const fetchPendingEnrichments = async (
+  memoryIds: string[]
+): Promise<Record<string, EnrichmentPollResult>> => {
+  try {
+    const payload = { memoryIds };
+    const response = await postProxy<EnrichmentResultsResponse>('/api/enrich/results', payload as unknown as Record<string, unknown>);
+
+    const result: Record<string, EnrichmentPollResult> = {};
+    if (response && response.results) {
+      for (const id of memoryIds) {
+        const entry = response.results[id];
+        if (entry?.status === 'completed' && entry.data) {
+          result[id] = { status: 'completed', data: entry.data };
+        } else if (entry?.status === 'failed') {
+          result[id] = { status: 'failed' };
+        } else if (entry?.status === 'processing') {
+          result[id] = { status: 'processing' };
+        } else {
+          result[id] = { status: 'not_found' };
+        }
+      }
+    }
+    return result;
+  } catch (error) {
+    console.error('Failed to fetch pending enrichments:', error);
+    return {};
+  }
+};
+
+interface LightMemory {
+  id: string;
+  timestamp: number;
+  content: string;
+  tags: string[];
+  enrichment?: EnrichmentData;
+  attachments: { name: string }[];
+  isPending?: boolean;
+  processingError?: boolean;
+}
+
+interface QueryPayload {
+  query: string;
+  memories: LightMemory[];
+  history: ChatMessage[];
+}
+
+// Cap the number of memories sent in query context.
+// Keeps payload under ~1 MB even with large collections.
+// Memories are already sorted by recency, so this sends the most relevant.
+const MAX_QUERY_MEMORIES = 200;
 
 /**
  * Creates a new moment by sending the user's objective and all notes to the server.
@@ -112,11 +200,14 @@ export const synthesizeMoment = async (
  */
 export const queryBrain = async (
   query: string,
-  memories: Memory[]
+  memories: Memory[],
+  history: ChatMessage[] = []
 ): Promise<QueryResponse> => {
   try {
-    const lightMemories = memories
+    // Strip attachment data and cap count to keep payload manageable.
+    const lightMemories: LightMemory[] = memories
       .filter(m => !m.isPending && !m.processingError)
+      .slice(0, MAX_QUERY_MEMORIES)
       .map(m => ({
         id: m.id,
         timestamp: m.timestamp,
@@ -128,10 +219,14 @@ export const queryBrain = async (
         processingError: m.processingError,
       }));
 
-    const result = await postProxy<QueryResponse>('/api/query', {
+    const payload: QueryPayload = {
       query,
       memories: lightMemories,
-    });
+      history,
+    };
+
+    // Explicitly cast the response
+    const result = await postProxy<QueryResponse>('/api/query', payload as unknown as Record<string, unknown>);
     return result;
   } catch (error) {
     console.error('Query Error:', error);

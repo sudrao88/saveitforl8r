@@ -1,21 +1,34 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
 import { Plus, RefreshCw, X } from 'lucide-react';
-import GalleryViewer from './components/GalleryViewer';
 import { App as CapacitorApp, URLOpenListenerEvent } from '@capacitor/app';
 import { isNative } from './services/platform';
 import MemoryCard from './components/MemoryCard';
-import ChatInterface from './components/ChatInterface';
 import TopNavigation from './components/TopNavigation';
 import FilterBar from './components/FilterBar';
 import MomentsStrip from './components/MomentsStrip';
 import MomentSheet from './components/MomentSheet';
 import MomentCreationDialog from './components/MomentCreationDialog';
-import SettingsModal from './components/SettingsModal';
 import EmptyState from './components/EmptyState';
-import NewMemoryPage from './components/NewMemoryPage';
 
 import ErrorBoundary from './components/ErrorBoundary';
 import { Logo } from './components/icons';
+
+// Lazy-load heavy components that are rendered conditionally.
+// This reduces the initial JS bundle, making first paint faster.
+const GalleryViewer = lazy(() => import('./components/GalleryViewer'));
+const ChatInterface = lazy(() => import('./components/ChatInterface'));
+const SettingsModal = lazy(() => import('./components/SettingsModal'));
+const NewMemoryPage = lazy(() => import('./components/NewMemoryPage'));
+
+const SuspenseFallback = () => (
+  <div className="fixed inset-0 bg-black flex items-center justify-center">
+    <div className="flex gap-1.5 items-center">
+      <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+      <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+      <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></div>
+    </div>
+  </div>
+);
 
 import { useMemories } from './hooks/useMemories';
 import { useSettings } from './hooks/useSettings';
@@ -421,7 +434,7 @@ const AppContent: React.FC = () => {
 
   if (isLoading) {
     return (
-        <div className="fixed inset-0 bg-gray-900 z-[9999] flex flex-col items-center justify-center">
+        <div className="fixed inset-0 bg-black z-[9999] flex flex-col items-center justify-center">
             <Logo className="w-20 h-20 mb-6 animate-pulse" />
             <div className="flex gap-1.5 items-center">
                 <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
@@ -434,44 +447,61 @@ const AppContent: React.FC = () => {
 
   if (editingMemory) {
     return (
-      <NewMemoryPage
-        onClose={handleEditClose}
-        onCreate={handleCreateMemory}
-        onUpdate={handleUpdateMemory}
-        editMemory={editingMemory}
-      />
+      <Suspense fallback={<SuspenseFallback />}>
+        <NewMemoryPage
+          onClose={handleEditClose}
+          onCreate={handleCreateMemory}
+          onUpdate={handleUpdateMemory}
+          editMemory={editingMemory}
+        />
+      </Suspense>
     );
   }
 
   if (isCaptureOpen) {
     return (
-      <NewMemoryPage
-        onClose={handleCaptureClose}
-        onCreate={handleCreateMemory}
-        initialContent={shareData || undefined}
-      />
+      <Suspense fallback={<SuspenseFallback />}>
+        <NewMemoryPage
+          onClose={handleCaptureClose}
+          onCreate={handleCreateMemory}
+          initialContent={shareData || undefined}
+        />
+      </Suspense>
     );
   }
 
   if (view === ViewMode.RECALL) {
      return (
-        <ErrorBoundary
-          fallbackTitle="Brain Search encountered an error"
-          fallbackMessage="The AI search feature hit an unexpected issue. Your memories are safe — try reloading."
-        >
-          <ChatInterface
-            memories={displayMemories}
-            onClose={handleChatClose}
-            searchFunction={search}
-            onViewAttachment={handleViewAttachment}
-          />
-        </ErrorBoundary>
+        <>
+          <ErrorBoundary
+            fallbackTitle="Brain Search encountered an error"
+            fallbackMessage="The AI search feature hit an unexpected issue. Your memories are safe — try reloading."
+          >
+            <Suspense fallback={<SuspenseFallback />}>
+              <ChatInterface
+                memories={displayMemories}
+                onClose={handleChatClose}
+                searchFunction={search}
+                onViewAttachment={handleViewAttachment}
+              />
+            </Suspense>
+          </ErrorBoundary>
+          {viewingGallery && (
+            <Suspense fallback={<SuspenseFallback />}>
+              <GalleryViewer
+                attachments={viewingGallery.attachments}
+                initialIndex={viewingGallery.currentIndex}
+                onClose={() => setViewingGallery(null)}
+              />
+            </Suspense>
+          )}
+        </>
      );
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 flex flex-col">
-      <div className="sticky top-0 z-[50] bg-gray-900/90 backdrop-blur-md border-b border-gray-800 pt-[env(safe-area-inset-top)]">
+    <div className="min-h-screen bg-black flex flex-col">
+      <div className="sticky top-0 z-[50] bg-black/90 backdrop-blur-md border-b border-gray-800 pt-[env(safe-area-inset-top)]">
           <TopNavigation
             setView={handleSetView}
             resetFilters={handleResetFilters}
@@ -538,8 +568,8 @@ const AppContent: React.FC = () => {
       </button>
 
       {liveExpandedMemory && (
-        <div className="fixed inset-0 z-[100] bg-gray-950/90 backdrop-blur-md flex flex-col animate-in fade-in duration-300">
-          <div className="sticky top-0 z-10 px-4 py-3 border-b border-gray-800 flex items-center justify-between bg-gray-950/50 backdrop-blur-xl pt-[env(safe-area-inset-top)]">
+        <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-md flex flex-col animate-in fade-in duration-300">
+          <div className="sticky top-0 z-10 px-4 py-3 border-b border-gray-800 flex items-center justify-between bg-black/50 backdrop-blur-xl pt-[env(safe-area-inset-top)]">
              <div className="flex items-center gap-3">
                 <button onClick={() => setExpandedMemory(null)} className="p-3 -ml-3 rounded-full hover:bg-gray-800 text-gray-400 hover:text-white transition-colors active:scale-95">
                     <X size={24} />
@@ -568,31 +598,35 @@ const AppContent: React.FC = () => {
       )}
 
       {viewingGallery && (
-        <GalleryViewer
-          attachments={viewingGallery.attachments}
-          initialIndex={viewingGallery.currentIndex}
-          onClose={() => setViewingGallery(null)}
-        />
+        <Suspense fallback={<SuspenseFallback />}>
+          <GalleryViewer
+            attachments={viewingGallery.attachments}
+            initialIndex={viewingGallery.currentIndex}
+            onClose={() => setViewingGallery(null)}
+          />
+        </Suspense>
       )}
 
       {isSettingsOpen && (
-        <SettingsModal
-            onClose={handleSettingsClose}
-            availableTypes={availableTypes}
-            onImportSuccess={handleImportSuccess}
-            appVersion={versionToDisplay}
-            syncError={syncError}
-            onSyncComplete={handleFullRefresh} 
-            modelStatus={modelStatus}
-            downloadProgress={downloadProgress}
-            retryDownload={retryDownload}
-            embeddingStats={embeddingStats}
-            retryFailedEmbeddings={retryFailedEmbeddings}
-            totalMemories={activeMemoryCount}
-            lastError={lastError}
-            closeWorkerDB={closeWorkerDB}
-            reconcileReport={reconcileReport}
-        />
+        <Suspense fallback={<SuspenseFallback />}>
+          <SettingsModal
+              onClose={handleSettingsClose}
+              availableTypes={availableTypes}
+              onImportSuccess={handleImportSuccess}
+              appVersion={versionToDisplay}
+              syncError={syncError}
+              onSyncComplete={handleFullRefresh}
+              modelStatus={modelStatus}
+              downloadProgress={downloadProgress}
+              retryDownload={retryDownload}
+              embeddingStats={embeddingStats}
+              retryFailedEmbeddings={retryFailedEmbeddings}
+              totalMemories={activeMemoryCount}
+              lastError={lastError}
+              closeWorkerDB={closeWorkerDB}
+              reconcileReport={reconcileReport}
+          />
+        </Suspense>
       )}
 
       {activeMoment && (
@@ -653,7 +687,7 @@ const AppContent: React.FC = () => {
       )}
 
       {isOtaDownloading && (
-        <div className="fixed inset-0 z-[9999] bg-gray-950/95 backdrop-blur-md flex flex-col items-center justify-center gap-6">
+        <div className="fixed inset-0 z-[9999] bg-black/95 backdrop-blur-md flex flex-col items-center justify-center gap-6">
           <Logo className="w-16 h-16 text-blue-500" />
           <div className="flex flex-col items-center gap-3">
             <RefreshCw size={32} className="text-blue-400 animate-spin" />

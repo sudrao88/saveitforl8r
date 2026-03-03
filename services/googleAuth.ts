@@ -18,6 +18,9 @@ const APP_URL = import.meta.env.VITE_APP_URL || window.location.origin;
 if (!CLIENT_ID) {
   console.warn('[Auth] VITE_GOOGLE_CLIENT_ID is not set. Google Drive sync will not work.');
 }
+if (!CLIENT_SECRET) {
+  console.warn('[Auth] VITE_GOOGLE_CLIENT_SECRET is not set. Google Drive sync will not work.');
+}
 
 // Removed email and profile scopes as they are not needed for Refresh Token flow
 const SCOPES = 'https://www.googleapis.com/auth/drive.appdata'; 
@@ -26,6 +29,11 @@ const AUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth';
 
 // Initiate Login Flow (PKCE)
 export const initiateLogin = async () => {
+  if (!CLIENT_ID || !CLIENT_SECRET) {
+    const missing = [!CLIENT_ID && 'VITE_GOOGLE_CLIENT_ID', !CLIENT_SECRET && 'VITE_GOOGLE_CLIENT_SECRET'].filter(Boolean).join(', ');
+    throw new Error(`Google Drive configuration error: ${missing} not set. Check environment variables and Secret Manager.`);
+  }
+
   const codeVerifier = generateCodeVerifier();
   const codeChallenge = await generateCodeChallenge(codeVerifier);
 
@@ -76,9 +84,10 @@ const exchangeCodeForToken = async (code: string | null, error: string | null) =
   // Clean up verifier
   await storage.remove('pkce_verifier');
 
-  if (!CLIENT_SECRET) {
-      console.error("Missing Client Secret. Google Web Flow requires it.");
-      throw new Error("Configuration Error: Missing Client Secret");
+  if (!CLIENT_ID || !CLIENT_SECRET) {
+      const missing = [!CLIENT_ID && 'Client ID', !CLIENT_SECRET && 'Client Secret'].filter(Boolean).join(', ');
+      console.error(`[Auth] Missing ${missing}. Google Web Flow requires both.`);
+      throw new Error(`Configuration Error: Missing ${missing}`);
   }
 
   const isNativeApp = isNative();

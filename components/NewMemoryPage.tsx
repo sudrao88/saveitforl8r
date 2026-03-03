@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Send, Paperclip, FileText, X, Tag as TagIcon, Loader2, ArrowLeft, Bold, Italic, Underline, Heading1, Heading2, CheckSquare, Plus, AlertTriangle, Calendar } from 'lucide-react';
+import { marked } from 'marked';
 import { Attachment, Memory } from '../types';
 import { isNative } from '../services/platform';
 import { Keyboard } from '@capacitor/keyboard';
@@ -31,6 +32,103 @@ const SUGGESTED_TAGS = ["Book", "Restaurant", "Place to Visit", "Movie", "Podcas
 
 const escapeHtml = (text: string): string =>
     text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+/** Heuristically detect whether plain text contains markdown formatting. */
+const looksLikeMarkdown = (text: string): boolean => {
+    return [
+        /^#{1,6}\s/m,            // Headings: # text
+        /\*\*[^*]+\*\*/,         // Bold: **text**
+        /__[^_]+__/,             // Bold: __text__
+        /(?<!\*)\*(?!\s)[^*]+(?<!\s)\*(?!\*)/,  // Italic: *text*
+        /^[-*+]\s/m,             // Unordered lists: - item
+        /^\d+\.\s/m,             // Ordered lists: 1. item
+        /\[[^\]]+\]\([^)]+\)/,   // Links: [text](url)
+        /^>/m,                   // Blockquotes: > text
+        /`[^`]+`/,               // Inline code: `code`
+        /^```/m,                 // Code blocks: ```
+    ].some(pattern => pattern.test(text));
+};
+
+const ALLOWED_TAGS = new Set([
+    'P', 'BR', 'B', 'STRONG', 'I', 'EM', 'U', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
+    'UL', 'OL', 'LI', 'A', 'BLOCKQUOTE', 'PRE', 'CODE', 'DIV', 'SPAN',
+    'S', 'STRIKE', 'DEL', 'SUB', 'SUP', 'TABLE', 'THEAD', 'TBODY', 'TR', 'TH', 'TD',
+]);
+
+const SAFE_URL_PROTOCOLS = /^(https?:|mailto:|tel:)/i;
+
+/** Sanitize pasted HTML: keep structural formatting, strip styles & unwanted elements. */
+const sanitizePastedHtml = (html: string): string => {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+
+    const cleanNode = (node: Node): Node | null => {
+        if (node.nodeType === Node.TEXT_NODE) return node.cloneNode();
+        if (node.nodeType !== Node.ELEMENT_NODE) return null;
+
+        const el = node as Element;
+        if (['SCRIPT', 'STYLE', 'META', 'LINK'].includes(el.tagName)) return null;
+
+        let newEl: Element;
+        if (ALLOWED_TAGS.has(el.tagName)) {
+            newEl = document.createElement(el.tagName);
+            if (el.tagName === 'A') {
+                const href = el.getAttribute('href') || '';
+                if (SAFE_URL_PROTOCOLS.test(href)) {
+                    newEl.setAttribute('href', href);
+                    newEl.setAttribute('target', '_blank');
+                    newEl.setAttribute('rel', 'noopener noreferrer');
+                }
+                // Unsafe protocols (javascript:, data:, etc.) are silently dropped
+            }
+        } else {
+            newEl = document.createElement('span');
+        }
+
+        for (const child of el.childNodes) {
+            const cleaned = cleanNode(child);
+            if (cleaned) newEl.appendChild(cleaned);
+        }
+        return newEl;
+    };
+
+    const fragment = document.createDocumentFragment();
+    for (const child of doc.body.childNodes) {
+        const cleaned = cleanNode(child);
+        if (cleaned) fragment.appendChild(cleaned);
+    }
+
+    const container = document.createElement('div');
+    container.appendChild(fragment);
+    return container.innerHTML;
+};
+
+/** Check whether HTML contains meaningful structural formatting beyond plain text. */
+const hasRichFormatting = (html: string): boolean => {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    return doc.body.querySelectorAll(
+        'b, strong, i, em, u, h1, h2, h3, h4, h5, h6, ul, ol, li, a, blockquote, pre, code, table, s, strike, del'
+    ).length > 0;
+};
+
+// Configure marked for clean output with line-break support
+marked.setOptions({ breaks: true, gfm: true });
+
+const ToolbarButton: React.FC<{
+  onClick: () => void;
+  title: string;
+  isActive?: boolean;
+  children: React.ReactNode;
+}> = ({ onClick, title, isActive = false, children }) => (
+  <button
+    onClick={onClick}
+    className={`p-2.5 rounded-xl transition-colors active:scale-95 shrink-0 ${isActive ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`}
+    title={title}
+  >
+    {children}
+  </button>
+);
 
 const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpdate, initialContent, editMemory }) => {
   const isEditMode = !!editMemory;
@@ -147,12 +245,14 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
   }, [isChecklistMode]);
 
   const handlePaste = (e: React.ClipboardEvent) => {
-    const items = e.clipboardData.items;
-    for (const item of items) {
+    const clipboardData = e.clipboardData;
+
+    // Handle image paste — add as attachment
+    for (const item of clipboardData.items) {
         if (item.type.startsWith('image/')) {
             const blob = item.getAsFile();
             if (blob) {
-                e.preventDefault(); 
+                e.preventDefault();
                 const reader = new FileReader();
                 reader.onload = (evt) => {
                     setAttachments(prev => [...prev, {
@@ -165,8 +265,47 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                 };
                 reader.readAsDataURL(blob);
             }
+            return;
         }
     }
+
+    // Handle text paste — preserve rich formatting or convert markdown
+    const html = clipboardData.getData('text/html');
+    const plainText = clipboardData.getData('text/plain');
+
+    if (!html && !plainText) return;
+
+    e.preventDefault();
+
+    let htmlToInsert = '';
+
+    if (html && hasRichFormatting(html)) {
+        // Rich text paste (Word, Google Docs, web pages) — sanitize & preserve formatting
+        htmlToInsert = sanitizePastedHtml(html);
+    } else if (plainText && looksLikeMarkdown(plainText)) {
+        // Plain text with markdown syntax — convert to HTML, then sanitize to prevent XSS
+        htmlToInsert = sanitizePastedHtml(marked.parse(plainText) as string);
+    } else if (plainText) {
+        // Plain text without markdown — insert with line breaks preserved
+        htmlToInsert = escapeHtml(plainText).replace(/\n/g, '<br>');
+    }
+
+    if (htmlToInsert) {
+        const selection = window.getSelection();
+        if (selection && selection.rangeCount > 0) {
+            const range = selection.getRangeAt(0);
+            range.deleteContents();
+            const fragment = range.createContextualFragment(htmlToInsert);
+            range.insertNode(fragment);
+            // Move cursor to end of inserted content
+            range.collapse(false);
+            selection.removeAllRanges();
+            selection.addRange(range);
+        }
+    }
+
+    setIsEmpty(!editorRef.current?.innerText.trim());
+    checkFormats();
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -413,9 +552,9 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
   };
 
   return (
-    <div className="fixed inset-0 bg-gray-900 flex flex-col z-50" dir="ltr">
+    <div className="fixed inset-0 bg-black flex flex-col z-50" dir="ltr">
         {/* Header */}
-        <div className="shrink-0 bg-gray-900/90 backdrop-blur-md border-b border-gray-800 px-4 py-3 flex items-center justify-between pt-[calc(env(safe-area-inset-top)+12px)]">
+        <div className="shrink-0 bg-black/90 backdrop-blur-md border-b border-gray-800 px-4 py-3 flex items-center justify-between pt-[calc(env(safe-area-inset-top)+12px)]">
             <div className="flex items-center gap-3">
                 <button
                     onClick={handleClose}
@@ -428,9 +567,9 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
         </div>
 
         <main className="flex-1 overflow-y-auto p-4 sm:p-8 max-w-3xl mx-auto w-full flex flex-col">
-            
+
             {/* Editor Area */}
-            <div className="min-h-[200px] relative text-left order-1 mb-6" dir="ltr">
+            <div className="min-h-[200px] flex-1 overflow-y-auto relative text-left order-1 mb-6" dir="ltr">
                 {isChecklistMode ? (
                     <div className="space-y-3">
                         {checklistItems.map((item, index) => (
@@ -523,24 +662,19 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                 </div>
             )}
 
-            {/* Toolbar Area - order-3 */}
-            <div className="flex flex-col gap-4 border-gray-800 pt-0 order-3 sticky bottom-0 pb-[env(safe-area-inset-bottom)] sm:relative z-20 bg-gray-900/95 transition-all duration-200">
-                 {/* Combined Toolbar */}
+            {/* Toolbar Area - Inline, above tags */}
+            <div className="order-3 mb-4 shrink-0">
                  <div className="flex flex-nowrap items-center gap-3 bg-gray-800/90 backdrop-blur-md p-2 rounded-2xl border border-gray-700/50 shadow-xl overflow-x-auto no-scrollbar">
                     {/* Attachments Button */}
-                    <button 
-                        onClick={() => fileInputRef.current?.click()}
-                        className="p-2.5 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-xl transition-colors active:scale-95 shrink-0"
-                        title="Add Attachment"
-                    >
+                    <ToolbarButton onClick={() => fileInputRef.current?.click()} title="Add Attachment">
                         <Paperclip size={20} />
-                    </button>
-                    <input 
-                        type="file" 
-                        ref={fileInputRef} 
-                        onChange={handleFileSelect} 
-                        className="hidden" 
-                        multiple 
+                    </ToolbarButton>
+                    <input
+                        type="file"
+                        ref={fileInputRef}
+                        onChange={handleFileSelect}
+                        className="hidden"
+                        multiple
                         accept="image/*,.pdf,.txt,.md"
                     />
 
@@ -549,58 +683,34 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                     {/* Formatting Controls (Only in Normal Mode) */}
                     {!isChecklistMode && (
                         <>
-                            <button
-                                onClick={() => execFormat('bold')}
-                                className={`p-2.5 rounded-xl transition-colors active:scale-95 shrink-0 ${isFormatActive('bold') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`}
-                                title="Bold"
-                            >
+                            <ToolbarButton onClick={() => execFormat('bold')} title="Bold" isActive={isFormatActive('bold')}>
                                 <Bold size={20} />
-                            </button>
-                            <button
-                                onClick={() => execFormat('italic')}
-                                className={`p-2.5 rounded-xl transition-colors active:scale-95 shrink-0 ${isFormatActive('italic') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`}
-                                title="Italic"
-                            >
+                            </ToolbarButton>
+                            <ToolbarButton onClick={() => execFormat('italic')} title="Italic" isActive={isFormatActive('italic')}>
                                 <Italic size={20} />
-                            </button>
-                            <button
-                                onClick={() => execFormat('underline')}
-                                className={`p-2.5 rounded-xl transition-colors active:scale-95 shrink-0 ${isFormatActive('underline') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`}
-                                title="Underline"
-                            >
+                            </ToolbarButton>
+                            <ToolbarButton onClick={() => execFormat('underline')} title="Underline" isActive={isFormatActive('underline')}>
                                 <Underline size={20} />
-                            </button>
+                            </ToolbarButton>
                             <div className="w-px h-6 bg-gray-700/50 mx-1 shrink-0"></div>
-                            <button
-                                onClick={() => execFormat('formatBlock', 'H1')}
-                                className={`p-2.5 rounded-xl transition-colors active:scale-95 shrink-0 ${isFormatActive('H1') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`}
-                                title="Heading 1"
-                            >
+                            <ToolbarButton onClick={() => execFormat('formatBlock', 'H1')} title="Heading 1" isActive={isFormatActive('H1')}>
                                 <Heading1 size={20} />
-                            </button>
-                            <button
-                                onClick={() => execFormat('formatBlock', 'H2')}
-                                className={`p-2.5 rounded-xl transition-colors active:scale-95 shrink-0 ${isFormatActive('H2') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`}
-                                title="Heading 2"
-                            >
+                            </ToolbarButton>
+                            <ToolbarButton onClick={() => execFormat('formatBlock', 'H2')} title="Heading 2" isActive={isFormatActive('H2')}>
                                 <Heading2 size={20} />
-                            </button>
+                            </ToolbarButton>
                             <div className="w-px h-6 bg-gray-700/50 mx-1 shrink-0"></div>
                         </>
                     )}
 
                     {/* Checklist Toggle */}
-                    <button
-                        onClick={toggleChecklistMode}
-                        className={`p-2.5 rounded-xl transition-colors active:scale-95 shrink-0 ${isChecklistMode ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`}
-                        title="Checklist Mode"
-                    >
+                    <ToolbarButton onClick={toggleChecklistMode} title="Checklist Mode" isActive={isChecklistMode}>
                         <CheckSquare size={20} />
-                    </button>
+                    </ToolbarButton>
                  </div>
             </div>
-            
-            <div className="pt-4 order-4 pb-20 sm:pb-0">
+
+            <div className="pt-4 order-4 pb-4">
                <hr className="border-gray-800 mb-6" />
 
                {/* Tags Interface */}
@@ -724,6 +834,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                </div>
             </div>
         </main>
+
 
         {/* Discard Changes Confirmation Dialog */}
         {showDiscardConfirm && (

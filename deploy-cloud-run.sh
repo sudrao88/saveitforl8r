@@ -13,7 +13,8 @@ gcloud services enable \
     cloudbuild.googleapis.com \
     artifactregistry.googleapis.com \
     secretmanager.googleapis.com \
-    iam.googleapis.com
+    iam.googleapis.com \
+    firestore.googleapis.com
 
 # echo "Waiting for APIs..."
 # sleep 15
@@ -24,6 +25,11 @@ COMPUTE_SVC_ACCT="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
 gcloud projects add-iam-policy-binding $PROJECT_ID \
     --member="serviceAccount:${COMPUTE_SVC_ACCT}" \
     --role="roles/secretmanager.secretAccessor" \
+    --condition=None
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+    --member="serviceAccount:${COMPUTE_SVC_ACCT}" \
+    --role="roles/datastore.user" \
     --condition=None
 
 echo "--- 2. Handling Secrets ---"

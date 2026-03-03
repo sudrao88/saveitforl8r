@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getMemories, deleteMemory, saveMemory, getMemory } from '../services/storageService';
-import { enrichInput } from '../services/geminiService';
+import { submitEnrichment } from '../services/geminiService';
 import { Memory, Attachment, Moment } from '../types';
 import { SAMPLE_MEMORIES } from '../services/sampleData';
 import { useSync } from './useSync';
 import { useAuth } from './useAuth';
+import { useEnrichmentPolling } from './useEnrichmentPolling';
 import { storage } from '../services/platform';
 
 // Module-level lock to prevent concurrent sample seeding
@@ -80,6 +81,8 @@ export const useMemories = () => {
   const { sync, syncFile } = useSync();
   const { authStatus } = useAuth();
   const mounted = useRef(false);
+
+  // Moments ref and callback for enrichment-time moment matching
   const momentsRef = useRef<Moment[]>([]);
   const onNoteMatchedMomentsRef = useRef<((momentId: string, noteId: string) => Promise<void>) | undefined>(undefined);
 
@@ -90,6 +93,41 @@ export const useMemories = () => {
   const setOnNoteMatchedMoments = useCallback((cb: (momentId: string, noteId: string) => Promise<void>) => {
     onNoteMatchedMomentsRef.current = cb;
   }, []);
+
+  const recoveryAttemptedRef = useRef(false);
+  const memoriesRef = useRef(memories);
+
+  // Keep memoriesRef in sync for use inside polling closure
+  useEffect(() => { memoriesRef.current = memories; }, [memories]);
+
+  // Helper for single file sync - Memoized
+  const trySyncFile = useCallback(async (memory: Memory) => {
+      if (authStatus === 'linked') {
+          console.log(`[Auto-Sync] Triggering single file sync for ${memory.id}`);
+          syncFile(memory).catch(err => console.error("Single file sync failed:", err));
+      }
+  }, [authStatus, syncFile]);
+
+  // Enrichment polling — extracted into a dedicated hook to eliminate
+  // duplicated result-handling logic that was in 3 separate places.
+  // The onEnrichmentComplete callback also handles moment matching.
+  const { startPolling, recoverPending } = useEnrichmentPolling({
+    memoriesRef,
+    setMemories,
+    onEnrichmentComplete: useCallback((memory: Memory) => {
+      if (authStatus === 'linked') {
+        syncFile(memory).catch(err => console.error("Sync failed:", err));
+      }
+      // Handle moment matching from enrichment results
+      if (memory.enrichment?.matchedMomentIds && memory.enrichment.matchedMomentIds.length > 0 && onNoteMatchedMomentsRef.current) {
+        for (const momentId of memory.enrichment.matchedMomentIds) {
+          onNoteMatchedMomentsRef.current(momentId, memory.id).catch(err =>
+            console.error(`[Moments] Failed to add note to moment ${momentId}:`, err)
+          );
+        }
+      }
+    }, [authStatus, syncFile]),
+  });
 
   const refreshMemories = useCallback(async () => {
     try {
@@ -123,13 +161,25 @@ export const useMemories = () => {
     }
   }, [refreshMemories]);
 
-  // Helper for single file sync - Memoized
-  const trySyncFile = useCallback(async (memory: Memory) => {
-      if (authStatus === 'linked') {
-          console.log(`[Auto-Sync] Triggering single file sync for ${memory.id}`);
-          syncFile(memory).catch(err => console.error("Single file sync failed:", err));
-      }
-  }, [authStatus, syncFile]);
+  // Auto-recover pending enrichments on app load
+  useEffect(() => {
+    if (isLoading || recoveryAttemptedRef.current) return;
+    recoveryAttemptedRef.current = true;
+
+    const pendingMemories = memories.filter(m => m.isPending && !m.isSample);
+    if (pendingMemories.length === 0) return;
+
+    console.log(`[Recovery] Found ${pendingMemories.length} pending memories, attempting recovery...`);
+    recoverPending(pendingMemories);
+  }, [isLoading, memories, recoverPending]);
+
+  // Auto-start polling if there are pending memories (e.g., after recovery leaves some as "processing")
+  useEffect(() => {
+    const hasPending = memories.some(m => m.isPending && !m.isSample);
+    if (hasPending) {
+      startPolling();
+    }
+  }, [memories, startPolling]);
 
   const handleDelete = useCallback(async (id: string) => {
     setMemories(prev => prev.map(m => m.id === id ? { ...m, isDeleting: true } : m));
@@ -160,9 +210,13 @@ export const useMemories = () => {
     }
   }, [refreshMemories, trySyncFile]);
 
+  // FIX: handleRetry previously captured stale `memories` state via closure.
+  // Now reads from memoriesRef to always get the latest state, preventing
+  // retry failures when the memories array has been updated between renders.
   const handleRetry = useCallback(async (id: string) => {
-    setMemories(prev => prev.map(m => m.id === id ? { ...m, isPending: true, processingError: false } : m));
-    const memory = memories.find(m => m.id === id);
+    // Clear error state but don't show "Enriching..." yet
+    setMemories(prev => prev.map(m => m.id === id ? { ...m, processingError: false } : m));
+    const memory = memoriesRef.current.find(m => m.id === id);
     if (!memory) return;
 
     try {
@@ -181,38 +235,33 @@ export const useMemories = () => {
           .filter(m => !m.isDeleted)
           .map(m => ({ id: m.id, objective: m.objective }));
 
-        const enrichment = await enrichInput(
+        // Submit enrichment — only set isPending after the server confirms receipt
+        await submitEnrichment(
             memory.content,
             attachments,
             memory.location,
             memory.tags,
+            memory.id,
             momentsMeta.length > 0 ? momentsMeta : undefined
         );
 
-        const allTags = Array.from(new Set([...memory.tags, ...enrichment.suggestedTags]));
-        const updatedMemory: Memory = {
+        // Server accepted (200) — now show "Enriching..." and poll for results
+        const pendingMemory: Memory = {
             ...memory,
-            enrichment,
-            tags: allTags,
-            isPending: false,
+            isPending: true,
             processingError: false,
-            location: memory.location,
             attachments: attachments.filter(a => a.id !== 'legacy-img'),
-            timestamp: Date.now()
         };
-
-        await saveMemory(updatedMemory);
-        setMemories(prev => prev.map(m => m.id === id ? updatedMemory : m));
-
-        // Sync enriched file
-        await trySyncFile(updatedMemory);
+        await saveMemory(pendingMemory);
+        setMemories(prev => prev.map(m => m.id === id ? pendingMemory : m));
+        startPolling();
     } catch (error) {
         console.error("Retry failed for memory", id, error);
         const failedMemory = { ...memory, isPending: false, processingError: true };
         await saveMemory(failedMemory);
         setMemories(prev => prev.map(m => m.id === id ? failedMemory : m));
     }
-  }, [memories, trySyncFile]);
+  }, [trySyncFile, startPolling]);
 
   const createMemory = useCallback(async (
     text: string,
@@ -220,7 +269,7 @@ export const useMemories = () => {
     tags: string[],
     location?: { latitude: number; longitude: number; accuracy?: number }
   ) => {
-      // 1. Prepare initial memory object
+      // 1. Prepare initial memory object — no isPending yet
       const memoryId = crypto.randomUUID();
       const timestamp = Date.now();
 
@@ -231,60 +280,36 @@ export const useMemories = () => {
         attachments,
         tags,
         location,
-        isPending: true,
+        isPending: false,
         processingError: false
       };
 
-      // 2. Schedule background enrichment via server proxy
+      // 2. Show the card immediately (without "Enriching..." state) and save locally
+      setMemories(prev => [newMemory, ...prev]);
+      await saveMemory(newMemory);
+      trySyncFile(newMemory);  // Sync immediately on save, before enrichment
+
+      // 3. Submit enrichment to server with moments metadata
       const momentsMeta = momentsRef.current
         .filter(m => !m.isDeleted)
         .map(m => ({ id: m.id, objective: m.objective }));
-      const enrichmentPromise = enrichInput(text, attachments, location, tags, momentsMeta.length > 0 ? momentsMeta : undefined);
 
-      // 3. Update UI immediately (showing loading state) and save local pending state
-      setMemories(prev => [newMemory, ...prev]);
-      saveMemory(newMemory).catch(err => console.error("Failed to save pending memory", err));
-
-      // 4. Handle Enrichment Result (asynchronously)
-      enrichmentPromise
-        .then(async (enrichment) => {
-            if (!enrichment) return;
-
-            // Check if memory still exists (wasn't deleted while enriching)
+      submitEnrichment(text, attachments, location, tags, memoryId, momentsMeta.length > 0 ? momentsMeta : undefined)
+        .then(async () => {
+            // Server accepted (200) — now show "Enriching..." and start polling
             const current = await getMemory(memoryId);
-            if (!current || current.isDeleted) {
-                console.log("Memory deleted during enrichment, aborting save.");
-                return;
-            }
+            if (!current || current.isDeleted) return;
 
-            const allTags = Array.from(new Set([...tags, ...enrichment.suggestedTags]));
-            const updatedMemory: Memory = {
+            const pendingMemory: Memory = {
                 ...newMemory,
-                enrichment,
-                tags: allTags,
-                isPending: false,
-                timestamp: Date.now()
+                isPending: true,
             };
-
-            // Save and update UI with enriched data
-            await saveMemory(updatedMemory);
-            setMemories(prev => prev.map(m => m.id === memoryId ? updatedMemory : m));
-            console.log("Enrichment complete, syncing single file...");
-
-            // Handle moment matching from enrichment response
-            if (enrichment.matchedMomentIds && enrichment.matchedMomentIds.length > 0 && onNoteMatchedMomentsRef.current) {
-                for (const momentId of enrichment.matchedMomentIds) {
-                    onNoteMatchedMomentsRef.current(momentId, memoryId).catch(err =>
-                      console.error(`[Moments] Failed to add note to moment ${momentId}:`, err)
-                    );
-                }
-            }
-
-            // Sync Enriched File
-            await trySyncFile(updatedMemory);
+            await saveMemory(pendingMemory);
+            setMemories(prev => prev.map(m => m.id === memoryId ? pendingMemory : m));
+            startPolling();
         })
         .catch(async (err) => {
-            console.error("Enrichment failed:", err);
+            console.error("Enrichment submission failed:", err);
             const current = await getMemory(memoryId);
             if (!current || current.isDeleted) return;
 
@@ -299,7 +324,7 @@ export const useMemories = () => {
 
       // Return immediately so the modal can close
       return Promise.resolve();
-  }, [trySyncFile]);
+  }, [trySyncFile, startPolling]);
 
   const updateMemoryContent = useCallback(async (id: string, newContent: string) => {
       setMemories(prev => prev.map(m => m.id === id ? { ...m, content: newContent } : m));
@@ -345,6 +370,7 @@ export const useMemories = () => {
           return;
       }
 
+      // Update content immediately — no isPending yet
       const updatedMemory: Memory = {
         ...existing,
         content: text,
@@ -352,12 +378,12 @@ export const useMemories = () => {
         tags,
         location: location || existing.location,
         enrichment: undefined, // Clear old enrichment to force re-processing
-        isPending: true,
+        isPending: false,
         processingError: false,
         timestamp: Date.now()
       };
 
-      // Update UI immediately to show "Enriching..." state
+      // Update UI with new content (without "Enriching..." state)
       setMemories(prev => prev.map(m => m.id === id ? updatedMemory : m));
 
       // Save locally so if app closes, we at least have the text update
@@ -366,48 +392,28 @@ export const useMemories = () => {
       // Sync immediately (save the text changes even before enrichment finishes)
       await trySyncFile(updatedMemory);
 
-      // Trigger Background Enrichment via server proxy
-      console.log(`[Update] Triggering enrichment for ${id}`);
-      const updateMomentsMeta = momentsRef.current
+      // Submit enrichment with moments metadata — show "Enriching..." only after the server confirms receipt
+      console.log(`[Update] Submitting enrichment for ${id}`);
+      const momentsMeta = momentsRef.current
         .filter(m => !m.isDeleted)
         .map(m => ({ id: m.id, objective: m.objective }));
-      enrichInput(text, attachments, updatedMemory.location, tags, updateMomentsMeta.length > 0 ? updateMomentsMeta : undefined)
-        .then(async (enrichment) => {
-            if (!enrichment) return;
 
+      submitEnrichment(text, attachments, updatedMemory.location, tags, id, momentsMeta.length > 0 ? momentsMeta : undefined)
+        .then(async () => {
+            // Server accepted (200) — now show "Enriching..." and start polling
             const current = await getMemory(id);
-            if (!current || current.isDeleted) {
-                console.log("Memory deleted during enrichment, aborting save.");
-                return;
-            }
+            if (!current || current.isDeleted) return;
 
-            const allTags = Array.from(new Set([...tags, ...enrichment.suggestedTags]));
-            const enrichedMemory: Memory = {
+            const pendingMemory: Memory = {
                 ...updatedMemory,
-                enrichment,
-                tags: allTags,
-                isPending: false,
-                processingError: false,
-                timestamp: Date.now()
+                isPending: true,
             };
-
-            await saveMemory(enrichedMemory);
-            setMemories(prev => prev.map(m => m.id === id ? enrichedMemory : m));
-            console.log("Update enrichment complete, syncing enriched version...");
-
-            // Handle moment matching from enrichment response
-            if (enrichment.matchedMomentIds && enrichment.matchedMomentIds.length > 0 && onNoteMatchedMomentsRef.current) {
-                for (const momentId of enrichment.matchedMomentIds) {
-                    onNoteMatchedMomentsRef.current(momentId, id).catch(err =>
-                      console.error(`[Moments] Failed to add note to moment ${momentId}:`, err)
-                    );
-                }
-            }
-
-            await trySyncFile(enrichedMemory);
+            await saveMemory(pendingMemory);
+            setMemories(prev => prev.map(m => m.id === id ? pendingMemory : m));
+            startPolling();
         })
         .catch(async (err) => {
-            console.error("Update enrichment failed:", err);
+            console.error("Update enrichment submission failed:", err);
             const current = await getMemory(id);
             if (!current || current.isDeleted) return;
 
@@ -421,16 +427,25 @@ export const useMemories = () => {
         });
 
       return Promise.resolve();
-  }, [trySyncFile]);
+  }, [trySyncFile, startPolling]);
 
+  // Online recovery — uses the extracted recoverPending instead of
+  // re-implementing the completed/failed/processing logic inline.
   useEffect(() => {
     const handleOnline = async () => {
       console.log("App is back online.");
       // Trigger sync if linked
       if (authStatus === 'linked') sync();
 
+      // Recover pending enrichments from server
+      const pendingItems = memoriesRef.current.filter(m => m.isPending && !m.isSample);
+      if (pendingItems.length > 0) {
+          console.log(`[Online-Recovery] Recovering ${pendingItems.length} pending items...`);
+          await recoverPending(pendingItems);
+      }
+
       // Auto-retry enrichment for failed memories
-      const failures = memories.filter(m => m.processingError);
+      const failures = memoriesRef.current.filter(m => m.processingError);
       if (failures.length > 0) {
           console.log(`[Auto-Retry] Retrying ${failures.length} items...`);
           failures.forEach(m => handleRetry(m.id));
@@ -439,7 +454,7 @@ export const useMemories = () => {
 
     window.addEventListener('online', handleOnline);
     return () => window.removeEventListener('online', handleOnline);
-  }, [sync, authStatus, memories, handleRetry]);
+  }, [sync, authStatus, handleRetry, recoverPending]);
 
   return {
     memories,
