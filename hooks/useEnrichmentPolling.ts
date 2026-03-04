@@ -64,6 +64,12 @@ export const useEnrichmentPolling = ({
 }: UseEnrichmentPollingOptions) => {
   const pollingActiveRef = useRef(false);
 
+  // Use a ref to avoid stale closures in the polling loop.
+  // Without this, if onEnrichmentComplete is recreated (e.g. authStatus
+  // changes), the already-running setTimeout chain captures the old callback.
+  const onEnrichmentCompleteRef = useRef(onEnrichmentComplete);
+  onEnrichmentCompleteRef.current = onEnrichmentComplete;
+
   const startPolling = useCallback(() => {
     if (pollingActiveRef.current) return;
     pollingActiveRef.current = true;
@@ -89,7 +95,7 @@ export const useEnrichmentPolling = ({
           if (outcome) {
             setMemories(prev => prev.map(m => m.id === memory.id ? outcome.updated : m));
             if (outcome.action === 'completed') {
-              onEnrichmentComplete?.(outcome.updated);
+              onEnrichmentCompleteRef.current?.(outcome.updated);
             }
           }
         }
@@ -110,7 +116,7 @@ export const useEnrichmentPolling = ({
     };
 
     setTimeout(poll, 2_000);
-  }, [memoriesRef, setMemories, onEnrichmentComplete]);
+  }, [memoriesRef, setMemories]);
 
   /**
    * Recovers enrichment results for pending memories.
@@ -142,7 +148,7 @@ export const useEnrichmentPolling = ({
     } catch (err) {
       console.error('[Recovery] Enrichment recovery failed:', err);
     }
-  }, [setMemories, startPolling, onEnrichmentComplete]);
+  }, [setMemories, startPolling]);
 
   return {
     startPolling,
