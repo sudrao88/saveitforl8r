@@ -170,6 +170,8 @@ export interface Moment {
   isDeleted?: boolean;            // Soft-delete for multi-device sync (tombstone)
   lastSynthesizedAt?: number;     // Timestamp of last synthesis
   inputHash?: string;             // Hash of noteIds for cache invalidation
+  isPending?: boolean;            // True while server is processing async creation
+  processingError?: boolean;      // True if server pipeline failed
 }
 
 export interface SynthesisItem {

@@ -2,11 +2,11 @@
  * MomentSheet.tsx
  *
  * Full-screen synthesis detail sheet. Opens when user taps a Moment bubble.
- * Handles loading, caching, synthesis display, and item completion.
- * Triggers re-synthesis when new notes have been added since last synthesis.
+ * Handles loading, caching, synthesis display, item completion, and
+ * source note citations for each synthesis item.
  */
 
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import {
   X,
   Loader2,
@@ -14,6 +14,7 @@ import {
   ExternalLink,
   Check,
   RefreshCw,
+  FileText,
 } from 'lucide-react';
 import {
   Moment,
@@ -22,6 +23,38 @@ import {
   SynthesisItem,
   Memory,
 } from '../types';
+
+// Shared shell for all sheet states (pending, error, normal)
+const SheetShell: React.FC<{
+  title: string;
+  subtitle?: string;
+  headerRight?: React.ReactNode;
+  onClose: () => void;
+  children: React.ReactNode;
+}> = ({ title, subtitle, headerRight, onClose, children }) => (
+  <div className="fixed inset-0 z-[100] bg-gray-950/95 backdrop-blur-md flex flex-col animate-in fade-in duration-300">
+    <div className="sticky top-0 z-10 px-4 py-3 border-b border-gray-800 flex items-center justify-between bg-gray-950/80 backdrop-blur-xl pt-[env(safe-area-inset-top)]">
+      <div className="flex items-center gap-3">
+        <button
+          onClick={onClose}
+          className="p-3 -ml-3 rounded-full hover:bg-gray-800 text-gray-400 hover:text-white transition-colors active:scale-95"
+        >
+          <X size={24} />
+        </button>
+        <div>
+          <h2 className="text-lg font-bold text-gray-100 truncate max-w-[200px] sm:max-w-md">
+            {title}
+          </h2>
+          {subtitle && (
+            <p className="text-xs text-gray-400">{subtitle}</p>
+          )}
+        </div>
+      </div>
+      {headerRight}
+    </div>
+    {children}
+  </div>
+);
 
 interface MomentSheetProps {
   moment: Moment;
@@ -43,6 +76,15 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
   const [error, setError] = useState(false);
   const [completedItems, setCompletedItems] = useState<Set<string>>(new Set());
 
+  // Build a lookup map for source note citations
+  const memoriesMap = useMemo(() => {
+    const map = new Map<string, Memory>();
+    for (const m of memories) {
+      map.set(m.id, m);
+    }
+    return map;
+  }, [memories]);
+
   // Keep refs to latest props so the effect always uses current values
   const momentRef = useRef(moment);
   const memoriesRef = useRef(memories);
@@ -50,6 +92,12 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
   memoriesRef.current = memories;
 
   useEffect(() => {
+    // Don't load synthesis for pending moments
+    if (moment.isPending) {
+      setIsLoading(false);
+      return;
+    }
+
     let cancelled = false;
 
     const load = async () => {
@@ -73,7 +121,7 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [moment.id, moment.noteIds.length, loadSynthesis]);
+  }, [moment.id, moment.noteIds.length, moment.isPending, loadSynthesis]);
 
   const handleRetry = useCallback(async () => {
     setIsLoading(true);
@@ -106,30 +154,61 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
     onClose();
   }, [moment.id, onDelete, onClose]);
 
-  return (
-    <div className="fixed inset-0 z-[100] bg-gray-950/95 backdrop-blur-md flex flex-col animate-in fade-in duration-300">
-      {/* Header */}
-      <div className="sticky top-0 z-10 px-4 py-3 border-b border-gray-800 flex items-center justify-between bg-gray-950/80 backdrop-blur-xl pt-[env(safe-area-inset-top)]">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={onClose}
-            className="p-3 -ml-3 rounded-full hover:bg-gray-800 text-gray-400 hover:text-white transition-colors active:scale-95"
-          >
-            <X size={24} />
-          </button>
-          <div>
-            <h2 className="text-lg font-bold text-gray-100 truncate max-w-[200px] sm:max-w-md">
-              {moment.title}
-            </h2>
-            {synthesis?.subtitle && (
-              <p className="text-xs text-gray-400">{synthesis.subtitle}</p>
-            )}
+  // Pending state — moment is still being created
+  if (moment.isPending) {
+    return (
+      <SheetShell title={moment.objective} onClose={onClose}>
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center px-6">
+            <Loader2 size={32} className="animate-spin text-blue-400 mx-auto mb-4" />
+            <h3 className="text-lg font-bold text-gray-200 mb-2">Creating your moment…</h3>
+            <p className="text-sm text-gray-400 max-w-sm">
+              Our AI is analyzing your notes and building a synthesis. This usually takes 15–30 seconds.
+            </p>
           </div>
         </div>
+      </SheetShell>
+    );
+  }
+
+  // Error state — moment creation failed
+  if (moment.processingError && !synthesis) {
+    return (
+      <SheetShell title={moment.title} onClose={onClose}>
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center px-6">
+            <div className="w-16 h-16 bg-red-900/20 rounded-full flex items-center justify-center mx-auto mb-4">
+              <X size={32} className="text-red-400" />
+            </div>
+            <h3 className="text-lg font-bold text-gray-200 mb-2">
+              Moment creation failed
+            </h3>
+            <p className="text-sm text-gray-400 mb-4">
+              Could not create this moment. Check your connection and try again.
+            </p>
+            <button
+              onClick={handleDelete}
+              className="px-6 py-2.5 bg-red-600/20 text-red-400 rounded-xl text-sm font-bold hover:bg-red-600/30 transition-colors active:scale-95"
+            >
+              Remove
+            </button>
+          </div>
+        </div>
+      </SheetShell>
+    );
+  }
+
+  return (
+    <SheetShell
+      title={moment.title}
+      subtitle={synthesis?.subtitle}
+      headerRight={
         <div className="flex items-center gap-2 text-xs text-gray-500">
           <span>{moment.noteIds.length} notes</span>
         </div>
-      </div>
+      }
+      onClose={onClose}
+    >
 
       {/* Objective banner */}
       <div className="px-4 sm:px-8 py-2 bg-gray-900/50 border-b border-gray-800/50 max-w-2xl mx-auto w-full">
@@ -189,6 +268,7 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
                     sectionIndex={sIdx}
                     completedItems={completedItems}
                     onToggleComplete={toggleItemComplete}
+                    memoriesMap={memoriesMap}
                   />
                 ))}
               </div>
@@ -216,7 +296,7 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
           )}
         </div>
       </div>
-    </div>
+    </SheetShell>
   );
 };
 
@@ -227,7 +307,8 @@ const SectionView: React.FC<{
   sectionIndex: number;
   completedItems: Set<string>;
   onToggleComplete: (key: string) => void;
-}> = ({ section, sectionIndex, completedItems, onToggleComplete }) => (
+  memoriesMap: Map<string, Memory>;
+}> = ({ section, sectionIndex, completedItems, onToggleComplete, memoriesMap }) => (
   <div>
     <h3 className="text-base font-bold text-gray-200 mb-3 flex items-center gap-2">
       <div className="w-1.5 h-1.5 bg-blue-500 rounded-full" />
@@ -245,6 +326,7 @@ const SectionView: React.FC<{
             isCompleted={isCompleted}
             completable={item.completable !== false}
             onToggle={() => onToggleComplete(key)}
+            sourceMemory={item.sourceNoteId ? memoriesMap.get(item.sourceNoteId) : undefined}
           />
         );
       })}
@@ -254,12 +336,19 @@ const SectionView: React.FC<{
 
 // --- Item Component ---
 
+function truncateCitation(text: string, max: number = 60): string {
+  if (!text) return '';
+  const cleaned = text.replace(/\n+/g, ' ').trim();
+  return cleaned.length > max ? cleaned.slice(0, max - 1) + '…' : cleaned;
+}
+
 const ItemView: React.FC<{
   item: SynthesisItem;
   isCompleted: boolean;
   completable: boolean;
   onToggle: () => void;
-}> = ({ item, isCompleted, completable, onToggle }) => (
+  sourceMemory?: Memory;
+}> = ({ item, isCompleted, completable, onToggle, sourceMemory }) => (
   <div
     className={`flex items-start gap-3 p-3 rounded-xl border transition-all ${
       isCompleted
@@ -293,6 +382,15 @@ const ItemView: React.FC<{
       </p>
       {item.detail && (
         <p className="text-xs text-gray-400 mt-0.5">{item.detail}</p>
+      )}
+      {/* Source note citation */}
+      {sourceMemory && (
+        <div className="flex items-center gap-1.5 mt-1.5">
+          <FileText size={10} className="text-gray-500 shrink-0" />
+          <span className="text-[10px] text-gray-500 truncate">
+            {truncateCitation(sourceMemory.content)}
+          </span>
+        </div>
       )}
     </div>
     {item.link && (

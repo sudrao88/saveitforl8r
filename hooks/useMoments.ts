@@ -5,6 +5,10 @@
  * Moments are explicit synthesis objectives created by the user.
  * Notes are matched to moments during enrichment, and synthesis
  * is regenerated on-demand when new notes are added.
+ *
+ * Moment creation is async: a pending placeholder appears immediately,
+ * the server runs a 3-step AI pipeline in the background, and the
+ * client polls for results.
  */
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
@@ -12,7 +16,6 @@ import {
   Memory,
   Moment,
   MomentSynthesis,
-  MomentType,
   SynthesisResponse,
 } from '../types';
 import {
@@ -21,33 +24,14 @@ import {
   getMomentSynthesis,
   saveMomentSynthesis,
 } from '../services/storageService';
-import { createMoment as createMomentApi, synthesizeMoment } from '../services/geminiService';
-
-// Synchronous fast hash for cache invalidation (djb2)
-function fastHash(input: string): string {
-  let hash = 5381;
-  for (let i = 0; i < input.length; i++) {
-    hash = ((hash << 5) + hash + input.charCodeAt(i)) & 0xffffffff;
-  }
-  return 'mh_' + (hash >>> 0).toString(16);
-}
-
-function computeInputHash(noteIds: string[], memories: Memory[]): string {
-  const inputs = noteIds
-    .slice()
-    .sort()
-    .map(id => {
-      const m = memories.find(n => n.id === id);
-      return m ? `${id}:${m.timestamp}` : id;
-    })
-    .join('|');
-  return fastHash(inputs);
-}
+import { submitMomentCreation, synthesizeMoment } from '../services/geminiService';
+import { useMomentCreationPolling } from './useMomentCreationPolling';
+import { computeInputHash } from '../utils/hash';
 
 interface UseMomentsReturn {
   /** All active moments */
   moments: Moment[];
-  /** Create a new moment from an objective */
+  /** Create a new moment from an objective (returns immediately with pending placeholder) */
   createNewMoment: (objective: string, memories: Memory[]) => Promise<Moment | null>;
   /** Load synthesis for a moment (cache-aware, triggers re-synthesis if new notes) */
   loadSynthesis: (moment: Moment, memories: Memory[]) => Promise<SynthesisResponse | null>;
@@ -75,7 +59,31 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
   const loaded = useRef(false);
   const onMomentChangedRef = useRef<((moment: Moment) => void) | undefined>(undefined);
 
-  // Load persisted moments on mount
+  // Keep refs for polling access
+  const momentsListRef = useRef<Moment[]>([]);
+  const memoriesRef = useRef<Memory[]>(memories);
+  useEffect(() => { momentsListRef.current = momentsList; }, [momentsList]);
+  useEffect(() => { memoriesRef.current = memories; }, [memories]);
+
+  const setOnMomentChanged = useCallback((cb: (moment: Moment) => void) => {
+    onMomentChangedRef.current = cb;
+  }, []);
+
+  // Stable callback for moment creation polling
+  const handleMomentCreated = useCallback((moment: Moment) => {
+    onMomentChangedRef.current?.(moment);
+  }, []);
+
+  // Integrate moment creation polling
+  const { startPolling, recoverPending } = useMomentCreationPolling({
+    momentsRef: momentsListRef,
+    memoriesRef,
+    setMoments: setMomentsList,
+    setSynthesesMap,
+    onMomentCreated: handleMomentCreated,
+  });
+
+  // Load persisted moments on mount + recover any pending from previous session
   useEffect(() => {
     if (loaded.current) return;
     loaded.current = true;
@@ -84,63 +92,62 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
       try {
         const loadedMoments = await getMoments();
         setMomentsList(loadedMoments);
+
+        // Recover pending moments from a previous session
+        const pending = loadedMoments.filter(m => m.isPending);
+        if (pending.length > 0) {
+          recoverPending(pending);
+        }
       } catch (err) {
         console.error('[Moments] Failed to load persisted data:', err);
       }
     };
     loadData();
-  }, []);
+  }, [recoverPending]);
 
-  const setOnMomentChanged = useCallback((cb: (moment: Moment) => void) => {
-    onMomentChangedRef.current = cb;
-  }, []);
-
-  // Create a new moment
+  // Create a new moment (async — returns pending placeholder immediately)
   const createNewMoment = useCallback(
     async (objective: string, currentMemories: Memory[]): Promise<Moment | null> => {
       setCreating(true);
       try {
-        const result = await createMomentApi(objective, currentMemories);
+        const momentId = crypto.randomUUID();
 
-        const moment: Moment = {
-          id: crypto.randomUUID(),
+        // Create pending placeholder immediately
+        const pendingMoment: Moment = {
+          id: momentId,
           objective,
-          title: result.title,
-          type: (result.type || 'general') as MomentType,
-          noteIds: result.usedNoteIds || [],
+          title: objective.substring(0, 40),
+          type: 'general',
+          noteIds: [],
           createdAt: Date.now(),
           updatedAt: Date.now(),
-          lastSynthesizedAt: Date.now(),
+          isPending: true,
         };
 
-        // Compute input hash for the initial note set
-        moment.inputHash = computeInputHash(moment.noteIds, currentMemories);
+        // Save to IndexedDB and update state immediately
+        await saveMoment(pendingMoment);
+        setMomentsList(prev => [...prev, pendingMoment]);
 
-        // Save moment
-        await saveMoment(moment);
-        setMomentsList(prev => [...prev, moment]);
-
-        // Save synthesis
-        if (result.synthesis) {
-          const stored: MomentSynthesis = {
-            momentId: moment.id,
-            inputHash: moment.inputHash,
-            content: result.synthesis,
-            generatedAt: Date.now(),
-            noteIds: moment.noteIds,
+        // Submit to server (fire-and-forget with error handling)
+        try {
+          await submitMomentCreation(objective, currentMemories, momentId);
+          startPolling();
+        } catch (submitErr) {
+          console.error('[Moments] Submit failed:', submitErr);
+          const failedMoment: Moment = {
+            ...pendingMoment,
+            isPending: false,
+            processingError: true,
           };
-          await saveMomentSynthesis(stored);
-          setSynthesesMap(prev => {
-            const next = new Map(prev);
-            next.set(moment.id, stored);
-            return next;
-          });
+          await saveMoment(failedMoment);
+          setMomentsList(prev => prev.map(m => m.id === momentId ? failedMoment : m));
+          return failedMoment;
         }
 
-        // Trigger sync
-        onMomentChangedRef.current?.(moment);
+        // Trigger sync for the pending moment
+        onMomentChangedRef.current?.(pendingMoment);
 
-        return moment;
+        return pendingMoment;
       } catch (err) {
         console.error('[Moments] Failed to create moment:', err);
         return null;
@@ -148,7 +155,7 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
         setCreating(false);
       }
     },
-    []
+    [startPolling]
   );
 
   // Load synthesis (cache-aware; re-synthesizes if notes have changed)
@@ -254,16 +261,6 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
     },
     [momentsList]
   );
-
-  // Refresh moments from storage (used after sync)
-  const refreshMoments = useCallback(async () => {
-    try {
-      const loadedMoments = await getMoments();
-      setMomentsList(loadedMoments);
-    } catch (err) {
-      console.error('[Moments] Failed to refresh:', err);
-    }
-  }, []);
 
   // Filter to active moments only
   const moments = useMemo(

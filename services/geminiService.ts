@@ -133,14 +133,24 @@ interface QueryPayload {
 // Memories are already sorted by recency, so this sends the most relevant.
 const MAX_QUERY_MEMORIES = 200;
 
+// --- Async Moment Creation ---
+
+interface SubmitMomentCreationResponse {
+  status: string;
+  momentId: string;
+}
+
 /**
- * Creates a new moment by sending the user's objective and all notes to the server.
- * The server uses Gemini to select relevant notes and build an initial synthesis.
+ * Submits a moment creation request asynchronously.
+ * Server returns { status: "accepted", momentId } immediately.
+ * The 3-step pipeline (intent refinement → note selection → synthesis) runs
+ * in the background. Poll with fetchPendingMomentResults() to get the result.
  */
-export const createMoment = async (
+export const submitMomentCreation = async (
   objective: string,
-  memories: Memory[]
-): Promise<CreateMomentResponse> => {
+  memories: Memory[],
+  momentId: string,
+): Promise<{ momentId: string }> => {
   const lightNotes = memories
     .filter(m => !m.isPending && !m.processingError && !m.isDeleted && !m.isSample)
     .map(m => ({
@@ -156,11 +166,69 @@ export const createMoment = async (
         : undefined,
     }));
 
-  const result = await postProxy<CreateMomentResponse>('/api/create-moment', {
+  const result = await postProxy<SubmitMomentCreationResponse>('/api/create-moment', {
     objective,
     notes: lightNotes,
-  }, { timeout: 90000 });
-  return result;
+    momentId,
+  });
+
+  if (result.status !== 'accepted') {
+    throw new Error(`Unexpected moment creation response: ${result.status}`);
+  }
+  return { momentId: result.momentId };
+};
+
+// --- Moment Creation Polling ---
+
+export type MomentCreationPollResult =
+  | { status: 'completed'; data: CreateMomentResponse }
+  | { status: 'processing' }
+  | { status: 'failed' }
+  | { status: 'not_found' };
+
+interface MomentResultEntry {
+  status: 'completed' | 'failed' | 'not_found' | string;
+  data?: CreateMomentResponse;
+}
+
+interface MomentResultsResponse {
+  results: Record<string, MomentResultEntry>;
+}
+
+/**
+ * Fetches moment creation results for pending moments from the server.
+ * Returns per-moment status. Mirrors fetchPendingEnrichments() pattern.
+ */
+export const fetchPendingMomentResults = async (
+  momentIds: string[],
+): Promise<Record<string, MomentCreationPollResult>> => {
+  try {
+    const payload = { momentIds };
+    const response = await postProxy<MomentResultsResponse>(
+      '/api/create-moment/results',
+      payload as unknown as Record<string, unknown>
+    );
+
+    const result: Record<string, MomentCreationPollResult> = {};
+    if (response && response.results) {
+      for (const id of momentIds) {
+        const entry = response.results[id];
+        if (entry?.status === 'completed' && entry.data) {
+          result[id] = { status: 'completed', data: entry.data };
+        } else if (entry?.status === 'failed') {
+          result[id] = { status: 'failed' };
+        } else if (entry?.status === 'processing') {
+          result[id] = { status: 'processing' };
+        } else {
+          result[id] = { status: 'not_found' };
+        }
+      }
+    }
+    return result;
+  } catch (error) {
+    console.error('Failed to fetch pending moment results:', error);
+    return {};
+  }
 };
 
 /**
