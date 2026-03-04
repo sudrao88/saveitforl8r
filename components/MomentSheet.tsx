@@ -24,6 +24,38 @@ import {
   Memory,
 } from '../types';
 
+// Shared shell for all sheet states (pending, error, normal)
+const SheetShell: React.FC<{
+  title: string;
+  subtitle?: string;
+  headerRight?: React.ReactNode;
+  onClose: () => void;
+  children: React.ReactNode;
+}> = ({ title, subtitle, headerRight, onClose, children }) => (
+  <div className="fixed inset-0 z-[100] bg-gray-950/95 backdrop-blur-md flex flex-col animate-in fade-in duration-300">
+    <div className="sticky top-0 z-10 px-4 py-3 border-b border-gray-800 flex items-center justify-between bg-gray-950/80 backdrop-blur-xl pt-[env(safe-area-inset-top)]">
+      <div className="flex items-center gap-3">
+        <button
+          onClick={onClose}
+          className="p-3 -ml-3 rounded-full hover:bg-gray-800 text-gray-400 hover:text-white transition-colors active:scale-95"
+        >
+          <X size={24} />
+        </button>
+        <div>
+          <h2 className="text-lg font-bold text-gray-100 truncate max-w-[200px] sm:max-w-md">
+            {title}
+          </h2>
+          {subtitle && (
+            <p className="text-xs text-gray-400">{subtitle}</p>
+          )}
+        </div>
+      </div>
+      {headerRight}
+    </div>
+    {children}
+  </div>
+);
+
 interface MomentSheetProps {
   moment: Moment;
   memories: Memory[];
@@ -125,23 +157,7 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
   // Pending state — moment is still being created
   if (moment.isPending) {
     return (
-      <div className="fixed inset-0 z-[100] bg-gray-950/95 backdrop-blur-md flex flex-col animate-in fade-in duration-300">
-        <div className="sticky top-0 z-10 px-4 py-3 border-b border-gray-800 flex items-center justify-between bg-gray-950/80 backdrop-blur-xl pt-[env(safe-area-inset-top)]">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={onClose}
-              className="p-3 -ml-3 rounded-full hover:bg-gray-800 text-gray-400 hover:text-white transition-colors active:scale-95"
-            >
-              <X size={24} />
-            </button>
-            <div>
-              <h2 className="text-lg font-bold text-gray-100 truncate max-w-[200px] sm:max-w-md">
-                {moment.objective}
-              </h2>
-            </div>
-          </div>
-        </div>
-
+      <SheetShell title={moment.objective} onClose={onClose}>
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center px-6">
             <Loader2 size={32} className="animate-spin text-blue-400 mx-auto mb-4" />
@@ -151,30 +167,14 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
             </p>
           </div>
         </div>
-      </div>
+      </SheetShell>
     );
   }
 
   // Error state — moment creation failed
   if (moment.processingError && !synthesis) {
     return (
-      <div className="fixed inset-0 z-[100] bg-gray-950/95 backdrop-blur-md flex flex-col animate-in fade-in duration-300">
-        <div className="sticky top-0 z-10 px-4 py-3 border-b border-gray-800 flex items-center justify-between bg-gray-950/80 backdrop-blur-xl pt-[env(safe-area-inset-top)]">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={onClose}
-              className="p-3 -ml-3 rounded-full hover:bg-gray-800 text-gray-400 hover:text-white transition-colors active:scale-95"
-            >
-              <X size={24} />
-            </button>
-            <div>
-              <h2 className="text-lg font-bold text-gray-100 truncate max-w-[200px] sm:max-w-md">
-                {moment.title}
-              </h2>
-            </div>
-          </div>
-        </div>
-
+      <SheetShell title={moment.title} onClose={onClose}>
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center px-6">
             <div className="w-16 h-16 bg-red-900/20 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -194,34 +194,21 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
             </button>
           </div>
         </div>
-      </div>
+      </SheetShell>
     );
   }
 
   return (
-    <div className="fixed inset-0 z-[100] bg-gray-950/95 backdrop-blur-md flex flex-col animate-in fade-in duration-300">
-      {/* Header */}
-      <div className="sticky top-0 z-10 px-4 py-3 border-b border-gray-800 flex items-center justify-between bg-gray-950/80 backdrop-blur-xl pt-[env(safe-area-inset-top)]">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={onClose}
-            className="p-3 -ml-3 rounded-full hover:bg-gray-800 text-gray-400 hover:text-white transition-colors active:scale-95"
-          >
-            <X size={24} />
-          </button>
-          <div>
-            <h2 className="text-lg font-bold text-gray-100 truncate max-w-[200px] sm:max-w-md">
-              {moment.title}
-            </h2>
-            {synthesis?.subtitle && (
-              <p className="text-xs text-gray-400">{synthesis.subtitle}</p>
-            )}
-          </div>
-        </div>
+    <SheetShell
+      title={moment.title}
+      subtitle={synthesis?.subtitle}
+      headerRight={
         <div className="flex items-center gap-2 text-xs text-gray-500">
           <span>{moment.noteIds.length} notes</span>
         </div>
-      </div>
+      }
+      onClose={onClose}
+    >
 
       {/* Objective banner */}
       <div className="px-4 sm:px-8 py-2 bg-gray-900/50 border-b border-gray-800/50 max-w-2xl mx-auto w-full">
@@ -309,7 +296,7 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
           )}
         </div>
       </div>
-    </div>
+    </SheetShell>
   );
 };
 

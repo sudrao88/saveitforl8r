@@ -10,29 +10,9 @@ import { useCallback, useRef } from 'react';
 import { fetchPendingMomentResults, CreateMomentResponse } from '../services/geminiService';
 import { Moment, Memory, MomentSynthesis, MomentType } from '../types';
 import { saveMoment, saveMomentSynthesis } from '../services/storageService';
+import { computeInputHash } from '../utils/hash';
 
 const MOMENT_CREATION_TIMEOUT_MS = 180_000; // 3 minutes (3-step pipeline)
-
-// Synchronous fast hash for cache invalidation (djb2) — same as useMoments.ts
-function fastHash(input: string): string {
-  let hash = 5381;
-  for (let i = 0; i < input.length; i++) {
-    hash = ((hash << 5) + hash + input.charCodeAt(i)) & 0xffffffff;
-  }
-  return 'mh_' + (hash >>> 0).toString(16);
-}
-
-function computeInputHash(noteIds: string[], memories: Memory[]): string {
-  const inputs = noteIds
-    .slice()
-    .sort()
-    .map(id => {
-      const m = memories.find(n => n.id === id);
-      return m ? `${id}:${m.timestamp}` : id;
-    })
-    .join('|');
-  return fastHash(inputs);
-}
 
 interface UseMomentCreationPollingOptions {
   momentsRef: React.RefObject<Moment[]>;
@@ -68,7 +48,7 @@ const applyMomentResult = async (
 
     updatedMoment.inputHash = computeInputHash(
       updatedMoment.noteIds,
-      memoriesRef.current
+      memoriesRef.current || []
     );
 
     await saveMoment(updatedMoment);

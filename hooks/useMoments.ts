@@ -26,27 +26,7 @@ import {
 } from '../services/storageService';
 import { submitMomentCreation, synthesizeMoment } from '../services/geminiService';
 import { useMomentCreationPolling } from './useMomentCreationPolling';
-
-// Synchronous fast hash for cache invalidation (djb2)
-function fastHash(input: string): string {
-  let hash = 5381;
-  for (let i = 0; i < input.length; i++) {
-    hash = ((hash << 5) + hash + input.charCodeAt(i)) & 0xffffffff;
-  }
-  return 'mh_' + (hash >>> 0).toString(16);
-}
-
-function computeInputHash(noteIds: string[], memories: Memory[]): string {
-  const inputs = noteIds
-    .slice()
-    .sort()
-    .map(id => {
-      const m = memories.find(n => n.id === id);
-      return m ? `${id}:${m.timestamp}` : id;
-    })
-    .join('|');
-  return fastHash(inputs);
-}
+import { computeInputHash } from '../utils/hash';
 
 interface UseMomentsReturn {
   /** All active moments */
@@ -89,15 +69,18 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
     onMomentChangedRef.current = cb;
   }, []);
 
+  // Stable callback for moment creation polling
+  const handleMomentCreated = useCallback((moment: Moment) => {
+    onMomentChangedRef.current?.(moment);
+  }, []);
+
   // Integrate moment creation polling
   const { startPolling, recoverPending } = useMomentCreationPolling({
     momentsRef: momentsListRef,
     memoriesRef,
     setMoments: setMomentsList,
     setSynthesesMap,
-    onMomentCreated: (moment) => {
-      onMomentChangedRef.current?.(moment);
-    },
+    onMomentCreated: handleMomentCreated,
   });
 
   // Load persisted moments on mount + recover any pending from previous session
