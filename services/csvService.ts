@@ -31,7 +31,7 @@ export const memoriesToCSV = (memories: Memory[]): string => {
       date,
       m.content,
       type,
-      m.tags.join('|'),
+      (m.tags || []).join('|'),
       summary,
       JSON.stringify(m.location || null),
       JSON.stringify(m.attachments || []),

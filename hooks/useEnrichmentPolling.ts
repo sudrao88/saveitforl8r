@@ -27,7 +27,7 @@ export const applyEnrichmentResult = async (
   if (!current || current.isDeleted) return null;
 
   if (result?.status === 'completed' && result.data) {
-    const allTags = Array.from(new Set([...current.tags, ...result.data.suggestedTags]));
+    const allTags = Array.from(new Set([...(current.tags || []), ...(result.data.suggestedTags || [])]));
     const updatedMemory: Memory = {
       ...current,
       enrichment: result.data,

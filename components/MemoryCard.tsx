@@ -609,7 +609,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
             {/* Footer */}
             <div className="flex flex-wrap items-center gap-y-2 gap-x-4 pt-2 border-t border-gray-700/20 mt-2">
                 <div className="flex flex-wrap gap-1.5 flex-1">
-                    {memory.tags.map((tag, idx) => (
+                    {(memory.tags || []).map((tag, idx) => (
                         <span key={idx} className="text-[10px] text-gray-500 hover:text-gray-300 bg-gray-900/50 px-2 py-1 rounded-md">#{tag}</span>
                     ))}
                 </div>
