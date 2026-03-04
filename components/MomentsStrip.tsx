@@ -27,7 +27,7 @@ const MomentsStrip: React.FC<MomentsStripProps> = ({
 }) => {
   return (
     <div className="w-full max-w-4xl mx-auto px-4 sm:px-8 py-3">
-      <div className="flex items-center gap-4 overflow-x-auto no-scrollbar touch-pan-x">
+      <div className="flex items-start gap-4 overflow-x-auto no-scrollbar touch-pan-x p-1">
         {/* New Moment button */}
         <button
           onClick={onNewMoment}
