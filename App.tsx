@@ -441,6 +441,13 @@ const AppContent: React.FC = () => {
     return memories.find(m => m.id === expandedMemory.id) || expandedMemory;
   }, [expandedMemory, memories]);
 
+  // Keep active moment in sync with moments list so pending→completed
+  // transitions are reflected in the MomentSheet automatically.
+  const liveActiveMoment = useMemo(() => {
+    if (!activeMoment) return null;
+    return moments.find(m => m.id === activeMoment.id) || activeMoment;
+  }, [activeMoment, moments]);
+
   const isUpdateAvailable = isNative() ? nativeUpdateAvailable : updateAvailable;
   const versionToDisplay = isNative() ? nativeVersion : appVersion;
 
@@ -641,9 +648,9 @@ const AppContent: React.FC = () => {
         </Suspense>
       )}
 
-      {activeMoment && (
+      {liveActiveMoment && (
         <MomentSheet
-          moment={activeMoment}
+          moment={liveActiveMoment}
           memories={memories}
           onClose={handleMomentClose}
           loadSynthesis={loadSynthesis}

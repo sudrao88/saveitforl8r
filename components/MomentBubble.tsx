@@ -3,9 +3,11 @@
  *
  * Individual story bubble in the Moments strip.
  * Shows a circular avatar with icon, label, and note count.
+ * Displays a pulsing "Creating..." state for pending moments.
  */
 
 import React from 'react';
+import { Loader2 } from 'lucide-react';
 import { Moment, MomentSynthesis } from '../types';
 
 interface MomentBubbleProps {
@@ -57,18 +59,29 @@ const MomentBubble: React.FC<MomentBubbleProps> = ({
   synthesis,
   onTap,
 }) => {
+  const isPending = moment.isPending;
+  const hasError = moment.processingError;
+
   const icon = getMomentIcon(moment.type, moment.objective);
-  const label = truncateLabel(moment.title);
+  const label = isPending
+    ? truncateLabel(moment.objective, 10)
+    : truncateLabel(moment.title);
   const noteCount = moment.noteIds.length;
 
-  // Determine ring state: blue if has new notes since last synthesis, grey if up-to-date
-  const hasNewNotes = synthesis
-    ? synthesis.inputHash !== moment.inputHash
-    : true;
-
-  const ringClass = hasNewNotes
-    ? 'ring-2 ring-blue-500'
-    : 'ring-2 ring-gray-600';
+  // Ring states
+  let ringClass: string;
+  if (isPending) {
+    ringClass = 'ring-2 ring-blue-500 animate-pulse';
+  } else if (hasError) {
+    ringClass = 'ring-2 ring-red-500';
+  } else {
+    const hasNewNotes = synthesis
+      ? synthesis.inputHash !== moment.inputHash
+      : true;
+    ringClass = hasNewNotes
+      ? 'ring-2 ring-blue-500'
+      : 'ring-2 ring-gray-600';
+  }
 
   return (
     <button
@@ -78,16 +91,26 @@ const MomentBubble: React.FC<MomentBubbleProps> = ({
       <div
         className={`w-16 h-16 rounded-full flex items-center justify-center bg-gradient-to-br from-gray-800 to-gray-700 ${ringClass} transition-all group-active:scale-95`}
       >
-        <span className="text-2xl" role="img" aria-label={moment.type}>
-          {icon}
-        </span>
+        {isPending ? (
+          <Loader2 size={24} className="text-blue-400 animate-spin" />
+        ) : (
+          <span className="text-2xl" role="img" aria-label={moment.type}>
+            {icon}
+          </span>
+        )}
       </div>
       <span className="text-[11px] font-semibold text-gray-300 leading-tight text-center max-w-[72px] truncate">
         {label}
       </span>
-      <span className="text-[10px] text-gray-500 leading-tight">
-        {noteCount} note{noteCount !== 1 ? 's' : ''}
-      </span>
+      {isPending ? (
+        <span className="text-[10px] text-blue-400 leading-tight">Creating…</span>
+      ) : hasError ? (
+        <span className="text-[10px] text-red-400 leading-tight">Failed</span>
+      ) : (
+        <span className="text-[10px] text-gray-500 leading-tight">
+          {noteCount} note{noteCount !== 1 ? 's' : ''}
+        </span>
+      )}
     </button>
   );
 };
