@@ -53,13 +53,36 @@ const executeSyncPlan = async (plan: SyncPlan): Promise<string[]> => {
         if (!content) { errors.push(item.noteId); continue; }
 
         try {
-            // Handle moment files
+            // Handle moment files with proper conflict resolution
             if (item.noteId.startsWith('moment-')) {
                 const momentContent = content as unknown as Moment;
-                if (momentContent.isDeleted) {
-                    await deleteMomentHard(momentContent.id);
+                // Use the verified ID from the filename, not the untrusted JSON content
+                const verifiedMomentId = item.noteId.replace('moment-', '');
+                const safeMoment: Moment = { ...momentContent, id: verifiedMomentId };
+                if (item.localMoment) {
+                    // Both local and remote exist — compare updatedAt timestamps
+                    if (safeMoment.updatedAt > item.localMoment.updatedAt) {
+                        if (safeMoment.isDeleted) {
+                            await deleteMomentHard(verifiedMomentId);
+                        } else {
+                            await saveMoment(safeMoment);
+                        }
+                    } else if (item.localMoment.updatedAt > safeMoment.updatedAt) {
+                        // Local is newer — push to upload instead
+                        plan.toUpload.push({
+                            noteId: item.noteId,
+                            memory: item.localMoment,
+                            remoteFileId: item.fileId
+                        });
+                    }
+                    // Equal timestamps — no action needed
                 } else {
-                    await saveMoment(momentContent);
+                    // Remote-only moment
+                    if (safeMoment.isDeleted) {
+                        await deleteMomentHard(verifiedMomentId);
+                    } else {
+                        await saveMoment(safeMoment);
+                    }
                 }
                 continue;
             }
@@ -102,11 +125,14 @@ const executeSyncPlan = async (plan: SyncPlan): Promise<string[]> => {
         }
     }
 
-    for (const id of plan.toHardDeleteLocal) {
-        try { await deleteMemory(id); } catch (e) { errors.push(id); }
-    }
-    for (const id of plan.toDeleteLocal) {
-        try { await deleteMemory(id); } catch (e) { errors.push(id); }
+    for (const id of [...plan.toHardDeleteLocal, ...plan.toDeleteLocal]) {
+        try {
+            if (id.startsWith('moment-')) {
+                await deleteMomentHard(id.replace('moment-', ''));
+            } else {
+                await deleteMemory(id);
+            }
+        } catch (e) { errors.push(id); }
     }
 
     return errors;
@@ -118,11 +144,12 @@ interface DownloadItem {
     noteId: string;
     fileId: string;
     local?: Memory;
+    localMoment?: Moment;
 }
 
 interface UploadItem {
     noteId: string;
-    memory: Memory;
+    memory: Memory | Moment;
     remoteFileId?: string;
 }
 
@@ -230,8 +257,9 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             const localMoment = localMomentMap.get(noteId);
             if (localMoment?.isDeleted) {
                 plan.toDeleteRemote.push({ noteId, fileId: remoteFile.id });
+                plan.toHardDeleteLocal.push(noteId);
             } else {
-                plan.toDownload.push({ noteId, fileId: remoteFile.id });
+                plan.toDownload.push({ noteId, fileId: remoteFile.id, localMoment: localMoment });
             }
             continue;
         }
@@ -255,6 +283,18 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (handled.has(noteId)) continue;
 
         handled.add(noteId);
+
+        // Handle moments that were removed from remote
+        if (noteId.startsWith('moment-')) {
+            const localMoment = localMomentMap.get(noteId);
+            if (localMoment?.isDeleted) {
+                plan.toHardDeleteLocal.push(noteId);
+            } else if (localMoment) {
+                plan.toDeleteLocal.push(noteId);
+            }
+            continue;
+        }
+
         const local = localMap.get(noteId);
 
         if (local?.isDeleted) {
@@ -292,9 +332,12 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             if (remote) {
                 plan.toDeleteRemote.push({ noteId: key, fileId: remote.id });
             }
+            plan.toHardDeleteLocal.push(key);
+            handled.add(key);
         } else if (moment.updatedAt > lastSyncTime) {
             const remote = remoteMap.get(key);
-            plan.toUpload.push({ noteId: key, memory: moment as any, remoteFileId: remote?.id });
+            plan.toUpload.push({ noteId: key, memory: moment, remoteFileId: remote?.id });
+            handled.add(key);
         }
     }
 

@@ -369,6 +369,227 @@ describe('SyncContext', () => {
     });
   });
 
+  describe('moment delta sync', () => {
+    const makeMoment = (id: string, updatedAt: number, overrides?: any) => ({
+      id,
+      objective: 'Test',
+      title: 'Test Moment',
+      type: 'general',
+      noteIds: [],
+      createdAt: 1000,
+      updatedAt,
+      ...overrides,
+    });
+
+    it('should download remote-only moments to local', async () => {
+      const remoteMoment = makeMoment('mom-1', 2000);
+
+      (storageService.getMemories as any).mockResolvedValue([]);
+      (storageService.getAllMomentsIncludingDeleted as any).mockResolvedValue([]);
+      (driveService.listAllFiles as any).mockResolvedValue([
+        { id: 'drive-mom-1', name: 'moment-mom-1.json', modifiedTime: '2024-01-01T00:00:00Z' },
+      ]);
+      const contentsMap = new Map([['drive-mom-1', remoteMoment]]);
+      (driveService.downloadMultipleFiles as any).mockResolvedValue({
+        contents: contentsMap,
+        failures: [],
+      });
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      await act(async () => {
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
+      });
+
+      expect(storageService.saveMoment).toHaveBeenCalledWith(remoteMoment);
+    });
+
+    it('should prefer remote moment when remote updatedAt is newer', async () => {
+      const localMoment = makeMoment('mom-1', 1000);
+      const remoteMoment = makeMoment('mom-1', 2000, { title: 'Updated Title' });
+
+      (storageService.getMemories as any).mockResolvedValue([]);
+      (storageService.getAllMomentsIncludingDeleted as any).mockResolvedValue([localMoment]);
+      (driveService.listAllFiles as any).mockResolvedValue([
+        { id: 'drive-mom-1', name: 'moment-mom-1.json', modifiedTime: '2024-01-02T00:00:00Z' },
+      ]);
+      const contentsMap = new Map([['drive-mom-1', remoteMoment]]);
+      (driveService.downloadMultipleFiles as any).mockResolvedValue({
+        contents: contentsMap,
+        failures: [],
+      });
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      await act(async () => {
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
+      });
+
+      expect(storageService.saveMoment).toHaveBeenCalledWith(remoteMoment);
+    });
+
+    it('should upload local moment when local updatedAt is newer', async () => {
+      const localMoment = makeMoment('mom-1', 3000);
+      const remoteMoment = makeMoment('mom-1', 1000);
+
+      (storageService.getMemories as any).mockResolvedValue([]);
+      (storageService.getAllMomentsIncludingDeleted as any).mockResolvedValue([localMoment]);
+      (driveService.listAllFiles as any).mockResolvedValue([
+        { id: 'drive-mom-1', name: 'moment-mom-1.json', modifiedTime: '2024-01-01T00:00:00Z' },
+      ]);
+      const contentsMap = new Map([['drive-mom-1', remoteMoment]]);
+      (driveService.downloadMultipleFiles as any).mockResolvedValue({
+        contents: contentsMap,
+        failures: [],
+      });
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      await act(async () => {
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
+      });
+
+      // Local is newer — should be uploaded with the Drive file ID for PATCH
+      expect(storageService.saveMoment).not.toHaveBeenCalled();
+      expect(driveService.uploadMultipleFiles).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            filename: 'moment-mom-1.json',
+            content: localMoment,
+            existingFileId: 'drive-mom-1',
+          }),
+        ])
+      );
+    });
+
+    it('should upload local-only moments to Drive', async () => {
+      const localMoment = makeMoment('mom-local', 2000);
+
+      (storageService.getMemories as any).mockResolvedValue([]);
+      (storageService.getAllMomentsIncludingDeleted as any).mockResolvedValue([localMoment]);
+      (driveService.listAllFiles as any).mockResolvedValue([]);
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      await act(async () => {
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
+      });
+
+      expect(driveService.uploadMultipleFiles).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            filename: 'moment-mom-local.json',
+            content: localMoment,
+          }),
+        ])
+      );
+    });
+
+    it('should handle local deleted moment tombstone by deleting remote and hard-deleting local', async () => {
+      const deletedMoment = makeMoment('mom-del', 2000, { isDeleted: true });
+
+      (storageService.getMemories as any).mockResolvedValue([]);
+      (storageService.getAllMomentsIncludingDeleted as any).mockResolvedValue([deletedMoment]);
+      (driveService.listAllFiles as any).mockResolvedValue([
+        { id: 'drive-mom-del', name: 'moment-mom-del.json', modifiedTime: '2024-01-01T00:00:00Z' },
+      ]);
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      await act(async () => {
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
+      });
+
+      expect(driveService.deleteFileById).toHaveBeenCalledWith('drive-mom-del');
+      expect(storageService.deleteMomentHard).toHaveBeenCalledWith('mom-del');
+    });
+
+    it('should handle remote deleted moment by deleting local', async () => {
+      const remoteMoment = makeMoment('mom-1', 2000, { isDeleted: true });
+
+      (storageService.getMemories as any).mockResolvedValue([]);
+      (storageService.getAllMomentsIncludingDeleted as any).mockResolvedValue([]);
+      (driveService.listAllFiles as any).mockResolvedValue([
+        { id: 'drive-mom-1', name: 'moment-mom-1.json', modifiedTime: '2024-01-02T00:00:00Z' },
+      ]);
+      const contentsMap = new Map([['drive-mom-1', remoteMoment]]);
+      (driveService.downloadMultipleFiles as any).mockResolvedValue({
+        contents: contentsMap,
+        failures: [],
+      });
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      await act(async () => {
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
+      });
+
+      expect(storageService.deleteMomentHard).toHaveBeenCalledWith('mom-1');
+    });
+
+    it('should delete local moment when remote was deleted by another device', async () => {
+      const snapshot = { 'moment-mom-1': '2024-01-01T00:00:00Z' };
+      mockStorageValues['gdrive_remote_snapshot'] = JSON.stringify(snapshot);
+      mockStorageValues['gdrive_last_sync_time'] = '5000';
+
+      const localMoment = makeMoment('mom-1', 1000);
+
+      (storageService.getMemories as any).mockResolvedValue([]);
+      (storageService.getAllMomentsIncludingDeleted as any).mockResolvedValue([localMoment]);
+      (driveService.listAllFiles as any).mockResolvedValue([]);
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      await act(async () => {
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
+      });
+
+      // Local moment should be deleted because another device removed it from Drive
+      expect(storageService.deleteMomentHard).toHaveBeenCalledWith('mom-1');
+    });
+
+    it('should skip unchanged moment files when snapshot matches remote modifiedTime', async () => {
+      const snapshot = { 'moment-mom-1': '2024-01-01T00:00:00Z' };
+      mockStorageValues['gdrive_remote_snapshot'] = JSON.stringify(snapshot);
+      mockStorageValues['gdrive_last_sync_time'] = '5000';
+
+      const localMoment = makeMoment('mom-1', 1000);
+
+      (storageService.getMemories as any).mockResolvedValue([]);
+      (storageService.getAllMomentsIncludingDeleted as any).mockResolvedValue([localMoment]);
+      (driveService.listAllFiles as any).mockResolvedValue([
+        { id: 'drive-mom-1', name: 'moment-mom-1.json', modifiedTime: '2024-01-01T00:00:00Z' },
+      ]);
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      await act(async () => {
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
+      });
+
+      // Should NOT download since snapshot matches
+      expect(driveService.downloadMultipleFiles).toHaveBeenCalledWith([]);
+      // Should NOT upload since moment updatedAt (1000) < lastSyncTime (5000)
+      expect(driveService.uploadMultipleFiles).toHaveBeenCalledWith([]);
+    });
+  });
+
   describe('sync error handling', () => {
     it('should set syncError on auth failure', async () => {
       (storageService.getMemories as any).mockRejectedValue(new Error('Unauthorized 401'));
