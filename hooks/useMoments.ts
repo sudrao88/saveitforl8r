@@ -223,16 +223,19 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
     [synthesesMap]
   );
 
-  // Add a note to a moment (called when enrichment matches)
+  // Add a note to a moment (called when enrichment matches).
+  // Uses momentsListRef instead of the momentsList closure so the callback
+  // is stable and always reads the latest state — this avoids stale-closure
+  // bugs when the polling loop fires between renders.
   const addNoteToMoment = useCallback(
     async (momentId: string, noteId: string) => {
-      const moment = momentsList.find(m => m.id === momentId);
-      if (!moment) return;
-      if (moment.noteIds.includes(noteId)) return;
+      const current = momentsListRef.current.find(m => m.id === momentId);
+      if (!current) return;
+      if (current.noteIds.includes(noteId)) return;
 
       const updated: Moment = {
-        ...moment,
-        noteIds: [...moment.noteIds, noteId],
+        ...current,
+        noteIds: [...current.noteIds, noteId],
         updatedAt: Date.now(),
       };
 
@@ -240,17 +243,17 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
       setMomentsList(prev => prev.map(m => m.id === momentId ? updated : m));
       onMomentChangedRef.current?.(updated);
     },
-    [momentsList]
+    []
   );
 
   // Soft-delete a moment
   const deleteMoment = useCallback(
     async (momentId: string) => {
-      const moment = momentsList.find(m => m.id === momentId);
-      if (!moment) return;
+      const current = momentsListRef.current.find(m => m.id === momentId);
+      if (!current) return;
 
       const tombstone: Moment = {
-        ...moment,
+        ...current,
         isDeleted: true,
         updatedAt: Date.now(),
       };
@@ -259,7 +262,7 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
       setMomentsList(prev => prev.filter(m => m.id !== momentId));
       onMomentChangedRef.current?.(tombstone);
     },
-    [momentsList]
+    []
   );
 
   // Filter to active moments only
