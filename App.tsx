@@ -164,11 +164,23 @@ const AppContent: React.FC = () => {
 
   const syncRef = useRef(sync);
   const refreshRef = useRef(handleFullRefresh);
+  const topNavRef = useRef<HTMLDivElement>(null);
+  const [topNavHeight, setTopNavHeight] = useState(0);
 
   useEffect(() => {
     syncRef.current = sync;
     refreshRef.current = handleFullRefresh;
   }, [sync, handleFullRefresh]);
+
+  useEffect(() => {
+    const el = topNavRef.current;
+    if (!el) return;
+    const update = () => setTopNavHeight(el.offsetHeight);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const {
     isSettingsOpen,
@@ -513,7 +525,8 @@ const AppContent: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-black flex flex-col">
-      <div className="sticky top-0 z-[50] bg-black/90 backdrop-blur-md border-b border-gray-800 pt-[env(safe-area-inset-top)]">
+      {/* Sticky top navigation */}
+      <div ref={topNavRef} className="sticky top-0 z-[50] bg-black/90 backdrop-blur-md border-b border-gray-800/50 pt-[env(safe-area-inset-top)]">
           <TopNavigation
             setView={handleSetView}
             resetFilters={handleResetFilters}
@@ -525,22 +538,28 @@ const AppContent: React.FC = () => {
             modelStatus={modelStatus}
             isOtaDownloading={isOtaDownloading}
           />
+      </div>
 
-          <MomentsStrip
-            moments={moments}
-            synthesesMap={synthesesMap}
-            onMomentTap={handleMomentTap}
-            onNewMoment={handleNewMoment}
-            onShowAll={handleShowAllMoments}
-          />
+      {/* Moments strip - scrolls with page, disappears behind sticky top bar */}
+      <MomentsStrip
+        moments={moments}
+        synthesesMap={synthesesMap}
+        onMomentTap={handleMomentTap}
+        onNewMoment={handleNewMoment}
+        onShowAll={handleShowAllMoments}
+      />
 
+      {/* Sticky filter bar - sticks below the top navigation */}
+      {availableTypes.length > 0 && (
+        <div className="sticky z-[49] bg-black/90 backdrop-blur-md border-b border-gray-800" style={{ top: `${topNavHeight}px` }}>
           <FilterBar
             availableTypes={availableTypes}
             filterType={filterType}
             setFilterType={handleSetFilterType}
             clearFilters={handleResetFilters}
           />
-      </div>
+        </div>
+      )}
 
       <main className="flex-1 p-4 sm:p-8 max-w-7xl mx-auto w-full relative z-[40]">
         {filteredMemories.length === 0 ? (
