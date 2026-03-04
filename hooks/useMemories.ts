@@ -233,7 +233,7 @@ export const useMemories = () => {
 
         const momentsMeta = momentsRef.current
           .filter(m => !m.isDeleted)
-          .map(m => ({ id: m.id, objective: m.objective }));
+          .map(m => ({ id: m.id, objective: m.objective, title: m.title, type: m.type }));
 
         // Submit enrichment — only set isPending after the server confirms receipt
         await submitEnrichment(
@@ -292,7 +292,7 @@ export const useMemories = () => {
       // 3. Submit enrichment to server with moments metadata
       const momentsMeta = momentsRef.current
         .filter(m => !m.isDeleted)
-        .map(m => ({ id: m.id, objective: m.objective }));
+        .map(m => ({ id: m.id, objective: m.objective, title: m.title, type: m.type }));
 
       submitEnrichment(text, attachments, location, tags, memoryId, momentsMeta.length > 0 ? momentsMeta : undefined)
         .then(async () => {
@@ -396,7 +396,7 @@ export const useMemories = () => {
       console.log(`[Update] Submitting enrichment for ${id}`);
       const momentsMeta = momentsRef.current
         .filter(m => !m.isDeleted)
-        .map(m => ({ id: m.id, objective: m.objective }));
+        .map(m => ({ id: m.id, objective: m.objective, title: m.title, type: m.type }));
 
       submitEnrichment(text, attachments, updatedMemory.location, tags, id, momentsMeta.length > 0 ? momentsMeta : undefined)
         .then(async () => {
