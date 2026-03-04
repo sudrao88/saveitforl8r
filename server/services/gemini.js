@@ -714,24 +714,6 @@ export const sanitizeEnrichmentResult = (parsed) => {
     if (sanitizedEnt.type) result.entityContext = sanitizedEnt;
   }
 
-  if (parsed.temporalContext && typeof parsed.temporalContext === 'object') {
-    const tc = parsed.temporalContext;
-    const sanitizedTc = {};
-    if (tc.relevantAt && typeof tc.relevantAt === 'object') {
-      const ra = {};
-      if (typeof tc.relevantAt.start === 'string') ra.start = sanitizeString(tc.relevantAt.start).substring(0, 100);
-      if (typeof tc.relevantAt.end === 'string') ra.end = sanitizeString(tc.relevantAt.end).substring(0, 100);
-      if (typeof tc.relevantAt.isRecurring === 'boolean') ra.isRecurring = tc.relevantAt.isRecurring;
-      if (typeof tc.relevantAt.recurrenceRule === 'string') ra.recurrenceRule = sanitizeString(tc.relevantAt.recurrenceRule).substring(0, 50);
-      if (ra.start) sanitizedTc.relevantAt = ra;
-    }
-    if (['low', 'medium', 'high'].includes(tc.urgency)) sanitizedTc.urgency = tc.urgency;
-    if (typeof tc.inferenceConfidence === 'number' && isFinite(tc.inferenceConfidence)) {
-      sanitizedTc.inferenceConfidence = Math.max(0, Math.min(1, tc.inferenceConfidence));
-    }
-    if (Object.keys(sanitizedTc).length > 0) result.temporalContext = sanitizedTc;
-  }
-
   if (Array.isArray(parsed.suggestedTags)) {
     result.suggestedTags = parsed.suggestedTags
       .filter((t) => typeof t === 'string')
