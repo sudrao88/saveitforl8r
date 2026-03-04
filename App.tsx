@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
 import { Plus, RefreshCw, X } from 'lucide-react';
 import { App as CapacitorApp, URLOpenListenerEvent } from '@capacitor/app';
 import { isNative } from './services/platform';
@@ -172,7 +172,7 @@ const AppContent: React.FC = () => {
     refreshRef.current = handleFullRefresh;
   }, [sync, handleFullRefresh]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = topNavRef.current;
     if (!el) return;
     const update = () => setTopNavHeight(el.offsetHeight);
@@ -551,7 +551,7 @@ const AppContent: React.FC = () => {
 
       {/* Sticky filter bar - sticks below the top navigation */}
       {availableTypes.length > 0 && (
-        <div className="sticky z-[49] bg-black/90 backdrop-blur-md border-b border-gray-800" style={{ top: `${topNavHeight}px` }}>
+        <div className="sticky z-[49] bg-black/90 backdrop-blur-md border-b border-gray-800/50" style={{ top: `${topNavHeight}px` }}>
           <FilterBar
             availableTypes={availableTypes}
             filterType={filterType}
