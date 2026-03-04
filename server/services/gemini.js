@@ -220,7 +220,7 @@ export const momentMatchingResponseSchema = {
     matchedMomentIds: {
       type: Type.ARRAY,
       items: { type: Type.STRING },
-      description: 'IDs of moments that this note is relevant to. Empty array if none match.',
+      description: 'IDs of moments that this note is relevant to. Include all moments whose objective matches the note content.',
     },
   },
   required: ['matchedMomentIds'],

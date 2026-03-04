@@ -25,7 +25,7 @@ interface EnrichmentInput {
   location?: { latitude: number; longitude: number };
   tags: string[];
   memoryId?: string;
-  moments?: { id: string; objective: string }[];
+  moments?: { id: string; objective: string; title: string; type: string }[];
 }
 
 interface SubmitEnrichmentResponse {
@@ -45,7 +45,7 @@ export const submitEnrichment = async (
   location?: { latitude: number; longitude: number },
   tags: string[] = [],
   memoryId?: string,
-  moments?: { id: string; objective: string }[]
+  moments?: { id: string; objective: string; title: string; type: string }[]
 ): Promise<void> => {
   const payload: EnrichmentInput = {
     text,
