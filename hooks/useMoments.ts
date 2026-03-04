@@ -224,43 +224,67 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
   );
 
   // Add a note to a moment (called when enrichment matches).
-  // Uses momentsListRef instead of the momentsList closure so the callback
-  // is stable and always reads the latest state — this avoids stale-closure
-  // bugs when the polling loop fires between renders.
+  // Uses setMomentsList's functional updater so each call sees the latest
+  // state — this prevents lost updates when multiple enrichments complete
+  // in quick succession and match the same moment.
   const addNoteToMoment = useCallback(
-    async (momentId: string, noteId: string) => {
-      const current = momentsListRef.current.find(m => m.id === momentId);
-      if (!current) return;
-      if (current.noteIds.includes(noteId)) return;
+    (momentId: string, noteId: string): Promise<void> => {
+      return new Promise((resolve, reject) => {
+        setMomentsList(prev => {
+          const current = prev.find(m => m.id === momentId);
+          if (!current || current.noteIds.includes(noteId)) {
+            resolve();
+            return prev;
+          }
 
-      const updated: Moment = {
-        ...current,
-        noteIds: [...current.noteIds, noteId],
-        updatedAt: Date.now(),
-      };
+          const updated: Moment = {
+            ...current,
+            noteIds: [...current.noteIds, noteId],
+            updatedAt: Date.now(),
+          };
 
-      await saveMoment(updated);
-      setMomentsList(prev => prev.map(m => m.id === momentId ? updated : m));
-      onMomentChangedRef.current?.(updated);
+          saveMoment(updated)
+            .then(() => {
+              onMomentChangedRef.current?.(updated);
+              resolve();
+            })
+            .catch(reject);
+
+          return prev.map(m => m.id === momentId ? updated : m);
+        });
+      });
     },
     []
   );
 
-  // Soft-delete a moment
+  // Soft-delete a moment.
+  // Same functional-updater pattern as addNoteToMoment for consistency.
   const deleteMoment = useCallback(
-    async (momentId: string) => {
-      const current = momentsListRef.current.find(m => m.id === momentId);
-      if (!current) return;
+    (momentId: string): Promise<void> => {
+      return new Promise((resolve, reject) => {
+        setMomentsList(prev => {
+          const current = prev.find(m => m.id === momentId);
+          if (!current) {
+            resolve();
+            return prev;
+          }
 
-      const tombstone: Moment = {
-        ...current,
-        isDeleted: true,
-        updatedAt: Date.now(),
-      };
+          const tombstone: Moment = {
+            ...current,
+            isDeleted: true,
+            updatedAt: Date.now(),
+          };
 
-      await saveMoment(tombstone);
-      setMomentsList(prev => prev.filter(m => m.id !== momentId));
-      onMomentChangedRef.current?.(tombstone);
+          saveMoment(tombstone)
+            .then(() => {
+              onMomentChangedRef.current?.(tombstone);
+              resolve();
+            })
+            .catch(reject);
+
+          return prev.filter(m => m.id !== momentId);
+        });
+      });
     },
     []
   );
