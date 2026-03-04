@@ -56,15 +56,18 @@ const executeSyncPlan = async (plan: SyncPlan): Promise<string[]> => {
             // Handle moment files with proper conflict resolution
             if (item.noteId.startsWith('moment-')) {
                 const momentContent = content as unknown as Moment;
+                // Use the verified ID from the filename, not the untrusted JSON content
+                const verifiedMomentId = item.noteId.replace('moment-', '');
+                const safeMoment: Moment = { ...momentContent, id: verifiedMomentId };
                 if (item.localMoment) {
                     // Both local and remote exist — compare updatedAt timestamps
-                    if (momentContent.updatedAt > item.localMoment.updatedAt) {
-                        if (momentContent.isDeleted) {
-                            await deleteMomentHard(momentContent.id);
+                    if (safeMoment.updatedAt > item.localMoment.updatedAt) {
+                        if (safeMoment.isDeleted) {
+                            await deleteMomentHard(verifiedMomentId);
                         } else {
-                            await saveMoment(momentContent);
+                            await saveMoment(safeMoment);
                         }
-                    } else if (item.localMoment.updatedAt > momentContent.updatedAt) {
+                    } else if (item.localMoment.updatedAt > safeMoment.updatedAt) {
                         // Local is newer — push to upload instead
                         plan.toUpload.push({
                             noteId: item.noteId,
@@ -75,10 +78,10 @@ const executeSyncPlan = async (plan: SyncPlan): Promise<string[]> => {
                     // Equal timestamps — no action needed
                 } else {
                     // Remote-only moment
-                    if (momentContent.isDeleted) {
-                        await deleteMomentHard(momentContent.id);
+                    if (safeMoment.isDeleted) {
+                        await deleteMomentHard(verifiedMomentId);
                     } else {
-                        await saveMoment(momentContent);
+                        await saveMoment(safeMoment);
                     }
                 }
                 continue;
@@ -122,16 +125,7 @@ const executeSyncPlan = async (plan: SyncPlan): Promise<string[]> => {
         }
     }
 
-    for (const id of plan.toHardDeleteLocal) {
-        try {
-            if (id.startsWith('moment-')) {
-                await deleteMomentHard(id.replace('moment-', ''));
-            } else {
-                await deleteMemory(id);
-            }
-        } catch (e) { errors.push(id); }
-    }
-    for (const id of plan.toDeleteLocal) {
+    for (const id of [...plan.toHardDeleteLocal, ...plan.toDeleteLocal]) {
         try {
             if (id.startsWith('moment-')) {
                 await deleteMomentHard(id.replace('moment-', ''));
