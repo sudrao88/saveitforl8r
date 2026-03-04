@@ -69,16 +69,27 @@ const openDB = (): Promise<IDBDatabase> => {
   return dbOpenPromise;
 };
 
+// Helper: Ensure a Memory always has valid required fields after deserialization.
+// Data from IndexedDB, Google Drive sync, or older app versions may have
+// null/undefined tags (or other missing fields). This prevents runtime crashes
+// like "null is not an object (evaluating 'c.tags.map')" on iOS standalone PWA.
+const normalizeMemory = (memory: Memory): Memory => {
+  if (!Array.isArray(memory.tags)) {
+    memory.tags = [];
+  }
+  return memory;
+};
+
 // Helper: Convert StoredMemory to Application Memory
 const rehydrateMemory = async (stored: StoredMemory): Promise<Memory> => {
   if (stored.encryptedData) {
     try {
       const decrypted = await decryptData(stored.encryptedData);
-      return {
+      return normalizeMemory({
         id: stored.id,
         timestamp: stored.timestamp,
         ...decrypted
-      };
+      });
     } catch (e: any) {
       console.error(`Failed to decrypt memory ${stored.id}`, e);
       return {
@@ -90,7 +101,7 @@ const rehydrateMemory = async (stored: StoredMemory): Promise<Memory> => {
       };
     }
   }
-  return stored as unknown as Memory;
+  return normalizeMemory(stored as unknown as Memory);
 };
 
 // Resilient helper to queue memories
