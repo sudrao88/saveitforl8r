@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, ReactNode, useRef, useEffect } from 'react';
-import { getMemories, saveMemory, deleteMemory, reconcileEmbeddings } from '../services/storageService';
+import { getMemories, saveMemory, deleteMemory, reconcileEmbeddings, getAllMomentsIncludingDeleted, saveMoment, deleteMomentHard } from '../services/storageService';
 
 import {
     listAllFiles,
@@ -11,7 +11,7 @@ import {
     isLinked as checkIsLinked,
     deleteRemoteNote
 } from '../services/googleDriveService';
-import { Memory } from '../types';
+import { Memory, Moment } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { storage } from '../services/platform';
 
@@ -20,6 +20,7 @@ interface SyncContextType {
   syncError: string | null;
   sync: () => Promise<void>;
   syncFile: (memory: Memory) => Promise<void>;
+  syncMoment: (moment: Moment) => Promise<void>;
   pendingCount: number;
 }
 
@@ -52,6 +53,17 @@ const executeSyncPlan = async (plan: SyncPlan): Promise<string[]> => {
         if (!content) { errors.push(item.noteId); continue; }
 
         try {
+            // Handle moment files
+            if (item.noteId.startsWith('moment-')) {
+                const momentContent = content as unknown as Moment;
+                if (momentContent.isDeleted) {
+                    await deleteMomentHard(momentContent.id);
+                } else {
+                    await saveMoment(momentContent);
+                }
+                continue;
+            }
+
             if (item.local) {
                 if (content.timestamp > item.local.timestamp) {
                     if (content.isDeleted) await deleteMemory(item.noteId);
@@ -157,6 +169,25 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
   }, []);
 
+  const syncMomentInternal = useCallback(async (moment: Moment) => {
+      try {
+          const filename = `moment-${moment.id}.json`;
+          const remoteFile = await findFileByName(filename);
+          await uploadFile(filename, moment, remoteFile?.id);
+
+          const updatedFile = await findFileByName(filename);
+          if (updatedFile) {
+              const snapshotJSON = await storage.get(SNAPSHOT_KEY);
+              const snapshot = snapshotJSON ? JSON.parse(snapshotJSON) : {};
+              snapshot[`moment-${moment.id}`] = updatedFile.modifiedTime;
+              await storage.set(SNAPSHOT_KEY, JSON.stringify(snapshot));
+          }
+      } catch (e) {
+          console.error(`[Sync] Moment sync failed for ${moment.id}:`, e);
+          throw e;
+      }
+  }, []);
+
   const saveSnapshot = useCallback(async (remoteFiles: any[]) => {
       const snapshot = Object.fromEntries(remoteFiles.map((f: any) => [f.name.replace('.json', ''), f.modifiedTime]));
       await storage.set(SNAPSHOT_KEY, JSON.stringify(snapshot));
@@ -166,6 +197,10 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const doDeltaSync = useCallback(async (previousSnapshot: Record<string, string>) => {
     const localMemories = await getMemories();
     const localMap = new Map(localMemories.map(m => [m.id, m]));
+
+    // Load local moments for sync
+    const localMoments = await getAllMomentsIncludingDeleted();
+    const localMomentMap = new Map(localMoments.map(m => [`moment-${m.id}`, m]));
 
     const remoteFiles = await listAllFiles();
     const remoteMap = new Map(remoteFiles.map((f: any) => [f.name.replace('.json', ''), f]));
@@ -189,6 +224,18 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
 
         handled.add(noteId);
+
+        // Handle moment files separately
+        if (noteId.startsWith('moment-')) {
+            const localMoment = localMomentMap.get(noteId);
+            if (localMoment?.isDeleted) {
+                plan.toDeleteRemote.push({ noteId, fileId: remoteFile.id });
+            } else {
+                plan.toDownload.push({ noteId, fileId: remoteFile.id });
+            }
+            continue;
+        }
+
         const local = localMap.get(noteId);
 
         if (local?.isSample || noteId.startsWith('sample-')) continue;
@@ -232,6 +279,22 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             const remote = remoteMap.get(local.id);
             plan.toUpload.push({ noteId: local.id, memory: local, remoteFileId: remote?.id });
             handled.add(local.id);
+        }
+    }
+
+    // Upload local moments that haven't been synced yet
+    for (const moment of localMoments) {
+        const key = `moment-${moment.id}`;
+        if (handled.has(key)) continue;
+
+        if (moment.isDeleted) {
+            const remote = remoteMap.get(key);
+            if (remote) {
+                plan.toDeleteRemote.push({ noteId: key, fileId: remote.id });
+            }
+        } else if (moment.updatedAt > lastSyncTime) {
+            const remote = remoteMap.get(key);
+            plan.toUpload.push({ noteId: key, memory: moment as any, remoteFileId: remote?.id });
         }
     }
 
@@ -299,6 +362,18 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     });
   }, [doDeltaSync, getAccessToken]);
 
+  const performMomentSync = useCallback(async (moment: Moment) => {
+      const linked = await checkIsLinked();
+      if (isSyncingRef.current || !linked) return;
+
+      try {
+          await getAccessToken();
+          await syncMomentInternal(moment);
+      } catch (e: any) {
+          console.error(`[Sync] Moment sync failed for ${moment.id}:`, e);
+      }
+  }, [syncMomentInternal, getAccessToken]);
+
   const performSingleSync = useCallback(async (memory: Memory) => {
       const linked = await checkIsLinked();
       if (isSyncingRef.current || !linked) return;
@@ -346,6 +421,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         syncError,
         sync: performSync,
         syncFile: performSingleSync,
+        syncMoment: performMomentSync,
         pendingCount
     }}>
       {children}

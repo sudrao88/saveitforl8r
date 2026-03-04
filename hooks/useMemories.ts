@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getMemories, deleteMemory, saveMemory, getMemory } from '../services/storageService';
 import { submitEnrichment } from '../services/geminiService';
-import { Memory, Attachment } from '../types';
+import { Memory, Attachment, Moment } from '../types';
 import { SAMPLE_MEMORIES } from '../services/sampleData';
 import { useSync } from './useSync';
 import { useAuth } from './useAuth';
@@ -81,6 +81,19 @@ export const useMemories = () => {
   const { sync, syncFile } = useSync();
   const { authStatus } = useAuth();
   const mounted = useRef(false);
+
+  // Moments ref and callback for enrichment-time moment matching
+  const momentsRef = useRef<Moment[]>([]);
+  const onNoteMatchedMomentsRef = useRef<((momentId: string, noteId: string) => Promise<void>) | undefined>(undefined);
+
+  const setMomentsRef = useCallback((moments: Moment[]) => {
+    momentsRef.current = moments;
+  }, []);
+
+  const setOnNoteMatchedMoments = useCallback((cb: (momentId: string, noteId: string) => Promise<void>) => {
+    onNoteMatchedMomentsRef.current = cb;
+  }, []);
+
   const recoveryAttemptedRef = useRef(false);
   const memoriesRef = useRef(memories);
 
@@ -97,12 +110,21 @@ export const useMemories = () => {
 
   // Enrichment polling — extracted into a dedicated hook to eliminate
   // duplicated result-handling logic that was in 3 separate places.
+  // The onEnrichmentComplete callback also handles moment matching.
   const { startPolling, recoverPending } = useEnrichmentPolling({
     memoriesRef,
     setMemories,
     onEnrichmentComplete: useCallback((memory: Memory) => {
       if (authStatus === 'linked') {
         syncFile(memory).catch(err => console.error("Sync failed:", err));
+      }
+      // Handle moment matching from enrichment results
+      if (memory.enrichment?.matchedMomentIds && memory.enrichment.matchedMomentIds.length > 0 && onNoteMatchedMomentsRef.current) {
+        for (const momentId of memory.enrichment.matchedMomentIds) {
+          onNoteMatchedMomentsRef.current(momentId, memory.id).catch(err =>
+            console.error(`[Moments] Failed to add note to moment ${momentId}:`, err)
+          );
+        }
       }
     }, [authStatus, syncFile]),
   });
@@ -209,13 +231,18 @@ export const useMemories = () => {
             });
         }
 
+        const momentsMeta = momentsRef.current
+          .filter(m => !m.isDeleted)
+          .map(m => ({ id: m.id, objective: m.objective }));
+
         // Submit enrichment — only set isPending after the server confirms receipt
         await submitEnrichment(
             memory.content,
             attachments,
             memory.location,
             memory.tags,
-            memory.id
+            memory.id,
+            momentsMeta.length > 0 ? momentsMeta : undefined
         );
 
         // Server accepted (200) — now show "Enriching..." and poll for results
@@ -262,8 +289,12 @@ export const useMemories = () => {
       await saveMemory(newMemory);
       trySyncFile(newMemory);  // Sync immediately on save, before enrichment
 
-      // 3. Submit enrichment to server — show "Enriching..." only after 200 confirmed
-      submitEnrichment(text, attachments, location, tags, memoryId)
+      // 3. Submit enrichment to server with moments metadata
+      const momentsMeta = momentsRef.current
+        .filter(m => !m.isDeleted)
+        .map(m => ({ id: m.id, objective: m.objective }));
+
+      submitEnrichment(text, attachments, location, tags, memoryId, momentsMeta.length > 0 ? momentsMeta : undefined)
         .then(async () => {
             // Server accepted (200) — now show "Enriching..." and start polling
             const current = await getMemory(memoryId);
@@ -361,9 +392,13 @@ export const useMemories = () => {
       // Sync immediately (save the text changes even before enrichment finishes)
       await trySyncFile(updatedMemory);
 
-      // Submit enrichment — show "Enriching..." only after the server confirms receipt
+      // Submit enrichment with moments metadata — show "Enriching..." only after the server confirms receipt
       console.log(`[Update] Submitting enrichment for ${id}`);
-      submitEnrichment(text, attachments, updatedMemory.location, tags, id)
+      const momentsMeta = momentsRef.current
+        .filter(m => !m.isDeleted)
+        .map(m => ({ id: m.id, objective: m.objective }));
+
+      submitEnrichment(text, attachments, updatedMemory.location, tags, id, momentsMeta.length > 0 ? momentsMeta : undefined)
         .then(async () => {
             // Server accepted (200) — now show "Enriching..." and start polling
             const current = await getMemory(id);
@@ -430,6 +465,8 @@ export const useMemories = () => {
     updateMemory,
     updateMemoryContent,
     togglePin,
-    isLoading
+    isLoading,
+    setMomentsRef,
+    setOnNoteMatchedMoments,
   };
 };

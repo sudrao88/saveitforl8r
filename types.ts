@@ -13,6 +13,17 @@ export interface EntityContext {
   rating?: string; // e.g. "4.5/5" or "98%"
 }
 
+export interface TemporalContext {
+  relevantAt?: {
+    start: string;            // ISO date or fuzzy ("2026-03", "summer 2026")
+    end?: string;             // For ranges (trips, seasons)
+    isRecurring?: boolean;    // Birthdays, anniversaries
+    recurrenceRule?: string;  // "yearly", "monthly"
+  };
+  urgency?: 'low' | 'medium' | 'high';
+  inferenceConfidence: number;  // 0–1; below 0.5 triggers Layer 3 nudge
+}
+
 export interface EnrichmentData {
   [key: string]: unknown;
   summary: string;
@@ -29,6 +40,9 @@ export interface EnrichmentData {
   };
   entityContext?: EntityContext;
   suggestedTags: string[];
+  temporalContext?: TemporalContext;
+  matchedMomentIds?: string[];     // Moment IDs this note is relevant to (set by enrichment)
+
   // Smart enrichment fields (populated based on content classification)
   keyPoints?: string[];
   actionItems?: string[];
@@ -131,4 +145,59 @@ export interface ChatMessage {
 export enum ViewMode {
   FEED = 'FEED',
   RECALL = 'RECALL',
+}
+
+// --- Moments Feature Types ---
+
+export type MomentType =
+  | 'itinerary'     // Trip or event with temporal window
+  | 'brief'         // Meeting/interview prep
+  | 'list'          // Restaurant, movie, book, shopping picks
+  | 'dashboard'     // Event planning (venue + tasks + budget)
+  | 'curriculum'    // Learning path
+  | 'gift-guide'    // Gift ideas for a person/occasion
+  | 'meal-plan'     // Recipes + meal prep
+  | 'general';      // Fallback
+
+export interface Moment {
+  id: string;                     // crypto.randomUUID(), stable across devices
+  objective: string;              // User's intention, e.g. "build an itinerary for my Singapore trip"
+  title: string;                  // Short display title (AI-generated or derived from objective)
+  type: MomentType;               // AI-inferred from objective during creation
+  noteIds: string[];              // Notes used in the latest synthesis
+  createdAt: number;
+  updatedAt: number;
+  isDeleted?: boolean;            // Soft-delete for multi-device sync (tombstone)
+  lastSynthesizedAt?: number;     // Timestamp of last synthesis
+  inputHash?: string;             // Hash of noteIds for cache invalidation
+}
+
+export interface SynthesisItem {
+  label: string;
+  detail?: string;
+  link?: string;
+  sourceNoteId: string;
+  completable?: boolean;
+  completed?: boolean;
+}
+
+export interface SynthesisSection {
+  heading: string;
+  items: SynthesisItem[];
+}
+
+export interface SynthesisResponse {
+  format: MomentType;
+  title: string;
+  subtitle?: string;
+  sections: SynthesisSection[];
+  generatedFrom: string[];        // Note IDs used
+}
+
+export interface MomentSynthesis {
+  momentId: string;
+  inputHash: string;
+  content: SynthesisResponse;
+  generatedAt: number;
+  noteIds: string[];
 }

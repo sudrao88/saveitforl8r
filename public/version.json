@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v36",
-  "buildNumber": 36,
-  "buildDate": "2026-02-27T18:27:05.860Z",
+  "version": "saveitforl8r-v37",
+  "buildNumber": 37,
+  "buildDate": "2026-03-03T11:34:22.650Z",
   "minNativeVersion": "1.0.0",
   "changelog": "Initial OTA update support"
 }

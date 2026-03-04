@@ -214,6 +214,18 @@ export const queryResponseSchema = {
   required: ['answer', 'sources'],
 };
 
+export const momentMatchingResponseSchema = {
+  type: Type.OBJECT,
+  properties: {
+    matchedMomentIds: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+      description: 'IDs of moments that this note is relevant to. Empty array if none match.',
+    },
+  },
+  required: ['matchedMomentIds'],
+};
+
 // --- Prompt builders ---
 
 export const buildEnrichmentUserContent = (text, tags) => {

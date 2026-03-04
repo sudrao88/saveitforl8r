@@ -5,6 +5,10 @@ import { isNative } from './services/platform';
 import MemoryCard from './components/MemoryCard';
 import TopNavigation from './components/TopNavigation';
 import FilterBar from './components/FilterBar';
+import MomentsStrip from './components/MomentsStrip';
+import MomentSheet from './components/MomentSheet';
+import MomentCreationDialog from './components/MomentCreationDialog';
+import AllMomentsSheet from './components/AllMomentsSheet';
 import EmptyState from './components/EmptyState';
 
 import ErrorBoundary from './components/ErrorBoundary';
@@ -36,10 +40,11 @@ import { useSync } from './hooks/useSync';
 import { useAuth } from './hooks/useAuth';
 import { useAdaptiveSearch } from './hooks/useAdaptiveSearch';
 import { useHotkeys } from './hooks/useHotkeys';
+import { useMoments } from './hooks/useMoments';
 import useNativeOTA from './hooks/useNativeOTA';
 import { SyncProvider } from './context/SyncContext';
 import { reconcileEmbeddings, ReconcileReport } from './services/storageService';
-import { ViewMode, Memory, Attachment } from './types';
+import { ViewMode, Memory, Attachment, Moment } from './types';
 import { initGA, logPageView, logEvent } from './services/analytics';
 
 import { ANALYTICS_EVENTS } from './constants';
@@ -52,7 +57,10 @@ const AppContent: React.FC = () => {
   const [viewingGallery, setViewingGallery] = useState<{ attachments: Attachment[]; currentIndex: number } | null>(null);
   const [reconcileReport, setReconcileReport] = useState<ReconcileReport | null>(null);
   const [editingMemory, setEditingMemory] = useState<Memory | null>(null);
-  
+  const [activeMoment, setActiveMoment] = useState<Moment | null>(null);
+  const [showAllMoments, setShowAllMoments] = useState(false);
+  const [showCreateMoment, setShowCreateMoment] = useState(false);
+
   const { updateAvailable, updateApp, appVersion } = useServiceWorker();
   const {
       enableRemoteMode,
@@ -78,8 +86,75 @@ const AppContent: React.FC = () => {
     updateMemory,
     updateMemoryContent,
     togglePin,
-    isLoading
+    isLoading,
+    setMomentsRef,
+    setOnNoteMatchedMoments,
   } = useMemories();
+
+  const {
+    moments,
+    createNewMoment,
+    loadSynthesis,
+    synthesisLoading,
+    creating: momentCreating,
+    addNoteToMoment,
+    deleteMoment,
+    synthesesMap,
+    setOnMomentChanged,
+  } = useMoments(memories);
+
+  const { syncMoment } = useSync();
+
+  // Wire up moments ref and callback for enrichment-time moment matching
+  useEffect(() => {
+    setMomentsRef(moments);
+  }, [moments, setMomentsRef]);
+
+  useEffect(() => {
+    setOnNoteMatchedMoments(addNoteToMoment);
+  }, [addNoteToMoment, setOnNoteMatchedMoments]);
+
+  // Wire up moment sync callback
+  useEffect(() => {
+    setOnMomentChanged((moment: Moment) => {
+      syncMoment(moment).catch(err => console.error('[Sync] Moment sync failed:', err));
+    });
+  }, [syncMoment, setOnMomentChanged]);
+
+  const handleMomentTap = useCallback((moment: Moment) => {
+    setActiveMoment(moment);
+  }, []);
+
+  const handleMomentClose = useCallback(() => {
+    setActiveMoment(null);
+  }, []);
+
+  const handleShowAllMoments = useCallback(() => {
+    setShowAllMoments(true);
+  }, []);
+
+  const handleSelectMomentFromList = useCallback((moment: Moment) => {
+    setShowAllMoments(false);
+    setActiveMoment(moment);
+  }, []);
+
+  const handleNewMoment = useCallback(() => {
+    setShowCreateMoment(true);
+  }, []);
+
+  const [momentError, setMomentError] = useState<string | null>(null);
+
+  const handleCreateMomentSubmit = useCallback(async (objective: string) => {
+    setMomentError(null);
+    const moment = await createNewMoment(objective, memories);
+    setShowCreateMoment(false);
+    if (moment) {
+      setActiveMoment(moment);
+    } else {
+      setMomentError('Failed to create moment. Please check your connection and try again.');
+      setTimeout(() => setMomentError(null), 5000);
+    }
+  }, [createNewMoment, memories]);
 
   const handleFullRefresh = useCallback(async () => {
       await refreshMemories();
@@ -194,6 +269,10 @@ const AppContent: React.FC = () => {
     const handleBackButton = ({ canGoBack }: { canGoBack: boolean }) => {
       if (viewingGallery) {
         setViewingGallery(null);
+      } else if (activeMoment) {
+        setActiveMoment(null);
+      } else if (showAllMoments) {
+        setShowAllMoments(false);
       } else if (expandedMemory) {
         setExpandedMemory(null);
       } else if (isSettingsOpen) {
@@ -218,7 +297,7 @@ const AppContent: React.FC = () => {
       // Since addListener is async in some versions, but usually returns PluginListenerHandle
       listener.then(handle => handle.remove()).catch(e => console.error(e));
     };
-  }, [viewingGallery, expandedMemory, isSettingsOpen, editingMemory, isCaptureOpen, view, handleCaptureClose, handleEditClose]);
+  }, [viewingGallery, expandedMemory, isSettingsOpen, editingMemory, isCaptureOpen, view, activeMoment, showAllMoments, handleCaptureClose, handleEditClose]);
 
   useEffect(() => {
     if (shareData) {
@@ -447,7 +526,15 @@ const AppContent: React.FC = () => {
             isOtaDownloading={isOtaDownloading}
           />
 
-          <FilterBar 
+          <MomentsStrip
+            moments={moments}
+            synthesesMap={synthesesMap}
+            onMomentTap={handleMomentTap}
+            onNewMoment={handleNewMoment}
+            onShowAll={handleShowAllMoments}
+          />
+
+          <FilterBar
             availableTypes={availableTypes}
             filterType={filterType}
             setFilterType={handleSetFilterType}
@@ -552,6 +639,37 @@ const AppContent: React.FC = () => {
               reconcileReport={reconcileReport}
           />
         </Suspense>
+      )}
+
+      {activeMoment && (
+        <MomentSheet
+          moment={activeMoment}
+          memories={memories}
+          onClose={handleMomentClose}
+          loadSynthesis={loadSynthesis}
+          onDelete={deleteMoment}
+        />
+      )}
+
+      <MomentCreationDialog
+        isOpen={showCreateMoment}
+        isCreating={momentCreating}
+        onClose={() => setShowCreateMoment(false)}
+        onCreate={handleCreateMomentSubmit}
+      />
+
+      {showAllMoments && (
+        <AllMomentsSheet
+          moments={moments}
+          onClose={() => setShowAllMoments(false)}
+          onSelectMoment={handleSelectMomentFromList}
+        />
+      )}
+
+      {momentError && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[200] bg-red-900/90 border border-red-700/50 text-red-200 px-4 py-3 rounded-xl text-sm font-medium shadow-lg animate-in fade-in slide-in-from-top-2 duration-300 max-w-sm text-center backdrop-blur-md">
+          {momentError}
+        </div>
       )}
 
       {isOtaDownloading && (

@@ -1,4 +1,5 @@
-import { EnrichmentData, Memory, Attachment, ChatMessage } from '../types.ts';
+
+import { EnrichmentData, Memory, Attachment, ChatMessage, Moment, SynthesisResponse } from '../types.ts';
 import { postProxy } from './proxyService.ts';
 
 export interface QuerySource {
@@ -11,12 +12,20 @@ export interface QueryResponse {
   sources: QuerySource[];
 }
 
+export interface CreateMomentResponse {
+  title: string;
+  type: string;
+  usedNoteIds: string[];
+  synthesis: SynthesisResponse;
+}
+
 interface EnrichmentInput {
   text: string;
   attachments: Attachment[];
   location?: { latitude: number; longitude: number };
   tags: string[];
   memoryId?: string;
+  moments?: { id: string; objective: string }[];
 }
 
 interface SubmitEnrichmentResponse {
@@ -28,13 +37,15 @@ interface SubmitEnrichmentResponse {
  * The server validates the request, persists a "processing" status,
  * and returns 200 { status: "accepted" } immediately. Enrichment
  * happens asynchronously — poll with fetchPendingEnrichments().
+ * Optionally includes moments metadata for moment-matching phase.
  */
 export const submitEnrichment = async (
   text: string,
   attachments: Attachment[],
   location?: { latitude: number; longitude: number },
   tags: string[] = [],
-  memoryId?: string
+  memoryId?: string,
+  moments?: { id: string; objective: string }[]
 ): Promise<void> => {
   const payload: EnrichmentInput = {
     text,
@@ -42,6 +53,7 @@ export const submitEnrichment = async (
     location,
     tags,
     memoryId,
+    moments,
   };
 
   const result = await postProxy<SubmitEnrichmentResponse>('/api/enrich', payload as unknown as Record<string, unknown>);
@@ -122,8 +134,69 @@ interface QueryPayload {
 const MAX_QUERY_MEMORIES = 200;
 
 /**
+ * Creates a new moment by sending the user's objective and all notes to the server.
+ * The server uses Gemini to select relevant notes and build an initial synthesis.
+ */
+export const createMoment = async (
+  objective: string,
+  memories: Memory[]
+): Promise<CreateMomentResponse> => {
+  const lightNotes = memories
+    .filter(m => !m.isPending && !m.processingError && !m.isDeleted && !m.isSample)
+    .map(m => ({
+      id: m.id,
+      content: m.content,
+      tags: m.tags,
+      enrichment: m.enrichment
+        ? {
+            summary: m.enrichment.summary,
+            locationContext: m.enrichment.locationContext,
+            entityContext: m.enrichment.entityContext,
+          }
+        : undefined,
+    }));
+
+  const result = await postProxy<CreateMomentResponse>('/api/create-moment', {
+    objective,
+    notes: lightNotes,
+  }, { timeout: 90000 });
+  return result;
+};
+
+/**
+ * Re-synthesizes a moment when new notes have been added.
+ */
+export const synthesizeMoment = async (
+  moment: Moment,
+  memories: Memory[]
+): Promise<SynthesisResponse> => {
+  const notes = moment.noteIds
+    .map(id => memories.find(m => m.id === id))
+    .filter((m): m is Memory => !!m)
+    .map(m => ({
+      id: m.id,
+      content: m.content,
+      tags: m.tags,
+      enrichment: m.enrichment
+        ? {
+            summary: m.enrichment.summary,
+            locationContext: m.enrichment.locationContext,
+            entityContext: m.enrichment.entityContext,
+          }
+        : undefined,
+    }));
+
+  const result = await postProxy<SynthesisResponse>('/api/synthesize', {
+    notes,
+    momentType: moment.type,
+    momentTitle: moment.title,
+    objective: moment.objective,
+  }, { timeout: 90000 });
+  return result;
+};
+
+/**
  * Sends a query + memory context to the server proxy for AI-powered recall.
- * The server owns the API key and decides which model to use.
  */
 export const queryBrain = async (
   query: string,

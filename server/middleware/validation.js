@@ -70,6 +70,14 @@ export const validateEnrichInput = (req, res, next) => {
     }
   }
 
+  const { moments } = req.body;
+  if (moments !== undefined) {
+    if (!Array.isArray(moments))
+      return res.status(400).json({ error: 'moments must be an array' });
+    if (moments.length > 50)
+      return res.status(400).json({ error: 'Too many moments (max 50)' });
+  }
+
   next();
 };
 
