@@ -47,6 +47,7 @@ const applyMomentResult = async (
       title: data.title || pendingMoment.title,
       type: (data.type || 'general') as MomentType,
       emoji: data.emoji || undefined,
+      refinedObjective: data.refinedObjective || undefined,
       noteIds: mergedNoteIds,
       isPending: false,
       processingError: false,

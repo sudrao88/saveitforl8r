@@ -18,6 +18,7 @@ export interface CreateMomentResponse {
   emoji?: string;
   usedNoteIds: string[];
   synthesis: SynthesisResponse;
+  refinedObjective?: string;
 }
 
 interface EnrichmentInput {
@@ -26,7 +27,7 @@ interface EnrichmentInput {
   location?: { latitude: number; longitude: number };
   tags: string[];
   memoryId?: string;
-  moments?: { id: string; objective: string; title: string; type: string }[];
+  moments?: { id: string; objective: string; refinedObjective?: string; title: string; type: string }[];
 }
 
 interface SubmitEnrichmentResponse {
@@ -46,7 +47,7 @@ export const submitEnrichment = async (
   location?: { latitude: number; longitude: number },
   tags: string[] = [],
   memoryId?: string,
-  moments?: { id: string; objective: string; title: string; type: string }[]
+  moments?: { id: string; objective: string; refinedObjective?: string; title: string; type: string }[]
 ): Promise<void> => {
   const payload: EnrichmentInput = {
     text,
