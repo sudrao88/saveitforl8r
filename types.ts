@@ -164,6 +164,7 @@ export interface Moment {
   objective: string;              // User's intention, e.g. "build an itinerary for my Singapore trip"
   title: string;                  // Short display title (AI-generated or derived from objective)
   type: MomentType;               // AI-inferred from objective during creation
+  emoji?: string;                 // AI-generated emoji representing the moment's content
   noteIds: string[];              // Notes used in the latest synthesis
   createdAt: number;
   updatedAt: number;

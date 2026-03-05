@@ -15,6 +15,7 @@ export interface QueryResponse {
 export interface CreateMomentResponse {
   title: string;
   type: string;
+  emoji?: string;
   usedNoteIds: string[];
   synthesis: SynthesisResponse;
 }

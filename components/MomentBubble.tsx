@@ -62,7 +62,7 @@ const MomentBubble: React.FC<MomentBubbleProps> = ({
   const isPending = moment.isPending;
   const hasError = moment.processingError;
 
-  const icon = getMomentIcon(moment.type, moment.objective);
+  const icon = moment.emoji || getMomentIcon(moment.type, moment.objective);
   const label = isPending
     ? truncateLabel(moment.objective, 10)
     : truncateLabel(moment.title);
