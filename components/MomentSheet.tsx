@@ -23,6 +23,7 @@ import {
   SynthesisItem,
   Memory,
 } from '../types';
+import MemoryCard from './MemoryCard';
 
 // Shared shell for all sheet states (pending, error, normal)
 const SheetShell: React.FC<{
@@ -75,6 +76,7 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(false);
   const [completedItems, setCompletedItems] = useState<Set<string>>(new Set());
+  const [previewMemoryId, setPreviewMemoryId] = useState<string | null>(null);
 
   // Build a lookup map for source note citations
   const memoriesMap = useMemo(() => {
@@ -84,6 +86,18 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
     }
     return map;
   }, [memories]);
+
+  const previewMemory = previewMemoryId ? memoriesMap.get(previewMemoryId) : undefined;
+
+  // Close preview modal on Escape key
+  useEffect(() => {
+    if (!previewMemoryId) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPreviewMemoryId(null);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [previewMemoryId]);
 
   // Keep refs to latest props so the effect always uses current values
   const momentRef = useRef(moment);
@@ -269,6 +283,7 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
                     completedItems={completedItems}
                     onToggleComplete={toggleItemComplete}
                     memoriesMap={memoriesMap}
+                    onPreviewNote={setPreviewMemoryId}
                   />
                 ))}
               </div>
@@ -296,6 +311,29 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
           )}
         </div>
       </div>
+
+      {/* Memory Preview Modal */}
+      {previewMemory && (
+        <div
+          className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
+          onClick={() => setPreviewMemoryId(null)}
+        >
+          <div className="relative w-full max-w-lg max-h-[80vh] flex flex-col animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+            <div className="overflow-y-auto flex-1 min-h-0">
+              <MemoryCard
+                memory={previewMemory}
+                isDialog={true}
+              />
+            </div>
+            <button
+              onClick={() => setPreviewMemoryId(null)}
+              className="mt-4 w-full py-3 bg-gray-800 text-white rounded-xl font-bold shadow-xl border border-gray-700 text-sm active:scale-95 shrink-0"
+            >
+              Close Preview
+            </button>
+          </div>
+        </div>
+      )}
     </SheetShell>
   );
 };
@@ -308,7 +346,8 @@ const SectionView: React.FC<{
   completedItems: Set<string>;
   onToggleComplete: (key: string) => void;
   memoriesMap: Map<string, Memory>;
-}> = ({ section, sectionIndex, completedItems, onToggleComplete, memoriesMap }) => (
+  onPreviewNote: (id: string) => void;
+}> = ({ section, sectionIndex, completedItems, onToggleComplete, memoriesMap, onPreviewNote }) => (
   <div>
     <h3 className="text-base font-bold text-gray-200 mb-3 flex items-center gap-2">
       <div className="w-1.5 h-1.5 bg-blue-500 rounded-full" />
@@ -327,6 +366,7 @@ const SectionView: React.FC<{
             completable={item.completable !== false}
             onToggle={() => onToggleComplete(key)}
             sourceMemory={item.sourceNoteId ? memoriesMap.get(item.sourceNoteId) : undefined}
+            onPreviewNote={item.sourceNoteId ? () => onPreviewNote(item.sourceNoteId!) : undefined}
           />
         );
       })}
@@ -336,9 +376,15 @@ const SectionView: React.FC<{
 
 // --- Item Component ---
 
+function stripHtml(html: string): string {
+  if (!html) return '';
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  return (doc.body.textContent || '').replace(/\s+/g, ' ').trim();
+}
+
 function truncateCitation(text: string, max: number = 60): string {
   if (!text) return '';
-  const cleaned = text.replace(/\n+/g, ' ').trim();
+  const cleaned = stripHtml(text);
   return cleaned.length > max ? cleaned.slice(0, max - 1) + '…' : cleaned;
 }
 
@@ -348,7 +394,8 @@ const ItemView: React.FC<{
   completable: boolean;
   onToggle: () => void;
   sourceMemory?: Memory;
-}> = ({ item, isCompleted, completable, onToggle, sourceMemory }) => (
+  onPreviewNote?: () => void;
+}> = ({ item, isCompleted, completable, onToggle, sourceMemory, onPreviewNote }) => (
   <div
     className={`flex items-start gap-3 p-3 rounded-xl border transition-all ${
       isCompleted
@@ -385,12 +432,15 @@ const ItemView: React.FC<{
       )}
       {/* Source note citation */}
       {sourceMemory && (
-        <div className="flex items-center gap-1.5 mt-1.5">
-          <FileText size={10} className="text-gray-500 shrink-0" />
-          <span className="text-[10px] text-gray-500 truncate">
+        <button
+          onClick={(e) => { e.stopPropagation(); onPreviewNote?.(); }}
+          className="flex items-center gap-1.5 mt-1.5 group/cite hover:opacity-80 transition-opacity text-left"
+        >
+          <FileText size={10} className="text-gray-500 shrink-0 group-hover/cite:text-blue-400" />
+          <span className="text-[10px] text-gray-500 truncate group-hover/cite:text-blue-400">
             {truncateCitation(sourceMemory.content)}
           </span>
-        </div>
+        </button>
       )}
     </div>
     {item.link && (
