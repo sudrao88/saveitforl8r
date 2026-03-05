@@ -141,7 +141,7 @@ export const useEnrichmentPolling = ({
         if (outcome) {
           setMemories(prev => prev.map(m => m.id === memory.id ? outcome.updated : m));
           if (outcome.action === 'completed') {
-            onEnrichmentComplete?.(outcome.updated);
+            onEnrichmentCompleteRef.current?.(outcome.updated);
           }
         }
       }
