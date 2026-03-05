@@ -89,6 +89,16 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
 
   const previewMemory = previewMemoryId ? memoriesMap.get(previewMemoryId) : undefined;
 
+  // Close preview modal on Escape key
+  useEffect(() => {
+    if (!previewMemoryId) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPreviewMemoryId(null);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [previewMemoryId]);
+
   // Keep refs to latest props so the effect always uses current values
   const momentRef = useRef(moment);
   const memoriesRef = useRef(memories);
@@ -368,17 +378,8 @@ const SectionView: React.FC<{
 
 function stripHtml(html: string): string {
   if (!html) return '';
-  // Remove HTML tags, decode common entities, collapse whitespace
-  return html
-    .replace(/<[^>]*>/g, ' ')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'")
-    .replace(/\s+/g, ' ')
-    .trim();
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  return (doc.body.textContent || '').replace(/\s+/g, ' ').trim();
 }
 
 function truncateCitation(text: string, max: number = 60): string {
