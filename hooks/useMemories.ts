@@ -119,11 +119,17 @@ export const useMemories = () => {
         syncFile(memory).catch(err => console.error("Sync failed:", err));
       }
       // Handle moment matching from enrichment results
-      if (memory.enrichment?.matchedMomentIds && memory.enrichment.matchedMomentIds.length > 0 && onNoteMatchedMomentsRef.current) {
-        for (const momentId of memory.enrichment.matchedMomentIds) {
-          onNoteMatchedMomentsRef.current(momentId, memory.id).catch(err =>
-            console.error(`[Moments] Failed to add note to moment ${momentId}:`, err)
-          );
+      const matched = memory.enrichment?.matchedMomentIds;
+      if (matched && matched.length > 0) {
+        console.log(`[Moments] Enrichment matched note ${memory.id} to moments:`, matched);
+        if (onNoteMatchedMomentsRef.current) {
+          for (const momentId of matched) {
+            onNoteMatchedMomentsRef.current(momentId, memory.id).catch(err =>
+              console.error(`[Moments] Failed to add note to moment ${momentId}:`, err)
+            );
+          }
+        } else {
+          console.warn(`[Moments] matchedMomentIds present but onNoteMatchedMomentsRef not set — notes not added to moments`);
         }
       }
     }, [authStatus, syncFile]),

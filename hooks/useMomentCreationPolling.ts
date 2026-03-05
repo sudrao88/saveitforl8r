@@ -35,11 +35,18 @@ const applyMomentResult = async (
   // Completed
   if (result?.status === 'completed' && result.data) {
     const data = result.data;
+    // Merge server-selected noteIds with any noteIds added by enrichment
+    // matching while the moment was still pending (race condition fix).
+    const mergedNoteIds = Array.from(new Set([
+      ...(data.usedNoteIds || []),
+      ...pendingMoment.noteIds,
+    ]));
+
     const updatedMoment: Moment = {
       ...pendingMoment,
       title: data.title || pendingMoment.title,
       type: (data.type || 'general') as MomentType,
-      noteIds: data.usedNoteIds || [],
+      noteIds: mergedNoteIds,
       isPending: false,
       processingError: false,
       updatedAt: Date.now(),
