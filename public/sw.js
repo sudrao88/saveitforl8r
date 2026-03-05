@@ -22,18 +22,15 @@ const PRECACHE_ASSETS = [
 let nativeAppContext = false;
 
 self.addEventListener('install', (event) => {
+  // Never auto-skipWaiting. The new SW waits until:
+  // 1. The user explicitly clicks "Update" (sends SKIP_WAITING message), or
+  // 2. All tabs using the old SW are closed and a new navigation occurs.
+  // This prevents interrupting the user mid-session with a forced reload.
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
         console.log('[SW] Pre-caching critical assets');
         return cache.addAll(PRECACHE_ASSETS);
-      })
-      .then(() => {
-        // In native app context, don't auto-skip - let user control updates
-        // In web context, skip waiting for seamless updates
-        if (!nativeAppContext) {
-          return self.skipWaiting();
-        }
       })
   );
 });
@@ -286,22 +283,43 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (event.request.mode === 'navigate') {
-    event.respondWith(
-      fetch(event.request)
-        .then((networkResponse) => {
-          if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
-            return networkResponse;
-          }
-          const responseToCache = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(SCOPE + 'index.html', responseToCache);
+    // Cache-first for navigation: serve cached shell instantly, revalidate in background.
+    // This ensures the app launches immediately on slow/offline networks.
+    // Always fetch the canonical app shell URL to prevent cache poisoning —
+    // arbitrary navigation URLs must never overwrite the cached index.html.
+    const shellUrl = SCOPE + 'index.html';
+
+    const backgroundRevalidation = fetch(shellUrl)
+      .then((networkResponse) => {
+        if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
+          return caches.open(CACHE_NAME).then((cache) => {
+            return cache.put(shellUrl, networkResponse.clone());
           });
-          return networkResponse;
-        })
-        .catch((err) => {
-           console.log('[SW] Network fetch failed, falling back to cache:', err);
-           return caches.match(SCOPE + 'index.html');
-        })
+        }
+      })
+      .catch((err) => {
+        console.log('[SW] Background revalidation failed:', err);
+      });
+
+    // Keep SW alive until background revalidation completes
+    event.waitUntil(backgroundRevalidation);
+
+    event.respondWith(
+      caches.match(shellUrl).then((cachedResponse) => {
+        if (cachedResponse) {
+          return cachedResponse;
+        }
+
+        // No cache yet (first install) — must wait for network
+        return backgroundRevalidation.then(() => {
+          return caches.match(shellUrl);
+        }).then((response) => {
+          return response || new Response('Offline — please connect to the internet for initial setup.', {
+            status: 503,
+            headers: { 'Content-Type': 'text/plain' }
+          });
+        });
+      })
     );
     return;
   }
