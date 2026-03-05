@@ -9,7 +9,7 @@
  * so the server can authenticate the caller and rate limit per account.
  */
 
-import { getStoredToken } from './tokenService';
+import { getValidToken } from './googleAuth';
 
 const getProxyUrl = (): string => {
   const url = import.meta.env.VITE_PROXY_URL;
@@ -21,13 +21,13 @@ const getProxyUrl = (): string => {
 };
 
 /**
- * Retrieve the current Google OAuth access token.
- * Returns null if the user is not authenticated.
+ * Retrieve a valid (non-expired) Google OAuth access token.
+ * Automatically refreshes the token if it's within 60 seconds of expiration.
+ * Returns null if the user is not authenticated or refresh fails.
  */
 const getAccessToken = async (): Promise<string | null> => {
   try {
-    const token = await getStoredToken('access_token');
-    return token || null;
+    return await getValidToken();
   } catch {
     return null;
   }
