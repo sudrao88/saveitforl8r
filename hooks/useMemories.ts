@@ -8,6 +8,14 @@ import { useAuth } from './useAuth';
 import { useEnrichmentPolling } from './useEnrichmentPolling';
 import { storage } from '../services/platform';
 
+/** Builds the lightweight moments metadata array sent with enrichment requests. */
+const buildMomentsMeta = (moments: Moment[]) => {
+  const active = moments
+    .filter(m => !m.isDeleted)
+    .map(m => ({ id: m.id, objective: m.objective, refinedObjective: m.refinedObjective, title: m.title, type: m.type }));
+  return active.length > 0 ? active : undefined;
+};
+
 // Module-level lock to prevent concurrent sample seeding
 let seedingPromise: Promise<Memory[]> | null = null;
 
@@ -237,10 +245,6 @@ export const useMemories = () => {
             });
         }
 
-        const momentsMeta = momentsRef.current
-          .filter(m => !m.isDeleted)
-          .map(m => ({ id: m.id, objective: m.objective, refinedObjective: m.refinedObjective, title: m.title, type: m.type }));
-
         // Submit enrichment — only set isPending after the server confirms receipt
         await submitEnrichment(
             memory.content,
@@ -248,7 +252,7 @@ export const useMemories = () => {
             memory.location,
             memory.tags,
             memory.id,
-            momentsMeta.length > 0 ? momentsMeta : undefined
+            buildMomentsMeta(momentsRef.current)
         );
 
         // Server accepted (200) — now show "Enriching..." and poll for results
@@ -296,11 +300,7 @@ export const useMemories = () => {
       trySyncFile(newMemory);  // Sync immediately on save, before enrichment
 
       // 3. Submit enrichment to server with moments metadata
-      const momentsMeta = momentsRef.current
-        .filter(m => !m.isDeleted)
-        .map(m => ({ id: m.id, objective: m.objective, refinedObjective: m.refinedObjective, title: m.title, type: m.type }));
-
-      submitEnrichment(text, attachments, location, tags, memoryId, momentsMeta.length > 0 ? momentsMeta : undefined)
+      submitEnrichment(text, attachments, location, tags, memoryId, buildMomentsMeta(momentsRef.current))
         .then(async () => {
             // Server accepted (200) — now show "Enriching..." and start polling
             const current = await getMemory(memoryId);
@@ -400,11 +400,8 @@ export const useMemories = () => {
 
       // Submit enrichment with moments metadata — show "Enriching..." only after the server confirms receipt
       console.log(`[Update] Submitting enrichment for ${id}`);
-      const momentsMeta = momentsRef.current
-        .filter(m => !m.isDeleted)
-        .map(m => ({ id: m.id, objective: m.objective, refinedObjective: m.refinedObjective, title: m.title, type: m.type }));
 
-      submitEnrichment(text, attachments, updatedMemory.location, tags, id, momentsMeta.length > 0 ? momentsMeta : undefined)
+      submitEnrichment(text, attachments, updatedMemory.location, tags, id, buildMomentsMeta(momentsRef.current))
         .then(async () => {
             // Server accepted (200) — now show "Enriching..." and start polling
             const current = await getMemory(id);
