@@ -285,29 +285,35 @@ self.addEventListener('fetch', (event) => {
   if (event.request.mode === 'navigate') {
     // Cache-first for navigation: serve cached shell instantly, revalidate in background.
     // This ensures the app launches immediately on slow/offline networks.
-    event.respondWith(
-      caches.match(SCOPE + 'index.html').then((cachedResponse) => {
-        // Always revalidate in background regardless of cache hit
-        const networkFetch = fetch(event.request)
-          .then((networkResponse) => {
-            if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
-              const responseToCache = networkResponse.clone();
-              caches.open(CACHE_NAME).then((cache) => {
-                cache.put(SCOPE + 'index.html', responseToCache);
-              });
-            }
-            return networkResponse;
-          })
-          .catch((err) => {
-            console.log('[SW] Background revalidation failed:', err);
-          });
+    // Always fetch the canonical app shell URL to prevent cache poisoning —
+    // arbitrary navigation URLs must never overwrite the cached index.html.
+    const shellUrl = SCOPE + 'index.html';
 
+    const backgroundRevalidation = fetch(shellUrl)
+      .then((networkResponse) => {
+        if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
+          return caches.open(CACHE_NAME).then((cache) => {
+            return cache.put(shellUrl, networkResponse.clone());
+          });
+        }
+      })
+      .catch((err) => {
+        console.log('[SW] Background revalidation failed:', err);
+      });
+
+    // Keep SW alive until background revalidation completes
+    event.waitUntil(backgroundRevalidation);
+
+    event.respondWith(
+      caches.match(shellUrl).then((cachedResponse) => {
         if (cachedResponse) {
           return cachedResponse;
         }
 
         // No cache yet (first install) — must wait for network
-        return networkFetch.then((response) => {
+        return backgroundRevalidation.then(() => {
+          return caches.match(shellUrl);
+        }).then((response) => {
           return response || new Response('Offline — please connect to the internet for initial setup.', {
             status: 503,
             headers: { 'Content-Type': 'text/plain' }
