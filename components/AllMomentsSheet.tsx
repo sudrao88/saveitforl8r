@@ -43,7 +43,7 @@ const AllMomentsSheet: React.FC<AllMomentsSheetProps> = ({
               className="w-full text-left p-4 bg-gray-800/50 border border-gray-700/50 rounded-xl hover:border-gray-600/50 transition-all active:scale-[0.98] flex items-center gap-4"
             >
               <div className="w-12 h-12 rounded-full bg-gray-700/50 flex items-center justify-center text-xl shrink-0">
-                {getMomentIcon(moment.type, moment.objective)}
+                {moment.emoji || getMomentIcon(moment.type, moment.objective)}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-semibold text-gray-200 truncate">

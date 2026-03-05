@@ -114,6 +114,10 @@ const createMomentResponseSchema = {
       type: Type.STRING,
       description: "The moment type: one of 'itinerary', 'brief', 'list', 'dashboard', 'curriculum', 'gift-guide', 'meal-plan', or 'general'.",
     },
+    emoji: {
+      type: Type.STRING,
+      description: 'A single emoji that best represents the content and theme of this moment. Be specific and creative — e.g. use 🇸🇬 for Singapore travel, 🍕 for pizza restaurants, 🏋️ for fitness goals.',
+    },
     usedNoteIds: {
       type: Type.ARRAY,
       items: { type: Type.STRING },
@@ -159,7 +163,7 @@ const createMomentResponseSchema = {
       required: ['format', 'title', 'sections', 'generatedFrom'],
     },
   },
-  required: ['title', 'type', 'usedNoteIds', 'synthesis'],
+  required: ['title', 'type', 'emoji', 'usedNoteIds', 'synthesis'],
 };
 
 const synthesisResponseSchema = {
