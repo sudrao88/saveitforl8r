@@ -277,7 +277,7 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
           // Moment matching phase (non-fatal)
           if (moments && Array.isArray(moments) && moments.length > 0) {
             try {
-              const matchResult = await performMomentMatching(ai, FALLBACK_MODEL_NAME, GEMINI_TIMEOUT_MS, req.requestId, text, tags, sanitized, moments);
+              const matchResult = await performMomentMatching(ai, MODEL_NAME, GEMINI_TIMEOUT_MS, req.requestId, text, tags, sanitized, moments);
               sanitized.matchedMomentIds = matchResult;
             } catch (matchErr) {
               console.error(`[Enrich] [${req.requestId}] Moment matching failed (non-fatal):`, matchErr.message);
@@ -319,7 +319,7 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
           // Moment matching phase (non-fatal)
           if (moments && Array.isArray(moments) && moments.length > 0) {
             try {
-              const matchResult = await performMomentMatching(ai, FALLBACK_MODEL_NAME, GEMINI_TIMEOUT_MS, req.requestId, text, tags, sanitizedFallback, moments);
+              const matchResult = await performMomentMatching(ai, MODEL_NAME, GEMINI_TIMEOUT_MS, req.requestId, text, tags, sanitizedFallback, moments);
               sanitizedFallback.matchedMomentIds = matchResult;
             } catch (matchErr) {
               console.error(`[Enrich] [${req.requestId}] Moment matching failed (non-fatal):`, matchErr.message);
