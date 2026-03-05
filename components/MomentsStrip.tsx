@@ -6,7 +6,7 @@
  */
 
 import React from 'react';
-import { Plus, ChevronRight } from 'lucide-react';
+import { Sparkles, ChevronRight } from 'lucide-react';
 import MomentBubble from './MomentBubble';
 import { Moment, MomentSynthesis } from '../types';
 
@@ -34,10 +34,10 @@ const MomentsStrip: React.FC<MomentsStripProps> = ({
           className="flex flex-col items-center gap-1.5 shrink-0 group touch-manipulation"
         >
           <div className="w-16 h-16 rounded-full flex items-center justify-center bg-blue-600/20 border-2 border-dashed border-blue-500/50 transition-all group-hover:border-blue-400 group-hover:bg-blue-600/30 group-active:scale-95">
-            <Plus size={24} className="text-blue-400" />
+            <Sparkles size={22} className="text-blue-400" />
           </div>
           <span className="text-[11px] font-semibold text-blue-400 leading-tight text-center">
-            New
+            Synthesize
           </span>
         </button>
 
