@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { isNative } from '../services/platform';
 
 export const useServiceWorker = () => {
@@ -6,6 +6,9 @@ export const useServiceWorker = () => {
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
   const [appVersion, setAppVersion] = useState<string>('');
+  // Track whether the user explicitly triggered the update so we only
+  // reload the page in response to their action, never spontaneously.
+  const userTriggeredUpdate = useRef(false);
 
   useEffect(() => {
     // Skip service worker on native - Capacitor handles asset serving
@@ -56,10 +59,12 @@ export const useServiceWorker = () => {
         console.log('SW registration failed: ', registrationError);
       });
 
-      // Handle controller change (reload)
+      // Only reload when the user explicitly clicked "Update".
+      // Without this guard, any background SW activation (e.g. from
+      // another tab) would yank the page out from under the user.
       let refreshing = false;
       navigator.serviceWorker.addEventListener('controllerchange', () => {
-          if (!refreshing) {
+          if (!refreshing && userTriggeredUpdate.current) {
               refreshing = true;
               window.location.reload();
           }
@@ -79,6 +84,7 @@ export const useServiceWorker = () => {
 
   const updateApp = () => {
       if (waitingWorker) {
+          userTriggeredUpdate.current = true;
           waitingWorker.postMessage({ type: 'SKIP_WAITING' });
       }
   };
