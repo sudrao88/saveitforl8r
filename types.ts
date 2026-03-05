@@ -162,6 +162,7 @@ export type MomentType =
 export interface Moment {
   id: string;                     // crypto.randomUUID(), stable across devices
   objective: string;              // User's intention, e.g. "build an itinerary for my Singapore trip"
+  refinedObjective?: string;      // AI-refined objective from intent refinement step (more detailed/specific)
   title: string;                  // Short display title (AI-generated or derived from objective)
   type: MomentType;               // AI-inferred from objective during creation
   emoji?: string;                 // AI-generated emoji representing the moment's content
