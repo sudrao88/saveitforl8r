@@ -662,13 +662,15 @@ const AppContent: React.FC = () => {
       {/* Spacer to push QuickNoteBar to bottom when content is hidden in focus mode */}
       {isFocusMode && <div className="flex-1" />}
 
-      {/* Quick Note Bar */}
-      <QuickNoteBar
-        ref={quickNoteBarRef}
-        onSave={handleQuickNoteSave}
-        onExpand={handleQuickNoteExpand}
-        onFocusChange={handleQuickNoteFocusChange}
-      />
+      {/* Quick Note Bar — hidden when synthesis dialog is open */}
+      {!showCreateMoment && (
+        <QuickNoteBar
+          ref={quickNoteBarRef}
+          onSave={handleQuickNoteSave}
+          onExpand={handleQuickNoteExpand}
+          onFocusChange={handleQuickNoteFocusChange}
+        />
+      )}
 
       {liveExpandedMemory && (
         <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-md flex flex-col animate-in fade-in duration-300">
