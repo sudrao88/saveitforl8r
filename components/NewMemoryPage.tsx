@@ -230,7 +230,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
 
 
   // Rich Text Formatting
-  const execFormat = (command: string, value?: string) => {
+  const execFormat = useCallback((command: string, value?: string) => {
       if (command === 'formatBlock') {
           const currentBlock = document.queryCommandValue('formatBlock');
           if (currentBlock.toLowerCase() === value?.toLowerCase()) {
@@ -243,7 +243,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
       }
       editorRef.current?.focus();
       checkFormats();
-  };
+  }, []);
 
   const checkFormats = () => {
       const formats: string[] = [];
@@ -266,7 +266,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
 
   const handleFormat = useCallback((command: string, value?: string) => {
     execFormat(command, value);
-  }, []);
+  }, [execFormat]);
 
   // Toggle Checklist Mode
   const toggleChecklistMode = () => {
@@ -418,6 +418,21 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
     }
     handleCloseConfirmed();
   };
+
+  // Keyboard shortcut: ⌘+Enter or Ctrl+Enter to save
+  const handleSubmitRef = useRef(handleSubmit);
+  handleSubmitRef.current = handleSubmit;
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        e.preventDefault();
+        handleSubmitRef.current();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   const hasContent = !isEmpty || attachments.length > 0 || (isChecklistMode && checklistItems.some(item => item.text.trim()));
 
