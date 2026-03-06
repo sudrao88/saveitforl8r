@@ -125,15 +125,13 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
     if (!vv) return;
 
     const updateKeyboardHeight = () => {
-      const kbHeight = window.innerHeight - vv.height - vv.offsetTop;
+      const kbHeight = window.innerHeight - vv.height;
       setKeyboardHeight(Math.max(0, kbHeight));
     };
 
     vv.addEventListener('resize', updateKeyboardHeight);
-    vv.addEventListener('scroll', updateKeyboardHeight);
     return () => {
       vv.removeEventListener('resize', updateKeyboardHeight);
-      vv.removeEventListener('scroll', updateKeyboardHeight);
     };
   }, []);
 
