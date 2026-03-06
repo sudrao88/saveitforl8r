@@ -5,6 +5,13 @@ import { Memory } from '../types';
 
 const ENRICHMENT_TIMEOUT_MS = 120_000;
 
+/** Poll every 1s during the initial fast-polling tier. */
+const FAST_POLL_INTERVAL_MS = 1_000;
+/** Poll every 2s after the fast tier expires. */
+const SLOW_POLL_INTERVAL_MS = 2_000;
+/** Duration of the fast-polling tier (first 15 seconds). */
+const FAST_POLL_TIER_MS = 15_000;
+
 /**
  * Applies an enrichment poll result to a single memory.
  * Returns the updated memory if a change was made, or null otherwise.
@@ -107,14 +114,14 @@ export const useEnrichmentPolling = ({
       const stillPending = memoriesRef.current.filter(m => m.isPending && !m.isSample);
       if (stillPending.length > 0 && pollingActiveRef.current) {
         const elapsed = Date.now() - pollingStartTime;
-        const nextDelay = elapsed < 15_000 ? 1_000 : 2_000;
+        const nextDelay = elapsed < FAST_POLL_TIER_MS ? FAST_POLL_INTERVAL_MS : SLOW_POLL_INTERVAL_MS;
         setTimeout(poll, nextDelay);
       } else {
         pollingActiveRef.current = false;
       }
     };
 
-    setTimeout(poll, 1_000);
+    setTimeout(poll, FAST_POLL_INTERVAL_MS);
   }, [memoriesRef, setMemories]);
 
   /**
