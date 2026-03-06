@@ -523,7 +523,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
 
         {/* Sticky bottom card */}
         <div
-          className="shrink-0 px-3 pb-3 pt-1 max-w-3xl mx-auto w-full"
+          className="shrink-0 px-3 pt-1 max-w-3xl mx-auto w-full"
           style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
         >
           <div className="bg-gray-900/95 backdrop-blur-xl border border-gray-700/50 rounded-2xl shadow-2xl shadow-black/40">
@@ -630,8 +630,17 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                     }`}
                     title={isEditMode ? "Update (⌘+Enter)" : "Add (⌘+Enter)"}
                 >
-                    {isProcessing ? <Loader2 size={18} className="animate-spin" /> : (isEditMode ? <Send size={18} /> : <Plus size={18} strokeWidth={3} />)}
-                    <span className="text-sm">{isProcessing ? (isEditMode ? 'Updating...' : 'Adding...') : (isEditMode ? 'Update' : 'Add')}</span>
+                    {isProcessing ? (
+                      <>
+                        <Loader2 size={18} className="animate-spin" />
+                        <span className="text-sm">{isEditMode ? 'Updating...' : 'Adding...'}</span>
+                      </>
+                    ) : (
+                      <>
+                        {isEditMode ? <Send size={18} /> : <Plus size={18} strokeWidth={3} />}
+                        <span className="text-sm">{isEditMode ? 'Update' : 'Add'}</span>
+                      </>
+                    )}
                 </button>
             </div>
           </div>
