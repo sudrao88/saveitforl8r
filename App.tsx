@@ -566,34 +566,40 @@ const AppContent: React.FC = () => {
      );
   }
 
+  const isFocusMode = quickNoteFocused || showCreateMoment;
+
   return (
     <div className="min-h-screen bg-black flex flex-col">
-      {/* Sticky top navigation */}
-      <div ref={topNavRef} className="sticky top-0 z-[50] bg-black/90 backdrop-blur-md border-b border-gray-800/50 pt-[env(safe-area-inset-top)]">
-          <TopNavigation
-            setView={handleSetView}
-            resetFilters={handleResetFilters}
-            onSettingsClick={handleSettingsClick}
-            updateAvailable={isUpdateAvailable}
-            onUpdateApp={handleUpdateApp}
-            syncError={!!syncError}
-            isSyncing={isSyncing}
-            modelStatus={modelStatus}
-            isOtaDownloading={isOtaDownloading}
-          />
-      </div>
+      {/* Sticky top navigation — hidden during focus mode */}
+      {!isFocusMode && (
+        <div ref={topNavRef} className="sticky top-0 z-[50] bg-black/90 backdrop-blur-md border-b border-gray-800/50 pt-[env(safe-area-inset-top)]">
+            <TopNavigation
+              setView={handleSetView}
+              resetFilters={handleResetFilters}
+              onSettingsClick={handleSettingsClick}
+              updateAvailable={isUpdateAvailable}
+              onUpdateApp={handleUpdateApp}
+              syncError={!!syncError}
+              isSyncing={isSyncing}
+              modelStatus={modelStatus}
+              isOtaDownloading={isOtaDownloading}
+            />
+        </div>
+      )}
 
-      {/* Moments strip - scrolls with page, disappears behind sticky top bar */}
-      <MomentsStrip
-        moments={moments}
-        synthesesMap={synthesesMap}
-        onMomentTap={handleMomentTap}
-        onNewMoment={handleNewMoment}
-        onShowAll={handleShowAllMoments}
-      />
+      {/* Moments strip — hidden during focus mode */}
+      {!isFocusMode && (
+        <MomentsStrip
+          moments={moments}
+          synthesesMap={synthesesMap}
+          onMomentTap={handleMomentTap}
+          onNewMoment={handleNewMoment}
+          onShowAll={handleShowAllMoments}
+        />
+      )}
 
-      {/* Sticky filter bar - sticks below the top navigation */}
-      {availableTypes.length > 0 && (
+      {/* Sticky filter bar — hidden during focus mode */}
+      {!isFocusMode && availableTypes.length > 0 && (
         <div className="sticky z-[49] bg-black/90 backdrop-blur-md border-b border-gray-800/50" style={{ top: `${topNavHeight}px` }}>
           <FilterBar
             availableTypes={availableTypes}
@@ -604,35 +610,38 @@ const AppContent: React.FC = () => {
         </div>
       )}
 
-      <main className="flex-1 p-4 sm:p-8 pb-24 max-w-7xl mx-auto w-full relative z-[40]">
-        {filteredMemories.length === 0 ? (
-          <EmptyState 
-            hasMemories={memories.length > 0} 
-            clearFilters={handleClearFiltersEmptyState} 
-          />
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {displayMemories.map(mem => (
-              <MemoryCard
-                key={mem.id}
-                memory={mem}
-                onDelete={handleDeleteMemory}
-                onRetry={handleRetryMemory}
-                onUpdate={updateMemoryContent}
-                onExpand={setExpandedMemory}
-                onViewAttachment={handleViewAttachment}
-                onTogglePin={handleTogglePin}
-                onEdit={handleEditMemory}
-                isAuthenticated={authStatus === 'linked'}
-                onSignIn={login}
-              />
-            ))}
-          </div>
-        )}
-      </main>
+      {/* Main content — hidden during focus mode */}
+      {!isFocusMode && (
+        <main className="flex-1 p-4 sm:p-8 pb-24 max-w-7xl mx-auto w-full relative z-[40]">
+          {filteredMemories.length === 0 ? (
+            <EmptyState
+              hasMemories={memories.length > 0}
+              clearFilters={handleClearFiltersEmptyState}
+            />
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              {displayMemories.map(mem => (
+                <MemoryCard
+                  key={mem.id}
+                  memory={mem}
+                  onDelete={handleDeleteMemory}
+                  onRetry={handleRetryMemory}
+                  onUpdate={updateMemoryContent}
+                  onExpand={setExpandedMemory}
+                  onViewAttachment={handleViewAttachment}
+                  onTogglePin={handleTogglePin}
+                  onEdit={handleEditMemory}
+                  isAuthenticated={authStatus === 'linked'}
+                  onSignIn={login}
+                />
+              ))}
+            </div>
+          )}
+        </main>
+      )}
 
-      {/* Focus overlay — shown when QuickNoteBar or MomentCreationDialog is active */}
-      {(quickNoteFocused || showCreateMoment) && (
+      {/* Focus overlay — blur background when QuickNoteBar or MomentCreationDialog is active */}
+      {isFocusMode && (
         <div
           className="fixed inset-0 z-[55] bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
           onClick={quickNoteFocused ? handleFocusOverlayClick : undefined}
