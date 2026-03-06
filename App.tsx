@@ -150,6 +150,17 @@ const AppContent: React.FC = () => {
 
   const [momentError, setMomentError] = useState<string | null>(null);
 
+  const ERROR_DISPLAY_DURATION = 5000;
+
+  useEffect(() => {
+    if (momentError) {
+      const timerId = setTimeout(() => {
+        setMomentError(null);
+      }, ERROR_DISPLAY_DURATION);
+      return () => clearTimeout(timerId);
+    }
+  }, [momentError]);
+
   const handleCreateMomentSubmit = useCallback(async (objective: string) => {
     setMomentError(null);
     const moment = await createNewMoment(objective, memories);
@@ -158,7 +169,6 @@ const AppContent: React.FC = () => {
       setActiveMoment(moment);
     } else {
       setMomentError('Failed to create moment. Please check your connection and try again.');
-      setTimeout(() => setMomentError(null), 5000);
     }
   }, [createNewMoment, memories]);
 
