@@ -218,21 +218,36 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
     const editor = editorRef.current;
     if (!editor) return;
     editor.focus();
-    const checklistHtml = '<ul class="checklist"><li>☐ </li></ul>';
-    document.execCommand('insertHTML', false, checklistHtml);
-    // Place cursor after the checkbox character
+
     const selection = window.getSelection();
-    if (selection) {
-      const items = editor.querySelectorAll('.checklist li');
-      const lastItem = items[items.length - 1];
-      if (lastItem) {
-        const range = document.createRange();
-        range.selectNodeContents(lastItem);
-        range.collapse(false);
-        selection.removeAllRanges();
-        selection.addRange(range);
-      }
+    if (!selection) return;
+
+    // Build checklist DOM nodes directly
+    const ul = document.createElement('ul');
+    ul.className = 'checklist';
+    const li = document.createElement('li');
+    li.textContent = '☐ ';
+    ul.appendChild(li);
+
+    // Insert at current cursor position using Range API
+    let range: Range;
+    if (selection.rangeCount > 0) {
+      range = selection.getRangeAt(0);
+      range.deleteContents();
+    } else {
+      range = document.createRange();
+      range.selectNodeContents(editor);
+      range.collapse(false);
     }
+    range.insertNode(ul);
+
+    // Place cursor at end of the new list item
+    const cursorRange = document.createRange();
+    cursorRange.selectNodeContents(li);
+    cursorRange.collapse(false);
+    selection.removeAllRanges();
+    selection.addRange(cursorRange);
+
     setIsEmpty(false);
   }, []);
 
@@ -243,139 +258,139 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
       className="sticky bottom-0 z-[60] px-3 pb-3 pt-1"
       style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
     >
-    <div className="bg-gray-900/95 backdrop-blur-xl border border-gray-700/50 rounded-2xl shadow-2xl shadow-black/40">
-      {/* Attachment previews */}
-      {attachments.length > 0 && (
-        <div className="px-4 pt-3 pb-1">
-          <div className="flex gap-2 overflow-x-auto no-scrollbar">
-            {attachments.map((att) => (
-              <div key={att.id} className="relative shrink-0 animate-in zoom-in-90 duration-200">
-                {att.type === 'image' ? (
-                  <div className="w-12 h-12 rounded-xl overflow-hidden border border-gray-700 bg-black/50">
-                    <img src={att.data} alt="preview" className="w-full h-full object-cover" />
-                  </div>
-                ) : (
-                  <div className="w-12 h-12 rounded-xl border border-gray-700 bg-gray-800/50 flex flex-col items-center justify-center">
-                    <FileText size={16} className="text-gray-400" />
-                    <span className="text-[8px] text-gray-500 w-full truncate px-1 text-center">{att.name}</span>
-                  </div>
-                )}
-                <button
-                  onClick={() => removeAttachment(att.id)}
-                  className="absolute -top-1.5 -right-1.5 bg-gray-800 text-gray-400 hover:text-red-400 border border-gray-600 rounded-full p-0.5 shadow-lg transition-colors active:scale-95"
-                >
-                  <X size={10} />
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Tag section */}
-      {showTags && (
-        <div className="px-4 pt-3 pb-1 animate-in slide-in-from-bottom-2 duration-200">
-          <TagInput tags={tags} onTagsChange={setTags} compact />
-        </div>
-      )}
-
-      {/* Formatting toolbar */}
-      {showFormatting && (
-        <div className="px-4 pt-3 pb-1 animate-in slide-in-from-bottom-2 duration-200">
-          <FormattingToolbar activeFormats={activeFormats} onFormat={execFormat} compact />
-        </div>
-      )}
-
-      {/* Text area */}
-      <div className="px-4 pt-3 relative">
-        <div
-          ref={editorRef}
-          contentEditable
-          className="w-full min-h-[1.5em] max-h-[6em] overflow-y-auto bg-gray-800 text-base text-white rounded-xl px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-blue-500/40 border border-gray-700 focus:border-gray-600 transition-colors prose prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-li:my-0 [&_h1]:text-xl [&_h1]:font-bold [&_h1]:my-1 [&_h2]:text-lg [&_h2]:font-bold [&_h2]:my-1 text-left touch-manipulation"
-          dir="ltr"
-          onKeyUp={checkFormats}
-          onMouseUp={checkFormats}
-          onInput={() => setIsEmpty(!editorRef.current?.innerText.trim())}
-          onPaste={handlePaste}
-          onKeyDown={handleKeyDown}
-          suppressContentEditableWarning
-        />
-        {isEmpty && (
-          <div className="absolute top-3 left-7 pointer-events-none text-gray-500 text-base py-2.5">
-            Type a note...
+      <div className="bg-gray-900/95 backdrop-blur-xl border border-gray-700/50 rounded-2xl shadow-2xl shadow-black/40">
+        {/* Attachment previews */}
+        {attachments.length > 0 && (
+          <div className="px-4 pt-3 pb-1">
+            <div className="flex gap-2 overflow-x-auto no-scrollbar">
+              {attachments.map((att) => (
+                <div key={att.id} className="relative shrink-0 animate-in zoom-in-90 duration-200">
+                  {att.type === 'image' ? (
+                    <div className="w-12 h-12 rounded-xl overflow-hidden border border-gray-700 bg-black/50">
+                      <img src={att.data} alt="preview" className="w-full h-full object-cover" />
+                    </div>
+                  ) : (
+                    <div className="w-12 h-12 rounded-xl border border-gray-700 bg-gray-800/50 flex flex-col items-center justify-center">
+                      <FileText size={16} className="text-gray-400" />
+                      <span className="text-[8px] text-gray-500 w-full truncate px-1 text-center">{att.name}</span>
+                    </div>
+                  )}
+                  <button
+                    onClick={() => removeAttachment(att.id)}
+                    className="absolute -top-1.5 -right-1.5 bg-gray-800 text-gray-400 hover:text-red-400 border border-gray-600 rounded-full p-0.5 shadow-lg transition-colors active:scale-95"
+                  >
+                    <X size={10} />
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
         )}
+
+        {/* Tag section */}
+        {showTags && (
+          <div className="px-4 pt-3 pb-1 animate-in slide-in-from-bottom-2 duration-200">
+            <TagInput tags={tags} onTagsChange={setTags} compact />
+          </div>
+        )}
+
+        {/* Formatting toolbar */}
+        {showFormatting && (
+          <div className="px-4 pt-3 pb-1 animate-in slide-in-from-bottom-2 duration-200">
+            <FormattingToolbar activeFormats={activeFormats} onFormat={execFormat} compact />
+          </div>
+        )}
+
+        {/* Text area */}
+        <div className="px-4 pt-3 relative">
+          <div
+            ref={editorRef}
+            contentEditable
+            className="w-full min-h-[1.5em] max-h-[6em] overflow-y-auto bg-gray-800 text-base text-white rounded-xl px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-blue-500/40 border border-gray-700 focus:border-gray-600 transition-colors prose prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-li:my-0 [&_h1]:text-xl [&_h1]:font-bold [&_h1]:my-1 [&_h2]:text-lg [&_h2]:font-bold [&_h2]:my-1 text-left touch-manipulation"
+            dir="ltr"
+            onKeyUp={checkFormats}
+            onMouseUp={checkFormats}
+            onInput={() => setIsEmpty(!editorRef.current?.innerText.trim())}
+            onPaste={handlePaste}
+            onKeyDown={handleKeyDown}
+            suppressContentEditableWarning
+          />
+          {isEmpty && (
+            <div className="absolute top-3 left-7 pointer-events-none text-gray-500 text-base py-2.5">
+              Type a note...
+            </div>
+          )}
+        </div>
+
+        {/* Button row */}
+        <div className="flex items-center gap-1 px-3 py-2">
+          {/* Left group */}
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="p-2.5 rounded-xl text-gray-400 hover:text-white hover:bg-gray-800 transition-colors active:scale-95"
+            title="Add attachment"
+          >
+            <Paperclip size={20} />
+          </button>
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileSelect}
+            className="hidden"
+            multiple
+            accept="image/*,.pdf,.txt,.md"
+          />
+
+          <button
+            onClick={() => setShowTags(prev => !prev)}
+            className={`p-2.5 rounded-xl transition-colors active:scale-95 ${showTags ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
+            title="Tags"
+          >
+            <Hash size={20} />
+          </button>
+
+          <button
+            onClick={() => setShowFormatting(prev => !prev)}
+            className={`p-2.5 rounded-xl transition-colors active:scale-95 ${showFormatting ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
+            title="Formatting"
+          >
+            <Type size={20} />
+          </button>
+
+          <button
+            onClick={insertChecklist}
+            className="p-2.5 rounded-xl text-gray-400 hover:text-white hover:bg-gray-800 transition-colors active:scale-95"
+            title="Add checklist"
+          >
+            <CheckSquare size={20} />
+          </button>
+
+          <button
+            onClick={handleExpand}
+            className="p-2.5 rounded-xl text-gray-400 hover:text-white hover:bg-gray-800 transition-colors active:scale-95"
+            title="Expand to full editor"
+          >
+            <Maximize2 size={20} />
+          </button>
+
+          {/* Spacer */}
+          <div className="flex-1" />
+
+          {/* Save CTA */}
+          <button
+            onClick={handleSave}
+            disabled={!hasContent || isSaving}
+            className={`p-2.5 rounded-xl transition-all active:scale-95 ${
+              hasContent && !isSaving
+                ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-900/30'
+                : 'bg-gray-800 text-gray-600 cursor-not-allowed'
+            }`}
+            title="Save note (⌘+Enter)"
+          >
+            {isSaving ? <Loader2 size={20} className="animate-spin" /> : <Plus size={20} strokeWidth={3} />}
+          </button>
+        </div>
       </div>
-
-      {/* Button row */}
-      <div className="flex items-center gap-1 px-3 py-2">
-        {/* Left group */}
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          className="p-2.5 rounded-xl text-gray-400 hover:text-white hover:bg-gray-800 transition-colors active:scale-95"
-          title="Add attachment"
-        >
-          <Paperclip size={20} />
-        </button>
-        <input
-          type="file"
-          ref={fileInputRef}
-          onChange={handleFileSelect}
-          className="hidden"
-          multiple
-          accept="image/*,.pdf,.txt,.md"
-        />
-
-        <button
-          onClick={() => setShowTags(prev => !prev)}
-          className={`p-2.5 rounded-xl transition-colors active:scale-95 ${showTags ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
-          title="Tags"
-        >
-          <Hash size={20} />
-        </button>
-
-        <button
-          onClick={() => setShowFormatting(prev => !prev)}
-          className={`p-2.5 rounded-xl transition-colors active:scale-95 ${showFormatting ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
-          title="Formatting"
-        >
-          <Type size={20} />
-        </button>
-
-        <button
-          onClick={insertChecklist}
-          className="p-2.5 rounded-xl text-gray-400 hover:text-white hover:bg-gray-800 transition-colors active:scale-95"
-          title="Add checklist"
-        >
-          <CheckSquare size={20} />
-        </button>
-
-        <button
-          onClick={handleExpand}
-          className="p-2.5 rounded-xl text-gray-400 hover:text-white hover:bg-gray-800 transition-colors active:scale-95"
-          title="Expand to full editor"
-        >
-          <Maximize2 size={20} />
-        </button>
-
-        {/* Spacer */}
-        <div className="flex-1" />
-
-        {/* Save CTA */}
-        <button
-          onClick={handleSave}
-          disabled={!hasContent || isSaving}
-          className={`p-2.5 rounded-xl transition-all active:scale-95 ${
-            hasContent && !isSaving
-              ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-900/30'
-              : 'bg-gray-800 text-gray-600 cursor-not-allowed'
-          }`}
-          title="Save note (⌘+Enter)"
-        >
-          {isSaving ? <Loader2 size={20} className="animate-spin" /> : <Plus size={20} strokeWidth={3} />}
-        </button>
-      </div>
-    </div>
     </div>
   );
 });
