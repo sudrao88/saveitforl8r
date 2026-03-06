@@ -319,7 +319,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
       className="sticky bottom-0 z-[60] px-3 pb-3 pt-1 lg:w-[34%] lg:mx-auto"
       style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
     >
-      <div className="bg-gray-900/95 backdrop-blur-xl border border-blue-500/30 rounded-2xl shadow-[0_-4px_30px_rgba(59,130,246,0.15),0_8px_32px_rgba(0,0,0,0.5)]">
+      <div className="bg-gray-900/95 backdrop-blur-xl border-2 border-blue-500/30 rounded-2xl shadow-[0_-4px_30px_rgba(59,130,246,0.15),0_8px_32px_rgba(0,0,0,0.5)]">
         {/* Attachment previews */}
         {attachments.length > 0 && (
           <div className="px-4 pt-3 pb-1">
