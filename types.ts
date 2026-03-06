@@ -138,7 +138,6 @@ export interface Memory {
   isDeleting?: boolean; // UI state for deletion animation
   processingError?: boolean;
   isDeleted?: boolean; // Persistent soft-delete flag for sync
-  isSample?: boolean; // Flag to exclude from sync
   isPinned?: boolean;
 }
 

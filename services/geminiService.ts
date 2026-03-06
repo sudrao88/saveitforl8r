@@ -154,7 +154,7 @@ export const submitMomentCreation = async (
   momentId: string,
 ): Promise<{ momentId: string }> => {
   const lightNotes = memories
-    .filter(m => !m.isPending && !m.processingError && !m.isDeleted && !m.isSample)
+    .filter(m => !m.isPending && !m.processingError && !m.isDeleted)
     .map(m => ({
       id: m.id,
       content: m.content,

@@ -2,11 +2,9 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { getMemories, deleteMemory, saveMemory, getMemory } from '../services/storageService';
 import { submitEnrichment } from '../services/geminiService';
 import { Memory, Attachment, Moment } from '../types';
-import { SAMPLE_MEMORIES } from '../services/sampleData';
 import { useSync } from './useSync';
 import { useAuth } from './useAuth';
 import { useEnrichmentPolling } from './useEnrichmentPolling';
-import { storage } from '../services/platform';
 
 /** Builds the lightweight moments metadata array sent with enrichment requests. */
 const buildMomentsMeta = (moments: Moment[]) => {
@@ -14,73 +12,6 @@ const buildMomentsMeta = (moments: Moment[]) => {
     .filter(m => !m.isDeleted)
     .map(m => ({ id: m.id, objective: m.objective, refinedObjective: m.refinedObjective, title: m.title, type: m.type }));
   return active.length > 0 ? active : undefined;
-};
-
-// Module-level lock to prevent concurrent sample seeding
-let seedingPromise: Promise<Memory[]> | null = null;
-
-// Sample memory IDs for idempotency check
-const SAMPLE_IDS = new Set(SAMPLE_MEMORIES.map(s => s.id));
-
-/**
- * Seeds sample memories atomically with proper locking.
- * Returns the seeded memories or existing samples if already present.
- */
-const seedSampleMemories = async (): Promise<Memory[]> => {
-  // If seeding is already in progress, wait for it
-  if (seedingPromise) {
-    console.log("[Samples] Seeding already in progress, waiting...");
-    return seedingPromise;
-  }
-
-  // Check if already initialized (double-check after acquiring "lock")
-  const alreadyInitialized = await storage.get('samples_initialized');
-  if (alreadyInitialized === 'true') {
-    console.log("[Samples] Already initialized (flag set)");
-    const loaded = await getMemories();
-    return loaded.filter(m => SAMPLE_IDS.has(m.id) && !m.isDeleted);
-  }
-
-  // Start seeding with a promise lock
-  seedingPromise = (async () => {
-    try {
-      // Set flag FIRST (optimistically) to prevent other calls from starting
-      await storage.set('samples_initialized', 'true');
-      console.log("[Samples] Seeding sample memories...");
-
-      // Check if any samples already exist (idempotency)
-      const existing = await getMemories();
-      const existingSampleIds = new Set(existing.filter(m => SAMPLE_IDS.has(m.id)).map(m => m.id));
-
-      // Only seed samples that don't exist yet
-      const samplesToSeed = SAMPLE_MEMORIES.filter(s => !existingSampleIds.has(s.id));
-
-      if (samplesToSeed.length === 0) {
-        console.log("[Samples] All samples already exist, skipping seeding");
-        return existing.filter(m => SAMPLE_IDS.has(m.id) && !m.isDeleted);
-      }
-
-      console.log(`[Samples] Seeding ${samplesToSeed.length} samples...`);
-
-      // Save all samples
-      for (const sample of samplesToSeed) {
-        await saveMemory(sample);
-      }
-
-      console.log("[Samples] Sample seeding complete");
-      return [...SAMPLE_MEMORIES];
-    } catch (error) {
-      // If seeding fails, clear the flag so it can be retried
-      console.error("[Samples] Seeding failed, clearing flag:", error);
-      await storage.remove('samples_initialized');
-      throw error;
-    } finally {
-      // Clear the lock
-      seedingPromise = null;
-    }
-  })();
-
-  return seedingPromise;
 };
 
 export const useMemories = () => {
@@ -147,18 +78,6 @@ export const useMemories = () => {
     try {
         const loaded = await getMemories();
         const activeMemories = loaded.filter(m => !m.isDeleted);
-
-        // Check if we need to seed samples
-        const samplesInitialized = await storage.get('samples_initialized');
-        const hasSampleMemories = loaded.some(m => SAMPLE_IDS.has(m.id));
-
-        if (!samplesInitialized && (loaded.length === 0 || !hasSampleMemories)) {
-            const seededSamples = await seedSampleMemories();
-            const nonSampleMemories = activeMemories.filter(m => !SAMPLE_IDS.has(m.id));
-            setMemories([...seededSamples, ...nonSampleMemories]);
-            return;
-        }
-
         setMemories(activeMemories);
     } catch (error) {
         console.error("Failed to refresh memories:", error);
@@ -180,7 +99,7 @@ export const useMemories = () => {
     if (isLoading || recoveryAttemptedRef.current) return;
     recoveryAttemptedRef.current = true;
 
-    const pendingMemories = memories.filter(m => m.isPending && !m.isSample);
+    const pendingMemories = memories.filter(m => m.isPending);
     if (pendingMemories.length === 0) return;
 
     console.log(`[Recovery] Found ${pendingMemories.length} pending memories, attempting recovery...`);
@@ -189,7 +108,7 @@ export const useMemories = () => {
 
   // Auto-start polling if there are pending memories (e.g., after recovery leaves some as "processing")
   useEffect(() => {
-    const hasPending = memories.some(m => m.isPending && !m.isSample);
+    const hasPending = memories.some(m => m.isPending);
     if (hasPending) {
       startPolling();
     }
@@ -414,7 +333,7 @@ export const useMemories = () => {
       if (authStatus === 'linked') sync();
 
       // Recover pending enrichments from server
-      const pendingItems = memoriesRef.current.filter(m => m.isPending && !m.isSample);
+      const pendingItems = memoriesRef.current.filter(m => m.isPending);
       if (pendingItems.length > 0) {
           console.log(`[Online-Recovery] Recovering ${pendingItems.length} pending items...`);
           await recoverPending(pendingItems);

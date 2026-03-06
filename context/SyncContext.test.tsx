@@ -329,18 +329,6 @@ describe('SyncContext', () => {
       );
     });
 
-    it('should skip sample memories', async () => {
-      const sampleMem = { id: 'sample-1', content: 'Sample', timestamp: 1000, tags: [], isSample: true };
-
-      const { result } = renderHook(() => useSync(), { wrapper });
-
-      await act(async () => {
-        await result.current.syncFile(sampleMem as any);
-      });
-
-      expect(driveService.uploadFile).not.toHaveBeenCalled();
-    });
-
     it('should skip pending memories', async () => {
       const pendingMem = { id: 'pending-1', content: 'Pending', timestamp: 1000, tags: [], isPending: true };
 
