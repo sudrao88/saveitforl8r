@@ -49,6 +49,8 @@ interface UseMomentsReturn {
   onMomentChanged?: (moment: Moment) => void;
   /** Set the sync callback */
   setOnMomentChanged: (cb: (moment: Moment) => void) => void;
+  /** Reload moments from IndexedDB (e.g. after sync) */
+  refreshMoments: () => Promise<void>;
 }
 
 export const useMoments = (memories: Memory[]): UseMomentsReturn => {
@@ -67,6 +69,15 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
 
   const setOnMomentChanged = useCallback((cb: (moment: Moment) => void) => {
     onMomentChangedRef.current = cb;
+  }, []);
+
+  const refreshMoments = useCallback(async () => {
+    try {
+      const loadedMoments = await getMoments();
+      setMomentsList(loadedMoments);
+    } catch (err) {
+      console.error('[Moments] Failed to refresh moments:', err);
+    }
   }, []);
 
   // Stable callback for moment creation polling
@@ -305,5 +316,6 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
     deleteMoment,
     synthesesMap,
     setOnMomentChanged,
+    refreshMoments,
   };
 };
