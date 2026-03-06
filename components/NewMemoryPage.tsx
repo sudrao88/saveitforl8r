@@ -523,9 +523,10 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
 
         {/* Sticky bottom card */}
         <div
-          className="shrink-0 bg-gray-900/95 backdrop-blur-xl border-t border-gray-700/50 shadow-2xl shadow-black/40 max-w-3xl mx-auto w-full"
+          className="shrink-0 px-3 pb-3 pt-1 max-w-3xl mx-auto w-full"
           style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
         >
+          <div className="bg-gray-900/95 backdrop-blur-xl border border-gray-700/50 rounded-2xl shadow-2xl shadow-black/40">
             {/* Attachment previews */}
             {attachments.length > 0 && (
                 <div className="px-4 pt-3 pb-1">
@@ -627,12 +628,13 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                             ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-900/30'
                             : 'bg-gray-800 text-gray-600 cursor-not-allowed'
                     }`}
-                    title="Save (⌘+Enter)"
+                    title={isEditMode ? "Update (⌘+Enter)" : "Add (⌘+Enter)"}
                 >
-                    {isProcessing ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
-                    <span className="text-sm">{isProcessing ? (isEditMode ? 'Updating...' : 'Saving...') : (isEditMode ? 'Update' : 'Save')}</span>
+                    {isProcessing ? <Loader2 size={18} className="animate-spin" /> : (isEditMode ? <Send size={18} /> : <Plus size={18} strokeWidth={3} />)}
+                    <span className="text-sm">{isProcessing ? (isEditMode ? 'Updating...' : 'Adding...') : (isEditMode ? 'Update' : 'Add')}</span>
                 </button>
             </div>
+          </div>
         </div>
 
         {/* Discard Changes Confirmation Dialog */}
