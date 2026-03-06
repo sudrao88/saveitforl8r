@@ -1,13 +1,13 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Send, Paperclip, FileText, X, Loader2, ArrowLeft, Bold, Italic, Underline, Heading1, Heading2, CheckSquare, Plus, AlertTriangle } from 'lucide-react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Send, Paperclip, Hash, Type, FileText, X, Loader2, ArrowLeft, CheckSquare, Plus, AlertTriangle } from 'lucide-react';
 import { marked } from 'marked';
 import { Attachment, Memory } from '../types';
 import { isNative } from '../services/platform';
 import { Keyboard } from '@capacitor/keyboard';
 import { escapeHtml, looksLikeMarkdown, sanitizePastedHtml, hasRichFormatting } from '../utils/editorUtils';
 import { processFileInputs } from '../utils/attachmentUtils';
-import { ToolbarButton } from './FormattingToolbar';
-import TagInput, { SUGGESTED_TAGS } from './TagInput';
+import FormattingToolbar from './FormattingToolbar';
+import TagInput from './TagInput';
 
 interface NewMemoryPageProps {
   onClose: () => void;
@@ -77,6 +77,10 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
   });
   const [activeFormats, setActiveFormats] = useState<string[]>([]);
   const [isEmpty, setIsEmpty] = useState(() => !getInitialContent());
+
+  // Bottom card panel toggles
+  const [showTags, setShowTags] = useState(false);
+  const [showFormatting, setShowFormatting] = useState(false);
 
   // For Rich Text Mode
   const editorRef = useRef<HTMLDivElement>(null);
@@ -226,7 +230,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
 
 
   // Rich Text Formatting
-  const execFormat = (command: string, value?: string) => {
+  const execFormat = useCallback((command: string, value?: string) => {
       if (command === 'formatBlock') {
           const currentBlock = document.queryCommandValue('formatBlock');
           if (currentBlock.toLowerCase() === value?.toLowerCase()) {
@@ -239,7 +243,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
       }
       editorRef.current?.focus();
       checkFormats();
-  };
+  }, []);
 
   const checkFormats = () => {
       const formats: string[] = [];
@@ -259,6 +263,10 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
   };
 
   const isFormatActive = (format: string) => activeFormats.includes(format);
+
+  const handleFormat = useCallback((command: string, value?: string) => {
+    execFormat(command, value);
+  }, [execFormat]);
 
   // Toggle Checklist Mode
   const toggleChecklistMode = () => {
@@ -411,6 +419,23 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
     handleCloseConfirmed();
   };
 
+  // Keyboard shortcut: ⌘+Enter or Ctrl+Enter to save
+  const handleSubmitRef = useRef(handleSubmit);
+  handleSubmitRef.current = handleSubmit;
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        e.preventDefault();
+        handleSubmitRef.current();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
+  const hasContent = !isEmpty || attachments.length > 0 || (isChecklistMode && checklistItems.some(item => item.text.trim()));
+
   return (
     <div className="fixed inset-0 bg-black flex flex-col z-50" dir="ltr">
         {/* Header */}
@@ -426,10 +451,9 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
             </div>
         </div>
 
-        <main className="flex-1 overflow-y-auto p-4 sm:p-8 max-w-3xl mx-auto w-full flex flex-col">
-
-            {/* Editor Area */}
-            <div className="min-h-[200px] flex-1 overflow-y-auto relative text-left order-1 mb-6" dir="ltr">
+        {/* Full-page editor area */}
+        <main className="flex-1 overflow-y-auto p-4 sm:p-8 max-w-3xl mx-auto w-full">
+            <div className="min-h-full relative text-left" dir="ltr">
                 {isChecklistMode ? (
                     <div className="space-y-3">
                         {checklistItems.map((item, index) => (
@@ -456,14 +480,14 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                                             removeChecklistItem(item.id);
                                         }
                                     }}
-                                    autoFocus={index === checklistItems.length - 1} 
+                                    autoFocus={index === checklistItems.length - 1}
                                     placeholder="List item..."
                                     className={`flex-1 bg-transparent text-lg text-white placeholder-gray-600 focus:outline-none border-b border-transparent focus:border-gray-700/50 pb-2 transition-all text-left ${item.checked ? 'line-through text-gray-500' : ''}`}
                                     dir="ltr"
                                 />
                             </div>
                         ))}
-                        <button 
+                        <button
                             onClick={() => addChecklistItem(checklistItems[checklistItems.length - 1]?.id)}
                             className="flex items-center gap-2 text-gray-500 hover:text-blue-400 mt-4 pl-1 transition-colors text-base font-medium py-2 active:text-blue-500"
                         >
@@ -475,7 +499,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                         <div
                             ref={editorRef}
                             contentEditable
-                            className="w-full min-h-[200px] bg-transparent text-lg text-white focus:outline-none prose prose-invert max-w-none 
+                            className="w-full min-h-[200px] bg-transparent text-lg text-white focus:outline-none prose prose-invert max-w-none
                             prose-p:my-2 prose-ul:my-2 prose-li:my-0
                             [&_h1]:text-3xl [&_h1]:font-bold [&_h1]:mt-4 [&_h1]:mb-2 [&_h1]:text-white
                             [&_h2]:text-2xl [&_h2]:font-bold [&_h2]:mt-3 [&_h2]:mb-2 [&_h2]:text-gray-100
@@ -495,107 +519,121 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                     </>
                 )}
             </div>
+        </main>
 
-            {/* Attachments Preview - MOVED ABOVE TOOLBAR */}
+        {/* Sticky bottom card */}
+        <div
+          className="shrink-0 bg-gray-900/95 backdrop-blur-xl border-t border-gray-700/50 shadow-2xl shadow-black/40 max-w-3xl mx-auto w-full"
+          style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+        >
+            {/* Attachment previews */}
             {attachments.length > 0 && (
-                <div className="flex gap-4 flex-wrap order-2 mb-6">
-                    {attachments.map((att) => (
-                        <div key={att.id} className="relative group animate-in zoom-in-90 duration-200">
-                            {att.type === 'image' ? (
-                                <div className="w-24 h-24 rounded-2xl overflow-hidden border border-gray-700 bg-black/50 shadow-lg">
-                                    <img src={att.data} alt="preview" className="w-full h-full object-cover" />
-                                </div>
-                            ) : (
-                                <div className="w-24 h-24 rounded-2xl border border-gray-700 bg-gray-800/50 flex flex-col items-center justify-center p-2 text-center shadow-lg">
-                                    <FileText size={24} className="text-gray-400 mb-2" />
-                                    <span className="text-[10px] text-gray-400 w-full truncate px-1">{att.name}</span>
-                                </div>
-                            )}
-                            <button 
-                                onClick={() => removeAttachment(att.id)}
-                                className="absolute -top-3 -right-3 bg-gray-800 text-gray-400 hover:text-red-400 border border-gray-600 rounded-full p-2 shadow-lg transition-colors active:scale-95"
-                            >
-                                <X size={16} />
-                            </button>
-                        </div>
-                    ))}
+                <div className="px-4 pt-3 pb-1">
+                    <div className="flex gap-2 overflow-x-auto no-scrollbar">
+                        {attachments.map((att) => (
+                            <div key={att.id} className="relative shrink-0 animate-in zoom-in-90 duration-200">
+                                {att.type === 'image' ? (
+                                    <div className="w-14 h-14 rounded-xl overflow-hidden border border-gray-700 bg-black/50">
+                                        <img src={att.data} alt="preview" className="w-full h-full object-cover" />
+                                    </div>
+                                ) : (
+                                    <div className="w-14 h-14 rounded-xl border border-gray-700 bg-gray-800/50 flex flex-col items-center justify-center">
+                                        <FileText size={18} className="text-gray-400" />
+                                        <span className="text-[8px] text-gray-500 w-full truncate px-1 text-center">{att.name}</span>
+                                    </div>
+                                )}
+                                <button
+                                    onClick={() => removeAttachment(att.id)}
+                                    className="absolute -top-1.5 -right-1.5 bg-gray-800 text-gray-400 hover:text-red-400 border border-gray-600 rounded-full p-0.5 shadow-lg transition-colors active:scale-95"
+                                >
+                                    <X size={10} />
+                                </button>
+                            </div>
+                        ))}
+                    </div>
                 </div>
             )}
 
-            {/* Toolbar Area - Inline, above tags */}
-            <div className="order-3 mb-4 shrink-0">
-                 <div className="flex flex-nowrap items-center gap-3 bg-gray-800/90 backdrop-blur-md p-2 rounded-2xl border border-gray-700/50 shadow-xl overflow-x-auto no-scrollbar">
-                    {/* Attachments Button */}
-                    <ToolbarButton onClick={() => fileInputRef.current?.click()} title="Add Attachment">
-                        <Paperclip size={20} />
-                    </ToolbarButton>
-                    <input
-                        type="file"
-                        ref={fileInputRef}
-                        onChange={handleFileSelect}
-                        className="hidden"
-                        multiple
-                        accept="image/*,.pdf,.txt,.md"
-                    />
+            {/* Tag section (expandable) */}
+            {showTags && (
+                <div className="px-4 pt-3 pb-1 animate-in slide-in-from-bottom-2 duration-200">
+                    <TagInput tags={tags} onTagsChange={setTags} compact />
+                </div>
+            )}
 
-                    <div className="w-px h-6 bg-gray-700/50 mx-1 shrink-0"></div>
+            {/* Formatting toolbar (expandable) */}
+            {showFormatting && !isChecklistMode && (
+                <div className="px-4 pt-3 pb-1 animate-in slide-in-from-bottom-2 duration-200">
+                    <FormattingToolbar activeFormats={activeFormats} onFormat={handleFormat} compact />
+                </div>
+            )}
 
-                    {/* Formatting Controls (Only in Normal Mode) */}
-                    {!isChecklistMode && (
-                        <>
-                            <ToolbarButton onClick={() => execFormat('bold')} title="Bold" isActive={isFormatActive('bold')}>
-                                <Bold size={20} />
-                            </ToolbarButton>
-                            <ToolbarButton onClick={() => execFormat('italic')} title="Italic" isActive={isFormatActive('italic')}>
-                                <Italic size={20} />
-                            </ToolbarButton>
-                            <ToolbarButton onClick={() => execFormat('underline')} title="Underline" isActive={isFormatActive('underline')}>
-                                <Underline size={20} />
-                            </ToolbarButton>
-                            <div className="w-px h-6 bg-gray-700/50 mx-1 shrink-0"></div>
-                            <ToolbarButton onClick={() => execFormat('formatBlock', 'H1')} title="Heading 1" isActive={isFormatActive('H1')}>
-                                <Heading1 size={20} />
-                            </ToolbarButton>
-                            <ToolbarButton onClick={() => execFormat('formatBlock', 'H2')} title="Heading 2" isActive={isFormatActive('H2')}>
-                                <Heading2 size={20} />
-                            </ToolbarButton>
-                            <div className="w-px h-6 bg-gray-700/50 mx-1 shrink-0"></div>
-                        </>
-                    )}
+            {/* Button row */}
+            <div className="flex items-center gap-1 px-3 py-2">
+                <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileSelect}
+                    className="hidden"
+                    multiple
+                    accept="image/*,.pdf,.txt,.md"
+                />
 
-                    {/* Checklist Toggle */}
-                    <ToolbarButton onClick={toggleChecklistMode} title="Checklist Mode" isActive={isChecklistMode}>
-                        <CheckSquare size={20} />
-                    </ToolbarButton>
-                 </div>
+                {/* Attachment */}
+                <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="p-2.5 rounded-xl text-gray-400 hover:text-white hover:bg-gray-800 transition-colors active:scale-95"
+                    title="Add attachment"
+                >
+                    <Paperclip size={20} />
+                </button>
+
+                {/* Tags toggle */}
+                <button
+                    onClick={() => setShowTags(prev => !prev)}
+                    className={`p-2.5 rounded-xl transition-colors active:scale-95 ${showTags ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
+                    title="Tags"
+                >
+                    <Hash size={20} />
+                </button>
+
+                {/* Formatting toggle */}
+                <button
+                    onClick={() => setShowFormatting(prev => !prev)}
+                    className={`p-2.5 rounded-xl transition-colors active:scale-95 ${showFormatting ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
+                    title="Formatting"
+                >
+                    <Type size={20} />
+                </button>
+
+                {/* Checklist toggle */}
+                <button
+                    onClick={toggleChecklistMode}
+                    className={`p-2.5 rounded-xl transition-colors active:scale-95 ${isChecklistMode ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
+                    title="Checklist Mode"
+                >
+                    <CheckSquare size={20} />
+                </button>
+
+                {/* Spacer */}
+                <div className="flex-1" />
+
+                {/* Save button */}
+                <button
+                    onClick={handleSubmit}
+                    disabled={!hasContent || isProcessing}
+                    className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold transition-all active:scale-95 ${
+                        hasContent && !isProcessing
+                            ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-900/30'
+                            : 'bg-gray-800 text-gray-600 cursor-not-allowed'
+                    }`}
+                    title="Save (⌘+Enter)"
+                >
+                    {isProcessing ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
+                    <span className="text-sm">{isProcessing ? (isEditMode ? 'Updating...' : 'Saving...') : (isEditMode ? 'Update' : 'Save')}</span>
+                </button>
             </div>
-
-            <div className="pt-4 order-4 pb-4">
-               <hr className="border-gray-800 mb-6" />
-
-               {/* Tags Interface */}
-               <TagInput tags={tags} onTagsChange={setTags} />
-
-               <hr className="border-gray-800 my-6" />
-
-               {/* Save Button */}
-               <div className="flex justify-end pt-2 pb-6">
-                  <button
-                      onClick={handleSubmit}
-                      disabled={isProcessing}
-                      className={`flex items-center justify-center gap-3 px-8 py-4 rounded-2xl font-bold transition-all shadow-lg w-full sm:w-auto text-lg
-                          ${isProcessing
-                              ? 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700'
-                              : 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-900/20 active:scale-95'
-                          }`}
-                  >
-                      {isProcessing ? <Loader2 size={24} className="animate-spin" /> : <Send size={24} />}
-                      {isProcessing ? (isEditMode ? 'Updating...' : 'Saving...') : (isEditMode ? 'Update Memory' : 'Save Memory')}
-                  </button>
-               </div>
-            </div>
-        </main>
-
+        </div>
 
         {/* Discard Changes Confirmation Dialog */}
         {showDiscardConfirm && (
