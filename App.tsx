@@ -144,8 +144,18 @@ const AppContent: React.FC = () => {
   }, []);
 
   const handleNewMoment = useCallback(() => {
+    if (authStatus !== 'linked') {
+      setMomentError('Please log in to create a moment.');
+      setTimeout(() => setMomentError(null), 5000);
+      return;
+    }
+    if (memories.length === 0) {
+      setMomentError('You don\'t have any notes yet. Save some notes first, then come back to create a synthesis!');
+      setTimeout(() => setMomentError(null), 5000);
+      return;
+    }
     setShowCreateMoment(true);
-  }, []);
+  }, [authStatus, memories.length]);
 
   const [momentError, setMomentError] = useState<string | null>(null);
 
