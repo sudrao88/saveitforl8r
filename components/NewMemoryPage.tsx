@@ -1,9 +1,13 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Send, Paperclip, FileText, X, Tag as TagIcon, Loader2, ArrowLeft, Bold, Italic, Underline, Heading1, Heading2, CheckSquare, Plus, AlertTriangle } from 'lucide-react';
+import { Send, Paperclip, FileText, X, Loader2, ArrowLeft, Bold, Italic, Underline, Heading1, Heading2, CheckSquare, Plus, AlertTriangle } from 'lucide-react';
 import { marked } from 'marked';
 import { Attachment, Memory } from '../types';
 import { isNative } from '../services/platform';
 import { Keyboard } from '@capacitor/keyboard';
+import { escapeHtml, looksLikeMarkdown, sanitizePastedHtml, hasRichFormatting } from '../utils/editorUtils';
+import { processFileInputs } from '../utils/attachmentUtils';
+import { ToolbarButton } from './FormattingToolbar';
+import TagInput, { SUGGESTED_TAGS } from './TagInput';
 
 interface NewMemoryPageProps {
   onClose: () => void;
@@ -23,112 +27,14 @@ interface NewMemoryPageProps {
   initialContent?: {
     text: string;
     attachments: Attachment[];
+    tags?: string[];
     checkClipboard?: boolean;
   };
   editMemory?: Memory;
 }
 
-const SUGGESTED_TAGS = ["Book", "Restaurant", "Place to Visit", "Movie", "Podcast", "Stuff"];
-
-const escapeHtml = (text: string): string =>
-    text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-
-/** Heuristically detect whether plain text contains markdown formatting. */
-const looksLikeMarkdown = (text: string): boolean => {
-    return [
-        /^#{1,6}\s/m,            // Headings: # text
-        /\*\*[^*]+\*\*/,         // Bold: **text**
-        /__[^_]+__/,             // Bold: __text__
-        /(?<!\*)\*(?!\s)[^*]+(?<!\s)\*(?!\*)/,  // Italic: *text*
-        /^[-*+]\s/m,             // Unordered lists: - item
-        /^\d+\.\s/m,             // Ordered lists: 1. item
-        /\[[^\]]+\]\([^)]+\)/,   // Links: [text](url)
-        /^>/m,                   // Blockquotes: > text
-        /`[^`]+`/,               // Inline code: `code`
-        /^```/m,                 // Code blocks: ```
-    ].some(pattern => pattern.test(text));
-};
-
-const ALLOWED_TAGS = new Set([
-    'P', 'BR', 'B', 'STRONG', 'I', 'EM', 'U', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
-    'UL', 'OL', 'LI', 'A', 'BLOCKQUOTE', 'PRE', 'CODE', 'DIV', 'SPAN',
-    'S', 'STRIKE', 'DEL', 'SUB', 'SUP', 'TABLE', 'THEAD', 'TBODY', 'TR', 'TH', 'TD',
-]);
-
-const SAFE_URL_PROTOCOLS = /^(https?:|mailto:|tel:)/i;
-
-/** Sanitize pasted HTML: keep structural formatting, strip styles & unwanted elements. */
-const sanitizePastedHtml = (html: string): string => {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, 'text/html');
-
-    const cleanNode = (node: Node): Node | null => {
-        if (node.nodeType === Node.TEXT_NODE) return node.cloneNode();
-        if (node.nodeType !== Node.ELEMENT_NODE) return null;
-
-        const el = node as Element;
-        if (['SCRIPT', 'STYLE', 'META', 'LINK'].includes(el.tagName)) return null;
-
-        let newEl: Element;
-        if (ALLOWED_TAGS.has(el.tagName)) {
-            newEl = document.createElement(el.tagName);
-            if (el.tagName === 'A') {
-                const href = el.getAttribute('href') || '';
-                if (SAFE_URL_PROTOCOLS.test(href)) {
-                    newEl.setAttribute('href', href);
-                    newEl.setAttribute('target', '_blank');
-                    newEl.setAttribute('rel', 'noopener noreferrer');
-                }
-                // Unsafe protocols (javascript:, data:, etc.) are silently dropped
-            }
-        } else {
-            newEl = document.createElement('span');
-        }
-
-        for (const child of el.childNodes) {
-            const cleaned = cleanNode(child);
-            if (cleaned) newEl.appendChild(cleaned);
-        }
-        return newEl;
-    };
-
-    const fragment = document.createDocumentFragment();
-    for (const child of doc.body.childNodes) {
-        const cleaned = cleanNode(child);
-        if (cleaned) fragment.appendChild(cleaned);
-    }
-
-    const container = document.createElement('div');
-    container.appendChild(fragment);
-    return container.innerHTML;
-};
-
-/** Check whether HTML contains meaningful structural formatting beyond plain text. */
-const hasRichFormatting = (html: string): boolean => {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, 'text/html');
-    return doc.body.querySelectorAll(
-        'b, strong, i, em, u, h1, h2, h3, h4, h5, h6, ul, ol, li, a, blockquote, pre, code, table, s, strike, del'
-    ).length > 0;
-};
-
 // Configure marked for clean output with line-break support
 marked.setOptions({ breaks: true, gfm: true });
-
-const ToolbarButton: React.FC<{
-  onClick: () => void;
-  title: string;
-  isActive?: boolean;
-  children: React.ReactNode;
-}> = ({ onClick, title, isActive = false, children }) => (
-  <button
-    onClick={onClick}
-    className={`p-2.5 rounded-xl transition-colors active:scale-95 shrink-0 ${isActive ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`}
-    title={title}
-  >
-    {children}
-  </button>
-);
 
 const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpdate, initialContent, editMemory }) => {
   const isEditMode = !!editMemory;
@@ -142,6 +48,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
 
   const getInitialTags = (): string[] => {
     if (editMemory?.tags) return [...editMemory.tags];
+    if (initialContent?.tags) return [...initialContent.tags];
     return [];
   };
 
@@ -153,7 +60,6 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
 
   const [attachments, setAttachments] = useState<Attachment[]>(getInitialAttachments);
   const [tags, setTags] = useState<string[]>(getInitialTags);
-  const [tagInput, setTagInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
 
@@ -308,27 +214,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      const files = Array.from(e.target.files);
-      const newAttachments: Attachment[] = [];
-
-      for (const file of files) {
-        const reader = new FileReader();
-        const result = await new Promise<string>((resolve) => {
-          reader.onload = (evt) => resolve(evt.target?.result as string);
-          reader.readAsDataURL(file);
-        });
-
-        const type = file.type.startsWith('image/') ? 'image' : 'file';
-        
-        newAttachments.push({
-          id: crypto.randomUUID(),
-          type,
-          mimeType: file.type,
-          data: result,
-          name: file.name
-        });
-      }
-      
+      const newAttachments = await processFileInputs(e.target.files);
       setAttachments(prev => [...prev, ...newAttachments]);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
@@ -338,24 +224,6 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
     setAttachments(prev => prev.filter(a => a.id !== id));
   };
 
-  const handleAddTag = () => {
-    if (tagInput.trim() && !tags.includes(tagInput.trim())) {
-      setTags([...tags, tagInput.trim()]);
-      setTagInput('');
-    }
-  };
-
-  const toggleTag = (tag: string) => {
-    if (tags.includes(tag)) {
-      setTags(tags.filter(t => t !== tag));
-    } else {
-      setTags([...tags, tag]);
-    }
-  };
-
-  const removeTag = (tag: string) => {
-    setTags(tags.filter(t => t !== tag));
-  };
 
   // Rich Text Formatting
   const execFormat = (command: string, value?: string) => {
@@ -529,7 +397,6 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
   const handleCloseConfirmed = () => {
     setChecklistItems([]);
     setTags([]);
-    setTagInput('');
     setIsProcessing(false);
     setShowDiscardConfirm(false);
     onClose();
@@ -707,49 +574,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                <hr className="border-gray-800 mb-6" />
 
                {/* Tags Interface */}
-               <div className="space-y-4">
-                  <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Tags</h3>
-                  <div className="flex flex-wrap items-center gap-2">
-                      {tags.map(tag => (
-                          <span key={tag} className="bg-blue-500/10 text-blue-400 border border-blue-500/20 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 animate-in fade-in">
-                              #{tag}
-                              <button onClick={() => removeTag(tag)} className="hover:text-blue-200 p-1 -m-1"><X size={16} /></button>
-                          </span>
-                      ))}
-                      <div className="flex items-center gap-2 bg-gray-800/50 px-4 py-2 rounded-2xl border border-gray-700/50 focus-within:border-blue-500/50 focus-within:bg-gray-800 transition-all">
-                          <TagIcon size={18} className="text-gray-500" />
-                          <input 
-                              type="text" 
-                              value={tagInput}
-                              onChange={(e) => setTagInput(e.target.value)}
-                              onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
-                                      e.preventDefault();
-                                      handleAddTag();
-                                  }
-                              }}
-                              onBlur={handleAddTag} 
-                              placeholder="Add custom tag..."
-                              className="bg-transparent text-sm text-white placeholder-gray-500 focus:outline-none min-w-[120px] py-1"
-                          />
-                      </div>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                      {SUGGESTED_TAGS.map(tag => {
-                          const isSelected = tags.includes(tag);
-                          if (isSelected) return null;
-                          return (
-                              <button
-                                  key={tag}
-                                  onClick={() => toggleTag(tag)}
-                                  className="px-4 py-2 rounded-full text-xs font-bold bg-gray-800 text-gray-400 border border-gray-700 hover:border-gray-500 hover:text-gray-200 transition-all active:scale-95"
-                              >
-                                  + {tag}
-                              </button>
-                          );
-                      })}
-                  </div>
-               </div>
+               <TagInput tags={tags} onTagsChange={setTags} />
 
                <hr className="border-gray-800 my-6" />
 

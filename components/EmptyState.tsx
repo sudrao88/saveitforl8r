@@ -30,12 +30,11 @@ const EmptyState: React.FC<EmptyStateProps> = ({ hasMemories, clearFilters }) =>
               SaveItForL8R organizes them for you.
             </p>
 
-            {/* Fun decorative element pointing to FAB */}
-            <div className="fixed bottom-28 right-8 sm:bottom-32 sm:right-24 z-10 animate-bounce pointer-events-none opacity-50 sm:opacity-100">
-                <svg width="100" height="100" viewBox="0 0 100 100" fill="none" className="text-gray-600 rotate-12 drop-shadow-sm">
-                    <path d="M20 20 C 50 20, 80 40, 90 90" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
-                    <path d="M90 90 L 65 80" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
-                    <path d="M90 90 L 100 65" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
+            {/* Decorative arrow pointing down to the quick note bar */}
+            <div className="animate-bounce pointer-events-none opacity-50">
+                <svg width="40" height="40" viewBox="0 0 40 40" fill="none" className="text-gray-600">
+                    <path d="M20 8 L20 30" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                    <path d="M12 24 L20 32 L28 24" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
             </div>
         </>

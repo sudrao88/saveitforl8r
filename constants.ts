@@ -52,5 +52,10 @@ export const ANALYTICS_EVENTS = {
     ACTION_LOGIN_SUCCESS: 'Login successful',
     ACTION_CALLBACK_FAILED: 'Callback processing failed',
     ACTION_LOGOUT: 'Logout',
-  }
+  },
+  QUICK_NOTE: {
+    CATEGORY: 'QuickNote',
+    ACTION_SAVED: 'Saved',
+    ACTION_EXPANDED: 'Expanded',
+  },
 } as const;
