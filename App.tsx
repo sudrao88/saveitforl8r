@@ -63,6 +63,7 @@ const AppContent: React.FC = () => {
   const [showAllMoments, setShowAllMoments] = useState(false);
   const [showCreateMoment, setShowCreateMoment] = useState(false);
   const [quickNoteExpandState, setQuickNoteExpandState] = useState<QuickNoteState | null>(null);
+  const [quickNoteFocused, setQuickNoteFocused] = useState(false);
   const quickNoteBarRef = useRef<QuickNoteBarHandle>(null);
 
   const { updateAvailable, updateApp, appVersion } = useServiceWorker();
@@ -428,6 +429,18 @@ const AppContent: React.FC = () => {
     logEvent(ANALYTICS_EVENTS.QUICK_NOTE.CATEGORY, ANALYTICS_EVENTS.QUICK_NOTE.ACTION_SAVED);
   }, [createMemory]);
 
+  const handleQuickNoteFocusChange = useCallback((focused: boolean) => {
+    setQuickNoteFocused(focused);
+  }, []);
+
+  const handleFocusOverlayClick = useCallback(() => {
+    // Blur the active element to dismiss the keyboard and remove focus
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+    setQuickNoteFocused(false);
+  }, []);
+
   const handleQuickNoteExpand = useCallback((state: QuickNoteState) => {
     setQuickNoteExpandState(state);
     setIsCaptureOpen(true);
@@ -618,11 +631,21 @@ const AppContent: React.FC = () => {
         )}
       </main>
 
+      {/* Focus overlay — shown when QuickNoteBar or MomentCreationDialog is active */}
+      {(quickNoteFocused || showCreateMoment) && (
+        <div
+          className="fixed inset-0 z-[55] bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
+          onClick={quickNoteFocused ? handleFocusOverlayClick : undefined}
+          aria-hidden
+        />
+      )}
+
       {/* Quick Note Bar */}
       <QuickNoteBar
         ref={quickNoteBarRef}
         onSave={handleQuickNoteSave}
         onExpand={handleQuickNoteExpand}
+        onFocusChange={handleQuickNoteFocusChange}
       />
 
       {liveExpandedMemory && (
