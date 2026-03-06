@@ -160,6 +160,17 @@ const AppContent: React.FC = () => {
 
   const [momentError, setMomentError] = useState<string | null>(null);
 
+  const ERROR_DISPLAY_DURATION = 5000;
+
+  useEffect(() => {
+    if (momentError) {
+      const timerId = setTimeout(() => {
+        setMomentError(null);
+      }, ERROR_DISPLAY_DURATION);
+      return () => clearTimeout(timerId);
+    }
+  }, [momentError]);
+
   const handleCreateMomentSubmit = useCallback(async (objective: string) => {
     setMomentError(null);
     const moment = await createNewMoment(objective, memories);
@@ -168,7 +179,6 @@ const AppContent: React.FC = () => {
       setActiveMoment(moment);
     } else {
       setMomentError('Failed to create moment. Please check your connection and try again.');
-      setTimeout(() => setMomentError(null), 5000);
     }
   }, [createNewMoment, memories]);
 
@@ -659,13 +669,18 @@ const AppContent: React.FC = () => {
         />
       )}
 
-      {/* Quick Note Bar */}
-      <QuickNoteBar
-        ref={quickNoteBarRef}
-        onSave={handleQuickNoteSave}
-        onExpand={handleQuickNoteExpand}
-        onFocusChange={handleQuickNoteFocusChange}
-      />
+      {/* Spacer to push QuickNoteBar to bottom when content is hidden in focus mode */}
+      {isFocusMode && <div className="flex-1" />}
+
+      {/* Quick Note Bar — hidden when synthesis dialog is open */}
+      {!showCreateMoment && (
+        <QuickNoteBar
+          ref={quickNoteBarRef}
+          onSave={handleQuickNoteSave}
+          onExpand={handleQuickNoteExpand}
+          onFocusChange={handleQuickNoteFocusChange}
+        />
+      )}
 
       {liveExpandedMemory && (
         <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-md flex flex-col animate-in fade-in duration-300">
