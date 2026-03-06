@@ -38,6 +38,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
 
   const editorRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const focusItemIdRef = useRef<string | null>(null);
 
   useImperativeHandle(ref, () => ({
     focus: () => editorRef.current?.focus(),
@@ -275,9 +276,11 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
   }, []);
 
   const addChecklistItem = useCallback((afterId: string) => {
+    const newId = crypto.randomUUID();
+    focusItemIdRef.current = newId;
     setChecklistItems(prev => {
       const index = prev.findIndex(item => item.id === afterId);
-      const newItem = { id: crypto.randomUUID(), text: '', checked: false };
+      const newItem = { id: newId, text: '', checked: false };
       if (index === -1) return [...prev, newItem];
       const newItems = [...prev];
       newItems.splice(index + 1, 0, newItem);
@@ -291,6 +294,23 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
       return prev.filter(item => item.id !== id);
     });
   }, []);
+
+  const toggleChecklistItemChecked = useCallback((id: string) => {
+    setChecklistItems(prev => prev.map(i => i.id === id ? { ...i, checked: !i.checked } : i));
+  }, []);
+
+  // Focus the newly added checklist item
+  useEffect(() => {
+    if (focusItemIdRef.current) {
+      const id = focusItemIdRef.current;
+      focusItemIdRef.current = null;
+      // Use requestAnimationFrame to wait for DOM update
+      requestAnimationFrame(() => {
+        const input = document.querySelector<HTMLInputElement>(`[data-checklist-id="${id}"]`);
+        input?.focus();
+      });
+    }
+  }, [checklistItems]);
 
   const hasContent = !isEmpty || attachments.length > 0 || (isChecklistMode && checklistItems.some(item => item.text.trim()));
 
@@ -346,11 +366,11 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
         <div className="px-4 pt-3 relative">
           {isChecklistMode ? (
             <div className="w-full max-h-[10em] overflow-y-auto bg-gray-800 rounded-xl px-3 py-2.5 border border-gray-700 space-y-2">
-              {checklistItems.map((item, index) => (
+              {checklistItems.map((item) => (
                 <div key={item.id} className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2 duration-200">
                   <div
                     className="shrink-0 cursor-pointer p-0.5"
-                    onClick={() => setChecklistItems(prev => prev.map(i => i.id === item.id ? { ...i, checked: !i.checked } : i))}
+                    onClick={() => toggleChecklistItemChecked(item.id)}
                   >
                     <div className={`w-5 h-5 border-2 rounded-md flex items-center justify-center transition-colors ${item.checked ? 'border-blue-500 bg-blue-500/20' : 'border-gray-600'}`}>
                       {item.checked && <div className="w-2.5 h-2.5 bg-blue-500 rounded-sm" />}
@@ -359,22 +379,20 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
                   <input
                     type="text"
                     value={item.text}
+                    data-checklist-id={item.id}
                     onChange={(e) => updateChecklistItem(item.id, e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        addChecklistItem(item.id);
-                      }
-                      if (e.key === 'Backspace' && item.text === '' && checklistItems.length > 1) {
-                        e.preventDefault();
-                        removeChecklistItem(item.id);
-                      }
                       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                         e.preventDefault();
                         handleSave();
+                      } else if (e.key === 'Enter') {
+                        e.preventDefault();
+                        addChecklistItem(item.id);
+                      } else if (e.key === 'Backspace' && item.text === '' && checklistItems.length > 1) {
+                        e.preventDefault();
+                        removeChecklistItem(item.id);
                       }
                     }}
-                    autoFocus={index === checklistItems.length - 1}
                     placeholder="List item..."
                     className={`flex-1 bg-transparent text-base text-white placeholder-gray-600 focus:outline-none transition-all text-left ${item.checked ? 'line-through text-gray-500' : ''}`}
                     dir="ltr"
