@@ -13,6 +13,7 @@ marked.setOptions({ breaks: true, gfm: true });
 interface QuickNoteBarProps {
   onSave: (text: string, attachments: Attachment[], tags: string[]) => Promise<void>;
   onExpand: (state: QuickNoteState) => void;
+  onFocusChange?: (focused: boolean) => void;
 }
 
 export interface QuickNoteBarHandle {
@@ -25,7 +26,7 @@ interface ChecklistItem {
   checked: boolean;
 }
 
-const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave, onExpand }, ref) => {
+const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave, onExpand, onFocusChange }, ref) => {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [tags, setTags] = useState<string[]>([]);
   const [showTags, setShowTags] = useState(false);
@@ -39,6 +40,32 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
   const editorRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const focusItemIdRef = useRef<string | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const blurTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Track focus within the QuickNoteBar to notify parent for overlay
+  const handleContainerFocus = useCallback(() => {
+    if (blurTimeoutRef.current) {
+      clearTimeout(blurTimeoutRef.current);
+      blurTimeoutRef.current = null;
+    }
+    onFocusChange?.(true);
+  }, [onFocusChange]);
+
+  const handleContainerBlur = useCallback(() => {
+    // Delay blur to allow focus to move between child elements within the bar
+    blurTimeoutRef.current = setTimeout(() => {
+      if (containerRef.current && !containerRef.current.contains(document.activeElement)) {
+        onFocusChange?.(false);
+      }
+    }, 100);
+  }, [onFocusChange]);
+
+  useEffect(() => {
+    return () => {
+      if (blurTimeoutRef.current) clearTimeout(blurTimeoutRef.current);
+    };
+  }, []);
 
   useImperativeHandle(ref, () => ({
     focus: () => editorRef.current?.focus(),
@@ -316,8 +343,11 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
 
   return (
     <div
+      ref={containerRef}
       className="sticky bottom-0 z-[60] px-3 pb-3 pt-1 lg:w-[34%] lg:mx-auto"
       style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+      onFocus={handleContainerFocus}
+      onBlur={handleContainerBlur}
     >
       <div className="bg-gray-900/95 backdrop-blur-xl border-2 border-blue-500 rounded-2xl shadow-[0_-4px_30px_rgba(59,130,246,0.15),0_8px_32px_rgba(0,0,0,0.5)]">
         {/* Attachment previews */}
