@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { Paperclip, Hash, Type, Maximize2, Plus, X, FileText, Loader2 } from 'lucide-react';
 import { marked } from 'marked';
-import { Attachment } from '../types';
+import { Attachment, QuickNoteState } from '../types';
 import { escapeHtml, looksLikeMarkdown, sanitizePastedHtml, hasRichFormatting } from '../utils/editorUtils';
 import { processFileInputs } from '../utils/attachmentUtils';
 import FormattingToolbar from './FormattingToolbar';
@@ -12,7 +12,7 @@ marked.setOptions({ breaks: true, gfm: true });
 
 interface QuickNoteBarProps {
   onSave: (text: string, attachments: Attachment[], tags: string[]) => Promise<void>;
-  onExpand: (state: { content: string; attachments: Attachment[]; tags: string[] }) => void;
+  onExpand: (state: QuickNoteState) => void;
 }
 
 export interface QuickNoteBarHandle {
@@ -48,22 +48,42 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
     setActiveFormats(formats);
   }, []);
 
-  // Selection-based formatting on mobile: show toolbar when text is selected in the editor
+  // Selection-based formatting on mobile: show/hide toolbar based on text selection in the editor
   useEffect(() => {
-    const handleSelectionChange = () => {
-      const selection = window.getSelection();
-      if (!selection || selection.isCollapsed || !editorRef.current) return;
+    let debounceTimer: ReturnType<typeof setTimeout>;
 
-      // Check if selection is inside our editor
-      const anchorNode = selection.anchorNode;
-      if (anchorNode && editorRef.current.contains(anchorNode)) {
-        setShowFormatting(true);
-        checkFormats();
-      }
+    const handleSelectionChange = () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        const selection = window.getSelection();
+        if (!selection || !editorRef.current) return;
+
+        const anchorNode = selection.anchorNode;
+        const isInEditor = anchorNode && editorRef.current.contains(anchorNode);
+
+        if (!selection.isCollapsed && isInEditor) {
+          setShowFormatting(true);
+          checkFormats();
+        } else if (isInEditor && selection.isCollapsed) {
+          // Selection collapsed (cursor, no selection) — auto-hide on mobile only
+          // On desktop, the toolbar is toggled via the button so don't auto-hide
+          setShowFormatting(prev => {
+            // Keep visible if it was toggled via the button (desktop behavior)
+            // The button toggle sets it explicitly, selection-based is additive
+            return prev;
+          });
+        } else if (!isInEditor) {
+          // Selection moved outside editor — hide toolbar
+          setShowFormatting(false);
+        }
+      }, 50);
     };
 
     document.addEventListener('selectionchange', handleSelectionChange);
-    return () => document.removeEventListener('selectionchange', handleSelectionChange);
+    return () => {
+      clearTimeout(debounceTimer);
+      document.removeEventListener('selectionchange', handleSelectionChange);
+    };
   }, [checkFormats]);
 
   const execFormat = useCallback((command: string, value?: string) => {
@@ -164,9 +184,10 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
   }, []);
 
   const handleSave = useCallback(async () => {
-    const content = editorRef.current?.innerHTML || '';
-    if ((!content.trim() && attachments.length === 0) || isSaving) return;
+    const rawContent = editorRef.current?.innerHTML || '';
+    if ((!rawContent.trim() && attachments.length === 0) || isSaving) return;
 
+    const content = sanitizePastedHtml(rawContent);
     setIsSaving(true);
     try {
       await onSave(content, attachments, tags);
@@ -179,7 +200,8 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
   }, [attachments, tags, isSaving, onSave, resetState]);
 
   const handleExpand = useCallback(() => {
-    const content = editorRef.current?.innerHTML || '';
+    const rawContent = editorRef.current?.innerHTML || '';
+    const content = sanitizePastedHtml(rawContent);
     onExpand({ content, attachments, tags });
     resetState();
   }, [attachments, tags, onExpand, resetState]);

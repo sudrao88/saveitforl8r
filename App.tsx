@@ -45,8 +45,9 @@ import { useMoments } from './hooks/useMoments';
 import useNativeOTA from './hooks/useNativeOTA';
 import { SyncProvider } from './context/SyncContext';
 import { reconcileEmbeddings, ReconcileReport } from './services/storageService';
-import { ViewMode, Memory, Attachment, Moment } from './types';
+import { ViewMode, Memory, Attachment, Moment, QuickNoteState } from './types';
 import { initGA, logPageView, logEvent } from './services/analytics';
+import { escapeHtml } from './utils/editorUtils';
 
 import { ANALYTICS_EVENTS } from './constants';
 import { handleDeepLink } from './services/googleAuth';
@@ -61,11 +62,7 @@ const AppContent: React.FC = () => {
   const [activeMoment, setActiveMoment] = useState<Moment | null>(null);
   const [showAllMoments, setShowAllMoments] = useState(false);
   const [showCreateMoment, setShowCreateMoment] = useState(false);
-  const [quickNoteExpandState, setQuickNoteExpandState] = useState<{
-    content: string;
-    attachments: Attachment[];
-    tags: string[];
-  } | null>(null);
+  const [quickNoteExpandState, setQuickNoteExpandState] = useState<QuickNoteState | null>(null);
   const quickNoteBarRef = useRef<QuickNoteBarHandle>(null);
 
   const { updateAvailable, updateApp, appVersion } = useServiceWorker();
@@ -426,13 +423,13 @@ const AppContent: React.FC = () => {
 
   const handleQuickNoteSave = useCallback(async (text: string, attachments: Attachment[], tags: string[]) => {
     await createMemory(text, attachments, tags);
-    logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_CREATED, 'quick_note');
+    logEvent(ANALYTICS_EVENTS.QUICK_NOTE.CATEGORY, ANALYTICS_EVENTS.QUICK_NOTE.ACTION_SAVED);
   }, [createMemory]);
 
-  const handleQuickNoteExpand = useCallback((state: { content: string; attachments: Attachment[]; tags: string[] }) => {
+  const handleQuickNoteExpand = useCallback((state: QuickNoteState) => {
     setQuickNoteExpandState(state);
     setIsCaptureOpen(true);
-    logEvent(ANALYTICS_EVENTS.NAVIGATION.CATEGORY, ANALYTICS_EVENTS.NAVIGATION.ACTION_CAPTURE_OPENED, 'quick_note_expand');
+    logEvent(ANALYTICS_EVENTS.QUICK_NOTE.CATEGORY, ANALYTICS_EVENTS.QUICK_NOTE.ACTION_EXPANDED);
   }, []);
 
   const handleSettingsClose = useCallback(() => {
@@ -519,7 +516,7 @@ const AppContent: React.FC = () => {
         <NewMemoryPage
           onClose={handleCaptureClose}
           onCreate={handleCreateMemory}
-          initialContent={expandInitial || shareData || undefined}
+          initialContent={expandInitial || (shareData ? { ...shareData, text: escapeHtml(shareData.text) } : undefined)}
         />
       </Suspense>
     );
