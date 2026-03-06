@@ -659,6 +659,9 @@ const AppContent: React.FC = () => {
         />
       )}
 
+      {/* Spacer to push QuickNoteBar to bottom when content is hidden in focus mode */}
+      {isFocusMode && <div className="flex-1" />}
+
       {/* Quick Note Bar */}
       <QuickNoteBar
         ref={quickNoteBarRef}
