@@ -19,6 +19,12 @@ export interface QuickNoteBarHandle {
   focus: () => void;
 }
 
+interface ChecklistItem {
+  id: string;
+  text: string;
+  checked: boolean;
+}
+
 const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave, onExpand }, ref) => {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [tags, setTags] = useState<string[]>([]);
@@ -27,9 +33,12 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
   const [isSaving, setIsSaving] = useState(false);
   const [isEmpty, setIsEmpty] = useState(true);
   const [activeFormats, setActiveFormats] = useState<string[]>([]);
+  const [isChecklistMode, setIsChecklistMode] = useState(false);
+  const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([]);
 
   const editorRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const focusItemIdRef = useRef<string | null>(null);
 
   useImperativeHandle(ref, () => ({
     focus: () => editorRef.current?.focus(),
@@ -181,13 +190,24 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
     setShowFormatting(false);
     setIsEmpty(true);
     setActiveFormats([]);
+    setIsChecklistMode(false);
+    setChecklistItems([]);
   }, []);
 
   const handleSave = useCallback(async () => {
-    const rawContent = editorRef.current?.innerHTML || '';
-    if ((!rawContent.trim() && attachments.length === 0) || isSaving) return;
+    let content = '';
+    if (isChecklistMode) {
+      const listItems = checklistItems.map(item =>
+        `<li data-checked="${item.checked}">${escapeHtml(item.text)}</li>`
+      ).join('');
+      content = `<ul class="checklist">${listItems}</ul>`;
+    } else {
+      const rawContent = editorRef.current?.innerHTML || '';
+      content = sanitizePastedHtml(rawContent);
+    }
 
-    const content = sanitizePastedHtml(rawContent);
+    if ((!content.trim() && attachments.length === 0) || isSaving) return;
+
     setIsSaving(true);
     try {
       await onSave(content, attachments, tags);
@@ -197,14 +217,22 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
     } finally {
       setIsSaving(false);
     }
-  }, [attachments, tags, isSaving, onSave, resetState]);
+  }, [isChecklistMode, checklistItems, attachments, tags, isSaving, onSave, resetState]);
 
   const handleExpand = useCallback(() => {
-    const rawContent = editorRef.current?.innerHTML || '';
-    const content = sanitizePastedHtml(rawContent);
+    let content = '';
+    if (isChecklistMode) {
+      const listItems = checklistItems.map(item =>
+        `<li data-checked="${item.checked}">${escapeHtml(item.text)}</li>`
+      ).join('');
+      content = `<ul class="checklist">${listItems}</ul>`;
+    } else {
+      const rawContent = editorRef.current?.innerHTML || '';
+      content = sanitizePastedHtml(rawContent);
+    }
     onExpand({ content, attachments, tags });
     resetState();
-  }, [attachments, tags, onExpand, resetState]);
+  }, [isChecklistMode, checklistItems, attachments, tags, onExpand, resetState]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     // Cmd/Ctrl + Enter to save
@@ -214,48 +242,81 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
     }
   }, [handleSave]);
 
-  const insertChecklist = useCallback(() => {
-    const editor = editorRef.current;
-    if (!editor) return;
-    editor.focus();
-
-    const selection = window.getSelection();
-    if (!selection) return;
-
-    // Build checklist DOM nodes directly
-    const ul = document.createElement('ul');
-    ul.className = 'checklist';
-    const li = document.createElement('li');
-    li.textContent = '☐ ';
-    ul.appendChild(li);
-
-    // Insert at current cursor position using Range API
-    let range: Range;
-    if (selection.rangeCount > 0) {
-      range = selection.getRangeAt(0);
-      range.deleteContents();
+  const toggleChecklistMode = useCallback(() => {
+    if (isChecklistMode) {
+      // Switch back to rich text: put checklist text into the editor
+      const text = checklistItems.map(item => escapeHtml(item.text)).join('<br>');
+      if (editorRef.current) {
+        editorRef.current.innerHTML = text;
+        setIsEmpty(!text);
+      }
+      setChecklistItems([]);
+      setIsChecklistMode(false);
     } else {
-      range = document.createRange();
-      range.selectNodeContents(editor);
-      range.collapse(false);
+      // Switch to checklist mode: convert editor text to checklist items
+      const text = editorRef.current?.innerText || '';
+      const lines = text.split('\n').filter(l => l.trim().length > 0);
+      if (lines.length === 0) {
+        setChecklistItems([{ id: crypto.randomUUID(), text: '', checked: false }]);
+      } else {
+        setChecklistItems(lines.map(line => ({
+          id: crypto.randomUUID(),
+          text: line,
+          checked: false
+        })));
+      }
+      if (editorRef.current) editorRef.current.innerHTML = '';
+      setIsChecklistMode(true);
+      setIsEmpty(false);
     }
-    range.insertNode(ul);
+  }, [isChecklistMode, checklistItems]);
 
-    // Place cursor at end of the new list item
-    const cursorRange = document.createRange();
-    cursorRange.selectNodeContents(li);
-    cursorRange.collapse(false);
-    selection.removeAllRanges();
-    selection.addRange(cursorRange);
-
-    setIsEmpty(false);
+  const updateChecklistItem = useCallback((id: string, text: string) => {
+    setChecklistItems(prev => prev.map(item => item.id === id ? { ...item, text } : item));
   }, []);
 
-  const hasContent = !isEmpty || attachments.length > 0;
+  const addChecklistItem = useCallback((afterId: string) => {
+    const newId = crypto.randomUUID();
+    focusItemIdRef.current = newId;
+    setChecklistItems(prev => {
+      const index = prev.findIndex(item => item.id === afterId);
+      const newItem = { id: newId, text: '', checked: false };
+      if (index === -1) return [...prev, newItem];
+      const newItems = [...prev];
+      newItems.splice(index + 1, 0, newItem);
+      return newItems;
+    });
+  }, []);
+
+  const removeChecklistItem = useCallback((id: string) => {
+    setChecklistItems(prev => {
+      if (prev.length <= 1) return prev;
+      return prev.filter(item => item.id !== id);
+    });
+  }, []);
+
+  const toggleChecklistItemChecked = useCallback((id: string) => {
+    setChecklistItems(prev => prev.map(i => i.id === id ? { ...i, checked: !i.checked } : i));
+  }, []);
+
+  // Focus the newly added checklist item
+  useEffect(() => {
+    if (focusItemIdRef.current) {
+      const id = focusItemIdRef.current;
+      focusItemIdRef.current = null;
+      // Use requestAnimationFrame to wait for DOM update
+      requestAnimationFrame(() => {
+        const input = document.querySelector<HTMLInputElement>(`[data-checklist-id="${id}"]`);
+        input?.focus();
+      });
+    }
+  }, [checklistItems]);
+
+  const hasContent = !isEmpty || attachments.length > 0 || (isChecklistMode && checklistItems.some(item => item.text.trim()));
 
   return (
     <div
-      className="sticky bottom-0 z-[60] px-3 pb-3 pt-1"
+      className="sticky bottom-0 z-[60] px-3 pb-3 pt-1 lg:w-[34%] lg:mx-auto"
       style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
     >
       <div className="bg-gray-900/95 backdrop-blur-xl border border-gray-700/50 rounded-2xl shadow-2xl shadow-black/40">
@@ -303,22 +364,68 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
 
         {/* Text area */}
         <div className="px-4 pt-3 relative">
-          <div
-            ref={editorRef}
-            contentEditable
-            className="w-full min-h-[1.5em] max-h-[6em] overflow-y-auto bg-gray-800 text-base text-white rounded-xl px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-blue-500/40 border border-gray-700 focus:border-gray-600 transition-colors prose prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-li:my-0 [&_h1]:text-xl [&_h1]:font-bold [&_h1]:my-1 [&_h2]:text-lg [&_h2]:font-bold [&_h2]:my-1 text-left touch-manipulation"
-            dir="ltr"
-            onKeyUp={checkFormats}
-            onMouseUp={checkFormats}
-            onInput={() => setIsEmpty(!editorRef.current?.innerText.trim())}
-            onPaste={handlePaste}
-            onKeyDown={handleKeyDown}
-            suppressContentEditableWarning
-          />
-          {isEmpty && (
-            <div className="absolute top-3 left-7 pointer-events-none text-gray-500 text-base py-2.5">
-              Type a note...
+          {isChecklistMode ? (
+            <div className="w-full max-h-[10em] overflow-y-auto bg-gray-800 rounded-xl px-3 py-2.5 border border-gray-700 space-y-2">
+              {checklistItems.map((item) => (
+                <div key={item.id} className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2 duration-200">
+                  <div
+                    className="shrink-0 cursor-pointer p-0.5"
+                    onClick={() => toggleChecklistItemChecked(item.id)}
+                  >
+                    <div className={`w-5 h-5 border-2 rounded-md flex items-center justify-center transition-colors ${item.checked ? 'border-blue-500 bg-blue-500/20' : 'border-gray-600'}`}>
+                      {item.checked && <div className="w-2.5 h-2.5 bg-blue-500 rounded-sm" />}
+                    </div>
+                  </div>
+                  <input
+                    type="text"
+                    value={item.text}
+                    data-checklist-id={item.id}
+                    onChange={(e) => updateChecklistItem(item.id, e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                        e.preventDefault();
+                        handleSave();
+                      } else if (e.key === 'Enter') {
+                        e.preventDefault();
+                        addChecklistItem(item.id);
+                      } else if (e.key === 'Backspace' && item.text === '' && checklistItems.length > 1) {
+                        e.preventDefault();
+                        removeChecklistItem(item.id);
+                      }
+                    }}
+                    placeholder="List item..."
+                    className={`flex-1 bg-transparent text-base text-white placeholder-gray-600 focus:outline-none transition-all text-left ${item.checked ? 'line-through text-gray-500' : ''}`}
+                    dir="ltr"
+                  />
+                </div>
+              ))}
+              <button
+                onClick={() => addChecklistItem(checklistItems[checklistItems.length - 1]?.id)}
+                className="flex items-center gap-1.5 text-gray-500 hover:text-blue-400 text-sm transition-colors py-1 active:text-blue-500"
+              >
+                <Plus size={16} /> Add Item
+              </button>
             </div>
+          ) : (
+            <>
+              <div
+                ref={editorRef}
+                contentEditable
+                className="w-full min-h-[1.5em] max-h-[6em] overflow-y-auto bg-gray-800 text-base text-white rounded-xl px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-blue-500/40 border border-gray-700 focus:border-gray-600 transition-colors prose prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-li:my-0 [&_h1]:text-xl [&_h1]:font-bold [&_h1]:my-1 [&_h2]:text-lg [&_h2]:font-bold [&_h2]:my-1 text-left touch-manipulation"
+                dir="ltr"
+                onKeyUp={checkFormats}
+                onMouseUp={checkFormats}
+                onInput={() => setIsEmpty(!editorRef.current?.innerText.trim())}
+                onPaste={handlePaste}
+                onKeyDown={handleKeyDown}
+                suppressContentEditableWarning
+              />
+              {isEmpty && (
+                <div className="absolute top-3 left-7 pointer-events-none text-gray-500 text-base py-2.5">
+                  Type a note...
+                </div>
+              )}
+            </>
           )}
         </div>
 
@@ -358,9 +465,9 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
           </button>
 
           <button
-            onClick={insertChecklist}
-            className="p-2.5 rounded-xl text-gray-400 hover:text-white hover:bg-gray-800 transition-colors active:scale-95"
-            title="Add checklist"
+            onClick={toggleChecklistMode}
+            className={`p-2.5 rounded-xl transition-colors active:scale-95 ${isChecklistMode ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
+            title="Checklist Mode"
           >
             <CheckSquare size={20} />
           </button>
