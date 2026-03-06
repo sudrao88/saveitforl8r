@@ -109,6 +109,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
   });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
 
   useEffect(() => {
     // Ensure keyboard pushes content up on native
@@ -116,6 +117,22 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
       Keyboard.setAccessoryBarVisible({ isVisible: true });
       Keyboard.setScroll({ isDisabled: false });
     }
+  }, []);
+
+  // Track virtual keyboard via visualViewport API so toolbar stays above it
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+
+    const updateKeyboardHeight = () => {
+      const kbHeight = window.innerHeight - vv.height;
+      setKeyboardHeight(Math.max(0, kbHeight));
+    };
+
+    vv.addEventListener('resize', updateKeyboardHeight);
+    return () => {
+      vv.removeEventListener('resize', updateKeyboardHeight);
+    };
   }, []);
 
   // Populate editor content: pending mode-switch content takes priority, then one-time init
@@ -523,8 +540,8 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
 
         {/* Sticky bottom card */}
         <div
-          className="shrink-0 px-3 pt-1 max-w-3xl mx-auto w-full"
-          style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+          className="shrink-0 px-3 pt-1 max-w-3xl mx-auto w-full transition-[padding-bottom] duration-100"
+          style={{ paddingBottom: keyboardHeight > 0 ? `${keyboardHeight}px` : 'max(0.75rem, env(safe-area-inset-bottom))' }}
         >
           <div className="bg-gray-900/95 backdrop-blur-xl border border-gray-700/50 rounded-2xl shadow-2xl shadow-black/40">
             {/* Attachment previews */}
