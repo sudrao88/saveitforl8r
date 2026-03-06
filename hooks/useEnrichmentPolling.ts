@@ -87,7 +87,7 @@ export const useEnrichmentPolling = ({
     const poll = async () => {
       if (!pollingActiveRef.current) return;
 
-      const pending = memoriesRef.current.filter(m => m.isPending && !m.isSample);
+      const pending = memoriesRef.current.filter(m => m.isPending);
       if (pending.length === 0) {
         pollingActiveRef.current = false;
         return;
@@ -111,7 +111,7 @@ export const useEnrichmentPolling = ({
       }
 
       // Re-check pending after processing
-      const stillPending = memoriesRef.current.filter(m => m.isPending && !m.isSample);
+      const stillPending = memoriesRef.current.filter(m => m.isPending);
       if (stillPending.length > 0 && pollingActiveRef.current) {
         const elapsed = Date.now() - pollingStartTime;
         const nextDelay = elapsed < FAST_POLL_TIER_MS ? FAST_POLL_INTERVAL_MS : SLOW_POLL_INTERVAL_MS;

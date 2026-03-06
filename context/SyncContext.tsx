@@ -176,7 +176,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const syncFileInternal = useCallback(async (memory: Memory) => {
-      if (memory.isSample || memory.isPending || memory.processingError) return;
+      if (memory.isPending || memory.processingError) return;
 
       try {
           const filename = `${memory.id}.json`;
@@ -266,8 +266,6 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         const local = localMap.get(noteId);
 
-        if (local?.isSample || noteId.startsWith('sample-')) continue;
-
         if (local?.isDeleted) {
             plan.toDeleteRemote.push({ noteId, fileId: remoteFile.id });
             plan.toHardDeleteLocal.push(noteId);
@@ -306,7 +304,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     for (const local of localMemories) {
         if (handled.has(local.id)) continue;
-        if (local.isSample || local.isPending || local.processingError) continue;
+        if (local.isPending || local.processingError) continue;
 
         if (local.isDeleted) {
             const remote = remoteMap.get(local.id);
