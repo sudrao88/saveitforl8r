@@ -71,15 +71,6 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
     onMomentChangedRef.current = cb;
   }, []);
 
-  const refreshMoments = useCallback(async () => {
-    try {
-      const loadedMoments = await getMoments();
-      setMomentsList(loadedMoments);
-    } catch (err) {
-      console.error('[Moments] Failed to refresh moments:', err);
-    }
-  }, []);
-
   // Stable callback for moment creation polling
   const handleMomentCreated = useCallback((moment: Moment) => {
     onMomentChangedRef.current?.(moment);
@@ -93,6 +84,21 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
     setSynthesesMap,
     onMomentCreated: handleMomentCreated,
   });
+
+  const refreshMoments = useCallback(async () => {
+    try {
+      const loadedMoments = await getMoments();
+      setMomentsList(loadedMoments);
+
+      // Recover any pending moments that were downloaded during sync
+      const pending = loadedMoments.filter(m => m.isPending);
+      if (pending.length > 0) {
+        recoverPending(pending);
+      }
+    } catch (err) {
+      console.error('[Moments] Failed to refresh moments:', err);
+    }
+  }, [recoverPending]);
 
   // Load persisted moments on mount + recover any pending from previous session
   useEffect(() => {
