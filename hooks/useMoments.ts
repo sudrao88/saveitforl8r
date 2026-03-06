@@ -49,6 +49,8 @@ interface UseMomentsReturn {
   onMomentChanged?: (moment: Moment) => void;
   /** Set the sync callback */
   setOnMomentChanged: (cb: (moment: Moment) => void) => void;
+  /** Reload moments from IndexedDB (e.g. after sync) */
+  refreshMoments: () => Promise<void>;
 }
 
 export const useMoments = (memories: Memory[]): UseMomentsReturn => {
@@ -82,6 +84,21 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
     setSynthesesMap,
     onMomentCreated: handleMomentCreated,
   });
+
+  const refreshMoments = useCallback(async () => {
+    try {
+      const loadedMoments = await getMoments();
+      setMomentsList(loadedMoments);
+
+      // Recover any pending moments that were downloaded during sync
+      const pending = loadedMoments.filter(m => m.isPending);
+      if (pending.length > 0) {
+        recoverPending(pending);
+      }
+    } catch (err) {
+      console.error('[Moments] Failed to refresh moments:', err);
+    }
+  }, [recoverPending]);
 
   // Load persisted moments on mount + recover any pending from previous session
   useEffect(() => {
@@ -305,5 +322,6 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
     deleteMoment,
     synthesesMap,
     setOnMomentChanged,
+    refreshMoments,
   };
 };

@@ -105,6 +105,7 @@ const AppContent: React.FC = () => {
     deleteMoment,
     synthesesMap,
     setOnMomentChanged,
+    refreshMoments,
   } = useMoments(memories);
 
   const { syncMoment } = useSync();
@@ -162,9 +163,10 @@ const AppContent: React.FC = () => {
 
   const handleFullRefresh = useCallback(async () => {
       await refreshMemories();
+      await refreshMoments();
       const report = await reconcileEmbeddings();
       setReconcileReport(report);
-  }, [refreshMemories]);
+  }, [refreshMemories, refreshMoments]);
 
   const syncRef = useRef(sync);
   const refreshRef = useRef(handleFullRefresh);
