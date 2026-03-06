@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
-import { Paperclip, Hash, Type, Maximize2, Plus, X, FileText, Loader2 } from 'lucide-react';
+import { Paperclip, Hash, Type, Maximize2, Plus, X, FileText, Loader2, CheckSquare } from 'lucide-react';
 import { marked } from 'marked';
 import { Attachment, QuickNoteState } from '../types';
 import { escapeHtml, looksLikeMarkdown, sanitizePastedHtml, hasRichFormatting } from '../utils/editorUtils';
@@ -214,13 +214,36 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
     }
   }, [handleSave]);
 
+  const insertChecklist = useCallback(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.focus();
+    const checklistHtml = '<ul class="checklist"><li>☐ </li></ul>';
+    document.execCommand('insertHTML', false, checklistHtml);
+    // Place cursor after the checkbox character
+    const selection = window.getSelection();
+    if (selection) {
+      const items = editor.querySelectorAll('.checklist li');
+      const lastItem = items[items.length - 1];
+      if (lastItem) {
+        const range = document.createRange();
+        range.selectNodeContents(lastItem);
+        range.collapse(false);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+    }
+    setIsEmpty(false);
+  }, []);
+
   const hasContent = !isEmpty || attachments.length > 0;
 
   return (
     <div
-      className="sticky bottom-0 z-[60] bg-gray-950/95 backdrop-blur-xl border-t border-gray-800/50"
-      style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+      className="sticky bottom-0 z-[60] px-3 pb-3 pt-1"
+      style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
     >
+    <div className="bg-gray-900/95 backdrop-blur-xl border border-gray-700/50 rounded-2xl shadow-2xl shadow-black/40">
       {/* Attachment previews */}
       {attachments.length > 0 && (
         <div className="px-4 pt-3 pb-1">
@@ -268,7 +291,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
         <div
           ref={editorRef}
           contentEditable
-          className="w-full min-h-[1.5em] max-h-[6em] overflow-y-auto bg-gray-900/50 text-base text-white rounded-xl px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-gray-700 border border-gray-800 transition-colors prose prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-li:my-0 [&_h1]:text-xl [&_h1]:font-bold [&_h1]:my-1 [&_h2]:text-lg [&_h2]:font-bold [&_h2]:my-1 text-left touch-manipulation"
+          className="w-full min-h-[1.5em] max-h-[6em] overflow-y-auto bg-gray-800 text-base text-white rounded-xl px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-blue-500/40 border border-gray-700 focus:border-gray-600 transition-colors prose prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-li:my-0 [&_h1]:text-xl [&_h1]:font-bold [&_h1]:my-1 [&_h2]:text-lg [&_h2]:font-bold [&_h2]:my-1 text-left touch-manipulation"
           dir="ltr"
           onKeyUp={checkFormats}
           onMouseUp={checkFormats}
@@ -313,10 +336,18 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
 
         <button
           onClick={() => setShowFormatting(prev => !prev)}
-          className={`p-2.5 rounded-xl transition-colors active:scale-95 hidden sm:flex ${showFormatting ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
+          className={`p-2.5 rounded-xl transition-colors active:scale-95 ${showFormatting ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
           title="Formatting"
         >
           <Type size={20} />
+        </button>
+
+        <button
+          onClick={insertChecklist}
+          className="p-2.5 rounded-xl text-gray-400 hover:text-white hover:bg-gray-800 transition-colors active:scale-95"
+          title="Add checklist"
+        >
+          <CheckSquare size={20} />
         </button>
 
         <button
@@ -344,6 +375,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
           {isSaving ? <Loader2 size={20} className="animate-spin" /> : <Plus size={20} strokeWidth={3} />}
         </button>
       </div>
+    </div>
     </div>
   );
 });
