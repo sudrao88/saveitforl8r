@@ -221,17 +221,17 @@ describe('useMemories', () => {
       expect(result.current.memories[0].content).toBe('Buy groceries');
       expect(result.current.memories[0].tags).toEqual(['todo']);
 
-      // Initial save should NOT have isPending
+      // Initial save should have isPending (optimistic)
       const savedArg = (storageService.saveMemory as any).mock.calls[0][0];
-      expect(savedArg.isPending).toBe(false);
+      expect(savedArg.isPending).toBe(true);
       expect(savedArg.content).toBe('Buy groceries');
     });
 
-    it('should transition to isPending after server accepts enrichment', async () => {
+    it('should set isPending immediately on create (optimistic)', async () => {
       (storageService.getMemories as any).mockResolvedValue([]);
       (storageService.saveMemory as any).mockResolvedValue(undefined);
       (storageService.getMemory as any).mockImplementation(async (id: string) => ({
-        id, content: 'Meeting notes', timestamp: Date.now(), tags: [], isPending: false, processingError: false,
+        id, content: 'Meeting notes', timestamp: Date.now(), tags: [], isPending: true, processingError: false,
       }));
       (geminiService.submitEnrichment as any).mockResolvedValue(undefined);
       (geminiService.fetchPendingEnrichments as any).mockResolvedValue({});
@@ -243,20 +243,13 @@ describe('useMemories', () => {
         await result.current.createMemory('Meeting notes', [], []);
       });
 
-      // Flush the .then() microtask chain from submitEnrichment without
-      // triggering the infinite polling setTimeout loop.
-      await flushMicrotasks();
+      // Memory should be in "Enriching..." state immediately
+      expect(result.current.memories[0].isPending).toBe(true);
 
-      // Memory should now be in "Enriching..." state
-      await waitFor(() => {
-        const memory = result.current.memories[0];
-        expect(memory.isPending).toBe(true);
-      });
-
-      // saveMemory should have been called twice: initial save + pending update
-      expect(storageService.saveMemory).toHaveBeenCalledTimes(2);
-      const pendingSaveArg = (storageService.saveMemory as any).mock.calls[1][0];
-      expect(pendingSaveArg.isPending).toBe(true);
+      // saveMemory should have been called once with isPending: true
+      expect(storageService.saveMemory).toHaveBeenCalledTimes(1);
+      const savedArg = (storageService.saveMemory as any).mock.calls[0][0];
+      expect(savedArg.isPending).toBe(true);
     });
 
     it('should set processingError when enrichment submission fails', async () => {

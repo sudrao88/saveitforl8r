@@ -3,7 +3,7 @@
  *
  * Manages polling for async moment creation results.
  * Mirrors the enrichment polling pattern (useEnrichmentPolling.ts)
- * with Fibonacci backoff.
+ * with tiered polling intervals (1s for first 15s, then 2s).
  */
 
 import { useCallback, useRef } from 'react';
@@ -13,6 +13,13 @@ import { saveMoment, saveMomentSynthesis } from '../services/storageService';
 import { computeInputHash } from '../utils/hash';
 
 const MOMENT_CREATION_TIMEOUT_MS = 180_000; // 3 minutes (3-step pipeline)
+
+/** Poll every 1s during the initial fast-polling tier. */
+const FAST_POLL_INTERVAL_MS = 1_000;
+/** Poll every 2s after the fast tier expires. */
+const SLOW_POLL_INTERVAL_MS = 2_000;
+/** Duration of the fast-polling tier (first 15 seconds). */
+const FAST_POLL_TIER_MS = 15_000;
 
 interface UseMomentCreationPollingOptions {
   momentsRef: React.RefObject<Moment[]>;
@@ -123,8 +130,7 @@ export const useMomentCreationPolling = ({
     if (pollingActiveRef.current) return;
     pollingActiveRef.current = true;
 
-    let prevDelay = 1_000;
-    let currDelay = 2_000;
+    const pollingStartTime = Date.now();
 
     const poll = async () => {
       if (!pollingActiveRef.current) return;
@@ -157,16 +163,15 @@ export const useMomentCreationPolling = ({
       // Re-check pending after processing
       const stillPending = momentsRef.current.filter(m => m.isPending);
       if (stillPending.length > 0 && pollingActiveRef.current) {
-        const nextDelay = prevDelay + currDelay;
-        prevDelay = currDelay;
-        currDelay = nextDelay;
+        const elapsed = Date.now() - pollingStartTime;
+        const nextDelay = elapsed < FAST_POLL_TIER_MS ? FAST_POLL_INTERVAL_MS : SLOW_POLL_INTERVAL_MS;
         setTimeout(poll, nextDelay);
       } else {
         pollingActiveRef.current = false;
       }
     };
 
-    setTimeout(poll, 2_000);
+    setTimeout(poll, FAST_POLL_INTERVAL_MS);
   }, [momentsRef, memoriesRef, setMoments, setSynthesesMap, onMomentCreated]);
 
   const recoverPending = useCallback(async (pendingMoments: Moment[]) => {

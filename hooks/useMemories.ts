@@ -228,24 +228,32 @@ export const useMemories = () => {
   // Now reads from memoriesRef to always get the latest state, preventing
   // retry failures when the memories array has been updated between renders.
   const handleRetry = useCallback(async (id: string) => {
-    // Clear error state but don't show "Enriching..." yet
-    setMemories(prev => prev.map(m => m.id === id ? { ...m, processingError: false } : m));
+    // Show "Enriching..." immediately
     const memory = memoriesRef.current.find(m => m.id === id);
     if (!memory) return;
 
-    try {
-        const attachments: Attachment[] = memory.attachments ? [...memory.attachments] : [];
-        if (attachments.length === 0 && memory.image) {
-            attachments.push({
-                id: 'legacy-img',
-                type: 'image',
-                mimeType: 'image/jpeg',
-                data: memory.image,
-                name: 'Captured Image'
-            });
-        }
+    const attachments: Attachment[] = memory.attachments ? [...memory.attachments] : [];
+    if (attachments.length === 0 && memory.image) {
+        attachments.push({
+            id: 'legacy-img',
+            type: 'image',
+            mimeType: 'image/jpeg',
+            data: memory.image,
+            name: 'Captured Image'
+        });
+    }
 
-        // Submit enrichment — only set isPending after the server confirms receipt
+    const pendingMemory: Memory = {
+        ...memory,
+        isPending: true,
+        processingError: false,
+        attachments: attachments.filter(a => a.id !== 'legacy-img'),
+    };
+    await saveMemory(pendingMemory);
+    setMemories(prev => prev.map(m => m.id === id ? pendingMemory : m));
+    startPolling();
+
+    try {
         await submitEnrichment(
             memory.content,
             attachments,
@@ -254,17 +262,6 @@ export const useMemories = () => {
             memory.id,
             buildMomentsMeta(momentsRef.current)
         );
-
-        // Server accepted (200) — now show "Enriching..." and poll for results
-        const pendingMemory: Memory = {
-            ...memory,
-            isPending: true,
-            processingError: false,
-            attachments: attachments.filter(a => a.id !== 'legacy-img'),
-        };
-        await saveMemory(pendingMemory);
-        setMemories(prev => prev.map(m => m.id === id ? pendingMemory : m));
-        startPolling();
     } catch (error) {
         console.error("Retry failed for memory", id, error);
         const failedMemory = { ...memory, isPending: false, processingError: true };
@@ -279,7 +276,7 @@ export const useMemories = () => {
     tags: string[],
     location?: { latitude: number; longitude: number; accuracy?: number }
   ) => {
-      // 1. Prepare initial memory object — no isPending yet
+      // 1. Prepare initial memory object — show "Enriching..." immediately
       const memoryId = crypto.randomUUID();
       const timestamp = Date.now();
 
@@ -290,30 +287,18 @@ export const useMemories = () => {
         attachments,
         tags,
         location,
-        isPending: false,
+        isPending: true,
         processingError: false
       };
 
-      // 2. Show the card immediately (without "Enriching..." state) and save locally
+      // 2. Show the card immediately with "Enriching..." state and save locally
       setMemories(prev => [newMemory, ...prev]);
       await saveMemory(newMemory);
       trySyncFile(newMemory);  // Sync immediately on save, before enrichment
 
-      // 3. Submit enrichment to server with moments metadata
+      // 3. Submit enrichment to server with moments metadata and start polling
+      startPolling();
       submitEnrichment(text, attachments, location, tags, memoryId, buildMomentsMeta(momentsRef.current))
-        .then(async () => {
-            // Server accepted (200) — now show "Enriching..." and start polling
-            const current = await getMemory(memoryId);
-            if (!current || current.isDeleted) return;
-
-            const pendingMemory: Memory = {
-                ...newMemory,
-                isPending: true,
-            };
-            await saveMemory(pendingMemory);
-            setMemories(prev => prev.map(m => m.id === memoryId ? pendingMemory : m));
-            startPolling();
-        })
         .catch(async (err) => {
             console.error("Enrichment submission failed:", err);
             const current = await getMemory(memoryId);
@@ -376,7 +361,7 @@ export const useMemories = () => {
           return;
       }
 
-      // Update content immediately — no isPending yet
+      // Update content immediately with "Enriching..." state
       const updatedMemory: Memory = {
         ...existing,
         content: text,
@@ -384,12 +369,12 @@ export const useMemories = () => {
         tags,
         location: location || existing.location,
         enrichment: undefined, // Clear old enrichment to force re-processing
-        isPending: false,
+        isPending: true,
         processingError: false,
         timestamp: Date.now()
       };
 
-      // Update UI with new content (without "Enriching..." state)
+      // Update UI with new content and "Enriching..." state
       setMemories(prev => prev.map(m => m.id === id ? updatedMemory : m));
 
       // Save locally so if app closes, we at least have the text update
@@ -398,23 +383,11 @@ export const useMemories = () => {
       // Sync immediately (save the text changes even before enrichment finishes)
       await trySyncFile(updatedMemory);
 
-      // Submit enrichment with moments metadata — show "Enriching..." only after the server confirms receipt
+      // Submit enrichment with moments metadata and start polling
       console.log(`[Update] Submitting enrichment for ${id}`);
+      startPolling();
 
       submitEnrichment(text, attachments, updatedMemory.location, tags, id, buildMomentsMeta(momentsRef.current))
-        .then(async () => {
-            // Server accepted (200) — now show "Enriching..." and start polling
-            const current = await getMemory(id);
-            if (!current || current.isDeleted) return;
-
-            const pendingMemory: Memory = {
-                ...updatedMemory,
-                isPending: true,
-            };
-            await saveMemory(pendingMemory);
-            setMemories(prev => prev.map(m => m.id === id ? pendingMemory : m));
-            startPolling();
-        })
         .catch(async (err) => {
             console.error("Update enrichment submission failed:", err);
             const current = await getMemory(id);

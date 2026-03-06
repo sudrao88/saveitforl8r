@@ -307,7 +307,7 @@ export const createMomentRouter = ({
 
   const resultsLimiter = rateLimit({
     windowMs: 60_000,
-    max: 30,
+    max: 60,
     keyGenerator: (req) => req.userId || req.ip,
     standardHeaders: true,
     legacyHeaders: false,

@@ -124,7 +124,7 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
 
   const resultsLimiter = rateLimit({
     windowMs: 60_000,
-    max: 10,
+    max: 60,
     keyGenerator: (req) => req.userId || req.ip,
     standardHeaders: true,
     legacyHeaders: false,
