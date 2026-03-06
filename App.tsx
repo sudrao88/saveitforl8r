@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
-import { Plus, RefreshCw, X } from 'lucide-react';
+import { RefreshCw, X } from 'lucide-react';
 import { App as CapacitorApp, URLOpenListenerEvent } from '@capacitor/app';
 import { isNative } from './services/platform';
 import MemoryCard from './components/MemoryCard';
@@ -13,6 +13,7 @@ import EmptyState from './components/EmptyState';
 
 import ErrorBoundary from './components/ErrorBoundary';
 import { Logo } from './components/icons';
+import QuickNoteBar, { QuickNoteBarHandle } from './components/QuickNoteBar';
 
 // Lazy-load heavy components that are rendered conditionally.
 // This reduces the initial JS bundle, making first paint faster.
@@ -44,8 +45,9 @@ import { useMoments } from './hooks/useMoments';
 import useNativeOTA from './hooks/useNativeOTA';
 import { SyncProvider } from './context/SyncContext';
 import { reconcileEmbeddings, ReconcileReport } from './services/storageService';
-import { ViewMode, Memory, Attachment, Moment } from './types';
+import { ViewMode, Memory, Attachment, Moment, QuickNoteState } from './types';
 import { initGA, logPageView, logEvent } from './services/analytics';
+import { escapeHtml } from './utils/editorUtils';
 
 import { ANALYTICS_EVENTS } from './constants';
 import { handleDeepLink } from './services/googleAuth';
@@ -60,6 +62,8 @@ const AppContent: React.FC = () => {
   const [activeMoment, setActiveMoment] = useState<Moment | null>(null);
   const [showAllMoments, setShowAllMoments] = useState(false);
   const [showCreateMoment, setShowCreateMoment] = useState(false);
+  const [quickNoteExpandState, setQuickNoteExpandState] = useState<QuickNoteState | null>(null);
+  const quickNoteBarRef = useRef<QuickNoteBarHandle>(null);
 
   const { updateAvailable, updateApp, appVersion } = useServiceWorker();
   const {
@@ -189,6 +193,7 @@ const AppContent: React.FC = () => {
 
   const handleCaptureClose = useCallback(() => {
     setIsCaptureOpen(false);
+    setQuickNoteExpandState(null);
     logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_CAPTURE_CANCELLED);
     clearShareData();
   }, [clearShareData]);
@@ -416,6 +421,17 @@ const AppContent: React.FC = () => {
     logEvent(ANALYTICS_EVENTS.NAVIGATION.CATEGORY, ANALYTICS_EVENTS.NAVIGATION.ACTION_CAPTURE_OPENED, 'FAB');
   }, []);
 
+  const handleQuickNoteSave = useCallback(async (text: string, attachments: Attachment[], tags: string[]) => {
+    await createMemory(text, attachments, tags);
+    logEvent(ANALYTICS_EVENTS.QUICK_NOTE.CATEGORY, ANALYTICS_EVENTS.QUICK_NOTE.ACTION_SAVED);
+  }, [createMemory]);
+
+  const handleQuickNoteExpand = useCallback((state: QuickNoteState) => {
+    setQuickNoteExpandState(state);
+    setIsCaptureOpen(true);
+    logEvent(ANALYTICS_EVENTS.QUICK_NOTE.CATEGORY, ANALYTICS_EVENTS.QUICK_NOTE.ACTION_EXPANDED);
+  }, []);
+
   const handleSettingsClose = useCallback(() => {
     setIsSettingsOpen(false);
     logEvent(ANALYTICS_EVENTS.SETTINGS.CATEGORY, ANALYTICS_EVENTS.SETTINGS.ACTION_CLOSED);
@@ -430,7 +446,7 @@ const AppContent: React.FC = () => {
   }, [authStatus, handleFullRefresh]);
 
   useHotkeys({
-    'Mod+k': () => setIsCaptureOpen(true),
+    'Mod+k': () => quickNoteBarRef.current?.focus(),
     'Mod+f': () => setView(ViewMode.RECALL),
     'Mod+,': () => setIsSettingsOpen(true),
   });
@@ -490,12 +506,17 @@ const AppContent: React.FC = () => {
   }
 
   if (isCaptureOpen) {
+    const expandInitial = quickNoteExpandState ? {
+      text: quickNoteExpandState.content,
+      attachments: quickNoteExpandState.attachments,
+      tags: quickNoteExpandState.tags,
+    } : undefined;
     return (
       <Suspense fallback={<SuspenseFallback />}>
         <NewMemoryPage
           onClose={handleCaptureClose}
           onCreate={handleCreateMemory}
-          initialContent={shareData || undefined}
+          initialContent={expandInitial || (shareData ? { ...shareData, text: escapeHtml(shareData.text) } : undefined)}
         />
       </Suspense>
     );
@@ -568,7 +589,7 @@ const AppContent: React.FC = () => {
         </div>
       )}
 
-      <main className="flex-1 p-4 sm:p-8 max-w-7xl mx-auto w-full relative z-[40]">
+      <main className="flex-1 p-4 sm:p-8 pb-24 max-w-7xl mx-auto w-full relative z-[40]">
         {filteredMemories.length === 0 ? (
           <EmptyState 
             hasMemories={memories.length > 0} 
@@ -595,15 +616,12 @@ const AppContent: React.FC = () => {
         )}
       </main>
 
-      {/* FAB: Use calc for safe area positioning instead of pb-safe to prevent layout shift during scroll */}
-      <button
-        onClick={handleOpenCapture}
-        className="fixed right-4 sm:right-8 z-[60] h-14 px-5 bg-blue-600 text-white rounded-2xl flex items-center gap-3 shadow-2xl hover:bg-blue-700 hover:scale-105 active:scale-95 transition-colors duration-200 shadow-blue-900/50 touch-manipulation will-change-transform"
-        style={{ bottom: 'calc(24px + env(safe-area-inset-bottom))' }}
-      >
-        <Plus size={28} strokeWidth={3} />
-        <span className="font-bold text-lg hidden sm:inline">New</span>
-      </button>
+      {/* Quick Note Bar */}
+      <QuickNoteBar
+        ref={quickNoteBarRef}
+        onSave={handleQuickNoteSave}
+        onExpand={handleQuickNoteExpand}
+      />
 
       {liveExpandedMemory && (
         <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-md flex flex-col animate-in fade-in duration-300">

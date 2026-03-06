@@ -119,6 +119,12 @@ export interface Attachment {
   name: string;
 }
 
+export interface QuickNoteState {
+  content: string;
+  attachments: Attachment[];
+  tags: string[];
+}
+
 export interface Memory {
   id: string;
   timestamp: number;
