@@ -233,13 +233,23 @@ export const fetchPendingMomentResults = async (
   }
 };
 
+// --- Async Moment Re-Synthesis ---
+
+interface SubmitResynthesisResponse {
+  status: string;
+  momentId: string;
+}
+
 /**
- * Re-synthesizes a moment when new notes have been added.
+ * Submits a re-synthesis request asynchronously.
+ * Server returns { status: "accepted", momentId } immediately.
+ * The synthesis runs in the background. Poll with fetchPendingSynthesisResults()
+ * to get the result.
  */
-export const synthesizeMoment = async (
+export const submitResynthesis = async (
   moment: Moment,
   memories: Memory[]
-): Promise<SynthesisResponse> => {
+): Promise<{ momentId: string }> => {
   const notes = moment.noteIds
     .map(id => memories.find(m => m.id === id))
     .filter((m): m is Memory => !!m)
@@ -256,13 +266,112 @@ export const synthesizeMoment = async (
         : undefined,
     }));
 
-  const result = await postProxy<SynthesisResponse>('/api/synthesize', {
+  const result = await postProxy<SubmitResynthesisResponse>('/api/synthesize', {
     notes,
     momentType: moment.type,
     momentTitle: moment.title,
     objective: moment.objective,
-  }, { timeout: 90000 });
-  return result;
+    momentId: moment.id,
+  });
+
+  if (result.status !== 'accepted') {
+    throw new Error(`Unexpected synthesis response: ${result.status}`);
+  }
+  return { momentId: result.momentId };
+};
+
+// --- Synthesis Polling ---
+
+export type SynthesisPollResult =
+  | { status: 'completed'; data: SynthesisResponse }
+  | { status: 'processing' }
+  | { status: 'failed' }
+  | { status: 'not_found' };
+
+interface SynthesisResultEntry {
+  status: 'completed' | 'failed' | 'not_found' | string;
+  data?: SynthesisResponse;
+}
+
+interface SynthesisResultsResponse {
+  results: Record<string, SynthesisResultEntry>;
+}
+
+/**
+ * Fetches re-synthesis results for pending moments from the server.
+ * Mirrors fetchPendingMomentResults() pattern.
+ */
+export const fetchPendingSynthesisResults = async (
+  momentIds: string[],
+): Promise<Record<string, SynthesisPollResult>> => {
+  try {
+    const payload = { momentIds };
+    const response = await postProxy<SynthesisResultsResponse>(
+      '/api/synthesize/results',
+      payload as unknown as Record<string, unknown>
+    );
+
+    const result: Record<string, SynthesisPollResult> = {};
+    if (response && response.results) {
+      for (const id of momentIds) {
+        const entry = response.results[id];
+        if (entry?.status === 'not_found') {
+          result[id] = { status: 'not_found' };
+        } else if (entry?.status === 'completed' && entry.data) {
+          result[id] = { status: 'completed', data: entry.data };
+        } else if (entry?.status === 'failed') {
+          result[id] = { status: 'failed' };
+        } else {
+          // Default unknown statuses to 'processing' as a safe intermediate state
+          result[id] = { status: 'processing' };
+        }
+      }
+    }
+    return result;
+  } catch (error) {
+    console.error('Failed to fetch pending synthesis results:', error);
+    return {};
+  }
+};
+
+/** Poll every 1s during the initial fast-polling tier. */
+const SYNTH_FAST_POLL_INTERVAL_MS = 1_000;
+/** Poll every 2s after the fast tier expires. */
+const SYNTH_SLOW_POLL_INTERVAL_MS = 2_000;
+/** Duration of the fast-polling tier (first 15 seconds). */
+const SYNTH_FAST_POLL_TIER_MS = 15_000;
+/** Maximum time to poll before giving up. */
+const SYNTH_POLL_TIMEOUT_MS = 120_000;
+
+/**
+ * Polls for a re-synthesis result with tiered intervals (1s for 15s, then 2s).
+ * Returns the SynthesisResponse when complete, or throws on failure/timeout.
+ */
+export const pollSynthesisResult = async (
+  momentId: string,
+): Promise<SynthesisResponse> => {
+  const start = Date.now();
+
+  while (Date.now() - start < SYNTH_POLL_TIMEOUT_MS) {
+    const elapsed = Date.now() - start;
+    const interval = elapsed < SYNTH_FAST_POLL_TIER_MS
+      ? SYNTH_FAST_POLL_INTERVAL_MS
+      : SYNTH_SLOW_POLL_INTERVAL_MS;
+
+    await new Promise(resolve => setTimeout(resolve, interval));
+
+    const results = await fetchPendingSynthesisResults([momentId]);
+    const result = results[momentId];
+
+    if (result?.status === 'completed' && 'data' in result) {
+      return result.data;
+    }
+    if (result?.status === 'failed') {
+      throw new Error('Synthesis failed on server');
+    }
+  }
+
+  throw new Error('Synthesis polling timed out');
 };
 
 /**
