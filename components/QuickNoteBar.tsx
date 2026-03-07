@@ -93,14 +93,6 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
     };
   }, []);
 
-  // When the keyboard opens, scroll the editor into view so it's not hidden.
-  useEffect(() => {
-    if (keyboardHeight > 0) {
-      requestAnimationFrame(() => {
-        containerRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' });
-      });
-    }
-  }, [keyboardHeight]);
 
   useImperativeHandle(ref, () => ({
     focus: () => editorRef.current?.focus(),
@@ -394,9 +386,10 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
   return (
     <div
       ref={containerRef}
-      className="sticky bottom-0 z-[60] px-3 pb-3 pt-1 lg:w-[34%] lg:mx-auto relative transition-[padding-bottom] duration-150"
+      className="sticky bottom-0 z-[60] px-3 pb-3 pt-1 lg:w-[34%] lg:mx-auto relative transition-transform duration-200 ease-out will-change-transform"
       style={{
-        paddingBottom: keyboardHeight > 0 ? `${keyboardHeight}px` : 'max(0.75rem, env(safe-area-inset-bottom))',
+        paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))',
+        transform: keyboardHeight > 0 ? `translateY(-${keyboardHeight}px)` : undefined,
       }}
       onFocus={handleContainerFocus}
       onBlur={handleContainerBlur}
