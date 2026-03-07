@@ -82,6 +82,18 @@ steps:
       - '--set-secrets=GEMINI_API_KEY=GEMINI_API_KEY:latest,VITE_GOOGLE_CLIENT_ID=VITE_GOOGLE_CLIENT_ID:latest'
       - '--port'
       - '8081'
+      - '--min-instances'
+      - '1'
+      - '--max-instances'
+      - '10'
+      - '--concurrency'
+      - '80'
+      - '--cpu'
+      - '2'
+      - '--memory'
+      - '1Gi'
+      - '--timeout'
+      - '120'
 
   # Deploy Client
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -98,6 +110,12 @@ steps:
       - '--platform'
       - 'managed'
       - '--allow-unauthenticated'
+      - '--min-instances'
+      - '1'
+      - '--max-instances'
+      - '5'
+      - '--concurrency'
+      - '250'
 
   # -------------------------------------------------------------------------
   # 5. Deploy to asia-south1
@@ -120,6 +138,18 @@ steps:
       - '--set-secrets=GEMINI_API_KEY=GEMINI_API_KEY:latest,VITE_GOOGLE_CLIENT_ID=VITE_GOOGLE_CLIENT_ID:latest'
       - '--port'
       - '8081'
+      - '--min-instances'
+      - '1'
+      - '--max-instances'
+      - '10'
+      - '--concurrency'
+      - '80'
+      - '--cpu'
+      - '2'
+      - '--memory'
+      - '1Gi'
+      - '--timeout'
+      - '120'
 
   # Deploy Client
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -136,6 +166,12 @@ steps:
       - '--platform'
       - 'managed'
       - '--allow-unauthenticated'
+      - '--min-instances'
+      - '1'
+      - '--max-instances'
+      - '5'
+      - '--concurrency'
+      - '250'
 
   # -------------------------------------------------------------------------
   # 6. Post-Deploy Configuration (ALLOWED_ORIGINS)

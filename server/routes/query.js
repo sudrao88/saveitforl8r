@@ -5,14 +5,25 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { authenticateRequest } from '../middleware/auth.js';
 import { validateQueryInput } from '../middleware/validation.js';
-import { sanitizeUserInput } from '../lib/sanitize.js';
+import { sanitizeUserInput, sanitizeString } from '../lib/sanitize.js';
 import {
   queryResponseSchema,
   QUERY_SYSTEM_PROMPT,
   normalizeHistory,
 } from '../services/gemini.js';
 
-export const createQueryRouter = ({ ai, MODEL_NAME, GEMINI_TIMEOUT_MS }) => {
+/** Sanitize parsed LLM query response to strip any injected HTML. */
+const sanitizeQueryResponse = (parsed) => {
+  if (parsed.answer) parsed.answer = sanitizeString(parsed.answer);
+  if (Array.isArray(parsed.sources)) {
+    parsed.sources = parsed.sources.map((s) =>
+      typeof s === 'string' ? sanitizeString(s) : s
+    );
+  }
+  return parsed;
+};
+
+export const createQueryRouter = ({ ai, MODEL_NAME, FALLBACK_MODEL_NAME, GEMINI_TIMEOUT_MS }) => {
   const router = Router();
 
   const queryLimiter = rateLimit({
@@ -122,10 +133,36 @@ export const createQueryRouter = ({ ai, MODEL_NAME, GEMINI_TIMEOUT_MS }) => {
 
           const responseText = response.text || '{}';
           console.log(`[Query] [${req.requestId}] Response length: ${responseText.length}`);
-          res.json(JSON.parse(responseText));
+          res.json(sanitizeQueryResponse(JSON.parse(responseText)));
         } catch (apiError) {
           clearTimeout(timeout);
-          throw apiError;
+
+          // Fallback with alternate model
+          console.warn(`[Query] [${req.requestId}] Primary model failed: ${apiError.message}. Trying fallback…`);
+          const fbController = new AbortController();
+          const fbTimeout = setTimeout(() => fbController.abort(), GEMINI_TIMEOUT_MS);
+
+          try {
+            const fbResponse = await ai.models.generateContent({
+              model: FALLBACK_MODEL_NAME,
+              contents,
+              config: {
+                systemInstruction: QUERY_SYSTEM_PROMPT,
+                responseMimeType: 'application/json',
+                responseSchema: queryResponseSchema,
+                thinkingConfig: { thinkingBudget: 0 },
+              },
+              requestOptions: { signal: fbController.signal },
+            });
+            clearTimeout(fbTimeout);
+
+            const fbText = fbResponse.text || '{}';
+            console.log(`[Query] [${req.requestId}] Fallback response length: ${fbText.length}`);
+            return res.json(sanitizeQueryResponse(JSON.parse(fbText)));
+          } catch (fbError) {
+            clearTimeout(fbTimeout);
+            throw fbError;
+          }
         }
       } catch (error) {
         console.error(`[Query] [${req.requestId}] Failed:`, error.message);
