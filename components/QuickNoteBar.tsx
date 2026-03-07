@@ -350,7 +350,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
       onBlur={handleContainerBlur}
     >
       {/* Blur gradient backdrop */}
-      <div className="absolute inset-x-0 bottom-0 top-[-40px] pointer-events-none bg-gradient-to-t from-gray-950 via-gray-950/85 to-transparent" />
+      <div className="absolute -inset-x-3 -bottom-3 top-[-40px] pointer-events-none bg-gradient-to-t from-gray-950 via-gray-950/85 to-transparent" />
       <div className="relative bg-gray-900/95 backdrop-blur-xl border-2 border-blue-500 rounded-2xl shadow-[0_-8px_40px_rgba(59,130,246,0.3),0_12px_40px_rgba(0,0,0,0.6)]">
         {/* Attachment previews */}
         {attachments.length > 0 && (
