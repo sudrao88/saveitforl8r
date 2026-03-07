@@ -24,7 +24,7 @@ import {
   getMomentSynthesis,
   saveMomentSynthesis,
 } from '../services/storageService';
-import { submitMomentCreation, synthesizeMoment } from '../services/geminiService';
+import { submitMomentCreation, submitResynthesis, pollSynthesisResult } from '../services/geminiService';
 import { useMomentCreationPolling } from './useMomentCreationPolling';
 import { computeInputHash } from '../utils/hash';
 
@@ -197,10 +197,11 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
         return persisted.content;
       }
 
-      // Cache miss — re-synthesize
+      // Cache miss — submit re-synthesis asynchronously and poll for result
       setSynthesisLoading(moment.id);
       try {
-        const synthesis = await synthesizeMoment(moment, currentMemories);
+        await submitResynthesis(moment, currentMemories);
+        const synthesis = await pollSynthesisResult(moment.id);
 
         const stored: MomentSynthesis = {
           momentId: moment.id,
