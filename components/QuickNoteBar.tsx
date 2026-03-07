@@ -44,6 +44,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
   const focusItemIdRef = useRef<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const blurTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveSuccessTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Track focus within the QuickNoteBar to notify parent for overlay
   const handleContainerFocus = useCallback(() => {
@@ -66,6 +67,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
   useEffect(() => {
     return () => {
       if (blurTimeoutRef.current) clearTimeout(blurTimeoutRef.current);
+      if (saveSuccessTimeoutRef.current) clearTimeout(saveSuccessTimeoutRef.current);
     };
   }, []);
 
@@ -245,7 +247,11 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
       resetState();
       setSaveSuccess(true);
       triggerHaptic();
-      setTimeout(() => setSaveSuccess(false), 600);
+      if (saveSuccessTimeoutRef.current) clearTimeout(saveSuccessTimeoutRef.current);
+      saveSuccessTimeoutRef.current = setTimeout(() => {
+        saveSuccessTimeoutRef.current = null;
+        setSaveSuccess(false);
+      }, 600);
     } catch (error) {
       console.error('Error saving quick note:', error);
     } finally {

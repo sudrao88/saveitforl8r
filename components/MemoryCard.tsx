@@ -234,6 +234,13 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
 
   const [isTruncated, setIsTruncated] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
+  const shakeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (shakeTimeoutRef.current) clearTimeout(shakeTimeoutRef.current);
+    };
+  }, []);
 
   // Shared online/offline state — single global listener instead of per-card
   const isOnline = useOnlineStatus();
@@ -278,7 +285,9 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
       e.stopPropagation();
       setIsShaking(true);
       setIsMenuOpen(false);
-      setTimeout(() => {
+      if (shakeTimeoutRef.current) clearTimeout(shakeTimeoutRef.current);
+      shakeTimeoutRef.current = setTimeout(() => {
+        shakeTimeoutRef.current = null;
         setIsShaking(false);
         setIsConfirming(true);
       }, 400);
