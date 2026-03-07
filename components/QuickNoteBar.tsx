@@ -84,6 +84,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
       setKeyboardHeight(kbHeight > 0 ? kbHeight : 0);
     };
 
+    update();
     vv.addEventListener('resize', update);
     vv.addEventListener('scroll', update);
     return () => {
@@ -393,7 +394,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
   return (
     <div
       ref={containerRef}
-      className="sticky bottom-0 z-[60] px-3 pb-3 pt-1 lg:w-[34%] lg:mx-auto relative transition-transform duration-150 will-change-transform"
+      className="sticky bottom-0 z-[60] px-3 pb-3 pt-1 lg:w-[34%] lg:mx-auto relative transition-[padding-bottom] duration-150"
       style={{
         paddingBottom: keyboardHeight > 0 ? `${keyboardHeight}px` : 'max(0.75rem, env(safe-area-inset-bottom))',
       }}
