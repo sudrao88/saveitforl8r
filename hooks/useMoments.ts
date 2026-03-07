@@ -41,6 +41,8 @@ interface UseMomentsReturn {
   creating: boolean;
   /** Add a note to a moment (called when enrichment matches) */
   addNoteToMoment: (momentId: string, noteId: string) => Promise<void>;
+  /** Remove a note from all moments that reference it (on note deletion) */
+  removeNoteFromMoments: (noteId: string) => Promise<void>;
   /** Soft-delete a moment */
   deleteMoment: (momentId: string) => Promise<void>;
   /** Cached synthesis map for UI state */
@@ -275,6 +277,51 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
     []
   );
 
+  // Remove a note from all moments that reference it (called on note deletion).
+  // Updates each affected moment's noteIds, persists to IndexedDB, and triggers sync.
+  const removeNoteFromMoments = useCallback(
+    async (noteId: string): Promise<void> => {
+      // Collect affected moments from the current list
+      const currentList = momentsListRef.current;
+      const affected = currentList.filter(m => !m.isDeleted && m.noteIds.includes(noteId));
+      if (affected.length === 0) return;
+
+      const updatedMoments = affected.map(m => ({
+        ...m,
+        noteIds: m.noteIds.filter(id => id !== noteId),
+        updatedAt: Date.now(),
+      }));
+
+      // Update state
+      setMomentsList(prev =>
+        prev.map(m => {
+          const updated = updatedMoments.find(u => u.id === m.id);
+          return updated || m;
+        })
+      );
+
+      // Invalidate cached synthesis for affected moments
+      setSynthesesMap(prev => {
+        const affectedIds = updatedMoments.map(m => m.id);
+        const hasAny = affectedIds.some(id => prev.has(id));
+        if (!hasAny) return prev;
+        const next = new Map(prev);
+        for (const id of affectedIds) next.delete(id);
+        return next;
+      });
+
+      // Persist and sync each affected moment
+      await Promise.all(
+        updatedMoments.map(m =>
+          saveMoment(m).then(() => {
+            onMomentChangedRef.current?.(m);
+          })
+        )
+      );
+    },
+    []
+  );
+
   // Soft-delete a moment.
   // Same functional-updater pattern as addNoteToMoment for consistency.
   const deleteMoment = useCallback(
@@ -320,6 +367,7 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
     synthesisLoading,
     creating,
     addNoteToMoment,
+    removeNoteFromMoments,
     deleteMoment,
     synthesesMap,
     setOnMomentChanged,
