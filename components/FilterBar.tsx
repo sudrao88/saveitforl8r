@@ -50,8 +50,8 @@ const FilterBar: React.FC<FilterBarProps> = ({
                key={t} 
                onClick={() => setFilterType(filterType === t ? null : t)}
                className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-all active:scale-95 touch-manipulation ${
-                   filterType === t 
-                   ? 'bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-900/20' 
+                   filterType === t
+                   ? 'bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-900/20 animate-chip-pop'
                    : 'bg-gray-800 text-gray-300 border-gray-700 hover:border-gray-500'
                }`}
            >
