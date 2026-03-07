@@ -298,8 +298,8 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
       setShowFormatting(false);
       // Focus the last checklist input after render so the keyboard stays open
       requestAnimationFrame(() => {
-        const inputs = document.querySelectorAll<HTMLInputElement>('[data-checklist-id]');
-        inputs[inputs.length - 1]?.focus();
+        const inputs = containerRef.current?.querySelectorAll<HTMLInputElement>('[data-checklist-id]');
+        if (inputs?.length) inputs[inputs.length - 1].focus();
       });
     }
   }, [isChecklistMode, checklistItems]);
@@ -339,7 +339,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
       focusItemIdRef.current = null;
       // Use requestAnimationFrame to wait for DOM update
       requestAnimationFrame(() => {
-        const input = document.querySelector<HTMLInputElement>(`[data-checklist-id="${id}"]`);
+        const input = containerRef.current?.querySelector<HTMLInputElement>(`[data-checklist-id="${id}"]`);
         input?.focus();
       });
     }
