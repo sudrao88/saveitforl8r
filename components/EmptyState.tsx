@@ -24,19 +24,39 @@ const EmptyState: React.FC<EmptyStateProps> = ({ hasMemories, clearFilters }) =>
         </div>
       ) : (
         <>
-            <h2 className="text-3xl font-black text-white mb-4 tracking-tight">Build your knowledge base</h2>
-            <p className="text-gray-400 max-w-md text-lg leading-relaxed mb-8">
-              Capture thoughts, links, and images.<br className="hidden sm:block" />
-              SaveItForL8R organizes them for you.
+            <h2 className="text-3xl font-black text-white mb-2 tracking-tight">
+              🧠 Your AI-Powered Second Brain
+            </h2>
+            <p className="text-gray-400 text-base mb-6 max-w-sm">
+              Drop anything in. We'll handle the rest.
             </p>
 
-            {/* Decorative arrow pointing down to the quick note bar */}
-            <div className="animate-bounce pointer-events-none opacity-50">
-                <svg width="40" height="40" viewBox="0 0 40 40" fill="none" className="text-gray-600">
-                    <path d="M20 8 L20 30" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-                    <path d="M12 24 L20 32 L28 24" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
+            <div className="grid grid-cols-2 gap-3 max-w-md mb-8 text-left">
+              <div className="bg-gray-800/60 border border-gray-700/50 rounded-xl px-3 py-3">
+                <div className="text-lg mb-1">✨</div>
+                <h3 className="text-sm font-bold text-gray-200">AI Enrichment</h3>
+                <p className="text-xs text-gray-500 leading-snug">Auto-summarized, tagged &amp; classified</p>
+              </div>
+              <div className="bg-gray-800/60 border border-gray-700/50 rounded-xl px-3 py-3">
+                <div className="text-lg mb-1">🔮</div>
+                <h3 className="text-sm font-bold text-gray-200">Brain Search</h3>
+                <p className="text-xs text-gray-500 leading-snug">Ask questions, get answers from your notes</p>
+              </div>
+              <div className="bg-gray-800/60 border border-gray-700/50 rounded-xl px-3 py-3">
+                <div className="text-lg mb-1">🧩</div>
+                <h3 className="text-sm font-bold text-gray-200">Synthesize</h3>
+                <p className="text-xs text-gray-500 leading-snug">Turn notes into itineraries, briefs &amp; more</p>
+              </div>
+              <div className="bg-gray-800/60 border border-gray-700/50 rounded-xl px-3 py-3">
+                <div className="text-lg mb-1">🔒</div>
+                <h3 className="text-sm font-bold text-gray-200">Private &amp; Secure</h3>
+                <p className="text-xs text-gray-500 leading-snug">256-bit encrypted, your eyes only</p>
+              </div>
             </div>
+
+            <p className="text-gray-500 text-sm">
+              Start by dropping a thought below 👇
+            </p>
         </>
       )}
     </div>
