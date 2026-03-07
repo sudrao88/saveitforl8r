@@ -600,6 +600,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                 {/* Attachment */}
                 <button
                     onClick={() => fileInputRef.current?.click()}
+                    onMouseDown={(e) => e.preventDefault()}
                     className="p-2.5 rounded-xl text-gray-400 hover:text-white hover:bg-gray-800 transition-colors active:scale-95"
                     title="Add attachment"
                 >
@@ -609,6 +610,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                 {/* Tags toggle */}
                 <button
                     onClick={() => setShowTags(prev => !prev)}
+                    onMouseDown={(e) => e.preventDefault()}
                     className={`p-2.5 rounded-xl transition-colors active:scale-95 ${showTags ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
                     title="Tags"
                 >
@@ -618,6 +620,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                 {/* Formatting toggle */}
                 <button
                     onClick={() => setShowFormatting(prev => !prev)}
+                    onMouseDown={(e) => e.preventDefault()}
                     className={`p-2.5 rounded-xl transition-colors active:scale-95 ${showFormatting ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
                     title="Formatting"
                 >
@@ -627,6 +630,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                 {/* Checklist toggle */}
                 <button
                     onClick={toggleChecklistMode}
+                    onMouseDown={(e) => e.preventDefault()}
                     className={`p-2.5 rounded-xl transition-colors active:scale-95 ${isChecklistMode ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
                     title="Checklist Mode"
                 >
