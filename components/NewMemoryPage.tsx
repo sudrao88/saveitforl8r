@@ -310,6 +310,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
               editorRef.current.innerHTML = '';
           }
           setIsChecklistMode(true);
+          setShowFormatting(false);
       }
   };
 
@@ -469,8 +470,22 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
         </div>
 
         {/* Full-page editor area */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-8 max-w-3xl mx-auto w-full">
-            <div className="min-h-full relative text-left" dir="ltr">
+        <main
+            className="flex-1 overflow-y-auto p-4 sm:p-8 max-w-3xl mx-auto w-full"
+            onClick={(e) => {
+                // Focus the editor when tapping empty space in the main area
+                if (!isChecklistMode && editorRef.current && !editorRef.current.contains(e.target as Node)) {
+                    editorRef.current.focus();
+                    // Place cursor at end of content
+                    const selection = window.getSelection();
+                    if (selection && editorRef.current.childNodes.length > 0) {
+                        selection.selectAllChildren(editorRef.current);
+                        selection.collapseToEnd();
+                    }
+                }
+            }}
+        >
+            <div className="min-h-full relative text-left flex flex-col" dir="ltr">
                 {isChecklistMode ? (
                     <div className="space-y-3">
                         {checklistItems.map((item, index) => (
@@ -516,7 +531,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                         <div
                             ref={editorRef}
                             contentEditable
-                            className="w-full min-h-[200px] bg-transparent text-lg text-white focus:outline-none prose prose-invert max-w-none
+                            className="w-full flex-1 min-h-[200px] bg-transparent text-lg text-white focus:outline-none prose prose-invert max-w-none
                             prose-p:my-2 prose-ul:my-2 prose-li:my-0
                             [&_h1]:text-3xl [&_h1]:font-bold [&_h1]:mt-4 [&_h1]:mb-2 [&_h1]:text-white
                             [&_h2]:text-2xl [&_h2]:font-bold [&_h2]:mt-3 [&_h2]:mb-2 [&_h2]:text-gray-100
@@ -618,14 +633,16 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                 </button>
 
                 {/* Formatting toggle */}
-                <button
-                    onClick={() => setShowFormatting(prev => !prev)}
-                    onMouseDown={(e) => e.preventDefault()}
-                    className={`p-2.5 rounded-xl transition-colors active:scale-95 ${showFormatting ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
-                    title="Formatting"
-                >
-                    <Type size={20} />
-                </button>
+                {!isChecklistMode && (
+                    <button
+                        onClick={() => setShowFormatting(prev => !prev)}
+                        onMouseDown={(e) => e.preventDefault()}
+                        className={`p-2.5 rounded-xl transition-colors active:scale-95 ${showFormatting ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
+                        title="Formatting"
+                    >
+                        <Type size={20} />
+                    </button>
+                )}
 
                 {/* Checklist toggle */}
                 <button
