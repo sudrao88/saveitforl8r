@@ -107,7 +107,8 @@ app.get('/health', async (_req, res) => {
   if (db) {
     try {
       await db.collection('_healthcheck').limit(1).get();
-    } catch {
+    } catch (err) {
+      console.warn('[Health] Firestore check failed:', err.message);
       checks.firestore = 'degraded';
     }
   } else {
@@ -488,14 +489,16 @@ const SHUTDOWN_TIMEOUT_MS = 30_000;
 
 const shutdown = (signal) => {
   console.log(`[Shutdown] ${signal} received — draining connections…`);
-  server.close(() => {
-    console.log('[Shutdown] HTTP server closed. Exiting.');
-    process.exit(0);
-  });
-  setTimeout(() => {
+  const forceTimer = setTimeout(() => {
     console.error('[Shutdown] Forceful exit after timeout.');
     process.exit(1);
   }, SHUTDOWN_TIMEOUT_MS);
+  forceTimer.unref();
+  server.close(() => {
+    clearTimeout(forceTimer);
+    console.log('[Shutdown] HTTP server closed. Exiting.');
+    process.exit(0);
+  });
 };
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
