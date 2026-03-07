@@ -310,6 +310,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
               editorRef.current.innerHTML = '';
           }
           setIsChecklistMode(true);
+          setShowFormatting(false);
       }
   };
 
@@ -618,14 +619,16 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                 </button>
 
                 {/* Formatting toggle */}
-                <button
-                    onClick={() => setShowFormatting(prev => !prev)}
-                    onMouseDown={(e) => e.preventDefault()}
-                    className={`p-2.5 rounded-xl transition-colors active:scale-95 ${showFormatting ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
-                    title="Formatting"
-                >
-                    <Type size={20} />
-                </button>
+                {!isChecklistMode && (
+                    <button
+                        onClick={() => setShowFormatting(prev => !prev)}
+                        onMouseDown={(e) => e.preventDefault()}
+                        className={`p-2.5 rounded-xl transition-colors active:scale-95 ${showFormatting ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
+                        title="Formatting"
+                    >
+                        <Type size={20} />
+                    </button>
+                )}
 
                 {/* Checklist toggle */}
                 <button
