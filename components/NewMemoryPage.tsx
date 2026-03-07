@@ -4,7 +4,7 @@ import { marked } from 'marked';
 import { Attachment, Memory } from '../types';
 import { isNative } from '../services/platform';
 import { Keyboard } from '@capacitor/keyboard';
-import { escapeHtml, looksLikeMarkdown, sanitizePastedHtml, hasRichFormatting } from '../utils/editorUtils';
+import { escapeHtml, looksLikeMarkdown, sanitizePastedHtml, hasRichFormatting, extractHashtags, mergeTagsWithHashtags } from '../utils/editorUtils';
 import { processFileInputs } from '../utils/attachmentUtils';
 import FormattingToolbar from './FormattingToolbar';
 import TagInput from './TagInput';
@@ -404,12 +404,15 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
         }
       }
 
+      const extractedTags = extractHashtags(finalContent);
+      const allTags = mergeTagsWithHashtags(tags, extractedTags);
+
       if (isEditMode && onUpdate && editMemory) {
         // Update existing memory
-        await onUpdate(editMemory.id, finalContent, attachments, tags, editMemory.location);
+        await onUpdate(editMemory.id, finalContent, attachments, allTags, editMemory.location);
       } else {
         // Create new memory
-        await onCreate(finalContent, attachments, tags, location);
+        await onCreate(finalContent, attachments, allTags, location);
       }
       handleCloseConfirmed();
 

@@ -70,6 +70,50 @@ export const sanitizePastedHtml = (html: string): string => {
     return container.innerHTML;
 };
 
+/** Extract hashtags from text/HTML content and return as deduplicated tag strings (without #). */
+export const extractHashtags = (content: string): string[] => {
+    // Strip HTML tags to get plain text
+    const plainText = content.replace(/<[^>]*>/g, ' ');
+    // Decode HTML entities
+    const decoded = plainText
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'");
+
+    // Match hashtags: # followed by a letter, then alphanumeric/underscore/hyphen
+    const matches = decoded.match(/(?:^|[\s,;(])#([a-zA-Z][a-zA-Z0-9_-]*)/g);
+    if (!matches) return [];
+
+    const seen = new Set<string>();
+    const tags: string[] = [];
+    for (const match of matches) {
+        // Extract the tag part (after #)
+        const hashIndex = match.indexOf('#');
+        const tag = match.slice(hashIndex + 1);
+        const lower = tag.toLowerCase();
+        if (!seen.has(lower)) {
+            seen.add(lower);
+            tags.push(tag);
+        }
+    }
+    return tags;
+};
+
+/** Merge extracted hashtags with existing tags, deduplicating case-insensitively. */
+export const mergeTagsWithHashtags = (existingTags: string[], hashtags: string[]): string[] => {
+    const seen = new Set(existingTags.map(t => t.toLowerCase()));
+    const merged = [...existingTags];
+    for (const tag of hashtags) {
+        if (!seen.has(tag.toLowerCase())) {
+            seen.add(tag.toLowerCase());
+            merged.push(tag);
+        }
+    }
+    return merged;
+};
+
 /** Check whether HTML contains meaningful structural formatting beyond plain text. */
 export const hasRichFormatting = (html: string): boolean => {
     const parser = new DOMParser();
