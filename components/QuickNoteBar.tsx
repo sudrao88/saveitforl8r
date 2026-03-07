@@ -464,6 +464,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
           {/* Left group */}
           <button
             onClick={() => fileInputRef.current?.click()}
+            onMouseDown={(e) => e.preventDefault()}
             className="p-2.5 rounded-xl text-gray-400 hover:text-white hover:bg-gray-800 transition-colors active:scale-95"
             title="Add attachment"
           >
@@ -480,6 +481,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
 
           <button
             onClick={() => setShowTags(prev => !prev)}
+            onMouseDown={(e) => e.preventDefault()}
             className={`p-2.5 rounded-xl transition-colors active:scale-95 ${showTags ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
             title="Tags"
           >
@@ -488,6 +490,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
 
           <button
             onClick={() => setShowFormatting(prev => !prev)}
+            onMouseDown={(e) => e.preventDefault()}
             className={`p-2.5 rounded-xl transition-colors active:scale-95 ${showFormatting ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
             title="Formatting"
           >
@@ -496,6 +499,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
 
           <button
             onClick={toggleChecklistMode}
+            onMouseDown={(e) => e.preventDefault()}
             className={`p-2.5 rounded-xl transition-colors active:scale-95 ${isChecklistMode ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
             title="Checklist Mode"
           >
@@ -504,6 +508,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
 
           <button
             onClick={handleExpand}
+            onMouseDown={(e) => e.preventDefault()}
             className="p-2.5 rounded-xl text-gray-400 hover:text-white hover:bg-gray-800 transition-colors active:scale-95"
             title="Expand to full editor"
           >
