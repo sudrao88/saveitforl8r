@@ -355,7 +355,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
       onFocus={handleContainerFocus}
       onBlur={handleContainerBlur}
     >
-      <div className="bg-gray-900/95 backdrop-blur-xl border-2 border-blue-500 rounded-2xl shadow-[0_-8px_40px_rgba(59,130,246,0.3),0_0_80px_rgba(0,0,0,0.15),0_12px_40px_rgba(0,0,0,0.6)]">
+      <div className="bg-gray-900/95 backdrop-blur-xl border-2 border-blue-500 rounded-2xl shadow-[0_-8px_40px_rgba(0,0,0,0.4),0_0_80px_rgba(0,0,0,0.3),0_12px_40px_rgba(0,0,0,0.6)]">
         {/* Attachment previews */}
         {attachments.length > 0 && (
           <div className="px-4 pt-3 pb-1">
