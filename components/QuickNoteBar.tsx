@@ -106,6 +106,14 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
     focus: () => editorRef.current?.focus(),
   }));
 
+  // Autofocus the editor on mount for devices with a fine pointer (keyboard-attached)
+  // This avoids triggering the virtual keyboard on touch-only mobile devices
+  useEffect(() => {
+    if (window.matchMedia('(pointer: fine)').matches) {
+      editorRef.current?.focus();
+    }
+  }, []);
+
   const checkFormats = useCallback(() => {
     const formats: string[] = [];
     if (document.queryCommandState('bold')) formats.push('bold');
