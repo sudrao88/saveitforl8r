@@ -85,7 +85,7 @@ const TopNavigation: React.FC<TopNavigationProps> = ({
             ) : modelStatus === 'error' ? (
                 <AlertTriangle size={20} className="text-red-500" />
             ) : (
-                <Settings size={20} className="text-gray-500 group-hover:text-white" />
+                <Settings size={20} className="text-gray-500 group-hover:text-white group-hover:rotate-90 transition-transform duration-300" />
             )}
             
             {(syncError || modelStatus === 'error') && !isSyncing && modelStatus !== 'downloading' && (

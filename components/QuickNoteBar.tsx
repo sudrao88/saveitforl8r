@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
-import { Paperclip, Hash, Type, Maximize2, Plus, X, FileText, Loader2, CheckSquare } from 'lucide-react';
+import { Paperclip, Hash, Type, Maximize2, Plus, X, FileText, Loader2, CheckSquare, Check } from 'lucide-react';
 import { marked } from 'marked';
 import { Attachment, QuickNoteState } from '../types';
 import { escapeHtml, looksLikeMarkdown, sanitizePastedHtml, hasRichFormatting, extractHashtags, mergeTagsWithHashtags } from '../utils/editorUtils';
 import { processFileInputs } from '../utils/attachmentUtils';
+import { triggerHaptic } from '../services/platform';
 import FormattingToolbar from './FormattingToolbar';
 import TagInput from './TagInput';
 
@@ -36,6 +37,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
   const [activeFormats, setActiveFormats] = useState<string[]>([]);
   const [isChecklistMode, setIsChecklistMode] = useState(false);
   const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([]);
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
   const editorRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -241,6 +243,9 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
       const allTags = mergeTagsWithHashtags(tags, extractedTags);
       await onSave(content, attachments, allTags);
       resetState();
+      setSaveSuccess(true);
+      triggerHaptic();
+      setTimeout(() => setSaveSuccess(false), 600);
     } catch (error) {
       console.error('Error saving quick note:', error);
     } finally {
@@ -533,13 +538,15 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
             onClick={handleSave}
             disabled={!hasContent || isSaving}
             className={`p-2.5 rounded-xl transition-all active:scale-95 ${
-              hasContent && !isSaving
-                ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-900/30'
-                : 'bg-gray-800 text-gray-600 cursor-not-allowed'
+              saveSuccess
+                ? 'bg-green-600 text-white animate-save-success'
+                : hasContent && !isSaving
+                  ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-900/30'
+                  : 'bg-gray-800 text-gray-600 cursor-not-allowed'
             }`}
             title="Save note (⌘+Enter)"
           >
-            {isSaving ? <Loader2 size={20} className="animate-spin" /> : <Plus size={20} strokeWidth={3} />}
+            {isSaving ? <Loader2 size={20} className="animate-spin" /> : saveSuccess ? <Check size={20} strokeWidth={3} /> : <Plus size={20} strokeWidth={3} />}
           </button>
         </div>
       </div>

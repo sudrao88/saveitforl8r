@@ -254,9 +254,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
         ))}
 
         {loading && (
-          <div className="flex gap-3 items-center text-blue-500 font-bold animate-pulse px-4">
-            <Sparkles size={16} className="animate-spin" />
-            <span className="text-sm">Synthesizing...</span>
+          <div className="flex justify-start animate-in fade-in">
+            <div className="bg-gray-800 border border-gray-700 rounded-2xl px-5 py-4 flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-blue-400 typing-dot" />
+              <span className="w-2 h-2 rounded-full bg-blue-400 typing-dot" style={{ animationDelay: '0.15s' }} />
+              <span className="w-2 h-2 rounded-full bg-blue-400 typing-dot" style={{ animationDelay: '0.3s' }} />
+            </div>
           </div>
         )}
       </div>

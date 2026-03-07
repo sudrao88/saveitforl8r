@@ -6,7 +6,7 @@
  * Displays a pulsing "Creating..." state for pending moments.
  */
 
-import React from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Moment, MomentSynthesis } from '../types';
 
@@ -61,6 +61,17 @@ const MomentBubble: React.FC<MomentBubbleProps> = ({
 }) => {
   const isPending = moment.isPending;
   const hasError = moment.processingError;
+  const wasPendingRef = useRef(isPending);
+  const [showGlow, setShowGlow] = useState(false);
+
+  useEffect(() => {
+    if (wasPendingRef.current && !isPending && !hasError) {
+      setShowGlow(true);
+      const timer = setTimeout(() => setShowGlow(false), 800);
+      return () => clearTimeout(timer);
+    }
+    wasPendingRef.current = isPending;
+  }, [isPending, hasError]);
 
   const icon = moment.emoji || getMomentIcon(moment.type, moment.objective);
   const label = isPending
@@ -89,7 +100,7 @@ const MomentBubble: React.FC<MomentBubbleProps> = ({
       className="flex flex-col items-center gap-1.5 shrink-0 group touch-manipulation"
     >
       <div
-        className={`w-16 h-16 rounded-full flex items-center justify-center bg-gradient-to-br from-gray-800 to-gray-700 ${ringClass} transition-all group-active:scale-95`}
+        className={`w-16 h-16 rounded-full flex items-center justify-center bg-gradient-to-br from-gray-800 to-gray-700 ${ringClass} transition-all group-active:scale-95 ${showGlow ? 'animate-glow-settle' : ''}`}
       >
         {isPending ? (
           <Loader2 size={24} className="text-blue-400 animate-spin" />

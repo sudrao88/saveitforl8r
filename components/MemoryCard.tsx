@@ -200,6 +200,8 @@ interface MemoryCardProps {
   isDialog?: boolean;
   isAuthenticated?: boolean;
   onSignIn?: () => void;
+  /** Index in the feed grid for staggered entrance animation */
+  index?: number;
 }
 
 
@@ -222,12 +224,13 @@ const linkifyHtml = (html: string): string => {
     }).join('');
 };
 
-const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUpdate, onExpand, onViewAttachment, onTogglePin, onEdit, isDialog, isAuthenticated = true, onSignIn }) => {
+const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUpdate, onExpand, onViewAttachment, onTogglePin, onEdit, isDialog, isAuthenticated = true, onSignIn, index }) => {
   const [isConfirming, setIsConfirming] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
+  const [isShaking, setIsShaking] = useState(false);
 
   const [isTruncated, setIsTruncated] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -271,10 +274,14 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
       }
   }
 
-  const startDelete = (e: React.MouseEvent) => { 
-      e.stopPropagation(); 
-      setIsConfirming(true); 
+  const startDelete = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      setIsShaking(true);
       setIsMenuOpen(false);
+      setTimeout(() => {
+        setIsShaking(false);
+        setIsConfirming(true);
+      }, 400);
   };
   
   const cancelDelete = (e: React.MouseEvent) => { e.stopPropagation(); setIsConfirming(false); };
@@ -392,13 +399,16 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
 
   return (
     <>
-      <div 
+      <div
         className={`group relative w-full ${isDialog ? 'mb-0' : 'mb-6'} rounded-xl transition-all duration-300 overflow-hidden flex flex-col
         ${isDialog ? 'bg-gray-900 border border-gray-800' : 'bg-gray-800/40 border border-gray-700/30 hover:bg-gray-800/60 hover:border-gray-600/50 hover:shadow-lg'}
         ${memory.isPending ? 'opacity-70 border-blue-900/30' : ''}
         ${memory.processingError ? 'border-amber-900/30 bg-amber-900/5' : ''}
         ${showErrorOverlay || showSignInOverlay ? 'min-h-[350px]' : ''}
+        ${!isDialog ? 'animate-in fade-in slide-in-from-bottom-4 duration-300 fill-mode-backwards' : ''}
+        ${isShaking ? 'animate-shake' : ''}
         `}
+        style={!isDialog && index != null ? { animationDelay: `${index * 60}ms` } : undefined}
       >
         {/* Sign In Overlay — shown when enrichment failed due to missing auth */}
         {showSignInOverlay && (
@@ -456,7 +466,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                  {!entity?.type && <Clock size={12} className="text-gray-600" />}
                  <span className="text-[10px] text-gray-600 font-medium">{dateStr}</span>
              </div>
-             {memory.isPending && <span className="text-xs font-medium text-blue-400">Enriching...</span>}
+             {memory.isPending && <span className="text-xs font-medium text-blue-400 animate-pulse">Enriching...</span>}
              {memory.processingError && <WifiOff size={12} className="text-amber-500" />}
           </div>
 
@@ -496,6 +506,15 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                             </button>
                         </div>
                     )}
+                </div>
+            )}
+
+            {/* Shimmer placeholder while AI enrichment is pending */}
+            {memory.isPending && !enrichment && (
+                <div className="space-y-2 mt-2">
+                    <div className="h-3 w-3/4 rounded bg-gray-700/50 animate-shimmer" />
+                    <div className="h-3 w-1/2 rounded bg-gray-700/50 animate-shimmer" />
+                    <div className="h-3 w-2/3 rounded bg-gray-700/50 animate-shimmer" />
                 </div>
             )}
 
