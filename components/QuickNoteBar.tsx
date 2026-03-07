@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback, forwardRef, useImperat
 import { Paperclip, Hash, Type, Maximize2, Plus, X, FileText, Loader2, CheckSquare } from 'lucide-react';
 import { marked } from 'marked';
 import { Attachment, QuickNoteState } from '../types';
-import { escapeHtml, looksLikeMarkdown, sanitizePastedHtml, hasRichFormatting } from '../utils/editorUtils';
+import { escapeHtml, looksLikeMarkdown, sanitizePastedHtml, hasRichFormatting, extractHashtags, mergeTagsWithHashtags } from '../utils/editorUtils';
 import { processFileInputs } from '../utils/attachmentUtils';
 import FormattingToolbar from './FormattingToolbar';
 import TagInput from './TagInput';
@@ -237,7 +237,9 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
 
     setIsSaving(true);
     try {
-      await onSave(content, attachments, tags);
+      const extractedTags = extractHashtags(content);
+      const allTags = mergeTagsWithHashtags(tags, extractedTags);
+      await onSave(content, attachments, allTags);
       resetState();
     } catch (error) {
       console.error('Error saving quick note:', error);
