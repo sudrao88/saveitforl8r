@@ -474,15 +474,13 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
             className="flex-1 overflow-y-auto p-4 sm:p-8 max-w-3xl mx-auto w-full"
             onClick={(e) => {
                 // Focus the editor when tapping empty space in the main area
-                if (e.target === e.currentTarget || (e.target as HTMLElement).closest('main') === e.currentTarget) {
-                    if (!isChecklistMode && editorRef.current && !editorRef.current.contains(e.target as Node)) {
-                        editorRef.current.focus();
-                        // Place cursor at end of content
-                        const selection = window.getSelection();
-                        if (selection && editorRef.current.childNodes.length > 0) {
-                            selection.selectAllChildren(editorRef.current);
-                            selection.collapseToEnd();
-                        }
+                if (!isChecklistMode && editorRef.current && !editorRef.current.contains(e.target as Node)) {
+                    editorRef.current.focus();
+                    // Place cursor at end of content
+                    const selection = window.getSelection();
+                    if (selection && editorRef.current.childNodes.length > 0) {
+                        selection.selectAllChildren(editorRef.current);
+                        selection.collapseToEnd();
                     }
                 }
             }}
