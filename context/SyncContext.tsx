@@ -121,33 +121,32 @@ const executeSyncPlan = async (plan: SyncPlan): Promise<string[]> => {
     }
 
     // Build upload list, including synthesis files for any moments being uploaded
-    const uploadItems = plan.toUpload.map(u => ({
+    const uploadItems: Array<{ filename: string; content: Memory | Moment | MomentSynthesis; existingFileId?: string }> = plan.toUpload.map(u => ({
         filename: `${u.noteId}.json`,
         content: u.memory,
         existingFileId: u.remoteFileId
     }));
 
-    // Collect synthesis uploads for moments in the upload batch
-    const synthUploads: Array<{ momentId: string }> = [];
+    // Collect moment IDs that need synthesis uploads
+    const momentIdsForSynth: string[] = [];
     for (const u of plan.toUpload) {
         if (u.noteId.startsWith('moment-') && !u.noteId.startsWith('moment-synthesis-')) {
-            const momentId = u.noteId.replace('moment-', '');
-            synthUploads.push({ momentId });
+            momentIdsForSynth.push(u.noteId.replace('moment-', ''));
         }
     }
 
-    // Fetch syntheses and add to upload batch
-    for (const { momentId } of synthUploads) {
-        const synthesis = await getMomentSynthesis(momentId);
-        if (synthesis) {
+    // Fetch all syntheses in parallel from IDB
+    const synthResults = await Promise.all(
+        momentIdsForSynth.map(async (momentId) => {
+            const synthesis = await getMomentSynthesis(momentId);
+            if (!synthesis) return null;
             const synthFilename = `moment-synthesis-${momentId}.json`;
             const remoteSynthFile = await findFileByName(synthFilename);
-            uploadItems.push({
-                filename: synthFilename,
-                content: synthesis as any,
-                existingFileId: remoteSynthFile?.id
-            });
-        }
+            return { filename: synthFilename, content: synthesis, existingFileId: remoteSynthFile?.id };
+        })
+    );
+    for (const item of synthResults) {
+        if (item) uploadItems.push(item);
     }
 
     const { failures: upFailures } = await uploadMultipleFiles(uploadItems);
@@ -232,13 +231,12 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       try {
           const filename = `${memory.id}.json`;
           const remoteFile = await findFileByName(filename);
-          await uploadFile(filename, memory, remoteFile?.id);
+          const uploaded = await uploadFile(filename, memory, remoteFile?.id);
 
-          const updatedFile = await findFileByName(filename);
-          if (updatedFile) {
+          if (uploaded?.modifiedTime) {
               const snapshotJSON = await storage.get(SNAPSHOT_KEY);
               const snapshot = snapshotJSON ? JSON.parse(snapshotJSON) : {};
-              snapshot[memory.id] = updatedFile.modifiedTime;
+              snapshot[memory.id] = uploaded.modifiedTime;
               await storage.set(SNAPSHOT_KEY, JSON.stringify(snapshot));
           }
       } catch (e) {
@@ -251,14 +249,13 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       try {
           const filename = `moment-${moment.id}.json`;
           const remoteFile = await findFileByName(filename);
-          await uploadFile(filename, moment, remoteFile?.id);
+          const uploadedMoment = await uploadFile(filename, moment, remoteFile?.id);
 
-          const updatedFile = await findFileByName(filename);
           const snapshotJSON = await storage.get(SNAPSHOT_KEY);
           const snapshot = snapshotJSON ? JSON.parse(snapshotJSON) : {};
 
-          if (updatedFile) {
-              snapshot[`moment-${moment.id}`] = updatedFile.modifiedTime;
+          if (uploadedMoment?.modifiedTime) {
+              snapshot[`moment-${moment.id}`] = uploadedMoment.modifiedTime;
           }
 
           // Also sync the synthesis cache if available
@@ -266,11 +263,10 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           if (synthesis) {
               const synthFilename = `moment-synthesis-${moment.id}.json`;
               const remoteSynthFile = await findFileByName(synthFilename);
-              await uploadFile(synthFilename, synthesis, remoteSynthFile?.id);
+              const uploadedSynth = await uploadFile(synthFilename, synthesis, remoteSynthFile?.id);
 
-              const updatedSynthFile = await findFileByName(synthFilename);
-              if (updatedSynthFile) {
-                  snapshot[`moment-synthesis-${moment.id}`] = updatedSynthFile.modifiedTime;
+              if (uploadedSynth?.modifiedTime) {
+                  snapshot[`moment-synthesis-${moment.id}`] = uploadedSynth.modifiedTime;
               }
           }
 

@@ -361,7 +361,7 @@ export const deleteMomentHard = async (id: string): Promise<void> => {
     tx.onerror = () => reject(tx.error);
   });
   // Also clean up the associated synthesis cache
-  await deleteMomentSynthesis(id).catch(() => {});
+  await deleteMomentSynthesis(id).catch(e => console.warn(`[Storage] Failed to delete synthesis for moment ${id}:`, e));
 };
 
 // --- MomentSynthesis Cache ---
