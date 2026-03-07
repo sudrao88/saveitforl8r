@@ -137,3 +137,41 @@ export const validateResultsInput = (req, res, next) => {
 
   next();
 };
+
+export const validateSynthesizeInput = (req, res, next) => {
+  const { notes, momentType, momentTitle, objective, momentId } = req.body;
+
+  if (!notes || !Array.isArray(notes))
+    return res.status(400).json({ error: 'notes is required and must be an array' });
+  if (notes.length > 500)
+    return res.status(400).json({ error: 'Too many notes (max 500)' });
+  if (!momentType || typeof momentType !== 'string')
+    return res.status(400).json({ error: 'momentType is required and must be a string' });
+  if (!momentTitle || typeof momentTitle !== 'string')
+    return res.status(400).json({ error: 'momentTitle is required and must be a string' });
+  if (objective !== undefined && typeof objective !== 'string')
+    return res.status(400).json({ error: 'objective must be a string' });
+  if (!momentId || typeof momentId !== 'string')
+    return res.status(400).json({ error: 'momentId is required and must be a string' });
+  if (!UUID_REGEX.test(momentId))
+    return res.status(400).json({ error: 'momentId must be a valid UUID' });
+
+  next();
+};
+
+export const validateSynthesizeResultsInput = (req, res, next) => {
+  const { momentIds } = req.body;
+
+  if (!momentIds || !Array.isArray(momentIds))
+    return res.status(400).json({ error: 'momentIds must be an array' });
+  if (momentIds.length === 0)
+    return res.status(400).json({ error: 'momentIds must not be empty' });
+  if (momentIds.length > 10)
+    return res.status(400).json({ error: 'Maximum 10 momentIds per request' });
+  for (const id of momentIds) {
+    if (typeof id !== 'string' || !UUID_REGEX.test(id))
+      return res.status(400).json({ error: `Invalid momentId: ${id}` });
+  }
+
+  next();
+};

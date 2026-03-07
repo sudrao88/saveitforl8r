@@ -21,6 +21,7 @@ import { createEnrichRouter } from './routes/enrich.js';
 import { createQueryRouter } from './routes/query.js';
 import { createMomentRouter } from './routes/moment.js';
 import { authenticateRequest } from './middleware/auth.js';
+import { validateSynthesizeInput, validateSynthesizeResultsInput } from './middleware/validation.js';
 import { sanitizeUserInput } from './lib/sanitize.js';
 
 const app = express();
@@ -244,19 +245,30 @@ const SYNTHESIS_COLLECTION = 'synthesis-results';
 const SYNTHESIS_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const SYNTHESIS_FAILED_TTL_MS = 24 * 60 * 60 * 1000; // 1 day
 
-const persistSynthesisResult = (momentId, userId, status, result) => {
+const persistSynthesisResult = async (momentId, userId, status, result) => {
   if (!db || !momentId) return;
-  const doc = {
-    userId,
-    status,
-    createdAt: Date.now(),
-    expireAt: new Date(Date.now() + (status === 'completed' ? SYNTHESIS_TTL_MS : SYNTHESIS_FAILED_TTL_MS)),
-  };
-  if (result) doc.result = result;
-  db.collection(SYNTHESIS_COLLECTION)
-    .doc(momentId)
-    .set(doc)
-    .catch((err) => console.error(`[Firestore] Failed to persist synthesis result for ${momentId}:`, err.message));
+
+  const docRef = db.collection(SYNTHESIS_COLLECTION).doc(momentId);
+
+  try {
+    // Verify ownership: only allow overwrite if doc doesn't exist or belongs to this user
+    const existing = await docRef.get();
+    if (existing.exists && existing.data().userId !== userId) {
+      console.warn(`[Firestore] Ownership mismatch for synthesis ${momentId}: requested by ${userId}, owned by ${existing.data().userId}`);
+      return;
+    }
+
+    const doc = {
+      userId,
+      status,
+      createdAt: Date.now(),
+      expireAt: new Date(Date.now() + (status === 'completed' ? SYNTHESIS_TTL_MS : SYNTHESIS_FAILED_TTL_MS)),
+    };
+    if (result) doc.result = result;
+    await docRef.set(doc);
+  } catch (err) {
+    console.error(`[Firestore] Failed to persist synthesis result for ${momentId}:`, err.message);
+  }
 };
 
 const synthesizeLimiter = rateLimit({
@@ -276,44 +288,6 @@ const synthesizeResultsLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Rate limit exceeded. Try again later.' },
 });
-
-const validateSynthesizeInput = (req, res, next) => {
-  const { notes, momentType, momentTitle, objective, momentId } = req.body;
-
-  if (!notes || !Array.isArray(notes))
-    return res.status(400).json({ error: 'notes is required and must be an array' });
-  if (notes.length > 500)
-    return res.status(400).json({ error: 'Too many notes (max 500)' });
-  if (!momentType || typeof momentType !== 'string')
-    return res.status(400).json({ error: 'momentType is required and must be a string' });
-  if (!momentTitle || typeof momentTitle !== 'string')
-    return res.status(400).json({ error: 'momentTitle is required and must be a string' });
-  if (objective !== undefined && typeof objective !== 'string')
-    return res.status(400).json({ error: 'objective must be a string' });
-  if (!momentId || typeof momentId !== 'string')
-    return res.status(400).json({ error: 'momentId is required and must be a string' });
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(momentId))
-    return res.status(400).json({ error: 'momentId must be a valid UUID' });
-
-  next();
-};
-
-const validateSynthesizeResultsInput = (req, res, next) => {
-  const { momentIds } = req.body;
-
-  if (!momentIds || !Array.isArray(momentIds))
-    return res.status(400).json({ error: 'momentIds must be an array' });
-  if (momentIds.length === 0)
-    return res.status(400).json({ error: 'momentIds must not be empty' });
-  if (momentIds.length > 10)
-    return res.status(400).json({ error: 'Maximum 10 momentIds per request' });
-  for (const id of momentIds) {
-    if (typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))
-      return res.status(400).json({ error: `Invalid momentId: ${id}` });
-  }
-
-  next();
-};
 
 // --- POST /api/synthesize (submit, async — returns immediately) ---
 app.post(

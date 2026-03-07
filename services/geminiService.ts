@@ -315,14 +315,15 @@ export const fetchPendingSynthesisResults = async (
     if (response && response.results) {
       for (const id of momentIds) {
         const entry = response.results[id];
-        if (entry?.status === 'completed' && entry.data) {
+        if (entry?.status === 'not_found') {
+          result[id] = { status: 'not_found' };
+        } else if (entry?.status === 'completed' && entry.data) {
           result[id] = { status: 'completed', data: entry.data };
         } else if (entry?.status === 'failed') {
           result[id] = { status: 'failed' };
-        } else if (entry?.status === 'processing') {
-          result[id] = { status: 'processing' };
         } else {
-          result[id] = { status: 'not_found' };
+          // Default unknown statuses to 'processing' as a safe intermediate state
+          result[id] = { status: 'processing' };
         }
       }
     }
