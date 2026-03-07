@@ -8,11 +8,10 @@
 import React from 'react';
 import { Sparkles, ChevronRight } from 'lucide-react';
 import MomentBubble from './MomentBubble';
-import { Moment, MomentSynthesis } from '../types';
+import { Moment } from '../types';
 
 interface MomentsStripProps {
   moments: Moment[];
-  synthesesMap: Map<string, MomentSynthesis>;
   onMomentTap: (moment: Moment) => void;
   onNewMoment: () => void;
   onShowAll: () => void;
@@ -20,7 +19,6 @@ interface MomentsStripProps {
 
 const MomentsStrip: React.FC<MomentsStripProps> = ({
   moments,
-  synthesesMap,
   onMomentTap,
   onNewMoment,
   onShowAll,
@@ -45,7 +43,6 @@ const MomentsStrip: React.FC<MomentsStripProps> = ({
           <MomentBubble
             key={moment.id}
             moment={moment}
-            synthesis={synthesesMap.get(moment.id)}
             onTap={onMomentTap}
           />
         ))}

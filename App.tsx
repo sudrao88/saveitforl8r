@@ -107,6 +107,7 @@ const AppContent: React.FC = () => {
     synthesesMap,
     setOnMomentChanged,
     refreshMoments,
+    markMomentSeen,
   } = useMoments(memories);
 
   const { syncMoment } = useSync();
@@ -129,7 +130,8 @@ const AppContent: React.FC = () => {
 
   const handleMomentTap = useCallback((moment: Moment) => {
     setActiveMoment(moment);
-  }, []);
+    markMomentSeen(moment.id);
+  }, [markMomentSeen]);
 
   const handleMomentClose = useCallback(() => {
     setActiveMoment(null);
@@ -611,7 +613,6 @@ const AppContent: React.FC = () => {
       {!isFocusMode && (
         <MomentsStrip
           moments={moments}
-          synthesesMap={synthesesMap}
           onMomentTap={handleMomentTap}
           onNewMoment={handleNewMoment}
           onShowAll={handleShowAllMoments}
