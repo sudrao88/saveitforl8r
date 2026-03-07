@@ -72,18 +72,13 @@ export const sanitizePastedHtml = (html: string): string => {
 
 /** Extract hashtags from text/HTML content and return as deduplicated tag strings (without #). */
 export const extractHashtags = (content: string): string[] => {
-    // Strip HTML tags to get plain text
-    const plainText = content.replace(/<[^>]*>/g, ' ');
-    // Decode HTML entities
-    const decoded = plainText
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&quot;/g, '"')
-        .replace(/&#39;/g, "'");
+    // Use DOMParser to strip HTML tags and decode all entities in one step
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(content, 'text/html');
+    const plainText = doc.body.textContent || '';
 
     // Match hashtags: # followed by a letter, then alphanumeric/underscore/hyphen
-    const matches = decoded.match(/(?:^|[\s,;(])#([a-zA-Z][a-zA-Z0-9_-]*)/g);
+    const matches = plainText.match(/(?:^|[\s,;(])#([a-zA-Z][a-zA-Z0-9_-]*)/g);
     if (!matches) return [];
 
     const seen = new Set<string>();
