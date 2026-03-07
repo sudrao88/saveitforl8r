@@ -39,6 +39,8 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
   const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([]);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
   const editorRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const focusItemIdRef = useRef<string | null>(null);
@@ -70,6 +72,35 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
       if (saveSuccessTimeoutRef.current) clearTimeout(saveSuccessTimeoutRef.current);
     };
   }, []);
+
+  // Track iOS virtual keyboard via visualViewport API so the bar stays
+  // above the keyboard on the first open after a cold launch in standalone mode.
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+
+    const update = () => {
+      const kbHeight = window.innerHeight - vv.height;
+      setKeyboardHeight(kbHeight > 0 ? kbHeight : 0);
+    };
+
+    update();
+    vv.addEventListener('resize', update);
+    vv.addEventListener('scroll', update);
+    return () => {
+      vv.removeEventListener('resize', update);
+      vv.removeEventListener('scroll', update);
+    };
+  }, []);
+
+  // When the keyboard opens, scroll the editor into view so it's not hidden.
+  useEffect(() => {
+    if (keyboardHeight > 0) {
+      requestAnimationFrame(() => {
+        containerRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' });
+      });
+    }
+  }, [keyboardHeight]);
 
   useImperativeHandle(ref, () => ({
     focus: () => editorRef.current?.focus(),
@@ -363,8 +394,10 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
   return (
     <div
       ref={containerRef}
-      className="sticky bottom-0 z-[60] px-3 pb-3 pt-1 lg:w-[34%] lg:mx-auto relative"
-      style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+      className="sticky bottom-0 z-[60] px-3 pb-3 pt-1 lg:w-[34%] lg:mx-auto relative transition-[padding-bottom] duration-150"
+      style={{
+        paddingBottom: keyboardHeight > 0 ? `${keyboardHeight}px` : 'max(0.75rem, env(safe-area-inset-bottom))',
+      }}
       onFocus={handleContainerFocus}
       onBlur={handleContainerBlur}
     >
