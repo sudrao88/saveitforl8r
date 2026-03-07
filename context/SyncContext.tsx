@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, ReactNode, useRef, useEffect } from 'react';
-import { getMemories, saveMemory, deleteMemory, reconcileEmbeddings, getAllMomentsIncludingDeleted, saveMoment, deleteMomentHard } from '../services/storageService';
+import { getMemories, saveMemory, deleteMemory, reconcileEmbeddings, getAllMomentsIncludingDeleted, saveMoment, deleteMomentHard, getMomentSynthesis, saveMomentSynthesis, deleteMomentSynthesis } from '../services/storageService';
 
 import {
     listAllFiles,
@@ -11,7 +11,7 @@ import {
     isLinked as checkIsLinked,
     deleteRemoteNote
 } from '../services/googleDriveService';
-import { Memory, Moment } from '../types';
+import { Memory, Moment, MomentSynthesis } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { storage } from '../services/platform';
 
@@ -53,6 +53,19 @@ const executeSyncPlan = async (plan: SyncPlan): Promise<string[]> => {
         if (!content) { errors.push(item.noteId); continue; }
 
         try {
+            // Handle moment synthesis files
+            if (item.noteId.startsWith('moment-synthesis-')) {
+                const synthesisContent = content as unknown as MomentSynthesis;
+                const momentId = item.noteId.replace('moment-synthesis-', '');
+                const safeSynthesis: MomentSynthesis = { ...synthesisContent, momentId };
+
+                const localSynthesis = await getMomentSynthesis(momentId);
+                if (!localSynthesis || safeSynthesis.generatedAt > localSynthesis.generatedAt) {
+                    await saveMomentSynthesis(safeSynthesis);
+                }
+                continue;
+            }
+
             // Handle moment files with proper conflict resolution
             if (item.noteId.startsWith('moment-')) {
                 const momentContent = content as unknown as Moment;
@@ -107,18 +120,51 @@ const executeSyncPlan = async (plan: SyncPlan): Promise<string[]> => {
         }
     }
 
-    const { failures: upFailures } = await uploadMultipleFiles(
-        plan.toUpload.map(u => ({
-            filename: `${u.noteId}.json`,
-            content: u.memory,
-            existingFileId: u.remoteFileId
-        }))
+    // Build upload list, including synthesis files for any moments being uploaded
+    const uploadItems: Array<{ filename: string; content: Memory | Moment | MomentSynthesis; existingFileId?: string }> = plan.toUpload.map(u => ({
+        filename: `${u.noteId}.json`,
+        content: u.memory,
+        existingFileId: u.remoteFileId
+    }));
+
+    // Collect moment IDs that need synthesis uploads
+    const momentIdsForSynth: string[] = [];
+    for (const u of plan.toUpload) {
+        if (u.noteId.startsWith('moment-') && !u.noteId.startsWith('moment-synthesis-')) {
+            momentIdsForSynth.push(u.noteId.replace('moment-', ''));
+        }
+    }
+
+    // Fetch all syntheses in parallel from IDB
+    const synthResults = await Promise.all(
+        momentIdsForSynth.map(async (momentId) => {
+            const synthesis = await getMomentSynthesis(momentId);
+            if (!synthesis) return null;
+            const synthFilename = `moment-synthesis-${momentId}.json`;
+            const remoteSynthFile = await findFileByName(synthFilename);
+            return { filename: synthFilename, content: synthesis, existingFileId: remoteSynthFile?.id };
+        })
     );
+    for (const item of synthResults) {
+        if (item) uploadItems.push(item);
+    }
+
+    const { failures: upFailures } = await uploadMultipleFiles(uploadItems);
     errors.push(...upFailures.map(f => f.replace('.json', '')));
 
     for (const item of plan.toDeleteRemote) {
         try {
             await deleteFileById(item.fileId);
+            // When deleting a moment, also delete its synthesis file from remote
+            if (item.noteId.startsWith('moment-') && !item.noteId.startsWith('moment-synthesis-')) {
+                const momentId = item.noteId.replace('moment-', '');
+                try {
+                    const synthFile = await findFileByName(`moment-synthesis-${momentId}.json`);
+                    if (synthFile) await deleteFileById(synthFile.id);
+                } catch (e) {
+                    console.warn(`[Sync] Failed to delete remote synthesis for ${momentId}:`, e);
+                }
+            }
         } catch (e) {
             console.error(`[Sync] Failed to delete remote file for ${item.noteId}:`, e);
             errors.push(item.noteId);
@@ -127,7 +173,11 @@ const executeSyncPlan = async (plan: SyncPlan): Promise<string[]> => {
 
     for (const id of [...plan.toHardDeleteLocal, ...plan.toDeleteLocal]) {
         try {
-            if (id.startsWith('moment-')) {
+            if (id.startsWith('moment-synthesis-')) {
+                // Synthesis-only deletion (orphan cleanup)
+                await deleteMomentSynthesis(id.replace('moment-synthesis-', ''));
+            } else if (id.startsWith('moment-')) {
+                // deleteMomentHard cascades to deleteMomentSynthesis
                 await deleteMomentHard(id.replace('moment-', ''));
             } else {
                 await deleteMemory(id);
@@ -181,13 +231,12 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       try {
           const filename = `${memory.id}.json`;
           const remoteFile = await findFileByName(filename);
-          await uploadFile(filename, memory, remoteFile?.id);
+          const uploaded = await uploadFile(filename, memory, remoteFile?.id);
 
-          const updatedFile = await findFileByName(filename);
-          if (updatedFile) {
+          if (uploaded?.modifiedTime) {
               const snapshotJSON = await storage.get(SNAPSHOT_KEY);
               const snapshot = snapshotJSON ? JSON.parse(snapshotJSON) : {};
-              snapshot[memory.id] = updatedFile.modifiedTime;
+              snapshot[memory.id] = uploaded.modifiedTime;
               await storage.set(SNAPSHOT_KEY, JSON.stringify(snapshot));
           }
       } catch (e) {
@@ -200,15 +249,28 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       try {
           const filename = `moment-${moment.id}.json`;
           const remoteFile = await findFileByName(filename);
-          await uploadFile(filename, moment, remoteFile?.id);
+          const uploadedMoment = await uploadFile(filename, moment, remoteFile?.id);
 
-          const updatedFile = await findFileByName(filename);
-          if (updatedFile) {
-              const snapshotJSON = await storage.get(SNAPSHOT_KEY);
-              const snapshot = snapshotJSON ? JSON.parse(snapshotJSON) : {};
-              snapshot[`moment-${moment.id}`] = updatedFile.modifiedTime;
-              await storage.set(SNAPSHOT_KEY, JSON.stringify(snapshot));
+          const snapshotJSON = await storage.get(SNAPSHOT_KEY);
+          const snapshot = snapshotJSON ? JSON.parse(snapshotJSON) : {};
+
+          if (uploadedMoment?.modifiedTime) {
+              snapshot[`moment-${moment.id}`] = uploadedMoment.modifiedTime;
           }
+
+          // Also sync the synthesis cache if available
+          const synthesis = await getMomentSynthesis(moment.id);
+          if (synthesis) {
+              const synthFilename = `moment-synthesis-${moment.id}.json`;
+              const remoteSynthFile = await findFileByName(synthFilename);
+              const uploadedSynth = await uploadFile(synthFilename, synthesis, remoteSynthFile?.id);
+
+              if (uploadedSynth?.modifiedTime) {
+                  snapshot[`moment-synthesis-${moment.id}`] = uploadedSynth.modifiedTime;
+              }
+          }
+
+          await storage.set(SNAPSHOT_KEY, JSON.stringify(snapshot));
       } catch (e) {
           console.error(`[Sync] Moment sync failed for ${moment.id}:`, e);
           throw e;
@@ -252,6 +314,20 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         handled.add(noteId);
 
+        // Handle moment synthesis files — download to keep caches in sync
+        if (noteId.startsWith('moment-synthesis-')) {
+            const momentId = noteId.replace('moment-synthesis-', '');
+            const localMoment = localMomentMap.get(`moment-${momentId}`);
+            if (localMoment?.isDeleted) {
+                // Parent moment is deleted locally — clean up the remote synthesis
+                plan.toDeleteRemote.push({ noteId, fileId: remoteFile.id });
+                plan.toHardDeleteLocal.push(noteId);
+            } else {
+                plan.toDownload.push({ noteId, fileId: remoteFile.id });
+            }
+            continue;
+        }
+
         // Handle moment files separately
         if (noteId.startsWith('moment-')) {
             const localMoment = localMomentMap.get(noteId);
@@ -281,6 +357,13 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (handled.has(noteId)) continue;
 
         handled.add(noteId);
+
+        // Handle synthesis files that were removed from remote
+        if (noteId.startsWith('moment-synthesis-')) {
+            // Remote synthesis was deleted — clean up local cache
+            plan.toHardDeleteLocal.push(noteId);
+            continue;
+        }
 
         // Handle moments that were removed from remote
         if (noteId.startsWith('moment-')) {
@@ -336,6 +419,21 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             const remote = remoteMap.get(key);
             plan.toUpload.push({ noteId: key, memory: moment, remoteFileId: remote?.id });
             handled.add(key);
+        }
+    }
+
+    // Clean up orphaned synthesis files — synthesis exists on remote but no corresponding moment
+    for (const [noteId, remoteFile] of remoteMap.entries()) {
+        if (!noteId.startsWith('moment-synthesis-')) continue;
+        if (handled.has(noteId)) continue;
+        const momentId = noteId.replace('moment-synthesis-', '');
+        const momentKey = `moment-${momentId}`;
+        const hasMomentRemote = remoteMap.has(momentKey);
+        const hasMomentLocal = localMomentMap.has(momentKey);
+        if (!hasMomentRemote && !hasMomentLocal) {
+            plan.toDeleteRemote.push({ noteId, fileId: remoteFile.id });
+            plan.toHardDeleteLocal.push(noteId);
+            handled.add(noteId);
         }
     }
 

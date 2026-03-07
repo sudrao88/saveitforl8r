@@ -353,13 +353,15 @@ export const saveMoment = async (moment: Moment): Promise<void> => {
 
 export const deleteMomentHard = async (id: string): Promise<void> => {
   const dbInstance = await openDB();
-  return new Promise((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     const tx = dbInstance.transaction(MOMENTS_STORE, 'readwrite');
     const store = tx.objectStore(MOMENTS_STORE);
     store.delete(id);
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
+  // Also clean up the associated synthesis cache
+  await deleteMomentSynthesis(id).catch(e => console.warn(`[Storage] Failed to delete synthesis for moment ${id}:`, e));
 };
 
 // --- MomentSynthesis Cache ---
@@ -378,6 +380,17 @@ export const getMomentSynthesis = async (momentId: string): Promise<MomentSynthe
     console.error("Failed to get moment synthesis:", error);
     return null;
   }
+};
+
+export const deleteMomentSynthesis = async (momentId: string): Promise<void> => {
+  const dbInstance = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = dbInstance.transaction(MOMENT_SYNTHESIS_STORE, 'readwrite');
+    const store = tx.objectStore(MOMENT_SYNTHESIS_STORE);
+    store.delete(momentId);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
 };
 
 export const saveMomentSynthesis = async (synthesis: MomentSynthesis): Promise<void> => {
