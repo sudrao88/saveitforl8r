@@ -278,6 +278,7 @@ export const createMomentRouter = ({
   ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GEMINI_TIMEOUT_MS,
   MOMENT_COLLECTION, MOMENT_TTL_MS, MOMENT_FAILED_TTL_MS,
   createMomentResponseSchema, synthesisResponseSchema,
+  aiLimiter,
 }) => {
   const router = Router();
 
@@ -368,7 +369,8 @@ export const createMomentRouter = ({
       // Acknowledge immediately
       res.json({ status: 'accepted', momentId: id });
 
-      // --- Background 3-step pipeline ---
+      // --- Background 3-step pipeline (concurrency-limited) ---
+      aiLimiter.run(async () => {
       const startTime = Date.now();
       console.log(`[CreateMoment] [${req.requestId}] ASYNC user=${req.userId} momentId=${id} objective="${objective?.substring(0, 50)}" notes=${notes.length}`);
 
@@ -409,6 +411,7 @@ export const createMomentRouter = ({
           persistMomentResult(id, req.userId, 'failed', null);
         }
       }
+      }).catch((err) => console.error(`[CreateMoment] Limiter error:`, err.message));
     }
   );
 

@@ -6,6 +6,7 @@ import crypto from 'crypto';
 
 const GOOGLE_TOKENINFO_URL = 'https://oauth2.googleapis.com/tokeninfo';
 const TOKEN_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const TOKEN_CACHE_MAX_SIZE = 10_000; // Cap to prevent unbounded memory growth
 
 const tokenCache = new Map();
 
@@ -54,6 +55,12 @@ export const authenticateRequest = async (req, res, next) => {
       return res.status(403).json({ error: 'Audience mismatch' });
     }
     req.userId = tokenInfo.sub || tokenInfo.email || 'unknown';
+
+    // Evict oldest entries if cache is at capacity
+    if (tokenCache.size >= TOKEN_CACHE_MAX_SIZE) {
+      const firstKey = tokenCache.keys().next().value;
+      tokenCache.delete(firstKey);
+    }
 
     tokenCache.set(tokenHash, {
       userId: req.userId,

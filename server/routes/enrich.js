@@ -95,7 +95,7 @@ ${momentsContext}`;
   return matchResult.matchedMomentIds || [];
 };
 
-export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GEMINI_TIMEOUT_MS, ENRICHMENT_COLLECTION, ENRICHMENT_TTL_MS, ENRICHMENT_FAILED_TTL_MS }) => {
+export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GEMINI_TIMEOUT_MS, ENRICHMENT_COLLECTION, ENRICHMENT_TTL_MS, ENRICHMENT_FAILED_TTL_MS, aiLimiter }) => {
   const router = Router();
 
   const persistEnrichmentResult = (memoryId, userId, status, result) => {
@@ -162,7 +162,8 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
       // Acknowledge receipt immediately
       res.json({ status: 'accepted' });
 
-      // --- Background enrichment processing ---
+      // --- Background enrichment processing (concurrency-limited) ---
+      aiLimiter.run(async () => {
       const startTime = Date.now();
       const parts = [];
 
@@ -335,6 +336,7 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
           persistEnrichmentResult(memoryId, req.userId, 'failed', null);
         }
       }
+      }).catch((err) => console.error(`[Enrich] Limiter error:`, err.message));
     }
   );
 

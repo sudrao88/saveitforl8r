@@ -12,7 +12,7 @@ import {
   normalizeHistory,
 } from '../services/gemini.js';
 
-export const createQueryRouter = ({ ai, MODEL_NAME, GEMINI_TIMEOUT_MS }) => {
+export const createQueryRouter = ({ ai, MODEL_NAME, FALLBACK_MODEL_NAME, GEMINI_TIMEOUT_MS }) => {
   const router = Router();
 
   const queryLimiter = rateLimit({
@@ -125,7 +125,33 @@ export const createQueryRouter = ({ ai, MODEL_NAME, GEMINI_TIMEOUT_MS }) => {
           res.json(JSON.parse(responseText));
         } catch (apiError) {
           clearTimeout(timeout);
-          throw apiError;
+
+          // Fallback with alternate model
+          console.warn(`[Query] [${req.requestId}] Primary model failed: ${apiError.message}. Trying fallback…`);
+          const fbController = new AbortController();
+          const fbTimeout = setTimeout(() => fbController.abort(), GEMINI_TIMEOUT_MS);
+
+          try {
+            const fbResponse = await ai.models.generateContent({
+              model: FALLBACK_MODEL_NAME,
+              contents,
+              config: {
+                systemInstruction: QUERY_SYSTEM_PROMPT,
+                responseMimeType: 'application/json',
+                responseSchema: queryResponseSchema,
+                thinkingConfig: { thinkingBudget: 0 },
+              },
+              requestOptions: { signal: fbController.signal },
+            });
+            clearTimeout(fbTimeout);
+
+            const fbText = fbResponse.text || '{}';
+            console.log(`[Query] [${req.requestId}] Fallback response length: ${fbText.length}`);
+            return res.json(JSON.parse(fbText));
+          } catch (fbError) {
+            clearTimeout(fbTimeout);
+            throw fbError;
+          }
         }
       } catch (error) {
         console.error(`[Query] [${req.requestId}] Failed:`, error.message);
