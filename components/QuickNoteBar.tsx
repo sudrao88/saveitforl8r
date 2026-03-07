@@ -295,6 +295,12 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
       if (editorRef.current) editorRef.current.innerHTML = '';
       setIsChecklistMode(true);
       setIsEmpty(false);
+      setShowFormatting(false);
+      // Focus the last checklist input after render so the keyboard stays open
+      requestAnimationFrame(() => {
+        const inputs = containerRef.current?.querySelectorAll<HTMLInputElement>('[data-checklist-id]');
+        if (inputs?.length) inputs[inputs.length - 1].focus();
+      });
     }
   }, [isChecklistMode, checklistItems]);
 
@@ -333,7 +339,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
       focusItemIdRef.current = null;
       // Use requestAnimationFrame to wait for DOM update
       requestAnimationFrame(() => {
-        const input = document.querySelector<HTMLInputElement>(`[data-checklist-id="${id}"]`);
+        const input = containerRef.current?.querySelector<HTMLInputElement>(`[data-checklist-id="${id}"]`);
         input?.focus();
       });
     }
@@ -488,14 +494,16 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
             <Hash size={20} />
           </button>
 
-          <button
-            onClick={() => setShowFormatting(prev => !prev)}
-            onMouseDown={(e) => e.preventDefault()}
-            className={`p-2.5 rounded-xl transition-colors active:scale-95 ${showFormatting ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
-            title="Formatting"
-          >
-            <Type size={20} />
-          </button>
+          {!isChecklistMode && (
+            <button
+              onClick={() => setShowFormatting(prev => !prev)}
+              onMouseDown={(e) => e.preventDefault()}
+              className={`p-2.5 rounded-xl transition-colors active:scale-95 ${showFormatting ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
+              title="Formatting"
+            >
+              <Type size={20} />
+            </button>
+          )}
 
           <button
             onClick={toggleChecklistMode}
