@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, ReactNode, useRef, useEffect } from 'react';
-import { getMemories, saveMemory, deleteMemory, reconcileEmbeddings, getAllMomentsIncludingDeleted, saveMoment, deleteMomentHard, getMomentSynthesis, saveMomentSynthesis, deleteMomentSynthesis } from '../services/storageService';
+import { getMemories, saveMemory, deleteMemory, reconcileEmbeddings, getAllMomentsIncludingDeleted, saveMoment, deleteMomentHard, getMomentSynthesis, saveMomentSynthesis, deleteMomentSynthesis, getAllCalendarEventsIncludingDeleted, saveCalendarEvent, deleteCalendarEventHard } from '../services/storageService';
 
 import {
     listAllFiles,
@@ -11,7 +11,7 @@ import {
     isLinked as checkIsLinked,
     deleteRemoteNote
 } from '../services/googleDriveService';
-import { Memory, Moment, MomentSynthesis } from '../types';
+import { Memory, Moment, MomentSynthesis, CalendarEvent } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { storage } from '../services/platform';
 
@@ -62,6 +62,35 @@ const executeSyncPlan = async (plan: SyncPlan): Promise<string[]> => {
                 const localSynthesis = await getMomentSynthesis(momentId);
                 if (!localSynthesis || safeSynthesis.generatedAt > localSynthesis.generatedAt) {
                     await saveMomentSynthesis(safeSynthesis);
+                }
+                continue;
+            }
+
+            // Handle calendar event files
+            if (item.noteId.startsWith('event-')) {
+                const eventContent = content as unknown as CalendarEvent;
+                const verifiedEventId = item.noteId.replace('event-', '');
+                const safeEvent: CalendarEvent = { ...eventContent, id: verifiedEventId };
+                if (item.localCalendarEvent) {
+                    if (safeEvent.updatedAt > item.localCalendarEvent.updatedAt) {
+                        if (safeEvent.isDeleted) {
+                            await deleteCalendarEventHard(verifiedEventId);
+                        } else {
+                            await saveCalendarEvent(safeEvent);
+                        }
+                    } else if (item.localCalendarEvent.updatedAt > safeEvent.updatedAt) {
+                        plan.toUpload.push({
+                            noteId: item.noteId,
+                            memory: item.localCalendarEvent as any,
+                            remoteFileId: item.fileId
+                        });
+                    }
+                } else {
+                    if (safeEvent.isDeleted) {
+                        await deleteCalendarEventHard(verifiedEventId);
+                    } else {
+                        await saveCalendarEvent(safeEvent);
+                    }
                 }
                 continue;
             }
@@ -173,7 +202,9 @@ const executeSyncPlan = async (plan: SyncPlan): Promise<string[]> => {
 
     for (const id of [...plan.toHardDeleteLocal, ...plan.toDeleteLocal]) {
         try {
-            if (id.startsWith('moment-synthesis-')) {
+            if (id.startsWith('event-')) {
+                await deleteCalendarEventHard(id.replace('event-', ''));
+            } else if (id.startsWith('moment-synthesis-')) {
                 // Synthesis-only deletion (orphan cleanup)
                 await deleteMomentSynthesis(id.replace('moment-synthesis-', ''));
             } else if (id.startsWith('moment-')) {
@@ -195,6 +226,7 @@ interface DownloadItem {
     fileId: string;
     local?: Memory;
     localMoment?: Moment;
+    localCalendarEvent?: CalendarEvent;
 }
 
 interface UploadItem {
@@ -291,6 +323,10 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const localMoments = await getAllMomentsIncludingDeleted();
     const localMomentMap = new Map(localMoments.map(m => [`moment-${m.id}`, m]));
 
+    // Load local calendar events for sync
+    const localCalendarEvents = await getAllCalendarEventsIncludingDeleted();
+    const localEventMap = new Map(localCalendarEvents.map(e => [`event-${e.id}`, e]));
+
     const remoteFiles = await listAllFiles();
     const remoteMap = new Map(remoteFiles.map((f: any) => [f.name.replace('.json', ''), f]));
 
@@ -313,6 +349,18 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
 
         handled.add(noteId);
+
+        // Handle calendar event files
+        if (noteId.startsWith('event-')) {
+            const localEvent = localEventMap.get(noteId);
+            if (localEvent?.isDeleted) {
+                plan.toDeleteRemote.push({ noteId, fileId: remoteFile.id });
+                plan.toHardDeleteLocal.push(noteId);
+            } else {
+                plan.toDownload.push({ noteId, fileId: remoteFile.id, localCalendarEvent: localEvent });
+            }
+            continue;
+        }
 
         // Handle moment synthesis files — download to keep caches in sync
         if (noteId.startsWith('moment-synthesis-')) {
@@ -357,6 +405,17 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (handled.has(noteId)) continue;
 
         handled.add(noteId);
+
+        // Handle calendar event files that were removed from remote
+        if (noteId.startsWith('event-')) {
+            const localEvent = localEventMap.get(noteId);
+            if (localEvent?.isDeleted) {
+                plan.toHardDeleteLocal.push(noteId);
+            } else if (localEvent) {
+                plan.toDeleteLocal.push(noteId);
+            }
+            continue;
+        }
 
         // Handle synthesis files that were removed from remote
         if (noteId.startsWith('moment-synthesis-')) {
@@ -418,6 +477,25 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         } else if (moment.updatedAt > lastSyncTime) {
             const remote = remoteMap.get(key);
             plan.toUpload.push({ noteId: key, memory: moment, remoteFileId: remote?.id });
+            handled.add(key);
+        }
+    }
+
+    // Upload local calendar events that haven't been synced yet
+    for (const event of localCalendarEvents) {
+        const key = `event-${event.id}`;
+        if (handled.has(key)) continue;
+
+        if (event.isDeleted) {
+            const remote = remoteMap.get(key);
+            if (remote) {
+                plan.toDeleteRemote.push({ noteId: key, fileId: remote.id });
+            }
+            plan.toHardDeleteLocal.push(key);
+            handled.add(key);
+        } else if (event.updatedAt > lastSyncTime) {
+            const remote = remoteMap.get(key);
+            plan.toUpload.push({ noteId: key, memory: event as any, remoteFileId: remote?.id });
             handled.add(key);
         }
     }
