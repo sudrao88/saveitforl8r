@@ -66,6 +66,7 @@ const applyMomentResult = async (
       updatedMoment.noteIds,
       memoriesRef.current || []
     );
+    updatedMoment.lastSeenInputHash = updatedMoment.inputHash;
 
     await saveMoment(updatedMoment);
 

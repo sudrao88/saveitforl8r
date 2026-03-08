@@ -8,11 +8,10 @@
 
 import React, { useRef, useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
-import { Moment, MomentSynthesis } from '../types';
+import { Moment } from '../types';
 
 interface MomentBubbleProps {
   moment: Moment;
-  synthesis?: MomentSynthesis;
   onTap: (moment: Moment) => void;
 }
 
@@ -56,7 +55,6 @@ function truncateLabel(text: string, max: number = 10): string {
 
 const MomentBubble: React.FC<MomentBubbleProps> = ({
   moment,
-  synthesis,
   onTap,
 }) => {
   const isPending = moment.isPending;
@@ -86,10 +84,8 @@ const MomentBubble: React.FC<MomentBubbleProps> = ({
   } else if (hasError) {
     ringClass = 'ring-2 ring-red-500';
   } else {
-    const hasNewNotes = synthesis
-      ? synthesis.inputHash !== moment.inputHash
-      : true;
-    ringClass = hasNewNotes
+    const hasUnseen = moment.inputHash !== moment.lastSeenInputHash;
+    ringClass = hasUnseen
       ? 'ring-2 ring-blue-500'
       : 'ring-2 ring-gray-600';
   }

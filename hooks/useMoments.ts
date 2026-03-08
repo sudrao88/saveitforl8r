@@ -54,6 +54,8 @@ interface UseMomentsReturn {
   setOnMomentChanged: (cb: (moment: Moment) => void) => void;
   /** Reload moments from IndexedDB (e.g. after sync) */
   refreshMoments: () => Promise<void>;
+  /** Mark a moment as seen (updates lastSeenInputHash to current inputHash) */
+  markMomentSeen: (momentId: string) => Promise<void>;
 }
 
 export const useMoments = (memories: Memory[]): UseMomentsReturn => {
@@ -218,6 +220,7 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
         const updatedMoment: Moment = {
           ...moment,
           inputHash: currentHash,
+          lastSeenInputHash: currentHash,
           lastSynthesizedAt: Date.now(),
           updatedAt: Date.now(),
         };
@@ -261,6 +264,39 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
           const updated: Moment = {
             ...current,
             noteIds: [...current.noteIds, noteId],
+            updatedAt: Date.now(),
+          };
+
+          saveMoment(updated)
+            .then(() => {
+              onMomentChangedRef.current?.(updated);
+              resolve();
+            })
+            .catch(reject);
+
+          return prev.map(m => m.id === momentId ? updated : m);
+        });
+      });
+    },
+    []
+  );
+
+  // Mark a moment as seen by updating lastSeenInputHash to match current inputHash.
+  // This persists to IndexedDB and syncs to Drive so the indicator stays correct
+  // across sessions and devices.
+  const markMomentSeen = useCallback(
+    (momentId: string): Promise<void> => {
+      return new Promise((resolve, reject) => {
+        setMomentsList(prev => {
+          const current = prev.find(m => m.id === momentId);
+          if (!current || !current.inputHash || current.lastSeenInputHash === current.inputHash) {
+            resolve();
+            return prev;
+          }
+
+          const updated: Moment = {
+            ...current,
+            lastSeenInputHash: current.inputHash,
             updatedAt: Date.now(),
           };
 
@@ -378,5 +414,6 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
     synthesesMap,
     setOnMomentChanged,
     refreshMoments,
+    markMomentSeen,
   };
 };
