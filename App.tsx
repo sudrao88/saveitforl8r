@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
 import { RefreshCw, X } from 'lucide-react';
 import { App as CapacitorApp, URLOpenListenerEvent } from '@capacitor/app';
 import { isNative } from './services/platform';
@@ -15,23 +15,10 @@ import EmptyState from './components/EmptyState';
 import ErrorBoundary from './components/ErrorBoundary';
 import { Logo } from './components/icons';
 import QuickNoteBar, { QuickNoteBarHandle } from './components/QuickNoteBar';
-
-// Lazy-load heavy components that are rendered conditionally.
-// This reduces the initial JS bundle, making first paint faster.
-const GalleryViewer = lazy(() => import('./components/GalleryViewer'));
-const ChatInterface = lazy(() => import('./components/ChatInterface'));
-const SettingsModal = lazy(() => import('./components/SettingsModal'));
-const NewMemoryPage = lazy(() => import('./components/NewMemoryPage'));
-
-const SuspenseFallback = () => (
-  <div className="fixed inset-0 bg-black flex items-center justify-center">
-    <div className="flex gap-1.5 items-center">
-      <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-      <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-      <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></div>
-    </div>
-  </div>
-);
+import GalleryViewer from './components/GalleryViewer';
+import ChatInterface from './components/ChatInterface';
+import SettingsModal from './components/SettingsModal';
+import NewMemoryPage from './components/NewMemoryPage';
 
 import { useMemories } from './hooks/useMemories';
 import { useSettings } from './hooks/useSettings';
@@ -573,14 +560,17 @@ const AppContent: React.FC = () => {
 
   if (editingMemory) {
     return (
-      <Suspense fallback={<SuspenseFallback />}>
+      <ErrorBoundary
+        fallbackTitle="Memory editor encountered an error"
+        fallbackMessage="Something went wrong while editing. Your data is safe — try reloading."
+      >
         <NewMemoryPage
-          onClose={handleEditClose}
-          onCreate={handleCreateMemory}
-          onUpdate={handleUpdateMemory}
-          editMemory={editingMemory}
-        />
-      </Suspense>
+            onClose={handleEditClose}
+            onCreate={handleCreateMemory}
+            onUpdate={handleUpdateMemory}
+            editMemory={editingMemory}
+          />
+      </ErrorBoundary>
     );
   }
 
@@ -591,13 +581,16 @@ const AppContent: React.FC = () => {
       tags: quickNoteExpandState.tags,
     } : undefined;
     return (
-      <Suspense fallback={<SuspenseFallback />}>
+      <ErrorBoundary
+        fallbackTitle="Memory capture encountered an error"
+        fallbackMessage="Something went wrong while capturing. Your data is safe — try reloading."
+      >
         <NewMemoryPage
-          onClose={handleCaptureClose}
-          onCreate={handleCreateMemory}
-          initialContent={expandInitial || (shareData ? { ...shareData, text: escapeHtml(shareData.text) } : undefined)}
-        />
-      </Suspense>
+            onClose={handleCaptureClose}
+            onCreate={handleCreateMemory}
+            initialContent={expandInitial || (shareData ? { ...shareData, text: escapeHtml(shareData.text) } : undefined)}
+          />
+      </ErrorBoundary>
     );
   }
 
@@ -608,8 +601,7 @@ const AppContent: React.FC = () => {
             fallbackTitle="Brain Search encountered an error"
             fallbackMessage="The AI search feature hit an unexpected issue. Your memories are safe — try reloading."
           >
-            <Suspense fallback={<SuspenseFallback />}>
-              <ChatInterface
+            <ChatInterface
                 memories={displayMemories}
                 onClose={handleChatClose}
                 searchFunction={search}
@@ -618,16 +610,18 @@ const AppContent: React.FC = () => {
                 onEdit={handleEditMemory}
                 onTogglePin={handleTogglePin}
               />
-            </Suspense>
           </ErrorBoundary>
           {viewingGallery && (
-            <Suspense fallback={<SuspenseFallback />}>
+            <ErrorBoundary
+              fallbackTitle="Gallery encountered an error"
+              fallbackMessage="Something went wrong displaying media. Your data is safe — try reloading."
+            >
               <GalleryViewer
-                attachments={viewingGallery.attachments}
-                initialIndex={viewingGallery.currentIndex}
-                onClose={() => setViewingGallery(null)}
-              />
-            </Suspense>
+                  attachments={viewingGallery.attachments}
+                  initialIndex={viewingGallery.currentIndex}
+                  onClose={() => setViewingGallery(null)}
+                />
+            </ErrorBoundary>
           )}
         </>
      );
@@ -762,17 +756,19 @@ const AppContent: React.FC = () => {
       )}
 
       {viewingGallery && (
-        <Suspense fallback={<SuspenseFallback />}>
-          <GalleryViewer
-            attachments={viewingGallery.attachments}
-            initialIndex={viewingGallery.currentIndex}
-            onClose={() => setViewingGallery(null)}
-          />
-        </Suspense>
+          <ErrorBoundary
+            fallbackTitle="Gallery encountered an error"
+            fallbackMessage="Something went wrong displaying media. Your data is safe — try reloading."
+          >
+            <GalleryViewer
+              attachments={viewingGallery.attachments}
+              initialIndex={viewingGallery.currentIndex}
+              onClose={() => setViewingGallery(null)}
+            />
+          </ErrorBoundary>
       )}
 
       {isSettingsOpen && (
-        <Suspense fallback={<SuspenseFallback />}>
           <SettingsModal
               onClose={handleSettingsClose}
               availableTypes={availableTypes}
@@ -790,7 +786,6 @@ const AppContent: React.FC = () => {
               closeWorkerDB={closeWorkerDB}
               reconcileReport={reconcileReport}
           />
-        </Suspense>
       )}
 
       {liveActiveMoment && (
