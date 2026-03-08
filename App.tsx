@@ -491,6 +491,9 @@ const AppContent: React.FC = () => {
   }, [createMemory]);
 
   const handleQuickNoteFocusChange = useCallback((focused: boolean) => {
+    // Only enter focus mode (hiding other UI) on mobile/touch devices.
+    // Desktop devices with a fine pointer (mouse/trackpad) keep all elements visible.
+    if (focused && window.matchMedia('(pointer: fine)').matches) return;
     setQuickNoteFocused(focused);
   }, []);
 
