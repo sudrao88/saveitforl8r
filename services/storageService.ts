@@ -470,6 +470,27 @@ export const saveCalendarEvents = async (events: CalendarEvent[]): Promise<void>
   });
 };
 
+export const getCalendarEventsByMemoryId = async (memoryId: string): Promise<CalendarEvent[]> => {
+  const dbInstance = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = dbInstance.transaction(CALENDAR_EVENTS_STORE, 'readonly');
+    const store = tx.objectStore(CALENDAR_EVENTS_STORE);
+    const index = store.index('memoryId');
+    const request = index.getAll(IDBKeyRange.only(memoryId));
+    request.onsuccess = () => resolve(request.result as CalendarEvent[]);
+    request.onerror = () => reject(request.error);
+  });
+};
+
+export const softDeleteCalendarEventsByMemoryId = async (memoryId: string): Promise<CalendarEvent[]> => {
+  const events = await getCalendarEventsByMemoryId(memoryId);
+  if (events.length === 0) return [];
+  const now = Date.now();
+  const tombstones = events.map(e => ({ ...e, isDeleted: true, updatedAt: now }));
+  await saveCalendarEvents(tombstones);
+  return tombstones;
+};
+
 export const deleteCalendarEventsByMemoryId = async (memoryId: string): Promise<void> => {
   const dbInstance = await openDB();
   return new Promise((resolve, reject) => {

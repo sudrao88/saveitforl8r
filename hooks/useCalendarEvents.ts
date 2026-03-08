@@ -11,8 +11,7 @@ import { CalendarEvent, DetectedEvent, Memory } from '../types';
 import {
   getCalendarEvents,
   saveCalendarEvents,
-  deleteCalendarEventsByMemoryId,
-  saveCalendarEvent,
+  softDeleteCalendarEventsByMemoryId,
 } from '../services/storageService';
 
 export interface UseCalendarEventsReturn {
@@ -51,14 +50,18 @@ export const useCalendarEvents = (): UseCalendarEventsReturn => {
   const processDetectedEvents = useCallback(async (memory: Memory) => {
     const detected = memory.enrichment?.detectedEvents;
     if (!detected || detected.length === 0) {
-      // No events detected — clean up any old events for this memory
-      await deleteCalendarEventsByMemoryId(memory.id);
-      setEventsList(prev => prev.filter(e => e.memoryId !== memory.id));
+      // No events detected — soft-delete any old events for this memory
+      const tombstones = await softDeleteCalendarEventsByMemoryId(memory.id);
+      if (tombstones.length > 0) {
+        setEventsList(prev => prev.map(e =>
+          e.memoryId === memory.id ? { ...e, isDeleted: true, updatedAt: Date.now() } : e
+        ));
+      }
       return;
     }
 
-    // Remove old events for this memory first
-    await deleteCalendarEventsByMemoryId(memory.id);
+    // Soft-delete old events for this memory (creates tombstones for sync)
+    await softDeleteCalendarEventsByMemoryId(memory.id);
 
     const now = Date.now();
     const newEvents: CalendarEvent[] = detected.map((det: DetectedEvent) => ({
@@ -86,8 +89,13 @@ export const useCalendarEvents = (): UseCalendarEventsReturn => {
   }, []);
 
   const removeEventsForMemory = useCallback(async (memoryId: string) => {
-    await deleteCalendarEventsByMemoryId(memoryId);
-    setEventsList(prev => prev.filter(e => e.memoryId !== memoryId));
+    // Soft-delete creates tombstone records that sync propagates to other devices
+    const tombstones = await softDeleteCalendarEventsByMemoryId(memoryId);
+    if (tombstones.length > 0) {
+      setEventsList(prev => prev.map(e =>
+        e.memoryId === memoryId ? { ...e, isDeleted: true, updatedAt: Date.now() } : e
+      ));
+    }
   }, []);
 
   // Sort by startDate ascending, filter out deleted

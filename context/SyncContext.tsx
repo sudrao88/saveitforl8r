@@ -81,7 +81,7 @@ const executeSyncPlan = async (plan: SyncPlan): Promise<string[]> => {
                     } else if (item.localCalendarEvent.updatedAt > safeEvent.updatedAt) {
                         plan.toUpload.push({
                             noteId: item.noteId,
-                            memory: item.localCalendarEvent as any,
+                            memory: item.localCalendarEvent,
                             remoteFileId: item.fileId
                         });
                     }
@@ -150,7 +150,7 @@ const executeSyncPlan = async (plan: SyncPlan): Promise<string[]> => {
     }
 
     // Build upload list, including synthesis files for any moments being uploaded
-    const uploadItems: Array<{ filename: string; content: Memory | Moment | MomentSynthesis; existingFileId?: string }> = plan.toUpload.map(u => ({
+    const uploadItems: Array<{ filename: string; content: Memory | Moment | MomentSynthesis | CalendarEvent; existingFileId?: string }> = plan.toUpload.map(u => ({
         filename: `${u.noteId}.json`,
         content: u.memory,
         existingFileId: u.remoteFileId
@@ -231,7 +231,7 @@ interface DownloadItem {
 
 interface UploadItem {
     noteId: string;
-    memory: Memory | Moment;
+    memory: Memory | Moment | CalendarEvent;
     remoteFileId?: string;
 }
 
@@ -495,7 +495,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             handled.add(key);
         } else if (event.updatedAt > lastSyncTime) {
             const remote = remoteMap.get(key);
-            plan.toUpload.push({ noteId: key, memory: event as any, remoteFileId: remote?.id });
+            plan.toUpload.push({ noteId: key, memory: event, remoteFileId: remote?.id });
             handled.add(key);
         }
     }
