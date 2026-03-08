@@ -14,7 +14,33 @@ export const looksLikeMarkdown = (text: string): boolean => {
         /^>/m,                   // Blockquotes: > text
         /`[^`]+`/,               // Inline code: `code`
         /^```/m,                 // Code blocks: ```
+        /^\s*[-*+]?\s*\[[ xX]\]\s/m,  // Checklists: [ ] item, - [x] item
     ].some(pattern => pattern.test(text));
+};
+
+/** Detect whether text contains checklist markdown and parse items from it. */
+export const parseChecklistMarkdown = (text: string): { text: string; checked: boolean }[] | null => {
+    const lines = text.split('\n');
+    const checklistPattern = /^[-*+]?\s*\[([ xX])\]\s+(.*)/;
+    const items: { text: string; checked: boolean }[] = [];
+    let hasChecklistItem = false;
+
+    for (const line of lines) {
+        const trimmedLine = line.trim();
+        if (!trimmedLine) {
+            continue;
+        }
+
+        const match = trimmedLine.match(checklistPattern);
+        if (match) {
+            hasChecklistItem = true;
+            items.push({ text: match[2], checked: match[1].toLowerCase() === 'x' });
+        } else {
+            items.push({ text: trimmedLine, checked: false });
+        }
+    }
+
+    return hasChecklistItem ? items : null;
 };
 
 const ALLOWED_TAGS = new Set([
