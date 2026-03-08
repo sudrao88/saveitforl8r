@@ -409,7 +409,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
   return (
     <>
       <div
-        className={`group relative w-full ${isDialog ? 'mb-0' : 'mb-6'} rounded-xl transition-all duration-300 overflow-hidden flex flex-col
+        className={`group relative w-full ${isDialog ? 'mb-0' : 'mb-6'} rounded-xl transition-all duration-300 ${isDialog ? 'overflow-visible' : 'overflow-hidden'} flex flex-col
         ${isDialog ? 'bg-gray-900 border border-gray-800' : 'bg-gray-800/40 border border-gray-700/30 hover:bg-gray-800/60 hover:border-gray-600/50 hover:shadow-lg'}
         ${memory.isPending ? 'opacity-70 border-blue-900/30' : ''}
         ${memory.processingError ? 'border-amber-900/30 bg-amber-900/5' : ''}
@@ -657,10 +657,10 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                         {isMenuOpen && (
                             <>
                             <div
-                                className="fixed inset-0 z-[55] cursor-default touch-manipulation"
+                                className={`fixed inset-0 cursor-default touch-manipulation ${isDialog ? 'z-[75]' : 'z-[55]'}`}
                                 onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); }}
                             />
-                            <div className="absolute bottom-full right-0 mb-1 w-40 bg-gray-900 border border-gray-700 rounded-xl shadow-xl z-[56] overflow-hidden animate-in slide-in-from-bottom-2 fade-in duration-200">
+                            <div className={`absolute bottom-full right-0 mb-1 w-40 bg-gray-900 border border-gray-700 rounded-xl shadow-xl overflow-hidden animate-in slide-in-from-bottom-2 fade-in duration-200 ${isDialog ? 'z-[76]' : 'z-[56]'}`}>
                                 {onTogglePin && (
                                     <button onClick={handlePin} className="w-full px-4 py-3 text-left text-sm font-medium text-gray-300 hover:bg-gray-800 hover:text-white flex items-center gap-3 active:bg-gray-700">
                                         <Pin size={16} className={memory.isPinned ? "fill-current" : ""} />
