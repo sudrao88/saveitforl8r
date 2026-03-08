@@ -97,6 +97,7 @@ const AppContent: React.FC = () => {
     setMomentsRef,
     setOnNoteMatchedMoments,
     setOnEnrichmentCompleteCalendar,
+    setOnCalendarEventsSync,
   } = useMemories();
 
   const {
@@ -124,7 +125,7 @@ const AppContent: React.FC = () => {
 
   const [showCalendarAgenda, setShowCalendarAgenda] = useState(false);
 
-  const { syncMoment } = useSync();
+  const { syncMoment, syncCalendarEvents } = useSync();
 
   // Wire up moments ref and callback for enrichment-time moment matching
   useEffect(() => {
@@ -139,6 +140,11 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     setOnEnrichmentCompleteCalendar(processDetectedEvents);
   }, [processDetectedEvents, setOnEnrichmentCompleteCalendar]);
+
+  // Wire up calendar events sync callback
+  useEffect(() => {
+    setOnCalendarEventsSync(syncCalendarEvents);
+  }, [syncCalendarEvents, setOnCalendarEventsSync]);
 
   // Wire up moment sync callback
   useEffect(() => {
@@ -454,10 +460,14 @@ const AppContent: React.FC = () => {
     handleDelete(id);
     deleteNoteFromIndex(id);
     removeNoteFromMoments(id).catch(err => console.error('[Moments] Failed to remove note from moments:', err));
-    removeEventsForMemory(id).catch(err => console.error('[Calendar] Failed to remove events for memory:', err));
+    removeEventsForMemory(id).then(tombstones => {
+      if (tombstones.length > 0) {
+        syncCalendarEvents(tombstones).catch(err => console.error('[Calendar] Failed to sync deleted events:', err));
+      }
+    }).catch(err => console.error('[Calendar] Failed to remove events for memory:', err));
     logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_DELETED);
     if (expandedMemory?.id === id) setExpandedMemory(null);
-  }, [handleDelete, expandedMemory, deleteNoteFromIndex, removeNoteFromMoments, removeEventsForMemory]);
+  }, [handleDelete, expandedMemory, deleteNoteFromIndex, removeNoteFromMoments, removeEventsForMemory, syncCalendarEvents]);
 
   const handleRetryMemory = useCallback((id: string) => {
     handleRetry(id);

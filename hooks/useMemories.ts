@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getMemories, deleteMemory, saveMemory, getMemory } from '../services/storageService';
 import { submitEnrichment } from '../services/geminiService';
-import { Memory, Attachment, Moment } from '../types';
+import { Memory, Attachment, Moment, CalendarEvent } from '../types';
 import { useSync } from './useSync';
 import { useAuth } from './useAuth';
 import { useEnrichmentPolling } from './useEnrichmentPolling';
@@ -34,10 +34,17 @@ export const useMemories = () => {
   }, []);
 
   // Calendar events callback for enrichment-time event extraction
-  const onEnrichmentCompleteCalendarRef = useRef<((memory: Memory) => Promise<void>) | undefined>(undefined);
+  const onEnrichmentCompleteCalendarRef = useRef<((memory: Memory) => Promise<CalendarEvent[]>) | undefined>(undefined);
 
-  const setOnEnrichmentCompleteCalendar = useCallback((cb: (memory: Memory) => Promise<void>) => {
+  const setOnEnrichmentCompleteCalendar = useCallback((cb: (memory: Memory) => Promise<CalendarEvent[]>) => {
     onEnrichmentCompleteCalendarRef.current = cb;
+  }, []);
+
+  // Calendar events sync callback — set by App.tsx to sync events to Drive
+  const onCalendarEventsSyncRef = useRef<((events: CalendarEvent[]) => Promise<void>) | undefined>(undefined);
+
+  const setOnCalendarEventsSync = useCallback((cb: (events: CalendarEvent[]) => Promise<void>) => {
+    onCalendarEventsSyncRef.current = cb;
   }, []);
 
   const recoveryAttemptedRef = useRef(false);
@@ -78,9 +85,15 @@ export const useMemories = () => {
           console.warn(`[Moments] matchedMomentIds present but onNoteMatchedMomentsRef not set — notes not added to moments`);
         }
       }
-      // Process calendar events from enrichment results
+      // Process calendar events from enrichment results and sync to Drive
       if (onEnrichmentCompleteCalendarRef.current) {
-        onEnrichmentCompleteCalendarRef.current(memory).catch(err =>
+        onEnrichmentCompleteCalendarRef.current(memory).then(eventsToSync => {
+          if (eventsToSync.length > 0 && onCalendarEventsSyncRef.current) {
+            onCalendarEventsSyncRef.current(eventsToSync).catch(err =>
+              console.error(`[Calendar] Failed to sync calendar events:`, err)
+            );
+          }
+        }).catch(err =>
           console.error(`[Calendar] Failed to process detected events:`, err)
         );
       }
@@ -377,5 +390,6 @@ export const useMemories = () => {
     setMomentsRef,
     setOnNoteMatchedMoments,
     setOnEnrichmentCompleteCalendar,
+    setOnCalendarEventsSync,
   };
 };

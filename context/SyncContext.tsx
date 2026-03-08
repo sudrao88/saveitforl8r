@@ -21,6 +21,7 @@ interface SyncContextType {
   sync: () => Promise<void>;
   syncFile: (memory: Memory) => Promise<void>;
   syncMoment: (moment: Moment) => Promise<void>;
+  syncCalendarEvents: (events: CalendarEvent[]) => Promise<void>;
   pendingCount: number;
 }
 
@@ -591,6 +592,36 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
   }, [syncMomentInternal, getAccessToken]);
 
+  const performCalendarEventsSync = useCallback(async (events: CalendarEvent[]) => {
+      const linked = await checkIsLinked();
+      if (!linked || events.length === 0) return;
+
+      try {
+          await getAccessToken();
+
+          const snapshotJSON = await storage.get(SNAPSHOT_KEY);
+          const snapshot = snapshotJSON ? JSON.parse(snapshotJSON) : {};
+
+          for (const event of events) {
+              try {
+                  const filename = `event-${event.id}.json`;
+                  const remoteFile = await findFileByName(filename);
+                  const uploaded = await uploadFile(filename, event, remoteFile?.id);
+
+                  if (uploaded?.modifiedTime) {
+                      snapshot[`event-${event.id}`] = uploaded.modifiedTime;
+                  }
+              } catch (e) {
+                  console.error(`[Sync] Calendar event sync failed for ${event.id}:`, e);
+              }
+          }
+
+          await storage.set(SNAPSHOT_KEY, JSON.stringify(snapshot));
+      } catch (e: any) {
+          console.error(`[Sync] Calendar events sync failed:`, e);
+      }
+  }, [getAccessToken]);
+
   const performSingleSync = useCallback(async (memory: Memory) => {
       const linked = await checkIsLinked();
       if (isSyncingRef.current || !linked) return;
@@ -639,6 +670,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         sync: performSync,
         syncFile: performSingleSync,
         syncMoment: performMomentSync,
+        syncCalendarEvents: performCalendarEventsSync,
         pendingCount
     }}>
       {children}

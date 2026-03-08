@@ -17,10 +17,10 @@ import {
 export interface UseCalendarEventsReturn {
   /** All active calendar events, sorted by startDate ascending */
   events: CalendarEvent[];
-  /** Create/replace events for a memory from enrichment results */
-  processDetectedEvents: (memory: Memory) => Promise<void>;
-  /** Remove all events associated with a deleted memory */
-  removeEventsForMemory: (memoryId: string) => Promise<void>;
+  /** Create/replace events for a memory from enrichment results. Returns all events that need syncing (new + tombstones). */
+  processDetectedEvents: (memory: Memory) => Promise<CalendarEvent[]>;
+  /** Remove all events associated with a deleted memory. Returns tombstones that need syncing. */
+  removeEventsForMemory: (memoryId: string) => Promise<CalendarEvent[]>;
   /** Reload events from IndexedDB (e.g. after sync) */
   refreshEvents: () => Promise<void>;
   /** Count of upcoming events (today and future) */
@@ -47,7 +47,7 @@ export const useCalendarEvents = (): UseCalendarEventsReturn => {
     refreshEvents();
   }, [refreshEvents]);
 
-  const processDetectedEvents = useCallback(async (memory: Memory) => {
+  const processDetectedEvents = useCallback(async (memory: Memory): Promise<CalendarEvent[]> => {
     const detected = memory.enrichment?.detectedEvents;
     if (!detected || detected.length === 0) {
       // No events detected — soft-delete any old events for this memory
@@ -57,11 +57,11 @@ export const useCalendarEvents = (): UseCalendarEventsReturn => {
           e.memoryId === memory.id ? { ...e, isDeleted: true, updatedAt: Date.now() } : e
         ));
       }
-      return;
+      return tombstones;
     }
 
     // Soft-delete old events for this memory (creates tombstones for sync)
-    await softDeleteCalendarEventsByMemoryId(memory.id);
+    const tombstones = await softDeleteCalendarEventsByMemoryId(memory.id);
 
     const now = Date.now();
     const newEvents: CalendarEvent[] = detected.map((det: DetectedEvent) => ({
@@ -86,9 +86,10 @@ export const useCalendarEvents = (): UseCalendarEventsReturn => {
     ]);
 
     console.log(`[Calendar] Created ${newEvents.length} event(s) from memory ${memory.id}`);
+    return [...tombstones, ...newEvents];
   }, []);
 
-  const removeEventsForMemory = useCallback(async (memoryId: string) => {
+  const removeEventsForMemory = useCallback(async (memoryId: string): Promise<CalendarEvent[]> => {
     // Soft-delete creates tombstone records that sync propagates to other devices
     const tombstones = await softDeleteCalendarEventsByMemoryId(memoryId);
     if (tombstones.length > 0) {
@@ -96,6 +97,7 @@ export const useCalendarEvents = (): UseCalendarEventsReturn => {
         e.memoryId === memoryId ? { ...e, isDeleted: true, updatedAt: Date.now() } : e
       ));
     }
+    return tombstones;
   }, []);
 
   // Sort by startDate ascending, filter out deleted
