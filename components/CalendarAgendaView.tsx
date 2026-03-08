@@ -6,7 +6,7 @@
  * Tapping an event card navigates to the source memory.
  */
 
-import React, { useMemo, useCallback } from 'react';
+import React, { useMemo, useCallback, useState } from 'react';
 import {
   X,
   Calendar,
@@ -16,13 +16,17 @@ import {
   FileText,
   CalendarDays,
 } from 'lucide-react';
-import { CalendarEvent, Memory } from '../types';
+import { CalendarEvent, Memory, Attachment } from '../types';
+import MemoryCard from './MemoryCard';
 
 interface CalendarAgendaViewProps {
   events: CalendarEvent[];
   memories: Memory[];
   onClose: () => void;
-  onViewMemory: (memory: Memory) => void;
+  onViewAttachment?: (attachment: Attachment, allAttachments: Attachment[]) => void;
+  onDelete?: (id: string) => void;
+  onEdit?: (memory: Memory) => void;
+  onTogglePin?: (id: string, isPinned: boolean) => void;
 }
 
 // Group events into time-based sections
@@ -218,8 +222,13 @@ const CalendarAgendaView: React.FC<CalendarAgendaViewProps> = ({
   events,
   memories,
   onClose,
-  onViewMemory,
+  onViewAttachment,
+  onDelete,
+  onEdit,
+  onTogglePin,
 }) => {
+  const [previewMemoryId, setPreviewMemoryId] = useState<string | null>(null);
+
   const memoryMap = useMemo(
     () => new Map(memories.map(m => [m.id, m])),
     [memories]
@@ -227,13 +236,13 @@ const CalendarAgendaView: React.FC<CalendarAgendaViewProps> = ({
 
   const eventGroups = useMemo(() => groupEvents(events), [events]);
 
+  const previewMemory = previewMemoryId ? memoryMap.get(previewMemoryId) ?? null : null;
+
   const handleViewMemory = useCallback(
     (memory: Memory) => {
-      onClose();
-      // Small delay so close animation runs first
-      setTimeout(() => onViewMemory(memory), 100);
+      setPreviewMemoryId(memory.id);
     },
-    [onClose, onViewMemory]
+    []
   );
 
   return (
@@ -301,6 +310,33 @@ const CalendarAgendaView: React.FC<CalendarAgendaViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* Memory Preview Modal */}
+      {previewMemory && (
+        <div
+          className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
+          onClick={() => setPreviewMemoryId(null)}
+        >
+          <div className="relative w-full max-w-lg max-h-[80vh] flex flex-col animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+            <div className="overflow-y-auto flex-1 min-h-0">
+              <MemoryCard
+                memory={previewMemory}
+                isDialog={true}
+                onViewAttachment={onViewAttachment}
+                onDelete={onDelete}
+                onEdit={onEdit}
+                onTogglePin={onTogglePin}
+              />
+            </div>
+            <button
+              onClick={() => setPreviewMemoryId(null)}
+              className="mt-4 w-full py-3 bg-gray-800 text-white rounded-xl font-bold shadow-xl border border-gray-700 text-sm active:scale-95 shrink-0"
+            >
+              Close Preview
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

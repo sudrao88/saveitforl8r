@@ -166,9 +166,6 @@ const AppContent: React.FC = () => {
     setShowCalendarAgenda(true);
   }, []);
 
-  const handleCalendarViewMemory = useCallback((memory: Memory) => {
-    setExpandedMemory(memory);
-  }, []);
 
   const handleShowAllMoments = useCallback(() => {
     setShowAllMoments(true);
@@ -823,7 +820,10 @@ const AppContent: React.FC = () => {
           events={calendarEvents}
           memories={memories}
           onClose={() => setShowCalendarAgenda(false)}
-          onViewMemory={handleCalendarViewMemory}
+          onViewAttachment={handleViewAttachment}
+          onDelete={handleDeleteMemory}
+          onEdit={handleEditMemory}
+          onTogglePin={handleTogglePin}
         />
       )}
 
