@@ -314,7 +314,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
                         isDialog={true}
                         onViewAttachment={onViewAttachment}
                         onDelete={onDelete}
-                        onEdit={onEdit ? () => onEdit(previewMemory) : undefined}
+                        onEdit={onEdit}
                         onTogglePin={onTogglePin}
                       />
                   </div>
