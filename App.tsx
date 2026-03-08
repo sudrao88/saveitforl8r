@@ -570,6 +570,9 @@ const AppContent: React.FC = () => {
                 onClose={handleChatClose}
                 searchFunction={search}
                 onViewAttachment={handleViewAttachment}
+                onDelete={handleDeleteMemory}
+                onEdit={handleEditMemory}
+                onTogglePin={handleTogglePin}
               />
             </Suspense>
           </ErrorBoundary>
