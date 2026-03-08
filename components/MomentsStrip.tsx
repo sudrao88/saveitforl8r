@@ -46,18 +46,16 @@ const MomentsStrip: React.FC<MomentsStripProps> = ({
         {/* Calendar bubble — second in strip */}
         <button
           onClick={onCalendarTap}
-          className="flex flex-col items-center gap-1.5 shrink-0 group touch-manipulation relative"
+          className="flex flex-col items-center gap-1.5 shrink-0 group touch-manipulation"
         >
           <div className="w-16 h-16 rounded-full flex items-center justify-center bg-purple-600/20 border-2 border-purple-500/40 ring-2 ring-purple-500/30 transition-all group-hover:ring-purple-400 group-hover:bg-purple-600/30 group-active:scale-95">
             <Calendar size={22} className="text-purple-400" />
           </div>
-          {calendarEventCount > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center bg-purple-500 text-white text-[10px] font-bold rounded-full px-1 shadow-lg">
-              {calendarEventCount > 99 ? '99+' : calendarEventCount}
-            </span>
-          )}
           <span className="text-[11px] font-semibold text-purple-400 leading-tight text-center">
             Calendar
+          </span>
+          <span className="text-[10px] text-gray-500 leading-tight">
+            {calendarEventCount} event{calendarEventCount !== 1 ? 's' : ''}
           </span>
         </button>
 
