@@ -12,6 +12,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { flushSync } from 'react-dom';
 import {
   Memory,
   Moment,
@@ -278,41 +279,46 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
   );
 
   // Remove a note from all moments that reference it (called on note deletion).
-  // Updates each affected moment's noteIds, persists to IndexedDB, and triggers sync.
+  // Uses setMomentsList's functional updater so each call sees the latest
+  // state — this prevents lost updates when multiple notes are deleted
+  // in quick succession (same pattern as addNoteToMoment).
+  //
+  // Clears `inputHash` on affected moments so that:
+  // 1. MomentBubble shows the stale indicator (hash mismatch)
+  // 2. loadSynthesis triggers re-synthesis on next open (cache miss)
   const removeNoteFromMoments = useCallback(
     async (noteId: string): Promise<void> => {
-      // Collect affected moments from the current list
-      const currentList = momentsListRef.current;
-      const affected = currentList.filter(m => !m.isDeleted && m.noteIds.includes(noteId));
-      if (affected.length === 0) return;
+      const changedMoments: Moment[] = [];
 
-      const updatedMoments = affected.map(m => ({
-        ...m,
-        noteIds: m.noteIds.filter(id => id !== noteId),
-        updatedAt: Date.now(),
-      }));
+      // Use flushSync to ensure the functional updater runs immediately,
+      // so changedMoments is populated before we proceed to persistence.
+      // This also ensures atomicity — each call sees the latest state.
+      flushSync(() => {
+        setMomentsList(prev => {
+          const affected = prev.filter(m => !m.isDeleted && m.noteIds.includes(noteId));
+          if (affected.length === 0) return prev;
 
-      // Update state
-      setMomentsList(prev =>
-        prev.map(m => {
-          const updated = updatedMoments.find(u => u.id === m.id);
-          return updated || m;
-        })
-      );
+          const updatedMoments = prev.map(m => {
+            if (m.isDeleted || !m.noteIds.includes(noteId)) return m;
+            const updated = {
+              ...m,
+              noteIds: m.noteIds.filter(id => id !== noteId),
+              inputHash: undefined,
+              updatedAt: Date.now(),
+            };
+            changedMoments.push(updated);
+            return updated;
+          });
 
-      // Invalidate cached synthesis for affected moments
-      setSynthesesMap(prev => {
-        const affectedIds = updatedMoments.map(m => m.id);
-        const hasAny = affectedIds.some(id => prev.has(id));
-        if (!hasAny) return prev;
-        const next = new Map(prev);
-        for (const id of affectedIds) next.delete(id);
-        return next;
+          return updatedMoments;
+        });
       });
+
+      if (changedMoments.length === 0) return;
 
       // Persist and sync each affected moment
       await Promise.all(
-        updatedMoments.map(m =>
+        changedMoments.map(m =>
           saveMoment(m).then(() => {
             onMomentChangedRef.current?.(m);
           })

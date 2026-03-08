@@ -151,8 +151,10 @@ describe('useMoments', () => {
       expect(m1?.updatedAt).toBeGreaterThan(oldTime);
     });
 
-    it('should invalidate the synthesis cache for affected moments', async () => {
-      const moments = [makeMoment('m1', ['note-1', 'note-2'])];
+    it('should clear inputHash to invalidate synthesis cache for affected moments', async () => {
+      const moments = [
+        { ...makeMoment('m1', ['note-1', 'note-2']), inputHash: 'old-hash' },
+      ];
       (storageService.getMoments as any).mockResolvedValue(moments);
 
       const memories = [makeMemory('note-1'), makeMemory('note-2')];
@@ -163,15 +165,17 @@ describe('useMoments', () => {
         expect(result.current.moments).toHaveLength(1);
       });
 
-      // Verify that synthesesMap starts empty (no cached synthesis)
-      expect(result.current.synthesesMap.has('m1')).toBe(false);
+      // Verify moment has an inputHash before removal
+      expect(result.current.moments[0].inputHash).toBe('old-hash');
 
       await act(async () => {
         await result.current.removeNoteFromMoments('note-1');
       });
 
-      // After removal, synthesis cache should still not contain m1
-      expect(result.current.synthesesMap.has('m1')).toBe(false);
+      // After removal, inputHash should be cleared so loadSynthesis
+      // triggers re-synthesis and MomentBubble shows stale indicator
+      const m1 = result.current.moments.find(m => m.id === 'm1');
+      expect(m1?.inputHash).toBeUndefined();
     });
 
     it('should not modify deleted moments', async () => {
