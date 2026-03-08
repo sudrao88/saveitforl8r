@@ -613,96 +613,87 @@ const AppContent: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-black flex flex-col">
-      {/* Sticky top navigation */}
-      {!showCreateMoment && (
-        <div ref={topNavRef} className="sticky top-0 z-[50] bg-black/90 backdrop-blur-md border-b border-gray-800/50 pt-[env(safe-area-inset-top)]">
-            <TopNavigation
-              setView={handleSetView}
-              resetFilters={handleResetFilters}
-              onSettingsClick={handleSettingsClick}
-              updateAvailable={isUpdateAvailable}
-              onUpdateApp={handleUpdateApp}
-              syncError={!!syncError}
-              isSyncing={isSyncing}
-              modelStatus={modelStatus}
-              isOtaDownloading={isOtaDownloading}
-            />
-        </div>
-      )}
+      {/* Main UI — hidden when MomentCreationDialog is open */}
+      {!showCreateMoment ? (
+        <>
+          <div ref={topNavRef} className="sticky top-0 z-[50] bg-black/90 backdrop-blur-md border-b border-gray-800/50 pt-[env(safe-area-inset-top)]">
+              <TopNavigation
+                setView={handleSetView}
+                resetFilters={handleResetFilters}
+                onSettingsClick={handleSettingsClick}
+                updateAvailable={isUpdateAvailable}
+                onUpdateApp={handleUpdateApp}
+                syncError={!!syncError}
+                isSyncing={isSyncing}
+                modelStatus={modelStatus}
+                isOtaDownloading={isOtaDownloading}
+              />
+          </div>
 
-      {/* Moments strip */}
-      {!showCreateMoment && (
-        <MomentsStrip
-          moments={moments}
-          onMomentTap={handleMomentTap}
-          onNewMoment={handleNewMoment}
-          onShowAll={handleShowAllMoments}
-          onCalendarTap={handleCalendarTap}
-          calendarEventCount={calendarUpcomingCount}
-        />
-      )}
-
-      {/* Sticky filter bar */}
-      {!showCreateMoment && availableTypes.length > 0 && (
-        <div className="sticky z-[49] bg-black/90 backdrop-blur-md border-b border-gray-800/50" style={{ top: `${topNavHeight}px` }}>
-          <FilterBar
-            availableTypes={availableTypes}
-            filterType={filterType}
-            setFilterType={handleSetFilterType}
-            clearFilters={handleResetFilters}
+          <MomentsStrip
+            moments={moments}
+            onMomentTap={handleMomentTap}
+            onNewMoment={handleNewMoment}
+            onShowAll={handleShowAllMoments}
+            onCalendarTap={handleCalendarTap}
+            calendarEventCount={calendarUpcomingCount}
           />
-        </div>
-      )}
 
-      {/* Main content */}
-      {!showCreateMoment && (
-        <main className="flex-1 p-4 sm:p-8 pb-24 max-w-7xl mx-auto w-full relative z-[40]">
-          {filteredMemories.length === 0 ? (
-            <EmptyState
-              hasMemories={memories.length > 0}
-              clearFilters={handleClearFiltersEmptyState}
-            />
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {displayMemories.map((mem, idx) => (
-                <MemoryCard
-                  key={mem.id}
-                  memory={mem}
-                  index={idx}
-                  onDelete={handleDeleteMemory}
-                  onRetry={handleRetryMemory}
-                  onUpdate={updateMemoryContent}
-                  onExpand={setExpandedMemory}
-                  onViewAttachment={handleViewAttachment}
-                  onTogglePin={handleTogglePin}
-                  onEdit={handleEditMemory}
-                  isAuthenticated={authStatus === 'linked'}
-                  onSignIn={login}
-                />
-              ))}
+          {availableTypes.length > 0 && (
+            <div className="sticky z-[49] bg-black/90 backdrop-blur-md border-b border-gray-800/50" style={{ top: `${topNavHeight}px` }}>
+              <FilterBar
+                availableTypes={availableTypes}
+                filterType={filterType}
+                setFilterType={handleSetFilterType}
+                clearFilters={handleResetFilters}
+              />
             </div>
           )}
-        </main>
-      )}
 
-      {/* Overlay for MomentCreationDialog */}
-      {showCreateMoment && (
-        <div
-          className="fixed inset-0 z-[55] bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
-          aria-hidden
-        />
-      )}
+          <main className="flex-1 p-4 sm:p-8 pb-24 max-w-7xl mx-auto w-full relative z-[40]">
+            {filteredMemories.length === 0 ? (
+              <EmptyState
+                hasMemories={memories.length > 0}
+                clearFilters={handleClearFiltersEmptyState}
+              />
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                {displayMemories.map((mem, idx) => (
+                  <MemoryCard
+                    key={mem.id}
+                    memory={mem}
+                    index={idx}
+                    onDelete={handleDeleteMemory}
+                    onRetry={handleRetryMemory}
+                    onUpdate={updateMemoryContent}
+                    onExpand={setExpandedMemory}
+                    onViewAttachment={handleViewAttachment}
+                    onTogglePin={handleTogglePin}
+                    onEdit={handleEditMemory}
+                    isAuthenticated={authStatus === 'linked'}
+                    onSignIn={login}
+                  />
+                ))}
+              </div>
+            )}
+          </main>
 
-      {/* Spacer to push QuickNoteBar to bottom when content is hidden for moment creation */}
-      {showCreateMoment && <div className="flex-1" />}
-
-      {/* Quick Note Bar — hidden when synthesis dialog is open */}
-      {!showCreateMoment && (
-        <QuickNoteBar
-          ref={quickNoteBarRef}
-          onSave={handleQuickNoteSave}
-          onExpand={handleQuickNoteExpand}
-        />
+          <QuickNoteBar
+            ref={quickNoteBarRef}
+            onSave={handleQuickNoteSave}
+            onExpand={handleQuickNoteExpand}
+          />
+        </>
+      ) : (
+        <>
+          {/* Overlay for MomentCreationDialog */}
+          <div
+            className="fixed inset-0 z-[55] bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
+            aria-hidden
+          />
+          {/* Spacer to maintain layout when main content is hidden for moment creation */}
+          <div className="flex-1" />
+        </>
       )}
 
       {liveExpandedMemory && (
