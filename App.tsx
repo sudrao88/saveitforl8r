@@ -103,6 +103,7 @@ const AppContent: React.FC = () => {
     synthesisLoading,
     creating: momentCreating,
     addNoteToMoment,
+    removeNoteFromMoments,
     deleteMoment,
     synthesesMap,
     setOnMomentChanged,
@@ -420,10 +421,11 @@ const AppContent: React.FC = () => {
 
   const handleDeleteMemory = useCallback((id: string) => {
     handleDelete(id);
-    deleteNoteFromIndex(id); 
+    deleteNoteFromIndex(id);
+    removeNoteFromMoments(id).catch(err => console.error('[Moments] Failed to remove note from moments:', err));
     logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_DELETED);
     if (expandedMemory?.id === id) setExpandedMemory(null);
-  }, [handleDelete, expandedMemory, deleteNoteFromIndex]);
+  }, [handleDelete, expandedMemory, deleteNoteFromIndex, removeNoteFromMoments]);
 
   const handleRetryMemory = useCallback((id: string) => {
     handleRetry(id);

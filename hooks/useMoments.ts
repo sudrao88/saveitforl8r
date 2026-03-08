@@ -12,6 +12,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { flushSync } from 'react-dom';
 import {
   Memory,
   Moment,
@@ -41,6 +42,8 @@ interface UseMomentsReturn {
   creating: boolean;
   /** Add a note to a moment (called when enrichment matches) */
   addNoteToMoment: (momentId: string, noteId: string) => Promise<void>;
+  /** Remove a note from all moments that reference it (on note deletion) */
+  removeNoteFromMoments: (noteId: string) => Promise<void>;
   /** Soft-delete a moment */
   deleteMoment: (momentId: string) => Promise<void>;
   /** Cached synthesis map for UI state */
@@ -275,6 +278,56 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
     []
   );
 
+  // Remove a note from all moments that reference it (called on note deletion).
+  // Uses setMomentsList's functional updater so each call sees the latest
+  // state — this prevents lost updates when multiple notes are deleted
+  // in quick succession (same pattern as addNoteToMoment).
+  //
+  // Clears `inputHash` on affected moments so that:
+  // 1. MomentBubble shows the stale indicator (hash mismatch)
+  // 2. loadSynthesis triggers re-synthesis on next open (cache miss)
+  const removeNoteFromMoments = useCallback(
+    async (noteId: string): Promise<void> => {
+      const changedMoments: Moment[] = [];
+
+      // Use flushSync to ensure the functional updater runs immediately,
+      // so changedMoments is populated before we proceed to persistence.
+      // This also ensures atomicity — each call sees the latest state.
+      flushSync(() => {
+        setMomentsList(prev => {
+          const affected = prev.filter(m => !m.isDeleted && m.noteIds.includes(noteId));
+          if (affected.length === 0) return prev;
+
+          const updatedMoments = prev.map(m => {
+            if (m.isDeleted || !m.noteIds.includes(noteId)) return m;
+            const updated = {
+              ...m,
+              noteIds: m.noteIds.filter(id => id !== noteId),
+              inputHash: undefined,
+              updatedAt: Date.now(),
+            };
+            changedMoments.push(updated);
+            return updated;
+          });
+
+          return updatedMoments;
+        });
+      });
+
+      if (changedMoments.length === 0) return;
+
+      // Persist and sync each affected moment
+      await Promise.all(
+        changedMoments.map(m =>
+          saveMoment(m).then(() => {
+            onMomentChangedRef.current?.(m);
+          })
+        )
+      );
+    },
+    []
+  );
+
   // Soft-delete a moment.
   // Same functional-updater pattern as addNoteToMoment for consistency.
   const deleteMoment = useCallback(
@@ -320,6 +373,7 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
     synthesisLoading,
     creating,
     addNoteToMoment,
+    removeNoteFromMoments,
     deleteMoment,
     synthesesMap,
     setOnMomentChanged,
