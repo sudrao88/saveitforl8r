@@ -6,7 +6,7 @@
  */
 
 import React from 'react';
-import { Sparkles, ChevronRight } from 'lucide-react';
+import { Sparkles, ChevronRight, Calendar } from 'lucide-react';
 import MomentBubble from './MomentBubble';
 import { Moment } from '../types';
 
@@ -15,6 +15,8 @@ interface MomentsStripProps {
   onMomentTap: (moment: Moment) => void;
   onNewMoment: () => void;
   onShowAll: () => void;
+  onCalendarTap: () => void;
+  calendarEventCount: number;
 }
 
 const MomentsStrip: React.FC<MomentsStripProps> = ({
@@ -22,11 +24,13 @@ const MomentsStrip: React.FC<MomentsStripProps> = ({
   onMomentTap,
   onNewMoment,
   onShowAll,
+  onCalendarTap,
+  calendarEventCount,
 }) => {
   return (
     <div className="w-full max-w-4xl mx-auto px-4 sm:px-8 py-3">
       <div className="flex items-start gap-4 overflow-x-auto no-scrollbar touch-pan-x p-1">
-        {/* New Moment button */}
+        {/* New Moment button — first in strip */}
         <button
           onClick={onNewMoment}
           className="flex flex-col items-center gap-1.5 shrink-0 group touch-manipulation"
@@ -36,6 +40,24 @@ const MomentsStrip: React.FC<MomentsStripProps> = ({
           </div>
           <span className="text-[11px] font-semibold text-blue-400 leading-tight text-center">
             Synthesize
+          </span>
+        </button>
+
+        {/* Calendar bubble — second in strip */}
+        <button
+          onClick={onCalendarTap}
+          className="flex flex-col items-center gap-1.5 shrink-0 group touch-manipulation relative"
+        >
+          <div className="w-16 h-16 rounded-full flex items-center justify-center bg-purple-600/20 border-2 border-purple-500/40 ring-2 ring-purple-500/30 transition-all group-hover:ring-purple-400 group-hover:bg-purple-600/30 group-active:scale-95">
+            <Calendar size={22} className="text-purple-400" />
+          </div>
+          {calendarEventCount > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center bg-purple-500 text-white text-[10px] font-bold rounded-full px-1 shadow-lg">
+              {calendarEventCount > 99 ? '99+' : calendarEventCount}
+            </span>
+          )}
+          <span className="text-[11px] font-semibold text-purple-400 leading-tight text-center">
+            Calendar
           </span>
         </button>
 

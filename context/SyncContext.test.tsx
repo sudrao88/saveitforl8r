@@ -37,6 +37,9 @@ vi.mock('../services/storageService', () => ({
   getMomentSynthesis: vi.fn().mockResolvedValue(null),
   saveMomentSynthesis: vi.fn().mockResolvedValue(undefined),
   deleteMomentSynthesis: vi.fn().mockResolvedValue(undefined),
+  getAllCalendarEventsIncludingDeleted: vi.fn().mockResolvedValue([]),
+  saveCalendarEvent: vi.fn().mockResolvedValue(undefined),
+  deleteCalendarEventHard: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../services/googleDriveService', () => ({

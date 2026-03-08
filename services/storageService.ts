@@ -1,5 +1,5 @@
 
-import { Memory, Moment, MomentSynthesis } from '../types.ts';
+import { Memory, Moment, MomentSynthesis, CalendarEvent } from '../types.ts';
 import { encryptData, decryptData, EncryptedPayload } from './encryptionService';
 import { db } from './db';
 
@@ -7,7 +7,8 @@ const DB_NAME = 'SaveItForL8rDB';
 const STORE_NAME = 'memories';
 const MOMENTS_STORE = 'moments';
 const MOMENT_SYNTHESIS_STORE = 'momentSyntheses';
-const DB_VERSION = 3;
+const CALENDAR_EVENTS_STORE = 'calendarEvents';
+const DB_VERSION = 4;
 
 export interface ReconcileReport {
     total: number;
@@ -50,6 +51,12 @@ const openDB = (): Promise<IDBDatabase> => {
       }
       if (!dbInstance.objectStoreNames.contains(MOMENT_SYNTHESIS_STORE)) {
         dbInstance.createObjectStore(MOMENT_SYNTHESIS_STORE, { keyPath: 'momentId' });
+      }
+      // v4: Calendar events store with index on startDate for range queries
+      if (!dbInstance.objectStoreNames.contains(CALENDAR_EVENTS_STORE)) {
+        const eventStore = dbInstance.createObjectStore(CALENDAR_EVENTS_STORE, { keyPath: 'id' });
+        eventStore.createIndex('startDate', 'startDate', { unique: false });
+        eventStore.createIndex('memoryId', 'memoryId', { unique: false });
       }
     };
 
@@ -404,6 +411,116 @@ export const saveMomentSynthesis = async (synthesis: MomentSynthesis): Promise<v
   });
 };
 
+// --- CalendarEvent CRUD ---
+
+export const getCalendarEvents = async (): Promise<CalendarEvent[]> => {
+  try {
+    const dbInstance = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = dbInstance.transaction(CALENDAR_EVENTS_STORE, 'readonly');
+      const store = tx.objectStore(CALENDAR_EVENTS_STORE);
+      const request = store.getAll();
+      request.onsuccess = () => resolve((request.result as CalendarEvent[]).filter(e => !e.isDeleted));
+      request.onerror = () => reject(request.error);
+    });
+  } catch (error) {
+    console.error("Failed to get calendar events:", error);
+    return [];
+  }
+};
+
+export const getAllCalendarEventsIncludingDeleted = async (): Promise<CalendarEvent[]> => {
+  try {
+    const dbInstance = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = dbInstance.transaction(CALENDAR_EVENTS_STORE, 'readonly');
+      const store = tx.objectStore(CALENDAR_EVENTS_STORE);
+      const request = store.getAll();
+      request.onsuccess = () => resolve(request.result as CalendarEvent[]);
+      request.onerror = () => reject(request.error);
+    });
+  } catch (error) {
+    console.error("Failed to get all calendar events:", error);
+    return [];
+  }
+};
+
+export const saveCalendarEvent = async (event: CalendarEvent): Promise<void> => {
+  const dbInstance = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = dbInstance.transaction(CALENDAR_EVENTS_STORE, 'readwrite');
+    const store = tx.objectStore(CALENDAR_EVENTS_STORE);
+    store.put(event);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+};
+
+export const saveCalendarEvents = async (events: CalendarEvent[]): Promise<void> => {
+  if (events.length === 0) return;
+  const dbInstance = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = dbInstance.transaction(CALENDAR_EVENTS_STORE, 'readwrite');
+    const store = tx.objectStore(CALENDAR_EVENTS_STORE);
+    for (const event of events) {
+      store.put(event);
+    }
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+};
+
+export const getCalendarEventsByMemoryId = async (memoryId: string): Promise<CalendarEvent[]> => {
+  const dbInstance = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = dbInstance.transaction(CALENDAR_EVENTS_STORE, 'readonly');
+    const store = tx.objectStore(CALENDAR_EVENTS_STORE);
+    const index = store.index('memoryId');
+    const request = index.getAll(IDBKeyRange.only(memoryId));
+    request.onsuccess = () => resolve(request.result as CalendarEvent[]);
+    request.onerror = () => reject(request.error);
+  });
+};
+
+export const softDeleteCalendarEventsByMemoryId = async (memoryId: string): Promise<CalendarEvent[]> => {
+  const events = await getCalendarEventsByMemoryId(memoryId);
+  if (events.length === 0) return [];
+  const now = Date.now();
+  const tombstones = events.map(e => ({ ...e, isDeleted: true, updatedAt: now }));
+  await saveCalendarEvents(tombstones);
+  return tombstones;
+};
+
+export const deleteCalendarEventsByMemoryId = async (memoryId: string): Promise<void> => {
+  const dbInstance = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = dbInstance.transaction(CALENDAR_EVENTS_STORE, 'readwrite');
+    const store = tx.objectStore(CALENDAR_EVENTS_STORE);
+    const index = store.index('memoryId');
+    const request = index.openCursor(IDBKeyRange.only(memoryId));
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (cursor) {
+        cursor.delete();
+        cursor.continue();
+      }
+    };
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+};
+
+export const deleteCalendarEventHard = async (id: string): Promise<void> => {
+  const dbInstance = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = dbInstance.transaction(CALENDAR_EVENTS_STORE, 'readwrite');
+    const store = tx.objectStore(CALENDAR_EVENTS_STORE);
+    store.delete(id);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+};
+
 export const factoryReset = async () => {
     try {
         console.log("Starting Factory Reset...");
@@ -424,7 +541,7 @@ export const factoryReset = async () => {
         localStorage.clear();
 
         const dbsToReset = [
-            { name: 'SaveItForL8rDB', stores: ['memories', 'moments', 'momentSyntheses'] },
+            { name: 'SaveItForL8rDB', stores: ['memories', 'moments', 'momentSyntheses', 'calendarEvents'] },
             { name: 'SaveItForL8rRAG', stores: ['vectors', 'processingQueue'] },
             { name: 'auth_db', stores: ['tokens'] },
             { name: 'saveitforl8r-share', stores: ['shares'] }

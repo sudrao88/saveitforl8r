@@ -33,6 +33,13 @@ export const useMemories = () => {
     onNoteMatchedMomentsRef.current = cb;
   }, []);
 
+  // Calendar events callback for enrichment-time event extraction
+  const onEnrichmentCompleteCalendarRef = useRef<((memory: Memory) => Promise<void>) | undefined>(undefined);
+
+  const setOnEnrichmentCompleteCalendar = useCallback((cb: (memory: Memory) => Promise<void>) => {
+    onEnrichmentCompleteCalendarRef.current = cb;
+  }, []);
+
   const recoveryAttemptedRef = useRef(false);
   const memoriesRef = useRef(memories);
 
@@ -70,6 +77,12 @@ export const useMemories = () => {
         } else {
           console.warn(`[Moments] matchedMomentIds present but onNoteMatchedMomentsRef not set — notes not added to moments`);
         }
+      }
+      // Process calendar events from enrichment results
+      if (onEnrichmentCompleteCalendarRef.current) {
+        onEnrichmentCompleteCalendarRef.current(memory).catch(err =>
+          console.error(`[Calendar] Failed to process detected events:`, err)
+        );
       }
     }, [authStatus, syncFile]),
   });
@@ -363,5 +376,6 @@ export const useMemories = () => {
     isLoading,
     setMomentsRef,
     setOnNoteMatchedMoments,
+    setOnEnrichmentCompleteCalendar,
   };
 };

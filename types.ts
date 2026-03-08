@@ -109,6 +109,35 @@ export interface EnrichmentData {
   subject?: string;              // educational
   keyConcepts?: string[];        // educational
   studyNotes?: string[];         // educational
+
+  // Calendar event detection (populated when date-based events are found)
+  detectedEvents?: DetectedEvent[];
+}
+
+export interface DetectedEvent {
+  title: string;
+  startDate: string;           // ISO 8601 — "2026-06-15T16:00:00"
+  endDate?: string;            // Optional end time
+  allDay: boolean;             // true when only a date is known, no specific time
+  location?: string;           // Venue or address
+  people?: string[];           // People involved
+  status: 'confirmed' | 'tentative' | 'cancelled';
+}
+
+export interface CalendarEvent {
+  id: string;
+  memoryId: string;            // Source note that generated this event
+  title: string;
+  description?: string;        // Brief context from the note
+  startDate: string;           // ISO 8601
+  endDate?: string;
+  allDay: boolean;
+  location?: string;
+  people?: string[];
+  status: 'confirmed' | 'tentative' | 'cancelled';
+  createdAt: number;
+  updatedAt: number;
+  isDeleted?: boolean;         // Soft-delete for sync
 }
 
 export interface Attachment {

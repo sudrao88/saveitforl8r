@@ -9,6 +9,7 @@ import MomentsStrip from './components/MomentsStrip';
 import MomentSheet from './components/MomentSheet';
 import MomentCreationDialog from './components/MomentCreationDialog';
 import AllMomentsSheet from './components/AllMomentsSheet';
+import CalendarAgendaView from './components/CalendarAgendaView';
 import EmptyState from './components/EmptyState';
 
 import ErrorBoundary from './components/ErrorBoundary';
@@ -42,10 +43,11 @@ import { useAuth } from './hooks/useAuth';
 import { useAdaptiveSearch } from './hooks/useAdaptiveSearch';
 import { useHotkeys } from './hooks/useHotkeys';
 import { useMoments } from './hooks/useMoments';
+import { useCalendarEvents } from './hooks/useCalendarEvents';
 import useNativeOTA from './hooks/useNativeOTA';
 import { SyncProvider } from './context/SyncContext';
 import { reconcileEmbeddings, ReconcileReport } from './services/storageService';
-import { ViewMode, Memory, Attachment, Moment, QuickNoteState } from './types';
+import { ViewMode, Memory, Attachment, Moment, QuickNoteState, CalendarEvent } from './types';
 import { initGA, logPageView, logEvent } from './services/analytics';
 import { escapeHtml } from './utils/editorUtils';
 
@@ -94,6 +96,7 @@ const AppContent: React.FC = () => {
     isLoading,
     setMomentsRef,
     setOnNoteMatchedMoments,
+    setOnEnrichmentCompleteCalendar,
   } = useMemories();
 
   const {
@@ -111,6 +114,16 @@ const AppContent: React.FC = () => {
     markMomentSeen,
   } = useMoments(memories);
 
+  const {
+    events: calendarEvents,
+    processDetectedEvents,
+    removeEventsForMemory,
+    refreshEvents,
+    upcomingCount: calendarUpcomingCount,
+  } = useCalendarEvents();
+
+  const [showCalendarAgenda, setShowCalendarAgenda] = useState(false);
+
   const { syncMoment } = useSync();
 
   // Wire up moments ref and callback for enrichment-time moment matching
@@ -121,6 +134,11 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     setOnNoteMatchedMoments(addNoteToMoment);
   }, [addNoteToMoment, setOnNoteMatchedMoments]);
+
+  // Wire up calendar event extraction from enrichment
+  useEffect(() => {
+    setOnEnrichmentCompleteCalendar(processDetectedEvents);
+  }, [processDetectedEvents, setOnEnrichmentCompleteCalendar]);
 
   // Wire up moment sync callback
   useEffect(() => {
@@ -136,6 +154,14 @@ const AppContent: React.FC = () => {
 
   const handleMomentClose = useCallback(() => {
     setActiveMoment(null);
+  }, []);
+
+  const handleCalendarTap = useCallback(() => {
+    setShowCalendarAgenda(true);
+  }, []);
+
+  const handleCalendarViewMemory = useCallback((memory: Memory) => {
+    setExpandedMemory(memory);
   }, []);
 
   const handleShowAllMoments = useCallback(() => {
@@ -188,9 +214,10 @@ const AppContent: React.FC = () => {
   const handleFullRefresh = useCallback(async () => {
       await refreshMemories();
       await refreshMoments();
+      await refreshEvents();
       const report = await reconcileEmbeddings();
       setReconcileReport(report);
-  }, [refreshMemories, refreshMoments]);
+  }, [refreshMemories, refreshMoments, refreshEvents]);
 
   const syncRef = useRef(sync);
   const refreshRef = useRef(handleFullRefresh);
@@ -312,6 +339,8 @@ const AppContent: React.FC = () => {
     const handleBackButton = ({ canGoBack }: { canGoBack: boolean }) => {
       if (viewingGallery) {
         setViewingGallery(null);
+      } else if (showCalendarAgenda) {
+        setShowCalendarAgenda(false);
       } else if (activeMoment) {
         setActiveMoment(null);
       } else if (showAllMoments) {
@@ -340,7 +369,7 @@ const AppContent: React.FC = () => {
       // Since addListener is async in some versions, but usually returns PluginListenerHandle
       listener.then(handle => handle.remove()).catch(e => console.error(e));
     };
-  }, [viewingGallery, expandedMemory, isSettingsOpen, editingMemory, isCaptureOpen, view, activeMoment, showAllMoments, handleCaptureClose, handleEditClose]);
+  }, [viewingGallery, expandedMemory, isSettingsOpen, editingMemory, isCaptureOpen, view, activeMoment, showAllMoments, showCalendarAgenda, handleCaptureClose, handleEditClose]);
 
   useEffect(() => {
     if (shareData) {
@@ -425,9 +454,10 @@ const AppContent: React.FC = () => {
     handleDelete(id);
     deleteNoteFromIndex(id);
     removeNoteFromMoments(id).catch(err => console.error('[Moments] Failed to remove note from moments:', err));
+    removeEventsForMemory(id).catch(err => console.error('[Calendar] Failed to remove events for memory:', err));
     logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_DELETED);
     if (expandedMemory?.id === id) setExpandedMemory(null);
-  }, [handleDelete, expandedMemory, deleteNoteFromIndex, removeNoteFromMoments]);
+  }, [handleDelete, expandedMemory, deleteNoteFromIndex, removeNoteFromMoments, removeEventsForMemory]);
 
   const handleRetryMemory = useCallback((id: string) => {
     handleRetry(id);
@@ -621,6 +651,8 @@ const AppContent: React.FC = () => {
           onMomentTap={handleMomentTap}
           onNewMoment={handleNewMoment}
           onShowAll={handleShowAllMoments}
+          onCalendarTap={handleCalendarTap}
+          calendarEventCount={calendarUpcomingCount}
         />
       )}
 
@@ -773,6 +805,15 @@ const AppContent: React.FC = () => {
           moments={moments}
           onClose={() => setShowAllMoments(false)}
           onSelectMoment={handleSelectMomentFromList}
+        />
+      )}
+
+      {showCalendarAgenda && (
+        <CalendarAgendaView
+          events={calendarEvents}
+          memories={memories}
+          onClose={() => setShowCalendarAgenda(false)}
+          onViewMemory={handleCalendarViewMemory}
         />
       )}
 
