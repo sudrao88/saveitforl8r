@@ -14,26 +14,29 @@ export const looksLikeMarkdown = (text: string): boolean => {
         /^>/m,                   // Blockquotes: > text
         /`[^`]+`/,               // Inline code: `code`
         /^```/m,                 // Code blocks: ```
-        /^[-*+]?\s*\[[ xX]\]\s/m,  // Checklists: [ ] item, - [x] item
+        /^\s*[-*+]?\s*\[[ xX]\]\s/m,  // Checklists: [ ] item, - [x] item
     ].some(pattern => pattern.test(text));
 };
 
 /** Detect whether text contains checklist markdown and parse items from it. */
 export const parseChecklistMarkdown = (text: string): { text: string; checked: boolean }[] | null => {
-    const lines = text.split('\n').filter(l => l.trim());
-    // At least one line must be a checklist item
+    const lines = text.split('\n');
     const checklistPattern = /^[-*+]?\s*\[([ xX])\]\s+(.*)/;
     const items: { text: string; checked: boolean }[] = [];
     let hasChecklistItem = false;
 
     for (const line of lines) {
-        const match = line.match(checklistPattern);
+        const trimmedLine = line.trim();
+        if (!trimmedLine) {
+            continue;
+        }
+
+        const match = trimmedLine.match(checklistPattern);
         if (match) {
             hasChecklistItem = true;
             items.push({ text: match[2], checked: match[1].toLowerCase() === 'x' });
         } else {
-            // Non-checklist line — treat as unchecked item to preserve content
-            items.push({ text: line.trim(), checked: false });
+            items.push({ text: trimmedLine, checked: false });
         }
     }
 
