@@ -47,6 +47,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
   const containerRef = useRef<HTMLDivElement>(null);
   const blurTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveSuccessTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevKeyboardHeightRef = useRef(0);
 
   // Track focus within the QuickNoteBar to notify parent for overlay
   const handleContainerFocus = useCallback(() => {
@@ -93,6 +94,21 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
     };
   }, []);
 
+  // Auto-exit focus mode when the mobile virtual keyboard is dismissed.
+  // Without this, the input retains focus after keyboard dismissal and the user
+  // would have to tap outside the quick note bar to bring back the hidden UI.
+  useEffect(() => {
+    const wasOpen = prevKeyboardHeightRef.current > 0;
+    const isClosed = keyboardHeight === 0;
+    prevKeyboardHeightRef.current = keyboardHeight;
+
+    if (wasOpen && isClosed) {
+      if (document.activeElement instanceof HTMLElement && containerRef.current?.contains(document.activeElement)) {
+        document.activeElement.blur();
+      }
+      onFocusChange?.(false);
+    }
+  }, [keyboardHeight, onFocusChange]);
 
   useImperativeHandle(ref, () => ({
     focus: () => editorRef.current?.focus(),
