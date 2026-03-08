@@ -560,12 +560,17 @@ const AppContent: React.FC = () => {
 
   if (editingMemory) {
     return (
-      <NewMemoryPage
-          onClose={handleEditClose}
-          onCreate={handleCreateMemory}
-          onUpdate={handleUpdateMemory}
-          editMemory={editingMemory}
-        />
+      <ErrorBoundary
+        fallbackTitle="Memory editor encountered an error"
+        fallbackMessage="Something went wrong while editing. Your data is safe — try reloading."
+      >
+        <NewMemoryPage
+            onClose={handleEditClose}
+            onCreate={handleCreateMemory}
+            onUpdate={handleUpdateMemory}
+            editMemory={editingMemory}
+          />
+      </ErrorBoundary>
     );
   }
 
@@ -576,11 +581,16 @@ const AppContent: React.FC = () => {
       tags: quickNoteExpandState.tags,
     } : undefined;
     return (
-      <NewMemoryPage
-          onClose={handleCaptureClose}
-          onCreate={handleCreateMemory}
-          initialContent={expandInitial || (shareData ? { ...shareData, text: escapeHtml(shareData.text) } : undefined)}
-        />
+      <ErrorBoundary
+        fallbackTitle="Memory capture encountered an error"
+        fallbackMessage="Something went wrong while capturing. Your data is safe — try reloading."
+      >
+        <NewMemoryPage
+            onClose={handleCaptureClose}
+            onCreate={handleCreateMemory}
+            initialContent={expandInitial || (shareData ? { ...shareData, text: escapeHtml(shareData.text) } : undefined)}
+          />
+      </ErrorBoundary>
     );
   }
 
@@ -602,11 +612,16 @@ const AppContent: React.FC = () => {
               />
           </ErrorBoundary>
           {viewingGallery && (
-            <GalleryViewer
-                attachments={viewingGallery.attachments}
-                initialIndex={viewingGallery.currentIndex}
-                onClose={() => setViewingGallery(null)}
-              />
+            <ErrorBoundary
+              fallbackTitle="Gallery encountered an error"
+              fallbackMessage="Something went wrong displaying media. Your data is safe — try reloading."
+            >
+              <GalleryViewer
+                  attachments={viewingGallery.attachments}
+                  initialIndex={viewingGallery.currentIndex}
+                  onClose={() => setViewingGallery(null)}
+                />
+            </ErrorBoundary>
           )}
         </>
      );
@@ -741,11 +756,16 @@ const AppContent: React.FC = () => {
       )}
 
       {viewingGallery && (
-          <GalleryViewer
-            attachments={viewingGallery.attachments}
-            initialIndex={viewingGallery.currentIndex}
-            onClose={() => setViewingGallery(null)}
-          />
+          <ErrorBoundary
+            fallbackTitle="Gallery encountered an error"
+            fallbackMessage="Something went wrong displaying media. Your data is safe — try reloading."
+          >
+            <GalleryViewer
+              attachments={viewingGallery.attachments}
+              initialIndex={viewingGallery.currentIndex}
+              onClose={() => setViewingGallery(null)}
+            />
+          </ErrorBoundary>
       )}
 
       {isSettingsOpen && (
