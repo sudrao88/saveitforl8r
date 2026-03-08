@@ -52,7 +52,6 @@ const AppContent: React.FC = () => {
   const [showAllMoments, setShowAllMoments] = useState(false);
   const [showCreateMoment, setShowCreateMoment] = useState(false);
   const [quickNoteExpandState, setQuickNoteExpandState] = useState<QuickNoteState | null>(null);
-  const [quickNoteFocused, setQuickNoteFocused] = useState(false);
   const quickNoteBarRef = useRef<QuickNoteBarHandle>(null);
 
   const { updateAvailable, updateApp, appVersion } = useServiceWorker();
@@ -477,21 +476,6 @@ const AppContent: React.FC = () => {
     logEvent(ANALYTICS_EVENTS.QUICK_NOTE.CATEGORY, ANALYTICS_EVENTS.QUICK_NOTE.ACTION_SAVED);
   }, [createMemory]);
 
-  const handleQuickNoteFocusChange = useCallback((focused: boolean) => {
-    // Only enter focus mode (hiding other UI) on mobile/touch devices.
-    // Desktop devices with a fine pointer (mouse/trackpad) keep all elements visible.
-    if (focused && window.matchMedia('(pointer: fine)').matches) return;
-    setQuickNoteFocused(focused);
-  }, []);
-
-  const handleFocusOverlayClick = useCallback(() => {
-    // Blur the active element to dismiss the keyboard and remove focus
-    if (document.activeElement instanceof HTMLElement) {
-      document.activeElement.blur();
-    }
-    setQuickNoteFocused(false);
-  }, []);
-
   const handleQuickNoteExpand = useCallback((state: QuickNoteState) => {
     setQuickNoteExpandState(state);
     setIsCaptureOpen(true);
@@ -627,12 +611,10 @@ const AppContent: React.FC = () => {
      );
   }
 
-  const isFocusMode = quickNoteFocused || showCreateMoment;
-
   return (
     <div className="min-h-screen bg-black flex flex-col">
-      {/* Sticky top navigation — hidden during focus mode */}
-      {!isFocusMode && (
+      {/* Sticky top navigation */}
+      {!showCreateMoment && (
         <div ref={topNavRef} className="sticky top-0 z-[50] bg-black/90 backdrop-blur-md border-b border-gray-800/50 pt-[env(safe-area-inset-top)]">
             <TopNavigation
               setView={handleSetView}
@@ -648,8 +630,8 @@ const AppContent: React.FC = () => {
         </div>
       )}
 
-      {/* Moments strip — hidden during focus mode */}
-      {!isFocusMode && (
+      {/* Moments strip */}
+      {!showCreateMoment && (
         <MomentsStrip
           moments={moments}
           onMomentTap={handleMomentTap}
@@ -660,8 +642,8 @@ const AppContent: React.FC = () => {
         />
       )}
 
-      {/* Sticky filter bar — hidden during focus mode */}
-      {!isFocusMode && availableTypes.length > 0 && (
+      {/* Sticky filter bar */}
+      {!showCreateMoment && availableTypes.length > 0 && (
         <div className="sticky z-[49] bg-black/90 backdrop-blur-md border-b border-gray-800/50" style={{ top: `${topNavHeight}px` }}>
           <FilterBar
             availableTypes={availableTypes}
@@ -672,8 +654,8 @@ const AppContent: React.FC = () => {
         </div>
       )}
 
-      {/* Main content — hidden during focus mode */}
-      {!isFocusMode && (
+      {/* Main content */}
+      {!showCreateMoment && (
         <main className="flex-1 p-4 sm:p-8 pb-24 max-w-7xl mx-auto w-full relative z-[40]">
           {filteredMemories.length === 0 ? (
             <EmptyState
@@ -703,17 +685,16 @@ const AppContent: React.FC = () => {
         </main>
       )}
 
-      {/* Focus overlay — blur background when QuickNoteBar or MomentCreationDialog is active */}
-      {isFocusMode && (
+      {/* Overlay for MomentCreationDialog */}
+      {showCreateMoment && (
         <div
           className="fixed inset-0 z-[55] bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
-          onClick={quickNoteFocused ? handleFocusOverlayClick : undefined}
           aria-hidden
         />
       )}
 
-      {/* Spacer to push QuickNoteBar to bottom when content is hidden in focus mode */}
-      {isFocusMode && <div className="flex-1" />}
+      {/* Spacer to push QuickNoteBar to bottom when content is hidden for moment creation */}
+      {showCreateMoment && <div className="flex-1" />}
 
       {/* Quick Note Bar — hidden when synthesis dialog is open */}
       {!showCreateMoment && (
@@ -721,7 +702,6 @@ const AppContent: React.FC = () => {
           ref={quickNoteBarRef}
           onSave={handleQuickNoteSave}
           onExpand={handleQuickNoteExpand}
-          onFocusChange={handleQuickNoteFocusChange}
         />
       )}
 

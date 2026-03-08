@@ -14,7 +14,6 @@ marked.setOptions({ breaks: true, gfm: true });
 interface QuickNoteBarProps {
   onSave: (text: string, attachments: Attachment[], tags: string[]) => Promise<void>;
   onExpand: (state: QuickNoteState) => void;
-  onFocusChange?: (focused: boolean) => void;
 }
 
 export interface QuickNoteBarHandle {
@@ -27,7 +26,7 @@ interface ChecklistItem {
   checked: boolean;
 }
 
-const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave, onExpand, onFocusChange }, ref) => {
+const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave, onExpand }, ref) => {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [tags, setTags] = useState<string[]>([]);
   const [showTags, setShowTags] = useState(false);
@@ -45,31 +44,10 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
   const fileInputRef = useRef<HTMLInputElement>(null);
   const focusItemIdRef = useRef<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const blurTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveSuccessTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const prevKeyboardHeightRef = useRef(0);
-
-  // Track focus within the QuickNoteBar to notify parent for overlay
-  const handleContainerFocus = useCallback(() => {
-    if (blurTimeoutRef.current) {
-      clearTimeout(blurTimeoutRef.current);
-      blurTimeoutRef.current = null;
-    }
-    onFocusChange?.(true);
-  }, [onFocusChange]);
-
-  const handleContainerBlur = useCallback(() => {
-    // Delay blur to allow focus to move between child elements within the bar
-    blurTimeoutRef.current = setTimeout(() => {
-      if (containerRef.current && !containerRef.current.contains(document.activeElement)) {
-        onFocusChange?.(false);
-      }
-    }, 100);
-  }, [onFocusChange]);
 
   useEffect(() => {
     return () => {
-      if (blurTimeoutRef.current) clearTimeout(blurTimeoutRef.current);
       if (saveSuccessTimeoutRef.current) clearTimeout(saveSuccessTimeoutRef.current);
     };
   }, []);
@@ -93,22 +71,6 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
       vv.removeEventListener('scroll', update);
     };
   }, []);
-
-  // Auto-exit focus mode when the mobile virtual keyboard is dismissed.
-  // Without this, the input retains focus after keyboard dismissal and the user
-  // would have to tap outside the quick note bar to bring back the hidden UI.
-  useEffect(() => {
-    const wasOpen = prevKeyboardHeightRef.current > 0;
-    const isClosed = keyboardHeight === 0;
-    prevKeyboardHeightRef.current = keyboardHeight;
-
-    if (wasOpen && isClosed) {
-      if (document.activeElement instanceof HTMLElement && containerRef.current?.contains(document.activeElement)) {
-        document.activeElement.blur();
-      }
-      onFocusChange?.(false);
-    }
-  }, [keyboardHeight, onFocusChange]);
 
   useImperativeHandle(ref, () => ({
     focus: () => editorRef.current?.focus(),
@@ -432,8 +394,6 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
         paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))',
         transform: keyboardHeight > 0 ? `translateY(-${keyboardHeight}px)` : undefined,
       }}
-      onFocus={handleContainerFocus}
-      onBlur={handleContainerBlur}
     >
       <div className="bg-gray-900/95 backdrop-blur-xl border-2 border-blue-500 rounded-2xl shadow-[0_0_16px_rgba(156,163,175,0.3)]">
         {/* Attachment previews */}
