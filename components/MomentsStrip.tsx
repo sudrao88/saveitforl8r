@@ -30,7 +30,20 @@ const MomentsStrip: React.FC<MomentsStripProps> = ({
   return (
     <div className="w-full max-w-4xl mx-auto px-4 sm:px-8 py-3">
       <div className="flex items-start gap-4 overflow-x-auto no-scrollbar touch-pan-x p-1">
-        {/* Calendar bubble — first in strip */}
+        {/* New Moment button — first in strip */}
+        <button
+          onClick={onNewMoment}
+          className="flex flex-col items-center gap-1.5 shrink-0 group touch-manipulation"
+        >
+          <div className="w-16 h-16 rounded-full flex items-center justify-center bg-blue-600/20 border-2 border-dashed border-blue-500/50 transition-all group-hover:border-blue-400 group-hover:bg-blue-600/30 group-active:scale-95">
+            <Sparkles size={22} className="text-blue-400" />
+          </div>
+          <span className="text-[11px] font-semibold text-blue-400 leading-tight text-center">
+            Synthesize
+          </span>
+        </button>
+
+        {/* Calendar bubble — second in strip */}
         <button
           onClick={onCalendarTap}
           className="flex flex-col items-center gap-1.5 shrink-0 group touch-manipulation relative"
@@ -45,19 +58,6 @@ const MomentsStrip: React.FC<MomentsStripProps> = ({
           )}
           <span className="text-[11px] font-semibold text-purple-400 leading-tight text-center">
             Calendar
-          </span>
-        </button>
-
-        {/* New Moment button */}
-        <button
-          onClick={onNewMoment}
-          className="flex flex-col items-center gap-1.5 shrink-0 group touch-manipulation"
-        >
-          <div className="w-16 h-16 rounded-full flex items-center justify-center bg-blue-600/20 border-2 border-dashed border-blue-500/50 transition-all group-hover:border-blue-400 group-hover:bg-blue-600/30 group-active:scale-95">
-            <Sparkles size={22} className="text-blue-400" />
-          </div>
-          <span className="text-[11px] font-semibold text-blue-400 leading-tight text-center">
-            Synthesize
           </span>
         </button>
 
