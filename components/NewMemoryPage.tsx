@@ -4,7 +4,7 @@ import { marked } from 'marked';
 import { Attachment, Memory } from '../types';
 import { isNative } from '../services/platform';
 import { Keyboard } from '@capacitor/keyboard';
-import { escapeHtml, looksLikeMarkdown, sanitizePastedHtml, hasRichFormatting, extractHashtags, mergeTagsWithHashtags } from '../utils/editorUtils';
+import { escapeHtml, looksLikeMarkdown, parseChecklistMarkdown, sanitizePastedHtml, hasRichFormatting, extractHashtags, mergeTagsWithHashtags } from '../utils/editorUtils';
 import { processFileInputs } from '../utils/attachmentUtils';
 import FormattingToolbar from './FormattingToolbar';
 import TagInput from './TagInput';
@@ -203,6 +203,23 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
     e.preventDefault();
 
     let htmlToInsert = '';
+
+    // Checklist markdown — switch to checklist mode with parsed items
+    if (plainText) {
+        const checklistItems = parseChecklistMarkdown(plainText);
+        if (checklistItems) {
+            setChecklistItems(checklistItems.map(item => ({
+                id: crypto.randomUUID(),
+                text: item.text,
+                checked: item.checked
+            })));
+            if (editorRef.current) editorRef.current.innerHTML = '';
+            setIsChecklistMode(true);
+            setShowFormatting(false);
+            setIsEmpty(false);
+            return;
+        }
+    }
 
     if (html && hasRichFormatting(html)) {
         // Rich text paste (Word, Google Docs, web pages) — sanitize & preserve formatting

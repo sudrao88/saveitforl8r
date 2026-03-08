@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback, forwardRef, useImperat
 import { Paperclip, Hash, Type, Maximize2, Plus, X, FileText, Loader2, CheckSquare, Check } from 'lucide-react';
 import { marked } from 'marked';
 import { Attachment, QuickNoteState } from '../types';
-import { escapeHtml, looksLikeMarkdown, sanitizePastedHtml, hasRichFormatting, extractHashtags, mergeTagsWithHashtags } from '../utils/editorUtils';
+import { escapeHtml, looksLikeMarkdown, parseChecklistMarkdown, sanitizePastedHtml, hasRichFormatting, extractHashtags, mergeTagsWithHashtags } from '../utils/editorUtils';
 import { processFileInputs } from '../utils/attachmentUtils';
 import { triggerHaptic } from '../services/platform';
 import FormattingToolbar from './FormattingToolbar';
@@ -206,6 +206,23 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
     e.preventDefault();
 
     let htmlToInsert = '';
+
+    // Checklist markdown — switch to checklist mode with parsed items
+    if (plainText) {
+        const parsedChecklist = parseChecklistMarkdown(plainText);
+        if (parsedChecklist) {
+            setChecklistItems(parsedChecklist.map(item => ({
+                id: crypto.randomUUID(),
+                text: item.text,
+                checked: item.checked
+            })));
+            if (editorRef.current) editorRef.current.innerHTML = '';
+            setIsChecklistMode(true);
+            setIsEmpty(false);
+            setShowFormatting(false);
+            return;
+        }
+    }
 
     if (html && hasRichFormatting(html)) {
       htmlToInsert = sanitizePastedHtml(html);
