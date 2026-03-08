@@ -602,17 +602,23 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           const snapshotJSON = await storage.get(SNAPSHOT_KEY);
           const snapshot = snapshotJSON ? JSON.parse(snapshotJSON) : {};
 
-          for (const event of events) {
-              try {
-                  const filename = `event-${event.id}.json`;
-                  const remoteFile = await findFileByName(filename);
-                  const uploaded = await uploadFile(filename, event, remoteFile?.id);
-
-                  if (uploaded?.modifiedTime) {
-                      snapshot[`event-${event.id}`] = uploaded.modifiedTime;
+          const results = await Promise.all(
+              events.map(async (event) => {
+                  try {
+                      const filename = `event-${event.id}.json`;
+                      const remoteFile = await findFileByName(filename);
+                      const uploaded = await uploadFile(filename, event, remoteFile?.id);
+                      return { eventId: event.id, modifiedTime: uploaded?.modifiedTime };
+                  } catch (e) {
+                      console.error(`[Sync] Calendar event sync failed for ${event.id}:`, e);
+                      return { eventId: event.id, modifiedTime: undefined };
                   }
-              } catch (e) {
-                  console.error(`[Sync] Calendar event sync failed for ${event.id}:`, e);
+              })
+          );
+
+          for (const result of results) {
+              if (result.modifiedTime) {
+                  snapshot[`event-${result.eventId}`] = result.modifiedTime;
               }
           }
 
