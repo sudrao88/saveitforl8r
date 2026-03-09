@@ -150,6 +150,37 @@ const executeSyncPlan = async (plan: SyncPlan): Promise<string[]> => {
         }
     }
 
+    // --- Reconcile note-to-moment matches for downloaded notes ---
+    // When a note is enriched on Device A, its enrichment.matchedMomentIds is set.
+    // Device A also updates the moment's noteIds and syncs it. But if the moment
+    // sync hasn't propagated yet (race condition, offline, etc.), Device B needs
+    // to apply these matches locally when it downloads the note.
+    const downloadedNotes: Array<{ id: string; enrichment?: { matchedMomentIds?: string[] } }> = [];
+    for (const item of plan.toDownload) {
+        if (dlFailureSet.has(item.fileId)) continue;
+        if (item.noteId.startsWith('moment-') || item.noteId.startsWith('event-')) continue;
+        const content = downloadedContents.get(item.fileId);
+        if (content) downloadedNotes.push({ id: item.noteId, enrichment: (content as Memory).enrichment });
+    }
+
+    const matchesToApply = collectMatchedMomentIds(downloadedNotes);
+    if (matchesToApply.size > 0) {
+        const allMoments = await getAllMomentsIncludingDeleted();
+        const updatedMoments = await applyNoteToMomentMatches(matchesToApply, allMoments, 'Sync:Download');
+
+        // Queue updated moments for upload so changes propagate to other devices.
+        // If a moment is already queued, update it in-place to avoid data loss.
+        for (const updated of updatedMoments) {
+            const key = `moment-${updated.id}`;
+            const existingIdx = plan.toUpload.findIndex(u => u.noteId === key);
+            if (existingIdx >= 0) {
+                plan.toUpload[existingIdx] = { ...plan.toUpload[existingIdx], memory: updated };
+            } else {
+                plan.toUpload.push({ noteId: key, memory: updated });
+            }
+        }
+    }
+
     // Build upload list, including synthesis files for any moments being uploaded
     const uploadItems: Array<{ filename: string; content: Memory | Moment | MomentSynthesis | CalendarEvent; existingFileId?: string }> = plan.toUpload.map(u => ({
         filename: `${u.noteId}.json`,
@@ -218,6 +249,87 @@ const executeSyncPlan = async (plan: SyncPlan): Promise<string[]> => {
     }
 
     return errors;
+};
+
+/**
+ * Maximum number of notes that can be linked to a single moment.
+ * Prevents unbounded growth of the noteIds array from enrichment data.
+ */
+const MAX_NOTE_IDS_PER_MOMENT = 500;
+
+/**
+ * Shared helper: apply note-to-moment matches from a matchesToApply map.
+ * For each momentId in the map, checks if the corresponding moment exists
+ * and is missing any of the note IDs, then updates it in IndexedDB.
+ *
+ * @returns Array of updated moments (for syncing to Drive).
+ */
+const applyNoteToMomentMatches = async (
+    matchesToApply: Map<string, Set<string>>,
+    moments: Moment[],
+    logPrefix: string,
+): Promise<Moment[]> => {
+    const momentLookup = new Map(moments.map(m => [m.id, m]));
+    const updatedMoments: Moment[] = [];
+
+    for (const [momentId, noteIds] of matchesToApply) {
+        const moment = momentLookup.get(momentId);
+        if (!moment || moment.isDeleted) continue;
+
+        const existingIds = new Set(moment.noteIds);
+        const newNoteIds = [...noteIds].filter(nid => !existingIds.has(nid));
+        if (newNoteIds.length === 0) continue;
+
+        // Cap total noteIds to prevent unbounded growth
+        const combinedIds = [...moment.noteIds, ...newNoteIds];
+        if (combinedIds.length > MAX_NOTE_IDS_PER_MOMENT) {
+            console.warn(`[${logPrefix}] Moment ${momentId} would exceed ${MAX_NOTE_IDS_PER_MOMENT} noteIds, truncating`);
+            combinedIds.length = MAX_NOTE_IDS_PER_MOMENT;
+        }
+
+        const updated: Moment = {
+            ...moment,
+            noteIds: combinedIds,
+            updatedAt: Date.now(),
+        };
+
+        await saveMoment(updated);
+        console.log(`[${logPrefix}] Moment ${momentId}: added ${newNoteIds.length} note(s)`);
+        updatedMoments.push(updated);
+    }
+
+    return updatedMoments;
+};
+
+/**
+ * Build a matchesToApply map from notes' enrichment.matchedMomentIds.
+ */
+const collectMatchedMomentIds = (notes: Array<{ id: string; enrichment?: { matchedMomentIds?: string[] }; isDeleted?: boolean; isPending?: boolean }>): Map<string, Set<string>> => {
+    const matchesToApply = new Map<string, Set<string>>();
+    for (const note of notes) {
+        if (note.isDeleted || note.isPending) continue;
+        const matched = note.enrichment?.matchedMomentIds;
+        if (!matched || matched.length === 0) continue;
+
+        for (const momentId of matched) {
+            if (!matchesToApply.has(momentId)) matchesToApply.set(momentId, new Set());
+            matchesToApply.get(momentId)!.add(note.id);
+        }
+    }
+    return matchesToApply;
+};
+
+/**
+ * Reconcile all local notes' matchedMomentIds with their corresponding moments.
+ * Ensures that if a note's enrichment says it belongs to a moment, the moment's
+ * noteIds array reflects that. Returns any moments that were updated so they can
+ * be synced to Drive.
+ */
+const reconcileAllNoteToMomentMatches = async (): Promise<Moment[]> => {
+    const allMemories = await getMemories();
+    const allMoments = await getAllMomentsIncludingDeleted();
+    const matchesToApply = collectMatchedMomentIds(allMemories);
+    return applyNoteToMomentMatches(matchesToApply, allMoments, 'Sync:FullReconcile');
 };
 
 // ---- Sync Plan Types ----
@@ -523,6 +635,25 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     if (errors.length > 0) {
         console.error(`[Sync] ${errors.length} item(s) failed:`, errors);
         throw new Error(`Failed to sync ${errors.length} items`);
+    }
+
+    // Full reconciliation pass: ensure all notes' matchedMomentIds are applied
+    // to their corresponding moments. This catches matches from notes synced in
+    // previous cycles whose moment updates may not have propagated yet.
+    const reconciledMoments = await reconcileAllNoteToMomentMatches();
+    if (reconciledMoments.length > 0) {
+        // Batch upload all reconciled moments at once
+        const reconciledUploadItems = await Promise.all(
+            reconciledMoments.map(async (m) => {
+                const filename = `moment-${m.id}.json`;
+                const remoteFile = await findFileByName(filename);
+                return { filename, content: m as Moment, existingFileId: remoteFile?.id };
+            })
+        );
+        const { failures } = await uploadMultipleFiles(reconciledUploadItems);
+        if (failures.length > 0) {
+            console.warn(`[Sync] ${failures.length} reconciled moment upload(s) failed:`, failures);
+        }
     }
 
     const updatedRemoteFiles = await listAllFiles();
