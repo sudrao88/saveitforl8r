@@ -264,21 +264,38 @@ const AppContent: React.FC = () => {
         const params = new URLSearchParams(window.location.search);
         const state = params.get('state');
         if (state === 'is_native_login') {
-            const code = params.get('code');
-            const error = params.get('error');
-            // Custom scheme: com.saveitforl8r.app://google-auth
-            const schemeUrl = `com.saveitforl8r.app://google-auth?code=${code}&error=${error || ''}`;
-            
+            const code = params.get('code') || '';
+            const error = params.get('error') || '';
+
+            // Validate code format (Google auth codes are alphanumeric with limited symbols)
+            if (code && !/^[A-Za-z0-9/_.-]+$/.test(code)) {
+                console.error('Invalid OAuth code format');
+                return;
+            }
+
+            // Build scheme URL with properly encoded parameters
+            const schemeParams = new URLSearchParams({ code, error });
+            const schemeUrl = `com.saveitforl8r.app://google-auth?${schemeParams.toString()}`;
+
             console.log("Bouncing to native app:", schemeUrl);
             window.location.href = schemeUrl;
-            
-            // Visual feedback
-            document.body.innerHTML = `
-              <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;background:#111827;color:white;font-family:sans-serif;">
-                <h2>Redirecting to App...</h2>
-                <p>If not redirected, <a href="${schemeUrl}" style="color:#3b82f6">click here</a>.</p>
-              </div>
-            `;
+
+            // Visual feedback using safe DOM construction (avoid innerHTML XSS)
+            const container = document.createElement('div');
+            container.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;background:#111827;color:white;font-family:sans-serif;';
+            const heading = document.createElement('h2');
+            heading.textContent = 'Redirecting to App...';
+            const para = document.createElement('p');
+            para.textContent = 'If not redirected, ';
+            const link = document.createElement('a');
+            link.href = schemeUrl;
+            link.textContent = 'click here';
+            link.style.color = '#3b82f6';
+            para.appendChild(link);
+            para.appendChild(document.createTextNode('.'));
+            container.appendChild(heading);
+            container.appendChild(para);
+            document.body.replaceChildren(container);
         }
     }
   }, []);

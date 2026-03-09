@@ -15,7 +15,12 @@ export const sanitizeUserInput = (input) => {
 export const sanitizeString = (str) => {
   if (typeof str !== 'string') return '';
   return str
+    // Strip complete tags (including self-closing and with attributes)
     .replace(/<[^>]*>/g, '')
+    // Strip orphaned opening angle brackets (e.g. "<img src=x onerror=alert(1)")
+    .replace(/<[^>]*$/gm, '')
+    // Strip any remaining angle brackets to prevent partial tag injection
+    .replace(/[<>]/g, '')
     .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
     .trim();
 };

@@ -38,6 +38,12 @@ if (!GEMINI_API_KEY) {
   process.exit(1);
 }
 
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID;
+if (!GOOGLE_CLIENT_ID) {
+  console.error('FATAL: GOOGLE_CLIENT_ID environment variable is required for token audience validation');
+  process.exit(1);
+}
+
 const MODEL_NAME = 'gemini-3-flash-preview';
 const FALLBACK_MODEL_NAME = 'gemini-2.0-flash';
 const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
@@ -74,9 +80,19 @@ const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
   .map((o) => o.trim())
   .filter(Boolean);
 
+if (allowedOrigins.length === 0) {
+  console.warn('WARNING: ALLOWED_ORIGINS is not set — all cross-origin requests will be denied. Set ALLOWED_ORIGINS to allow specific origins.');
+}
+
 app.use(
   cors({
     origin: (origin, callback) => {
+      // When no origins are configured, deny all cross-origin requests
+      if (allowedOrigins.length === 0) {
+        if (!origin) return callback(null, true); // same-origin / server-to-server
+        console.error(`[CORS] Blocked request (no allowed origins configured): ${origin}`);
+        return callback(new Error('Not allowed by CORS'));
+      }
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
@@ -95,13 +111,20 @@ app.use(express.json({ limit: '10mb' }));
 
 // Attach an anonymous request ID for log correlation
 app.use((req, _res, next) => {
-  req.requestId = crypto.randomBytes(4).toString('hex');
+  req.requestId = crypto.randomBytes(8).toString('hex');
   next();
 });
 
 // --- Health check ---
 
-app.get('/health', async (_req, res) => {
+const healthLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+app.get('/health', healthLimiter, async (_req, res) => {
   const checks = { server: 'ok', firestore: 'ok' };
 
   if (db) {
@@ -117,7 +140,7 @@ app.get('/health', async (_req, res) => {
 
   const overall = Object.values(checks).every((v) => v === 'ok') ? 'ok' : 'degraded';
   const statusCode = overall === 'ok' ? 200 : 503;
-  res.status(statusCode).json({ status: overall, checks, aiQueue: aiLimiter.stats() });
+  res.status(statusCode).json({ status: overall, checks });
 });
 
 // --- Mount route modules ---

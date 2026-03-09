@@ -48,7 +48,11 @@ export const authenticateRequest = async (req, res, next) => {
     const tokenInfo = await response.json();
     const expectedClientId =
       process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID;
-    if (expectedClientId && tokenInfo.aud !== expectedClientId) {
+    if (!expectedClientId) {
+      console.error(`[Auth] [${req.requestId}] GOOGLE_CLIENT_ID not configured — rejecting request`);
+      return res.status(500).json({ error: 'Server misconfigured' });
+    }
+    if (tokenInfo.aud !== expectedClientId) {
       console.error(
         `[Auth] [${req.requestId}] Audience mismatch. Expected: ${expectedClientId}, Got: ${tokenInfo.aud}`
       );
