@@ -12,6 +12,27 @@ const DEFAULT_HORIZON_MONTHS = 6;
 const HORIZON_EXTENSION_THRESHOLD_DAYS = 30;
 
 /**
+ * Generate a deterministic UUID-like ID from a seed string.
+ * Uses the same input on any device to produce the same output,
+ * preventing duplicate occurrences when horizon expansion runs
+ * independently on multiple synced devices.
+ */
+const deterministicId = (seed: string): string => {
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
+  for (let i = 0; i < seed.length; i++) {
+    const ch = seed.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  const hex = (h2 >>> 0).toString(16).padStart(8, '0') + (h1 >>> 0).toString(16).padStart(8, '0');
+  // Format as UUID-like: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(12, 15)}-8${hex.slice(15, 18)}-${hex.slice(0, 12)}`;
+};
+
+/**
  * Advance a date by one recurrence interval.
  * Returns a new Date — does not mutate the input.
  */
@@ -195,7 +216,7 @@ export const expandHorizon = (existingEvents: CalendarEvent[]): CalendarEvent[] 
 
       if (!existingDates.has(dateStr)) {
         newEvents.push({
-          id: crypto.randomUUID(),
+          id: deterministicId(`${groupId}:${dateStr}`),
           memoryId: latest.memoryId,
           title: latest.title,
           description: latest.description,
