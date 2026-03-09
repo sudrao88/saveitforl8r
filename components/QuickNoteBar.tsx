@@ -59,7 +59,12 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
     if (!vv) return;
 
     const update = () => {
-      const kbHeight = window.innerHeight - vv.height;
+      // Must subtract offsetTop: on iOS, when there's scrollable content,
+      // Safari scrolls the visual viewport to keep the focused input visible.
+      // position:fixed is relative to the layout viewport, so we need the
+      // distance from the bottom of the visual viewport to the bottom of the
+      // layout viewport, which is innerHeight - height - offsetTop.
+      const kbHeight = window.innerHeight - vv.height - vv.offsetTop;
       setKeyboardHeight(kbHeight > 0 ? kbHeight : 0);
     };
 
