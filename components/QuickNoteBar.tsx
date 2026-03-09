@@ -389,10 +389,10 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
   return (
     <div
       ref={containerRef}
-      className="sticky bottom-0 z-[60] px-3 pb-3 pt-1 lg:w-[34%] lg:mx-auto relative transition-transform duration-200 ease-out will-change-transform"
+      className="sticky bottom-0 z-[60] px-3 pb-3 pt-1 lg:w-[34%] lg:mx-auto relative transition-[bottom] duration-200 ease-out"
       style={{
-        paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))',
-        transform: keyboardHeight > 0 ? `translateY(-${keyboardHeight}px)` : undefined,
+        paddingBottom: keyboardHeight > 0 ? '0.75rem' : 'max(0.75rem, env(safe-area-inset-bottom))',
+        bottom: keyboardHeight > 0 ? `${keyboardHeight}px` : undefined,
       }}
     >
       <div className="bg-gray-900/95 backdrop-blur-xl border-2 border-blue-500 rounded-2xl shadow-[0_0_16px_rgba(156,163,175,0.3)]">
