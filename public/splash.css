@@ -1,0 +1,29 @@
+/* Splash screen styles — loaded before JS/CSS bundles for instant rendering. */
+body { background-color: #000000; margin: 0; }
+.splash-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  width: 100vw;
+  color: white;
+  font-family: 'Shantell Sans', sans-serif;
+}
+.splash-logo {
+  width: 80px;
+  height: 80px;
+  margin-bottom: 20px;
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: .8; transform: scale(0.95); }
+}
+.noscript-content {
+  max-width: 700px;
+  margin: 40px auto;
+  padding: 0 20px;
+  color: #e5e7eb;
+  font-family: system-ui, sans-serif;
+}

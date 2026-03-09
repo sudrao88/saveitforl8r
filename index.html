@@ -81,32 +81,9 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Shantell+Sans:ital,wght@0,300..800;1,300..800&display=swap" rel="stylesheet">
-
-    <style>
-      body { background-color: #000000; margin: 0; }
-      .splash-container {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        height: 100vh;
-        width: 100vw;
-        color: white;
-        font-family: 'Shantell Sans', sans-serif;
-      }
-      .splash-logo {
-        width: 80px;
-        height: 80px;
-        margin-bottom: 20px;
-        animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-      }
-      @keyframes pulse {
-        0%, 100% { opacity: 1; transform: scale(1); }
-        50% { opacity: .8; transform: scale(0.95); }
-      }
-    </style>
+    <link rel="stylesheet" href="/splash.css">
   </head>
-  <body style="background-color: #000000;">
+  <body>
     <div id="root">
        <!-- App Shell / Loading Screen -->
        <div class="splash-container">
@@ -114,7 +91,7 @@
        </div>
     </div>
     <noscript>
-      <div style="max-width:700px;margin:40px auto;padding:0 20px;color:#e5e7eb;font-family:system-ui,sans-serif;">
+      <div class="noscript-content">
         <h1>SaveItForL8R — AI Note Taking &amp; Personal Second Brain</h1>
         <p>SaveItForL8R is a free, AI-powered note taking app that uses <strong>Google Gemini</strong> to automatically enrich, tag, and organize your notes, images, and files.</p>
         <h2>Features</h2>
