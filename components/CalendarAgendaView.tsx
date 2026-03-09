@@ -15,6 +15,7 @@ import {
   Clock,
   FileText,
   CalendarDays,
+  Repeat,
 } from 'lucide-react';
 import { CalendarEvent, Memory, Attachment } from '../types';
 import MemoryCard from './MemoryCard';
@@ -189,14 +190,23 @@ const EventCard: React.FC<{
           )}
         </div>
 
-        {/* Status badge */}
-        <span
-          className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border shrink-0 ${
-            statusColors[event.status] || statusColors.confirmed
-          }`}
-        >
-          {event.status}
-        </span>
+        <div className="flex flex-col items-end gap-1.5 shrink-0">
+          {/* Status badge */}
+          <span
+            className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${
+              statusColors[event.status] || statusColors.confirmed
+            }`}
+          >
+            {event.status}
+          </span>
+          {/* Recurrence indicator */}
+          {event.recurringGroupId && (
+            <span className="flex items-center gap-1 text-[10px] text-blue-400">
+              <Repeat size={10} />
+              {event.recurrenceRule?.frequency}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Description */}
