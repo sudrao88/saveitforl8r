@@ -18,18 +18,24 @@ const HORIZON_EXTENSION_THRESHOLD_DAYS = 30;
  * independently on multiple synced devices.
  */
 const deterministicId = (seed: string): string => {
-  let h1 = 0xdeadbeef;
-  let h2 = 0x41c6ce57;
-  for (let i = 0; i < seed.length; i++) {
-    const ch = seed.charCodeAt(i);
-    h1 = Math.imul(h1 ^ ch, 2654435761);
-    h2 = Math.imul(h2 ^ ch, 1597334677);
-  }
-  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
-  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
-  const hex = (h2 >>> 0).toString(16).padStart(8, '0') + (h1 >>> 0).toString(16).padStart(8, '0');
-  // Format as UUID-like: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(12, 15)}-8${hex.slice(15, 18)}-${hex.slice(0, 12)}`;
+  // Run two independent hash passes with different seeds to produce 32 hex chars
+  const hash32 = (s: string, init1: number, init2: number): string => {
+    let h1 = init1;
+    let h2 = init2;
+    for (let i = 0; i < s.length; i++) {
+      const ch = s.charCodeAt(i);
+      h1 = Math.imul(h1 ^ ch, 2654435761);
+      h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return (h2 >>> 0).toString(16).padStart(8, '0') + (h1 >>> 0).toString(16).padStart(8, '0');
+  };
+  const hi = hash32(seed, 0xdeadbeef, 0x41c6ce57);
+  const lo = hash32(seed, 0x12345678, 0x9abcdef0);
+  const hex = hi + lo; // 32 hex chars
+  // Format as UUID v4-like: xxxxxxxx-xxxx-4xxx-8xxx-xxxxxxxxxxxx
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 };
 
 /**
@@ -177,7 +183,7 @@ export const expandHorizon = (existingEvents: CalendarEvent[]): CalendarEvent[] 
 
   for (const [groupId, group] of groups) {
     // Find the latest occurrence in the group
-    const sorted = group.sort((a, b) => (a.occurrenceDate ?? a.startDate).localeCompare(b.occurrenceDate ?? b.startDate));
+    const sorted = [...group].sort((a, b) => (a.occurrenceDate ?? a.startDate).localeCompare(b.occurrenceDate ?? b.startDate));
     const latest = sorted[sorted.length - 1];
     const latestDate = latest.occurrenceDate ?? latest.startDate.split('T')[0];
 
