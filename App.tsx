@@ -107,6 +107,7 @@ const AppContent: React.FC = () => {
     removeEventsForMemory,
     refreshEvents,
     upcomingCount: calendarUpcomingCount,
+    checkAndExpandHorizon,
   } = useCalendarEvents();
 
   const [showCalendarAgenda, setShowCalendarAgenda] = useState(false);
@@ -131,6 +132,18 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     setOnCalendarEventsSync(syncCalendarEvents);
   }, [syncCalendarEvents, setOnCalendarEventsSync]);
+
+  // Expand recurring event horizons on mount
+  useEffect(() => {
+    checkAndExpandHorizon().then(newEvents => {
+      if (newEvents.length > 0) {
+        syncCalendarEvents(newEvents).catch(err =>
+          console.error('[Calendar] Failed to sync expanded horizon events:', err)
+        );
+      }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Wire up moment sync callback
   useEffect(() => {

@@ -13,6 +13,7 @@ import {
   saveCalendarEvents,
   softDeleteCalendarEventsByMemoryId,
 } from '../services/storageService';
+import { expandRecurringEvent, expandHorizon } from '../utils/calendarUtils';
 
 export interface UseCalendarEventsReturn {
   /** All active calendar events, sorted by startDate ascending */
@@ -25,6 +26,8 @@ export interface UseCalendarEventsReturn {
   refreshEvents: () => Promise<void>;
   /** Count of upcoming events (today and future) */
   upcomingCount: number;
+  /** Extend recurring event series approaching their horizon. Returns new events for syncing. */
+  checkAndExpandHorizon: () => Promise<CalendarEvent[]>;
 }
 
 export const useCalendarEvents = (): UseCalendarEventsReturn => {
@@ -64,20 +67,25 @@ export const useCalendarEvents = (): UseCalendarEventsReturn => {
     const tombstones = await softDeleteCalendarEventsByMemoryId(memory.id);
 
     const now = Date.now();
-    const newEvents: CalendarEvent[] = detected.map((det: DetectedEvent) => ({
-      id: crypto.randomUUID(),
-      memoryId: memory.id,
-      title: det.title,
-      description: memory.enrichment?.summary,
-      startDate: det.startDate,
-      endDate: det.endDate,
-      allDay: det.allDay,
-      location: det.location,
-      people: det.people,
-      status: det.status,
-      createdAt: now,
-      updatedAt: now,
-    }));
+    const newEvents: CalendarEvent[] = detected.flatMap((det: DetectedEvent) => {
+      if (det.isRecurring && det.recurrenceFrequency) {
+        return expandRecurringEvent(det, memory.id, memory.enrichment?.summary);
+      }
+      return [{
+        id: crypto.randomUUID(),
+        memoryId: memory.id,
+        title: det.title,
+        description: memory.enrichment?.summary,
+        startDate: det.startDate,
+        endDate: det.endDate,
+        allDay: det.allDay,
+        location: det.location,
+        people: det.people,
+        status: det.status,
+        createdAt: now,
+        updatedAt: now,
+      }];
+    });
 
     await saveCalendarEvents(newEvents);
     setEventsList(prev => [
@@ -100,6 +108,22 @@ export const useCalendarEvents = (): UseCalendarEventsReturn => {
     return tombstones;
   }, []);
 
+  const checkAndExpandHorizon = useCallback(async (): Promise<CalendarEvent[]> => {
+    try {
+      const allEvents = await getCalendarEvents();
+      const newEvents = expandHorizon(allEvents);
+      if (newEvents.length > 0) {
+        await saveCalendarEvents(newEvents);
+        setEventsList(prev => [...prev, ...newEvents]);
+        console.log(`[Calendar] Expanded horizon: created ${newEvents.length} new occurrence(s)`);
+      }
+      return newEvents;
+    } catch (err) {
+      console.error('[Calendar] Failed to expand horizon:', err);
+      return [];
+    }
+  }, []);
+
   // Sort by startDate ascending, filter out deleted
   const events = useMemo(
     () => eventsList
@@ -120,5 +144,6 @@ export const useCalendarEvents = (): UseCalendarEventsReturn => {
     removeEventsForMemory,
     refreshEvents,
     upcomingCount,
+    checkAndExpandHorizon,
   };
 };

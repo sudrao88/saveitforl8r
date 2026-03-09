@@ -114,6 +114,8 @@ export interface EnrichmentData {
   detectedEvents?: DetectedEvent[];
 }
 
+export type RecurrenceFrequency = 'daily' | 'weekly' | 'monthly' | 'yearly';
+
 export interface DetectedEvent {
   title: string;
   startDate: string;           // ISO 8601 — "2026-06-15T16:00:00"
@@ -122,6 +124,10 @@ export interface DetectedEvent {
   location?: string;           // Venue or address
   people?: string[];           // People involved
   status: 'confirmed' | 'tentative' | 'cancelled';
+  isRecurring?: boolean;                      // True for repeating events
+  recurrenceFrequency?: RecurrenceFrequency;  // How often it repeats
+  recurrenceEndDate?: string;                 // ISO 8601 end boundary
+  recurrenceDayOfWeek?: number;               // 0=Sun..6=Sat (for weekly)
 }
 
 export interface CalendarEvent {
@@ -138,6 +144,12 @@ export interface CalendarEvent {
   createdAt: number;
   updatedAt: number;
   isDeleted?: boolean;         // Soft-delete for sync
+  recurringGroupId?: string;   // Shared UUID across all occurrences of a recurring series
+  recurrenceRule?: {
+    frequency: RecurrenceFrequency;
+    endDate?: string;
+  };
+  occurrenceDate?: string;     // The specific date this occurrence represents
 }
 
 export interface Attachment {
