@@ -8,7 +8,7 @@ export const containsUrl = (text: string): boolean =>
 /** Convert URLs in already-escaped HTML text to clickable <a> tags. */
 export const linkifyUrls = (escapedHtml: string): string =>
     escapedHtml.replace(
-        /https?:\/\/[^\s&<>"'\])]+(?:&amp;[^\s&<>"'\])]+)*/gi,
+        /https?:\/\/[^\s&<>"'\]]+(?:&amp;[^\s&<>"'\]]+)*/gi,
         (url) => {
             // Unescape &amp; back to & for the href attribute
             const href = url.replace(/&amp;/g, '&');
