@@ -13,6 +13,52 @@ const MAX_IMAGE_BYTES = 500_000;
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 
 const USER_AGENT = 'Mozilla/5.0 (compatible; SaveItForL8R/1.0; +https://saveitforl8r.com)';
+const MAX_REDIRECTS = 3;
+
+/**
+ * Fetch a URL with manual redirect following, validating each hop against SSRF.
+ * Returns the final Response or null if any hop fails validation.
+ */
+const safeFetch = async (url, options, timeoutMs) => {
+  let currentUrl = url;
+  for (let i = 0; i <= MAX_REDIRECTS; i++) {
+    if (!isPublicUrl(currentUrl)) {
+      console.warn(`[OG] SSRF blocked: ${currentUrl}`);
+      return null;
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const response = await fetch(currentUrl, {
+        ...options,
+        signal: controller.signal,
+        redirect: 'manual',
+      });
+      clearTimeout(timeout);
+
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get('location');
+        if (!location) return null;
+        try {
+          currentUrl = new URL(location, currentUrl).href;
+        } catch {
+          return null;
+        }
+        continue;
+      }
+
+      return response;
+    } catch (err) {
+      clearTimeout(timeout);
+      console.warn(`[OG] Fetch failed for ${currentUrl}: ${err.message}`);
+      return null;
+    }
+  }
+  console.warn(`[OG] Too many redirects for ${url}`);
+  return null;
+};
 
 /**
  * Extract meta tag content from HTML using regex.
@@ -68,23 +114,16 @@ const resolveUrl = (imageUrl, pageUrl) => {
 
 /**
  * Fetch the HTML <head> of a page (limited to MAX_HTML_BYTES).
+ * Uses safeFetch to validate each redirect hop against SSRF.
  */
 const fetchHtmlHead = async (url) => {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), HTML_FETCH_TIMEOUT_MS);
-
   try {
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers: { 'User-Agent': USER_AGENT, Accept: 'text/html' },
-      redirect: 'follow',
-    });
-    clearTimeout(timeout);
-
-    if (!response.ok) return null;
-
-    // Validate final URL after redirects
-    if (response.url && !isPublicUrl(response.url)) return null;
+    const response = await safeFetch(
+      url,
+      { headers: { 'User-Agent': USER_AGENT, Accept: 'text/html' } },
+      HTML_FETCH_TIMEOUT_MS
+    );
+    if (!response || !response.ok) return null;
 
     const contentType = response.headers.get('content-type') || '';
     if (!contentType.includes('text/html') && !contentType.includes('application/xhtml')) return null;
@@ -104,31 +143,24 @@ const fetchHtmlHead = async (url) => {
 
     const decoder = new TextDecoder('utf-8', { fatal: false });
     return decoder.decode(Buffer.concat(chunks).slice(0, MAX_HTML_BYTES));
-  } catch {
-    clearTimeout(timeout);
+  } catch (err) {
+    console.warn(`[OG] fetchHtmlHead failed for ${url}: ${err.message}`);
     return null;
   }
 };
 
 /**
  * Fetch an image and convert it to a base64 data URI.
+ * Uses safeFetch to validate each redirect hop against SSRF.
  */
 const fetchImageAsBase64 = async (imageUrl) => {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), IMAGE_FETCH_TIMEOUT_MS);
-
   try {
-    const response = await fetch(imageUrl, {
-      signal: controller.signal,
-      headers: { 'User-Agent': USER_AGENT },
-      redirect: 'follow',
-    });
-    clearTimeout(timeout);
-
-    if (!response.ok) return null;
-
-    // Validate final URL after redirects
-    if (response.url && !isPublicUrl(response.url)) return null;
+    const response = await safeFetch(
+      imageUrl,
+      { headers: { 'User-Agent': USER_AGENT } },
+      IMAGE_FETCH_TIMEOUT_MS
+    );
+    if (!response || !response.ok) return null;
 
     const contentType = (response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
     if (!ALLOWED_IMAGE_TYPES.includes(contentType)) return null;
@@ -144,8 +176,8 @@ const fetchImageAsBase64 = async (imageUrl) => {
       dataUri: `data:${contentType};base64,${base64}`,
       mimeType: contentType,
     };
-  } catch {
-    clearTimeout(timeout);
+  } catch (err) {
+    console.warn(`[OG] fetchImageAsBase64 failed for ${imageUrl}: ${err.message}`);
     return null;
   }
 };
@@ -178,7 +210,8 @@ const fetchSingleOgImage = async (url) => {
       title,
       description,
     };
-  } catch {
+  } catch (err) {
+    console.warn(`[OG] fetchSingleOgImage failed for ${url}: ${err.message}`);
     return null;
   }
 };
@@ -207,7 +240,8 @@ export const fetchOgImages = async (urls) => {
     return results
       .filter((r) => r.status === 'fulfilled' && r.value !== null)
       .map((r) => r.value);
-  } catch {
+  } catch (err) {
+    console.warn(`[OG] fetchOgImages failed: ${err.message}`);
     return [];
   }
 };

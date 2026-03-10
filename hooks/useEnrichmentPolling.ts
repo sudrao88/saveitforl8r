@@ -51,7 +51,7 @@ export const applyEnrichmentResult = async (
       const previewAttachments: Attachment[] = linkPreviews
         .filter((p: LinkPreview) => p.imageData && p.imageMimeType)
         .map((preview: LinkPreview) => ({
-          id: `og-${preview.url.replace(/[^a-zA-Z0-9]/g, '').substring(0, 40)}`,
+          id: `og-${encodeURIComponent(preview.url).substring(0, 80)}`,
           type: 'image' as const,
           mimeType: preview.imageMimeType,
           data: preview.imageData,

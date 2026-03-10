@@ -96,6 +96,22 @@ ${momentsContext}`;
   return matchResult.matchedMomentIds || [];
 };
 
+/**
+ * Await and attach OG preview images to a sanitized enrichment result.
+ * Non-fatal — logs errors and continues without previews.
+ */
+const attachOgPreviews = async (ogImagePromise, sanitized, requestId) => {
+  try {
+    const ogImages = await ogImagePromise;
+    if (ogImages.length > 0) {
+      sanitized.linkPreviews = ogImages;
+      console.log(`[Enrich] [${requestId}] Attached ${ogImages.length} OG preview image(s)`);
+    }
+  } catch (ogErr) {
+    console.error(`[Enrich] [${requestId}] OG image fetch failed (non-fatal):`, ogErr.message);
+  }
+};
+
 export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GEMINI_TIMEOUT_MS, ENRICHMENT_COLLECTION, ENRICHMENT_TTL_MS, ENRICHMENT_FAILED_TTL_MS, aiLimiter }) => {
   const router = Router();
 
@@ -285,15 +301,7 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
           const sanitized = sanitizeEnrichmentResult(parsed);
 
           // Attach OG preview images (awaiting the parallel fetch started earlier)
-          try {
-            const ogImages = await ogImagePromise;
-            if (ogImages.length > 0) {
-              sanitized.linkPreviews = ogImages;
-              console.log(`[Enrich] [${req.requestId}] Attached ${ogImages.length} OG preview image(s)`);
-            }
-          } catch (ogErr) {
-            console.error(`[Enrich] [${req.requestId}] OG image fetch failed (non-fatal):`, ogErr.message);
-          }
+          await attachOgPreviews(ogImagePromise, sanitized, req.requestId);
 
           // Moment matching phase (non-fatal)
           if (moments && Array.isArray(moments) && moments.length > 0) {
@@ -338,15 +346,7 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
           const sanitizedFallback = sanitizeEnrichmentResult(parsed);
 
           // Attach OG preview images (from the parallel fetch started earlier)
-          try {
-            const ogImages = await ogImagePromise;
-            if (ogImages.length > 0) {
-              sanitizedFallback.linkPreviews = ogImages;
-              console.log(`[Enrich] [${req.requestId}] Attached ${ogImages.length} OG preview image(s) (fallback)`);
-            }
-          } catch (ogErr) {
-            console.error(`[Enrich] [${req.requestId}] OG image fetch failed (non-fatal):`, ogErr.message);
-          }
+          await attachOgPreviews(ogImagePromise, sanitizedFallback, req.requestId);
 
           // Moment matching phase (non-fatal)
           if (moments && Array.isArray(moments) && moments.length > 0) {
