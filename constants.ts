@@ -58,4 +58,18 @@ export const ANALYTICS_EVENTS = {
     ACTION_SAVED: 'Saved',
     ACTION_EXPANDED: 'Expanded',
   },
+  ENRICHMENT: {
+    CATEGORY: 'Enrichment',
+    ACTION_COMPLETED: 'Completed',
+    ACTION_FAILED: 'Failed',
+  },
+  MOMENT: {
+    CATEGORY: 'Moment',
+    ACTION_CREATED: 'Created',
+    ACTION_DELETED: 'Deleted',
+  },
+  CALENDAR_EVENT: {
+    CATEGORY: 'CalendarEvent',
+    ACTION_CREATED: 'Created',
+  },
 } as const;

@@ -13,6 +13,8 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { flushSync } from 'react-dom';
+import { logEvent } from '../services/analytics';
+import { ANALYTICS_EVENTS } from '../constants';
 import {
   Memory,
   Moment,
@@ -149,6 +151,7 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
         // Save to IndexedDB and update state immediately
         await saveMoment(pendingMoment);
         setMomentsList(prev => [...prev, pendingMoment]);
+        logEvent(ANALYTICS_EVENTS.MOMENT.CATEGORY, ANALYTICS_EVENTS.MOMENT.ACTION_CREATED);
 
         // Submit to server (fire-and-forget with error handling)
         try {
