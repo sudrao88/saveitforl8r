@@ -41,6 +41,7 @@ describe('useMoments', () => {
     (storageService.saveMoment as any).mockResolvedValue(undefined);
     (storageService.getMomentSynthesis as any).mockResolvedValue(null);
     (storageService.saveMomentSynthesis as any).mockResolvedValue(undefined);
+    (storageService.deleteMomentSynthesis as any).mockResolvedValue(undefined);
   });
 
   it('should load moments on mount', async () => {
@@ -199,6 +200,56 @@ describe('useMoments', () => {
 
       // saveMoment should NOT have been called for the deleted moment
       expect(storageService.saveMoment).not.toHaveBeenCalled();
+    });
+
+    it('should clear in-memory synthesis cache for affected moments', async () => {
+      const moments = [
+        { ...makeMoment('m1', ['note-1', 'note-2']), inputHash: 'old-hash' },
+      ];
+      (storageService.getMoments as any).mockResolvedValue(moments);
+
+      const memories = [makeMemory('note-1'), makeMemory('note-2')];
+
+      const { result } = renderHook(() => useMoments(memories));
+
+      await waitFor(() => {
+        expect(result.current.moments).toHaveLength(1);
+      });
+
+      await act(async () => {
+        await result.current.removeNoteFromMoments('note-1');
+      });
+
+      // The in-memory synthesis cache should no longer have an entry for m1
+      expect(result.current.synthesesMap.has('m1')).toBe(false);
+    });
+
+    it('should delete persisted synthesis cache for affected moments', async () => {
+      (storageService.deleteMomentSynthesis as any).mockResolvedValue(undefined);
+
+      const moments = [
+        { ...makeMoment('m1', ['note-1', 'note-2']), inputHash: 'old-hash' },
+        makeMoment('m2', ['note-1', 'note-3']),
+      ];
+      (storageService.getMoments as any).mockResolvedValue(moments);
+
+      const memories = [makeMemory('note-1'), makeMemory('note-2'), makeMemory('note-3')];
+
+      const { result } = renderHook(() => useMoments(memories));
+
+      await waitFor(() => {
+        expect(result.current.moments).toHaveLength(2);
+      });
+
+      (storageService.saveMoment as any).mockClear();
+
+      await act(async () => {
+        await result.current.removeNoteFromMoments('note-1');
+      });
+
+      // deleteMomentSynthesis should have been called for both affected moments
+      expect(storageService.deleteMomentSynthesis).toHaveBeenCalledWith('m1');
+      expect(storageService.deleteMomentSynthesis).toHaveBeenCalledWith('m2');
     });
   });
 });
