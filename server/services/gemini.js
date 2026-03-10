@@ -9,7 +9,7 @@ import { sanitizeUserInput, sanitizeString, sanitizeForPromptEmbedding } from '.
 
 const URL_REGEX = /https?:\/\/[^\s<>"']+/g;
 
-const isPublicUrl = (urlString) => {
+export const isPublicUrl = (urlString) => {
   try {
     const parsed = new URL(urlString);
     const hostname = parsed.hostname.toLowerCase();

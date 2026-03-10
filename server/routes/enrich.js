@@ -7,6 +7,7 @@ import rateLimit from 'express-rate-limit';
 import { authenticateRequest } from '../middleware/auth.js';
 import { validateEnrichInput, validateResultsInput } from '../middleware/validation.js';
 import { parseJsonResponse } from '../lib/sanitize.js';
+import { fetchOgImages } from '../services/ogImage.js';
 import {
   extractUrls,
   buildEnrichmentUserContent,
@@ -95,6 +96,22 @@ ${momentsContext}`;
   return matchResult.matchedMomentIds || [];
 };
 
+/**
+ * Await and attach OG preview images to a sanitized enrichment result.
+ * Non-fatal — logs errors and continues without previews.
+ */
+const attachOgPreviews = async (ogImagePromise, sanitized, requestId) => {
+  try {
+    const ogImages = await ogImagePromise;
+    if (ogImages.length > 0) {
+      sanitized.linkPreviews = ogImages;
+      console.log(`[Enrich] [${requestId}] Attached ${ogImages.length} OG preview image(s)`);
+    }
+  } catch (ogErr) {
+    console.error(`[Enrich] [${requestId}] OG image fetch failed (non-fatal):`, ogErr.message);
+  }
+};
+
 export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GEMINI_TIMEOUT_MS, ENRICHMENT_COLLECTION, ENRICHMENT_TTL_MS, ENRICHMENT_FAILED_TTL_MS, aiLimiter }) => {
   const router = Router();
 
@@ -179,6 +196,12 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
 
       const detectedUrls = extractUrls(text);
       const hasUrls = detectedUrls.length > 0;
+
+      // Start OG image fetch in parallel with classification (non-blocking)
+      const ogImagePromise = hasUrls
+        ? fetchOgImages(detectedUrls).catch(() => [])
+        : Promise.resolve([]);
+
       const userContent = buildEnrichmentUserContent(text, tags);
       if (userContent) parts.push({ text: userContent });
 
@@ -277,6 +300,9 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
 
           const sanitized = sanitizeEnrichmentResult(parsed);
 
+          // Attach OG preview images (awaiting the parallel fetch started earlier)
+          await attachOgPreviews(ogImagePromise, sanitized, req.requestId);
+
           // Moment matching phase (non-fatal)
           if (moments && Array.isArray(moments) && moments.length > 0) {
             try {
@@ -318,6 +344,9 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
           const parsed = parseJsonResponse(response.text || '{}');
           parsed.enrichmentStrategy = 'search';
           const sanitizedFallback = sanitizeEnrichmentResult(parsed);
+
+          // Attach OG preview images (from the parallel fetch started earlier)
+          await attachOgPreviews(ogImagePromise, sanitizedFallback, req.requestId);
 
           // Moment matching phase (non-fatal)
           if (moments && Array.isArray(moments) && moments.length > 0) {

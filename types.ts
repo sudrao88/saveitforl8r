@@ -24,6 +24,14 @@ export interface TemporalContext {
   inferenceConfidence: number;  // 0–1; below 0.5 triggers Layer 3 nudge
 }
 
+export interface LinkPreview {
+  url: string;
+  imageData: string;      // Base64 data URI
+  imageMimeType: string;
+  title?: string;
+  description?: string;
+}
+
 export interface EnrichmentData {
   [key: string]: unknown;
   summary: string;
@@ -109,6 +117,9 @@ export interface EnrichmentData {
   subject?: string;              // educational
   keyConcepts?: string[];        // educational
   studyNotes?: string[];         // educational
+
+  // Link preview images (fetched from og:image during enrichment)
+  linkPreviews?: LinkPreview[];
 
   // Calendar event detection (populated when date-based events are found)
   detectedEvents?: DetectedEvent[];

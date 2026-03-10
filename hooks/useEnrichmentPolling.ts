@@ -1,7 +1,7 @@
 import { useCallback, useRef } from 'react';
 import { fetchPendingEnrichments } from '../services/geminiService';
 import { getMemory, saveMemory } from '../services/storageService';
-import { Memory } from '../types';
+import { Attachment, LinkPreview, Memory } from '../types';
 
 const ENRICHMENT_TIMEOUT_MS = 120_000;
 
@@ -43,6 +43,30 @@ export const applyEnrichmentResult = async (
       processingError: false,
       timestamp: Date.now(),
     };
+
+    // Convert link preview images into attachments so they display in the memory card
+    const linkPreviews: LinkPreview[] | undefined = result.data.linkPreviews;
+    if (linkPreviews?.length) {
+      const existingAttachments = current.attachments || [];
+      const previewAttachments: Attachment[] = linkPreviews
+        .filter((p: LinkPreview) => p.imageData && p.imageMimeType)
+        .map((preview: LinkPreview) => ({
+          id: `og-${encodeURIComponent(preview.url).substring(0, 80)}`,
+          type: 'image' as const,
+          mimeType: preview.imageMimeType,
+          data: preview.imageData,
+          name: preview.title || 'Link Preview',
+        }));
+
+      // Deduplicate: skip previews whose ID already exists in attachments
+      const existingIds = new Set(existingAttachments.map(a => a.id));
+      const newPreviews = previewAttachments.filter(a => !existingIds.has(a.id));
+
+      if (newPreviews.length > 0) {
+        updatedMemory.attachments = [...existingAttachments, ...newPreviews];
+      }
+    }
+
     await saveMemory(updatedMemory);
     return { updated: updatedMemory, action: 'completed' };
   }
