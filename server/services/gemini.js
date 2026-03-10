@@ -520,7 +520,7 @@ Search for the product to enrich with current pricing and reviews.`,
 - 'menuHighlights': Notable dishes, specialties, or popular items.
 - 'ratings': Review ratings from Google, Yelp, etc.
 Also populate 'locationContext' with address, hours, and mapsUri. Set locationIsRelevant to true.
-For entityContext.title: if the user expresses an intent or activity (e.g. "team dinner at Olive Garden"), use the intent as the title (e.g. "Team Dinner"). If the note is purely a place name with no expressed intent, use the place/restaurant name as the title.`,
+For entityContext.title: if the user expresses an intent or activity (e.g. "team dinner at Olive Garden"), use the intent as the title (e.g. "Team Dinner"). If the note is purely a place name with no expressed intent, use the place/restaurant name as the title. The place name always goes in locationContext.name.`,
   video: `This is a video (e.g. YouTube). You MUST extract and populate these fields:
 - 'keyMoments': Key moments, highlights, or timestamps from the video.
 - 'transcriptSummary': Summary of the spoken content.
