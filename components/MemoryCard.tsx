@@ -399,7 +399,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
           <div 
             className={`prose prose-invert prose-sm max-w-none text-gray-200 font-normal leading-relaxed break-words 
                 prose-p:my-1 prose-headings:mb-1 prose-headings:mt-3 prose-headings:text-gray-100 prose-ul:my-1
-                ${(memory.content?.length ?? 0) < 80 ? 'text-base' : 'text-sm'}
+                text-sm
             `}
             dangerouslySetInnerHTML={{ __html: linkifyHtml(memory.content) }}
           />
