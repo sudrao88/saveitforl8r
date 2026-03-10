@@ -130,6 +130,13 @@ const executeSyncPlan = async (plan: SyncPlan): Promise<string[]> => {
                 continue;
             }
 
+            // Validate timestamp before saving — invalid timestamps cause "Invalid Date" in UI
+            if (typeof content.timestamp !== 'number' || !isFinite(content.timestamp) || content.timestamp <= 0) {
+                console.warn(`[Sync] Skipping memory ${item.noteId}: invalid timestamp`, content.timestamp);
+                errors.push(item.noteId);
+                continue;
+            }
+
             if (item.local) {
                 if (content.timestamp > item.local.timestamp) {
                     if (content.isDeleted) await deleteMemory(item.noteId);

@@ -243,7 +243,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
                                         <p className="text-[10px] font-bold text-gray-200 truncate">
                                             {source.preview || mem.enrichment?.summary || mem.content || "Memory Entry"}
                                         </p>
-                                        <p className="text-[9px] text-gray-500">{new Date(mem.timestamp).toLocaleDateString()}</p>
+                                        <p className="text-[9px] text-gray-500">{(() => { const d = new Date(mem.timestamp); return isNaN(d.getTime()) ? 'Unknown date' : d.toLocaleDateString(); })()}</p>
                                     </div>
                                     <ExternalLink size={12} className="text-gray-600 group-hover:text-blue-400 shrink-0 mx-1" />
                                 </button>
