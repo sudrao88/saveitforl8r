@@ -1,5 +1,5 @@
 // public/sw.js
-const CACHE_NAME = 'saveitforl8r-v37'; // Increment version to force update
+const CACHE_NAME = 'saveitforl8r-v38'; // Increment version to force update
 const STATIC_CACHE = 'saveitforl8r-static-v1';
 const SCOPE = '/';
 
@@ -13,13 +13,34 @@ const PRECACHE_ASSETS = [
   SCOPE + 'index.html',
   SCOPE + 'manifest.json',
   SCOPE + 'icon.svg',
-  SCOPE + 'version.json'
+  SCOPE + 'version.json',
+  SCOPE + 'splash.css',
+  SCOPE + 'logo-full.svg'
 ];
 
 // Track if we're running in a native app context.
 // Default false — client-side code sets this via SET_NATIVE_CONTEXT message
 // using Capacitor.isNativePlatform() which is the authoritative source.
 let nativeAppContext = false;
+
+// Extract JS/CSS asset URLs from HTML to ensure they're cached before updating the shell.
+function extractAssetUrls(html) {
+  const urls = [];
+  // Match src="..." and href="..." pointing to /assets/ files (hashed bundles)
+  const patterns = [
+    /(?:src|href)=["'](\/?assets\/[^"']+)["']/gi,
+    /(?:src|href)=["'](\/[^"']+\.(?:js|css))["']/gi
+  ];
+  for (const pattern of patterns) {
+    let match;
+    while ((match = pattern.exec(html)) !== null) {
+      let url = match[1];
+      if (!url.startsWith('/')) url = '/' + url;
+      urls.push(url);
+    }
+  }
+  return [...new Set(urls)];
+}
 
 self.addEventListener('install', (event) => {
   // Never auto-skipWaiting. The new SW waits until:
@@ -290,8 +311,41 @@ self.addEventListener('fetch', (event) => {
     const shellUrl = SCOPE + 'index.html';
 
     const backgroundRevalidation = fetch(shellUrl)
-      .then((networkResponse) => {
+      .then(async (networkResponse) => {
         if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
+          // Before caching new HTML, ensure its referenced assets are also cached.
+          // Otherwise, an offline reload would serve an HTML shell referencing
+          // uncached JS/CSS bundles — causing a white screen.
+          const html = await networkResponse.clone().text();
+          const assetUrls = extractAssetUrls(html);
+
+          // Check which assets are missing from cache
+          const staticCache = await caches.open(STATIC_CACHE);
+          const missingAssets = [];
+          for (const assetUrl of assetUrls) {
+            const cached = await staticCache.match(assetUrl);
+            if (!cached) missingAssets.push(assetUrl);
+          }
+
+          if (missingAssets.length > 0) {
+            console.log(`[SW] New index.html references ${missingAssets.length} uncached assets, pre-fetching...`);
+            const results = await Promise.allSettled(
+              missingAssets.map(async (assetUrl) => {
+                const resp = await fetch(assetUrl);
+                if (resp.ok) {
+                  await staticCache.put(assetUrl, resp);
+                  return 'ok';
+                }
+                throw new Error(`${resp.status}`);
+              })
+            );
+            const failed = results.filter(r => r.status === 'rejected').length;
+            if (failed > 0) {
+              console.warn(`[SW] ${failed} assets failed to pre-fetch, keeping old cached index.html`);
+              return; // Don't update index.html if critical assets are missing
+            }
+          }
+
           return caches.open(CACHE_NAME).then((cache) => {
             return cache.put(shellUrl, networkResponse.clone());
           });
@@ -339,6 +393,12 @@ self.addEventListener('fetch', (event) => {
             });
           }
           return networkResponse;
+        }).catch((err) => {
+          console.error('[SW] Asset fetch failed (offline?):', event.request.url, err);
+          return new Response('/* offline — asset unavailable */', {
+            status: 503,
+            headers: { 'Content-Type': 'text/plain' }
+          });
         });
       })
     );
@@ -357,6 +417,12 @@ self.addEventListener('fetch', (event) => {
         return networkResponse;
       }).catch(err => {
          console.log('[SW] Fetch failed for SWR:', err);
+         // If we have a cached version, it was already returned above.
+         // If not, return a proper offline response instead of undefined.
+         return cachedResponse || new Response('', {
+           status: 503,
+           headers: { 'Content-Type': 'text/plain' }
+         });
       });
 
       return cachedResponse || fetchPromise;
