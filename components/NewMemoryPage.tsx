@@ -4,7 +4,7 @@ import { marked } from 'marked';
 import { Attachment, Memory } from '../types';
 import { isNative } from '../services/platform';
 import { Keyboard } from '@capacitor/keyboard';
-import { escapeHtml, looksLikeMarkdown, parseChecklistMarkdown, sanitizePastedHtml, hasRichFormatting, extractHashtags, mergeTagsWithHashtags } from '../utils/editorUtils';
+import { escapeHtml, looksLikeMarkdown, parseChecklistMarkdown, sanitizePastedHtml, hasRichFormatting, extractHashtags, mergeTagsWithHashtags, containsUrl, linkifyUrls } from '../utils/editorUtils';
 import { processFileInputs } from '../utils/attachmentUtils';
 import FormattingToolbar from './FormattingToolbar';
 import TagInput from './TagInput';
@@ -221,7 +221,11 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
         }
     }
 
-    if (html && hasRichFormatting(html)) {
+    if (plainText && containsUrl(plainText)) {
+        // Prefer plain text when it contains URLs — clipboard HTML from messaging
+        // apps often wraps URLs in preview cards that lose the actual URL text
+        htmlToInsert = linkifyUrls(escapeHtml(plainText).replace(/\n/g, '<br>'));
+    } else if (html && hasRichFormatting(html)) {
         // Rich text paste (Word, Google Docs, web pages) — sanitize & preserve formatting
         htmlToInsert = sanitizePastedHtml(html);
     } else if (plainText && looksLikeMarkdown(plainText)) {

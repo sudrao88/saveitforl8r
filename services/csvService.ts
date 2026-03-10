@@ -118,7 +118,7 @@ export const csvToMemories = (csv: string): Memory[] => {
              delete (enrichment as Record<string, unknown>).audit;
         }
 
-        if (id && !isNaN(timestamp)) {
+        if (id && isFinite(timestamp) && timestamp > 0) {
             memories.push({
                 id,
                 timestamp,

@@ -253,9 +253,10 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
     }
   }, [memory.content, isDialog]);
 
-  const dateStr = new Date(memory.timestamp).toLocaleDateString(undefined, {
-    month: 'short', day: 'numeric', year: 'numeric'
-  });
+  const dateObj = new Date(memory.timestamp);
+  const dateStr = isNaN(dateObj.getTime())
+    ? 'Unknown date'
+    : dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 
   const enrichment = memory.enrichment;
   const locationContext = enrichment?.locationContext;
