@@ -3,7 +3,7 @@ export const escapeHtml = (text: string): string =>
 
 /** Detect whether text contains URLs. */
 export const containsUrl = (text: string): boolean =>
-    /https?:\/\/[^\s<>"')\]]+/i.test(text);
+    /https?:\/\/[^\s<>"'\]]+/i.test(text);
 
 /** Convert URLs in already-escaped HTML text to clickable <a> tags. */
 export const linkifyUrls = (escapedHtml: string): string =>
