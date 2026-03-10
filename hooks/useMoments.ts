@@ -26,6 +26,7 @@ import {
   saveMoment,
   getMomentSynthesis,
   saveMomentSynthesis,
+  deleteMomentSynthesis,
 } from '../services/storageService';
 import { submitMomentCreation, submitResynthesis, pollSynthesisResult } from '../services/geminiService';
 import { useMomentCreationPolling } from './useMomentCreationPolling';
@@ -187,16 +188,33 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
   const loadSynthesis = useCallback(
     async (moment: Moment, currentMemories: Memory[]): Promise<SynthesisResponse | null> => {
       const currentHash = computeInputHash(moment.noteIds, currentMemories);
+      const currentNoteIdSet = new Set(moment.noteIds);
+
+      // Safety check: verify cached synthesis noteIds match current moment noteIds.
+      // This catches stale synthesis that survived cache invalidation (e.g. from
+      // a Drive sync downloading an old synthesis after a note was deleted).
+      const isSynthesisFresh = (cached: MomentSynthesis): boolean => {
+        if (cached.inputHash !== currentHash) return false;
+        // If the cached synthesis tracked which noteIds it was built from,
+        // verify they match the current set exactly.
+        if (cached.noteIds) {
+          if (cached.noteIds.length !== moment.noteIds.length) return false;
+          for (const id of cached.noteIds) {
+            if (!currentNoteIdSet.has(id)) return false;
+          }
+        }
+        return true;
+      };
 
       // Check in-memory cache first
       const cached = synthesesMap.get(moment.id);
-      if (cached && cached.inputHash === currentHash) {
+      if (cached && isSynthesisFresh(cached)) {
         return cached.content;
       }
 
       // Check IndexedDB
       const persisted = await getMomentSynthesis(moment.id);
-      if (persisted && persisted.inputHash === currentHash) {
+      if (persisted && isSynthesisFresh(persisted)) {
         setSynthesesMap(prev => {
           const next = new Map(prev);
           next.set(moment.id, persisted);
@@ -355,10 +373,25 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
 
       if (changedMoments.length === 0) return;
 
-      // Persist and sync each affected moment
+      // Clear synthesis caches for affected moments so stale synthesis
+      // (which still references the deleted note) cannot be served.
+      setSynthesesMap(prev => {
+        const next = new Map(prev);
+        for (const m of changedMoments) {
+          next.delete(m.id);
+        }
+        return next;
+      });
+
+      // Persist and sync each affected moment, and clear persisted synthesis
       await Promise.all(
         changedMoments.map(m =>
-          saveMoment(m).then(() => {
+          Promise.all([
+            saveMoment(m),
+            deleteMomentSynthesis(m.id).catch(e =>
+              console.warn(`[Moments] Failed to delete synthesis cache for ${m.id}:`, e)
+            ),
+          ]).then(() => {
             onMomentChangedRef.current?.(m);
           })
         )

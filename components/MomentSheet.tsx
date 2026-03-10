@@ -105,6 +105,10 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
   momentRef.current = moment;
   memoriesRef.current = memories;
 
+  // Track actual noteIds content (not just length) so the effect re-runs
+  // when notes are added or removed — even if the count stays the same.
+  const noteIdsKey = useMemo(() => moment.noteIds.slice().sort().join(','), [moment.noteIds]);
+
   useEffect(() => {
     // Don't load synthesis for pending moments
     if (moment.isPending) {
@@ -135,7 +139,7 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [moment.id, moment.noteIds.length, moment.isPending, loadSynthesis]);
+  }, [moment.id, noteIdsKey, moment.isPending, loadSynthesis]);
 
   const handleRetry = useCallback(async () => {
     setIsLoading(true);
