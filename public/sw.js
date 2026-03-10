@@ -26,18 +26,10 @@ let nativeAppContext = false;
 // Extract JS/CSS asset URLs from HTML to ensure they're cached before updating the shell.
 function extractAssetUrls(html) {
   const urls = [];
-  // Match src="..." and href="..." pointing to /assets/ files (hashed bundles)
-  const patterns = [
-    /(?:src|href)=["'](\/?assets\/[^"']+)["']/gi,
-    /(?:src|href)=["'](\/[^"']+\.(?:js|css))["']/gi
-  ];
-  for (const pattern of patterns) {
-    let match;
-    while ((match = pattern.exec(html)) !== null) {
-      let url = match[1];
-      if (!url.startsWith('/')) url = '/' + url;
-      urls.push(url);
-    }
+  const pattern = /(?:src|href)=["'](\/assets\/[^"']+|\/[^"']+\.(?:js|css))["']/gi;
+  let match;
+  while ((match = pattern.exec(html)) !== null) {
+    urls.push(match[1]);
   }
   return [...new Set(urls)];
 }
@@ -319,13 +311,12 @@ self.addEventListener('fetch', (event) => {
           const html = await networkResponse.clone().text();
           const assetUrls = extractAssetUrls(html);
 
-          // Check which assets are missing from cache
+          // Check which assets are missing from cache (parallel for performance)
           const staticCache = await caches.open(STATIC_CACHE);
-          const missingAssets = [];
-          for (const assetUrl of assetUrls) {
-            const cached = await staticCache.match(assetUrl);
-            if (!cached) missingAssets.push(assetUrl);
-          }
+          const cacheChecks = await Promise.all(
+            assetUrls.map(async (url) => ({ url, cached: !!(await staticCache.match(url)) }))
+          );
+          const missingAssets = cacheChecks.filter(c => !c.cached).map(c => c.url);
 
           if (missingAssets.length > 0) {
             console.log(`[SW] New index.html references ${missingAssets.length} uncached assets, pre-fetching...`);
