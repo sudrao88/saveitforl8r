@@ -1,6 +1,21 @@
 export const escapeHtml = (text: string): string =>
     text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
+/** Detect whether text contains URLs. */
+export const containsUrl = (text: string): boolean =>
+    /https?:\/\/[^\s<>"')\]]+/i.test(text);
+
+/** Convert URLs in already-escaped HTML text to clickable <a> tags. */
+export const linkifyUrls = (escapedHtml: string): string =>
+    escapedHtml.replace(
+        /https?:\/\/[^\s&<>"'\])]+(?:&amp;[^\s&<>"'\])]+)*/gi,
+        (url) => {
+            // Unescape &amp; back to & for the href attribute
+            const href = url.replace(/&amp;/g, '&');
+            return `<a href="${href}" target="_blank" rel="noopener noreferrer">${url}</a>`;
+        }
+    );
+
 /** Heuristically detect whether plain text contains markdown formatting. */
 export const looksLikeMarkdown = (text: string): boolean => {
     return [
