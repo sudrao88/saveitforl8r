@@ -5,6 +5,8 @@ import { Memory, Attachment, Moment, CalendarEvent } from '../types';
 import { useSync } from './useSync';
 import { useAuth } from './useAuth';
 import { useEnrichmentPolling } from './useEnrichmentPolling';
+import { logEvent } from '../services/analytics';
+import { ANALYTICS_EVENTS } from '../constants';
 
 /** Builds the lightweight moments metadata array sent with enrichment requests. */
 const buildMomentsMeta = (moments: Moment[]) => {
@@ -68,6 +70,7 @@ export const useMemories = () => {
     memoriesRef,
     setMemories,
     onEnrichmentComplete: useCallback((memory: Memory) => {
+      logEvent(ANALYTICS_EVENTS.ENRICHMENT.CATEGORY, ANALYTICS_EVENTS.ENRICHMENT.ACTION_COMPLETED);
       if (authStatus === 'linked') {
         syncFile(memory).catch(err => console.error("Sync failed:", err));
       }

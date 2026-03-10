@@ -8,8 +8,10 @@ import {
     processAuthCallback
 } from '../services/googleDriveService';
 import { ANALYTICS_EVENTS } from '../constants';
-import { logEvent } from '../services/analytics';
+import { logEvent, setUserId, clearUserId } from '../services/analytics';
 import { isNative } from '../services/platform';
+import { getStoredToken } from '../services/tokenService';
+import { fastHash } from '../utils/hash';
 
 export type AuthStatus = 'unlinked' | 'linked' | 'authenticating' | 'error';
 
@@ -22,6 +24,11 @@ export const useAuth = () => {
     const initStatus = async () => {
         const linked = await checkIsLinked();
         setAuthStatus(linked ? 'linked' : 'unlinked');
+        // Set GA user ID from stored refresh token if already linked
+        if (linked) {
+          const refreshToken = await getStoredToken('refresh_token');
+          if (refreshToken) setUserId(fastHash(refreshToken));
+        }
     };
     initStatus();
   }, []);
@@ -42,6 +49,7 @@ export const useAuth = () => {
   const handleUnlink = useCallback(async () => {
     await unlinkDrive();
     setAuthStatus('unlinked');
+    clearUserId();
     logEvent(ANALYTICS_EVENTS.AUTH.CATEGORY, ANALYTICS_EVENTS.AUTH.ACTION_LOGOUT);
   }, []);
 
@@ -69,6 +77,9 @@ export const useAuth = () => {
                 console.log(`[Auth] ${ANALYTICS_EVENTS.AUTH.ACTION_LOGIN_SUCCESS}`);
                 window.history.replaceState({}, document.title, window.location.pathname);
                 setAuthStatus('linked');
+                // Set GA user ID from refresh token for cross-session attribution
+                const refreshToken = await getStoredToken('refresh_token');
+                if (refreshToken) setUserId(fastHash(refreshToken));
                 logEvent(ANALYTICS_EVENTS.AUTH.CATEGORY, ANALYTICS_EVENTS.AUTH.ACTION_LOGIN_SUCCESS);
             } catch (e) {
                 console.error(`[Auth] ${ANALYTICS_EVENTS.AUTH.ACTION_CALLBACK_FAILED}`, e);
