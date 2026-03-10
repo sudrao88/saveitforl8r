@@ -8,16 +8,14 @@ export const initGA = () => {
 
 /**
  * Set the GA4 user ID so all subsequent events are attributed to this user.
- * GA4 supports a `user_id` property via gtag('set') which enables cross-device
- * user identity in the GA4 User-ID reporting view.
+ * ReactGA.set({ userId }) maps to gtag('config', ..., { user_id }) which is
+ * the standard GA4 User-ID for cross-device reporting.
  *
- * We use a SHA-256 hash of the refresh token as a stable, pseudonymous identifier.
- * This avoids needing to add `openid` scope or make extra API calls to fetch the
- * Google `sub` claim on the client.
+ * The value is a SHA-256 hash (via Web Crypto) of the refresh token — a stable,
+ * pseudonymous identifier that avoids needing `openid` scope or extra API calls.
  */
 export const setUserId = (userId: string) => {
   ReactGA.set({ userId });
-  ReactGA.gtag('set', 'user_properties', { user_id: userId });
 };
 
 export const clearUserId = () => {

@@ -11,7 +11,7 @@ import { ANALYTICS_EVENTS } from '../constants';
 import { logEvent, setUserId, clearUserId } from '../services/analytics';
 import { isNative } from '../services/platform';
 import { getStoredToken } from '../services/tokenService';
-import { fastHash } from '../utils/hash';
+import { sha256Hash } from '../utils/hash';
 
 export type AuthStatus = 'unlinked' | 'linked' | 'authenticating' | 'error';
 
@@ -27,7 +27,7 @@ export const useAuth = () => {
         // Set GA user ID from stored refresh token if already linked
         if (linked) {
           const refreshToken = await getStoredToken('refresh_token');
-          if (refreshToken) setUserId(fastHash(refreshToken));
+          if (refreshToken) setUserId(await sha256Hash(refreshToken));
         }
     };
     initStatus();
@@ -79,7 +79,7 @@ export const useAuth = () => {
                 setAuthStatus('linked');
                 // Set GA user ID from refresh token for cross-session attribution
                 const refreshToken = await getStoredToken('refresh_token');
-                if (refreshToken) setUserId(fastHash(refreshToken));
+                if (refreshToken) setUserId(await sha256Hash(refreshToken));
                 logEvent(ANALYTICS_EVENTS.AUTH.CATEGORY, ANALYTICS_EVENTS.AUTH.ACTION_LOGIN_SUCCESS);
             } catch (e) {
                 console.error(`[Auth] ${ANALYTICS_EVENTS.AUTH.ACTION_CALLBACK_FAILED}`, e);
