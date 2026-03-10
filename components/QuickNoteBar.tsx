@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback, forwardRef, useImperat
 import { Paperclip, Hash, Type, Maximize2, Plus, X, FileText, Loader2, CheckSquare, Check } from 'lucide-react';
 import { marked } from 'marked';
 import { Attachment, QuickNoteState } from '../types';
-import { escapeHtml, looksLikeMarkdown, parseChecklistMarkdown, sanitizePastedHtml, hasRichFormatting, extractHashtags, mergeTagsWithHashtags } from '../utils/editorUtils';
+import { escapeHtml, looksLikeMarkdown, parseChecklistMarkdown, sanitizePastedHtml, hasRichFormatting, extractHashtags, mergeTagsWithHashtags, containsUrl, linkifyUrls } from '../utils/editorUtils';
 import { processFileInputs } from '../utils/attachmentUtils';
 import { triggerHaptic } from '../services/platform';
 import FormattingToolbar from './FormattingToolbar';
@@ -102,44 +102,6 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
     setActiveFormats(formats);
   }, []);
 
-  // Selection-based formatting on mobile: show/hide toolbar based on text selection in the editor
-  useEffect(() => {
-    let debounceTimer: ReturnType<typeof setTimeout>;
-
-    const handleSelectionChange = () => {
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
-        const selection = window.getSelection();
-        if (!selection || !editorRef.current) return;
-
-        const anchorNode = selection.anchorNode;
-        const isInEditor = anchorNode && editorRef.current.contains(anchorNode);
-
-        if (!selection.isCollapsed && isInEditor) {
-          setShowFormatting(true);
-          checkFormats();
-        } else if (isInEditor && selection.isCollapsed) {
-          // Selection collapsed (cursor, no selection) — auto-hide on mobile only
-          // On desktop, the toolbar is toggled via the button so don't auto-hide
-          setShowFormatting(prev => {
-            // Keep visible if it was toggled via the button (desktop behavior)
-            // The button toggle sets it explicitly, selection-based is additive
-            return prev;
-          });
-        } else if (!isInEditor) {
-          // Selection moved outside editor — hide toolbar
-          setShowFormatting(false);
-        }
-      }, 50);
-    };
-
-    document.addEventListener('selectionchange', handleSelectionChange);
-    return () => {
-      clearTimeout(debounceTimer);
-      document.removeEventListener('selectionchange', handleSelectionChange);
-    };
-  }, [checkFormats]);
-
   const execFormat = useCallback((command: string, value?: string) => {
     if (command === 'formatBlock') {
       const currentBlock = document.queryCommandValue('formatBlock');
@@ -207,7 +169,11 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
         }
     }
 
-    if (html && hasRichFormatting(html)) {
+    if (plainText && containsUrl(plainText)) {
+      // Prefer plain text when it contains URLs — clipboard HTML from messaging
+      // apps often wraps URLs in preview cards that lose the actual URL text
+      htmlToInsert = linkifyUrls(escapeHtml(plainText).replace(/\n/g, '<br>'));
+    } else if (html && hasRichFormatting(html)) {
       htmlToInsert = sanitizePastedHtml(html);
     } else if (plainText && looksLikeMarkdown(plainText)) {
       htmlToInsert = sanitizePastedHtml(marked.parse(plainText) as string);
