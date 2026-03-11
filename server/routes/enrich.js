@@ -300,6 +300,11 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
 
           const sanitized = sanitizeEnrichmentResult(parsed);
 
+          // Set sourceUrl to the user-provided URL (used as the link CTA)
+          if (hasUrls && detectedUrls.length > 0) {
+            sanitized.sourceUrl = detectedUrls[0];
+          }
+
           // Attach OG preview images (awaiting the parallel fetch started earlier)
           await attachOgPreviews(ogImagePromise, sanitized, req.requestId);
 
@@ -344,6 +349,11 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
           const parsed = parseJsonResponse(response.text || '{}');
           parsed.enrichmentStrategy = 'search';
           const sanitizedFallback = sanitizeEnrichmentResult(parsed);
+
+          // Set sourceUrl to the user-provided URL (used as the link CTA)
+          if (hasUrls && detectedUrls.length > 0) {
+            sanitizedFallback.sourceUrl = detectedUrls[0];
+          }
 
           // Attach OG preview images (from the parallel fetch started earlier)
           await attachOgPreviews(ogImagePromise, sanitizedFallback, req.requestId);
