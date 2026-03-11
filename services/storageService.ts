@@ -491,6 +491,50 @@ export const softDeleteCalendarEventsByMemoryId = async (memoryId: string): Prom
   return tombstones;
 };
 
+/**
+ * Atomically replace all calendar events for a memory: soft-delete existing
+ * events and save new ones in a single IDB transaction. This prevents data
+ * loss if the save step were to fail after a non-atomic soft-delete.
+ *
+ * Returns the tombstones of the old events (for sync).
+ */
+export const replaceCalendarEventsForMemory = async (
+  memoryId: string,
+  newEvents: CalendarEvent[],
+): Promise<CalendarEvent[]> => {
+  const dbInstance = await openDB();
+  const now = Date.now();
+
+  return new Promise((resolve, reject) => {
+    const tx = dbInstance.transaction(CALENDAR_EVENTS_STORE, 'readwrite');
+    const store = tx.objectStore(CALENDAR_EVENTS_STORE);
+    const index = store.index('memoryId');
+
+    const tombstones: CalendarEvent[] = [];
+
+    // Phase 1: read existing events for this memory and tombstone them
+    const cursorReq = index.openCursor(IDBKeyRange.only(memoryId));
+    cursorReq.onsuccess = () => {
+      const cursor = cursorReq.result;
+      if (cursor) {
+        const existing = cursor.value as CalendarEvent;
+        const tombstone: CalendarEvent = { ...existing, isDeleted: true, updatedAt: now };
+        tombstones.push(tombstone);
+        cursor.update(tombstone);
+        cursor.continue();
+      } else {
+        // Phase 2: cursor exhausted — write all new events in the same tx
+        for (const event of newEvents) {
+          store.put(event);
+        }
+      }
+    };
+
+    tx.oncomplete = () => resolve(tombstones);
+    tx.onerror = () => reject(tx.error);
+  });
+};
+
 export const deleteCalendarEventsByMemoryId = async (memoryId: string): Promise<void> => {
   const dbInstance = await openDB();
   return new Promise((resolve, reject) => {

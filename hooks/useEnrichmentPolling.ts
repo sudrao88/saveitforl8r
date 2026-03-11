@@ -33,6 +33,10 @@ export const applyEnrichmentResult = async (
   const current = await getMemory(memory.id);
   if (!current || current.isDeleted) return null;
 
+  // Skip if the memory was already enriched (prevents double-processing
+  // when the polling loop fires again with a stale memoriesRef).
+  if (!current.isPending) return null;
+
   if (result?.status === 'completed' && result.data) {
     const allTags = Array.from(new Set([...(current.tags || []), ...(result.data.suggestedTags || [])]));
     const updatedMemory: Memory = {
