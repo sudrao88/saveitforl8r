@@ -46,7 +46,8 @@ const driveFetch = async (url: string, options: RequestInit = {}) => {
 };
 
 export const findFileByName = async (filename: string): Promise<DriveFile | null> => {
-  const query = `name = '${filename}' and 'appDataFolder' in parents and trashed = false`;
+  const safeFilename = filename.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  const query = `name = '${safeFilename}' and 'appDataFolder' in parents and trashed = false`;
   const url = `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=${encodeURIComponent(query)}&fields=files(id, name, modifiedTime)`;
   const res = await driveFetch(url);
   const data = await res.json();

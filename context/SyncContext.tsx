@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, ReactNode, useRef, useEffect } from 'react';
-import { getMemories, saveMemory, deleteMemory, reconcileEmbeddings, getAllMomentsIncludingDeleted, saveMoment, deleteMomentHard, getMomentSynthesis, saveMomentSynthesis, deleteMomentSynthesis, getAllCalendarEventsIncludingDeleted, saveCalendarEvent, deleteCalendarEventHard } from '../services/storageService';
+import { getMemories, getMemory, saveMemory, deleteMemory, reconcileEmbeddings, getAllMomentsIncludingDeleted, saveMoment, deleteMomentHard, getMomentSynthesis, saveMomentSynthesis, deleteMomentSynthesis, getAllCalendarEventsIncludingDeleted, saveCalendarEvent, deleteCalendarEventHard } from '../services/storageService';
 
 import {
     listAllFiles,
@@ -15,13 +15,19 @@ import { Memory, Moment, MomentSynthesis, CalendarEvent } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { storage } from '../services/platform';
 
+type SyncStatus = 'syncing' | 'synced' | 'error';
+
 interface SyncContextType {
   isSyncing: boolean;
+  isSyncingDownload: boolean;
   syncError: string | null;
   sync: () => Promise<void>;
   syncFile: (memory: Memory) => Promise<void>;
   syncMoment: (moment: Moment) => Promise<void>;
   syncCalendarEvents: (events: CalendarEvent[]) => Promise<void>;
+  retrySyncFile: (memoryId: string) => Promise<void>;
+  getSyncStatusMap: () => Map<string, SyncStatus>;
+  syncStatusVersion: number;
   pendingCount: number;
 }
 
@@ -370,12 +376,36 @@ interface SyncPlan {
 
 export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isSyncingDownload, setIsSyncingDownload] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [pendingCount, setPendingCount] = useState(0);
+  const [syncStatusVersion, setSyncStatusVersion] = useState(0);
 
   const { authStatus, getAccessToken } = useAuth();
   const isSyncingRef = useRef(false);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const syncStatusMapRef = useRef<Map<string, SyncStatus>>(new Map());
+  const syncStatusTimersRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
+
+  const updateSyncStatus = useCallback((noteId: string, status: SyncStatus) => {
+      // Clear any existing auto-clear timer for this note
+      const existingTimer = syncStatusTimersRef.current.get(noteId);
+      if (existingTimer) clearTimeout(existingTimer);
+
+      syncStatusMapRef.current.set(noteId, status);
+      setSyncStatusVersion(v => v + 1);
+
+      if (status === 'synced') {
+          const timer = setTimeout(() => {
+              syncStatusMapRef.current.delete(noteId);
+              syncStatusTimersRef.current.delete(noteId);
+              setSyncStatusVersion(v => v + 1);
+          }, 5000);
+          syncStatusTimersRef.current.set(noteId, timer);
+      }
+  }, []);
+
+  const getSyncStatusMap = useCallback(() => syncStatusMapRef.current, []);
 
   const syncFileInternal = useCallback(async (memory: Memory) => {
       if (memory.isPending || memory.processingError) return;
@@ -639,32 +669,37 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const errors = await executeSyncPlan(plan);
 
+    // ALWAYS rebuild snapshot from Drive's actual state, even on partial failure.
+    // This ensures successfully synced files keep their snapshot entry even when
+    // other uploads fail.
+    const updatedRemoteFiles = await listAllFiles();
+    await saveSnapshot(updatedRemoteFiles);
+
+    // Wrap reconciliation in try/catch so it can't prevent snapshot save
+    try {
+        const reconciledMoments = await reconcileAllNoteToMomentMatches();
+        if (reconciledMoments.length > 0) {
+            const reconciledUploadItems = await Promise.all(
+                reconciledMoments.map(async (m) => {
+                    const filename = `moment-${m.id}.json`;
+                    const remoteFile = await findFileByName(filename);
+                    return { filename, content: m as Moment, existingFileId: remoteFile?.id };
+                })
+            );
+            const { failures } = await uploadMultipleFiles(reconciledUploadItems);
+            if (failures.length > 0) {
+                console.warn(`[Sync] ${failures.length} reconciled moment upload(s) failed:`, failures);
+            }
+        }
+    } catch (e) {
+        console.error('[Sync] Reconciliation failed:', e);
+    }
+
     if (errors.length > 0) {
         console.error(`[Sync] ${errors.length} item(s) failed:`, errors);
         throw new Error(`Failed to sync ${errors.length} items`);
     }
 
-    // Full reconciliation pass: ensure all notes' matchedMomentIds are applied
-    // to their corresponding moments. This catches matches from notes synced in
-    // previous cycles whose moment updates may not have propagated yet.
-    const reconciledMoments = await reconcileAllNoteToMomentMatches();
-    if (reconciledMoments.length > 0) {
-        // Batch upload all reconciled moments at once
-        const reconciledUploadItems = await Promise.all(
-            reconciledMoments.map(async (m) => {
-                const filename = `moment-${m.id}.json`;
-                const remoteFile = await findFileByName(filename);
-                return { filename, content: m as Moment, existingFileId: remoteFile?.id };
-            })
-        );
-        const { failures } = await uploadMultipleFiles(reconciledUploadItems);
-        if (failures.length > 0) {
-            console.warn(`[Sync] ${failures.length} reconciled moment upload(s) failed:`, failures);
-        }
-    }
-
-    const updatedRemoteFiles = await listAllFiles();
-    await saveSnapshot(updatedRemoteFiles);
     console.log('--- [Sync] Delta Sync Complete ---');
   }, [saveSnapshot]);
 
@@ -683,6 +718,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return new Promise<void>((resolve, reject) => {
         debounceTimerRef.current = setTimeout(async () => {
             setIsSyncing(true);
+            setIsSyncingDownload(true);
             isSyncingRef.current = true;
             setSyncError(null);
 
@@ -712,6 +748,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 reject(e);
             } finally {
                 setIsSyncing(false);
+                setIsSyncingDownload(false);
                 isSyncingRef.current = false;
             }
         }, SYNC_DEBOUNCE_MS);
@@ -770,6 +807,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const linked = await checkIsLinked();
       if (isSyncingRef.current || !linked) return;
 
+      updateSyncStatus(memory.id, 'syncing');
       setIsSyncing(true);
       isSyncingRef.current = true;
       try {
@@ -781,40 +819,70 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                   await deleteFileById(remoteFile.id);
               }
               await deleteMemory(memory.id);
-              // Update snapshot using storage adapter for cross-platform consistency
               const snapshotJSON = await storage.get(SNAPSHOT_KEY);
               if (snapshotJSON) {
                   const snapshot = JSON.parse(snapshotJSON);
                   delete snapshot[memory.id];
                   await storage.set(SNAPSHOT_KEY, JSON.stringify(snapshot));
               }
+              // Clear sync status for deleted notes
+              syncStatusMapRef.current.delete(memory.id);
+              setSyncStatusVersion(v => v + 1);
           } else {
               await syncFileInternal(memory);
+              updateSyncStatus(memory.id, 'synced');
           }
       } catch (e: any) {
           console.error(`[Sync] Single sync failed for ${memory.id}:`, e);
+          updateSyncStatus(memory.id, 'error');
           setSyncError('Failed to save changes to Drive.');
           throw e;
       } finally {
           setIsSyncing(false);
           isSyncingRef.current = false;
       }
-  }, [syncFileInternal, getAccessToken]);
+  }, [syncFileInternal, getAccessToken, updateSyncStatus]);
+
+  const retrySyncFile = useCallback(async (memoryId: string) => {
+      const memory = await getMemory(memoryId);
+      if (!memory) {
+          console.error(`[Sync] Retry failed: memory ${memoryId} not found`);
+          return;
+      }
+
+      updateSyncStatus(memoryId, 'syncing');
+      try {
+          await getAccessToken();
+          await syncFileInternal(memory);
+          updateSyncStatus(memoryId, 'synced');
+      } catch (e: any) {
+          console.error(`[Sync] Retry sync failed for ${memoryId}:`, e);
+          updateSyncStatus(memoryId, 'error');
+      }
+  }, [syncFileInternal, getAccessToken, updateSyncStatus]);
 
   useEffect(() => {
     return () => {
         if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+        // Clean up sync status timers
+        for (const timer of syncStatusTimersRef.current.values()) {
+            clearTimeout(timer);
+        }
     };
   }, []);
 
   return (
     <SyncContext.Provider value={{
         isSyncing,
+        isSyncingDownload,
         syncError,
         sync: performSync,
         syncFile: performSingleSync,
         syncMoment: performMomentSync,
         syncCalendarEvents: performCalendarEventsSync,
+        retrySyncFile,
+        getSyncStatusMap,
+        syncStatusVersion,
         pendingCount
     }}>
       {children}

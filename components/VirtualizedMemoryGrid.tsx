@@ -14,6 +14,8 @@ interface VirtualizedMemoryGridProps {
   onEdit: (memory: Memory) => void;
   isAuthenticated: boolean;
   onSignIn: () => void;
+  syncStatusMap?: Map<string, 'syncing' | 'synced' | 'error'>;
+  onSyncRetry?: (id: string) => void;
 }
 
 function getColumnCount() {
@@ -48,6 +50,8 @@ const VirtualizedMemoryGrid: React.FC<VirtualizedMemoryGridProps> = ({
   onEdit,
   isAuthenticated,
   onSignIn,
+  syncStatusMap,
+  onSyncRetry,
 }) => {
   const columnCount = useColumnCount();
 
@@ -111,6 +115,8 @@ const VirtualizedMemoryGrid: React.FC<VirtualizedMemoryGridProps> = ({
                   onEdit={onEdit}
                   isAuthenticated={isAuthenticated}
                   onSignIn={onSignIn}
+                  syncStatus={syncStatusMap?.get(mem.id)}
+                  onSyncRetry={onSyncRetry}
                 />
               ))}
             </div>
