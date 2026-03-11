@@ -1,6 +1,6 @@
 
 import { Memory, Moment, MomentSynthesis, CalendarEvent } from '../types.ts';
-import { encryptData, decryptData, EncryptedPayload } from './encryptionService';
+import { encryptData, decryptData, decryptBatch, EncryptedPayload } from './encryptionService';
 import { db } from './db';
 
 const DB_NAME = 'SaveItForL8rDB';
@@ -197,7 +197,42 @@ export const getMemories = async (): Promise<Memory[]> => {
       request.onerror = () => reject(request.error);
     });
 
-    const memories = await Promise.all(storedMemories.map(rehydrateMemory));
+    // Batch decrypt all encrypted memories in the worker to avoid main-thread blocking
+    const encrypted = storedMemories.filter(s => s.encryptedData);
+    const unencrypted = storedMemories.filter(s => !s.encryptedData);
+
+    let decryptedMap: Map<string, any> | undefined;
+    if (encrypted.length > 0) {
+      const payloads = encrypted.map(s => ({
+        id: s.id,
+        cipherText: s.encryptedData!.cipherText,
+        iv: s.encryptedData!.iv,
+      }));
+      const results = await decryptBatch(payloads);
+      decryptedMap = new Map(results.map(r => [r.id, r]));
+    }
+
+    const memories: Memory[] = [];
+    for (const stored of storedMemories) {
+      if (stored.encryptedData && decryptedMap) {
+        const result = decryptedMap.get(stored.id);
+        if (result?.data) {
+          memories.push(normalizeMemory({ id: stored.id, timestamp: stored.timestamp, ...result.data }));
+        } else {
+          console.error(`Failed to decrypt memory ${stored.id}`, result?.error);
+          memories.push({
+            id: stored.id,
+            timestamp: stored.timestamp,
+            content: "Error: Could not decrypt memory.",
+            tags: [],
+            processingError: true,
+          });
+        }
+      } else {
+        memories.push(normalizeMemory(stored as unknown as Memory));
+      }
+    }
+
     return memories.sort((a, b) => b.timestamp - a.timestamp);
   } catch (error) {
     console.error("Storage Error:", error);

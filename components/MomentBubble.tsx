@@ -122,4 +122,4 @@ const MomentBubble: React.FC<MomentBubbleProps> = ({
   );
 };
 
-export default MomentBubble;
+export default React.memo(MomentBubble);

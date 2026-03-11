@@ -203,7 +203,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
         )}
 
         {messages.map((msg, idx) => (
-          <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in`}>
+          <div key={`${msg.role}-${idx}`} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in`}>
             <div className={`max-w-[90%] sm:max-w-[80%] rounded-2xl px-5 py-3 ${
               msg.role === 'user' 
                 ? 'bg-blue-600 text-white shadow-md' 

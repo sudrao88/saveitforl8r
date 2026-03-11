@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
 import { RefreshCw, X } from 'lucide-react';
 import { App as CapacitorApp, URLOpenListenerEvent } from '@capacitor/app';
 import { isNative } from './services/platform';
@@ -6,19 +6,22 @@ import MemoryCard from './components/MemoryCard';
 import TopNavigation from './components/TopNavigation';
 import FilterBar from './components/FilterBar';
 import MomentsStrip from './components/MomentsStrip';
-import MomentSheet from './components/MomentSheet';
-import MomentCreationDialog from './components/MomentCreationDialog';
-import AllMomentsSheet from './components/AllMomentsSheet';
-import CalendarAgendaView from './components/CalendarAgendaView';
 import EmptyState from './components/EmptyState';
+import VirtualizedMemoryGrid from './components/VirtualizedMemoryGrid';
 
 import ErrorBoundary from './components/ErrorBoundary';
 import { Logo } from './components/icons';
 import QuickNoteBar, { QuickNoteBarHandle } from './components/QuickNoteBar';
 import GalleryViewer from './components/GalleryViewer';
-import ChatInterface from './components/ChatInterface';
-import SettingsModal from './components/SettingsModal';
-import NewMemoryPage from './components/NewMemoryPage';
+
+// Lazy-load heavy components that aren't needed on initial render
+const ChatInterface = lazy(() => import('./components/ChatInterface'));
+const SettingsModal = lazy(() => import('./components/SettingsModal'));
+const NewMemoryPage = lazy(() => import('./components/NewMemoryPage'));
+const MomentSheet = lazy(() => import('./components/MomentSheet'));
+const MomentCreationDialog = lazy(() => import('./components/MomentCreationDialog'));
+const AllMomentsSheet = lazy(() => import('./components/AllMomentsSheet'));
+const CalendarAgendaView = lazy(() => import('./components/CalendarAgendaView'));
 
 import { useMemories } from './hooks/useMemories';
 import { useSettings } from './hooks/useSettings';
@@ -214,10 +217,12 @@ const AppContent: React.FC = () => {
   }, [createNewMoment, memories]);
 
   const handleFullRefresh = useCallback(async () => {
-      await refreshMemories();
-      await refreshMoments();
-      await refreshEvents();
-      const report = await reconcileEmbeddings();
+      const [, , , report] = await Promise.all([
+        refreshMemories(),
+        refreshMoments(),
+        refreshEvents(),
+        reconcileEmbeddings(),
+      ]);
       setReconcileReport(report);
   }, [refreshMemories, refreshMoments, refreshEvents]);
 
@@ -578,12 +583,14 @@ const AppContent: React.FC = () => {
         fallbackTitle="Memory editor encountered an error"
         fallbackMessage="Something went wrong while editing. Your data is safe — try reloading."
       >
-        <NewMemoryPage
-            onClose={handleEditClose}
-            onCreate={handleCreateMemory}
-            onUpdate={handleUpdateMemory}
-            editMemory={editingMemory}
-          />
+        <Suspense fallback={null}>
+          <NewMemoryPage
+              onClose={handleEditClose}
+              onCreate={handleCreateMemory}
+              onUpdate={handleUpdateMemory}
+              editMemory={editingMemory}
+            />
+        </Suspense>
       </ErrorBoundary>
     );
   }
@@ -599,11 +606,13 @@ const AppContent: React.FC = () => {
         fallbackTitle="Memory capture encountered an error"
         fallbackMessage="Something went wrong while capturing. Your data is safe — try reloading."
       >
-        <NewMemoryPage
-            onClose={handleCaptureClose}
-            onCreate={handleCreateMemory}
-            initialContent={expandInitial || (shareData ? { ...shareData, text: escapeHtml(shareData.text) } : undefined)}
-          />
+        <Suspense fallback={null}>
+          <NewMemoryPage
+              onClose={handleCaptureClose}
+              onCreate={handleCreateMemory}
+              initialContent={expandInitial || (shareData ? { ...shareData, text: escapeHtml(shareData.text) } : undefined)}
+            />
+        </Suspense>
       </ErrorBoundary>
     );
   }
@@ -615,15 +624,17 @@ const AppContent: React.FC = () => {
             fallbackTitle="Brain Search encountered an error"
             fallbackMessage="The AI search feature hit an unexpected issue. Your memories are safe — try reloading."
           >
-            <ChatInterface
-                memories={displayMemories}
-                onClose={handleChatClose}
-                searchFunction={search}
-                onViewAttachment={handleViewAttachment}
-                onDelete={handleDeleteMemory}
-                onEdit={handleEditMemory}
-                onTogglePin={handleTogglePin}
-              />
+            <Suspense fallback={null}>
+              <ChatInterface
+                  memories={displayMemories}
+                  onClose={handleChatClose}
+                  searchFunction={search}
+                  onViewAttachment={handleViewAttachment}
+                  onDelete={handleDeleteMemory}
+                  onEdit={handleEditMemory}
+                  onTogglePin={handleTogglePin}
+                />
+            </Suspense>
           </ErrorBoundary>
           {viewingGallery && (
             <ErrorBoundary
@@ -687,24 +698,18 @@ const AppContent: React.FC = () => {
                 clearFilters={handleClearFiltersEmptyState}
               />
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                {displayMemories.map((mem, idx) => (
-                  <MemoryCard
-                    key={mem.id}
-                    memory={mem}
-                    index={idx}
-                    onDelete={handleDeleteMemory}
-                    onRetry={handleRetryMemory}
-                    onUpdate={updateMemoryContent}
-                    onExpand={setExpandedMemory}
-                    onViewAttachment={handleViewAttachment}
-                    onTogglePin={handleTogglePin}
-                    onEdit={handleEditMemory}
-                    isAuthenticated={authStatus === 'linked'}
-                    onSignIn={login}
-                  />
-                ))}
-              </div>
+              <VirtualizedMemoryGrid
+                memories={displayMemories}
+                onDelete={handleDeleteMemory}
+                onRetry={handleRetryMemory}
+                onUpdate={updateMemoryContent}
+                onExpand={setExpandedMemory}
+                onViewAttachment={handleViewAttachment}
+                onTogglePin={handleTogglePin}
+                onEdit={handleEditMemory}
+                isAuthenticated={authStatus === 'linked'}
+                onSignIn={login}
+              />
             )}
           </main>
 
@@ -770,60 +775,70 @@ const AppContent: React.FC = () => {
       )}
 
       {isSettingsOpen && (
-          <SettingsModal
-              onClose={handleSettingsClose}
-              availableTypes={availableTypes}
-              onImportSuccess={handleImportSuccess}
-              appVersion={versionToDisplay}
-              syncError={syncError}
-              onSyncComplete={handleFullRefresh}
-              modelStatus={modelStatus}
-              downloadProgress={downloadProgress}
-              retryDownload={retryDownload}
-              embeddingStats={embeddingStats}
-              retryFailedEmbeddings={retryFailedEmbeddings}
-              totalMemories={activeMemoryCount}
-              lastError={lastError}
-              closeWorkerDB={closeWorkerDB}
-              reconcileReport={reconcileReport}
-          />
+          <Suspense fallback={null}>
+            <SettingsModal
+                onClose={handleSettingsClose}
+                availableTypes={availableTypes}
+                onImportSuccess={handleImportSuccess}
+                appVersion={versionToDisplay}
+                syncError={syncError}
+                onSyncComplete={handleFullRefresh}
+                modelStatus={modelStatus}
+                downloadProgress={downloadProgress}
+                retryDownload={retryDownload}
+                embeddingStats={embeddingStats}
+                retryFailedEmbeddings={retryFailedEmbeddings}
+                totalMemories={activeMemoryCount}
+                lastError={lastError}
+                closeWorkerDB={closeWorkerDB}
+                reconcileReport={reconcileReport}
+            />
+          </Suspense>
       )}
 
       {liveActiveMoment && (
-        <MomentSheet
-          moment={liveActiveMoment}
-          memories={memories}
-          onClose={handleMomentClose}
-          loadSynthesis={loadSynthesis}
-          onDelete={deleteMoment}
-        />
+        <Suspense fallback={null}>
+          <MomentSheet
+            moment={liveActiveMoment}
+            memories={memories}
+            onClose={handleMomentClose}
+            loadSynthesis={loadSynthesis}
+            onDelete={deleteMoment}
+          />
+        </Suspense>
       )}
 
-      <MomentCreationDialog
-        isOpen={showCreateMoment}
-        isCreating={momentCreating}
-        onClose={() => setShowCreateMoment(false)}
-        onCreate={handleCreateMomentSubmit}
-      />
+      <Suspense fallback={null}>
+        <MomentCreationDialog
+          isOpen={showCreateMoment}
+          isCreating={momentCreating}
+          onClose={() => setShowCreateMoment(false)}
+          onCreate={handleCreateMomentSubmit}
+        />
+      </Suspense>
 
       {showAllMoments && (
-        <AllMomentsSheet
-          moments={moments}
-          onClose={() => setShowAllMoments(false)}
-          onSelectMoment={handleSelectMomentFromList}
-        />
+        <Suspense fallback={null}>
+          <AllMomentsSheet
+            moments={moments}
+            onClose={() => setShowAllMoments(false)}
+            onSelectMoment={handleSelectMomentFromList}
+          />
+        </Suspense>
       )}
 
       {showCalendarAgenda && (
-        <CalendarAgendaView
-          events={calendarEvents}
-          memories={memories}
-          onClose={() => setShowCalendarAgenda(false)}
-          onViewAttachment={handleViewAttachment}
-          onDelete={handleDeleteMemory}
-          onEdit={handleEditMemory}
-          onTogglePin={handleTogglePin}
-        />
+        <Suspense fallback={null}>
+          <CalendarAgendaView
+            events={calendarEvents}
+            memories={memories}
+            onClose={() => setShowCalendarAgenda(false)}
+            onViewAttachment={handleViewAttachment}
+            onDelete={handleDeleteMemory}
+            onEdit={handleEditMemory}
+            onTogglePin={handleTogglePin}
+          />
+        </Suspense>
       )}
 
       {momentError && (
