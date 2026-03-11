@@ -492,8 +492,8 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
              {syncStatus === 'error' && (
                  <button onClick={(e) => { e.stopPropagation(); onSyncRetry?.(memory.id); }}
                          className="flex items-center gap-1 text-red-400 hover:text-red-300 transition-colors">
-                     <AlertCircle size={12} />
-                     <span className="text-[10px] font-medium">Retry sync</span>
+                     <AlertCircle size={14} />
+                     <span className="text-xs font-medium">Retry sync</span>
                  </button>
              )}
           </div>
