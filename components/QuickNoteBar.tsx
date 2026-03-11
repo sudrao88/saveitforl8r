@@ -54,21 +54,18 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
 
   // Track iOS virtual keyboard via visualViewport API so the bar stays
   // above the keyboard on the first open after a cold launch in standalone mode.
+  // We skip the initial measurement and only react to resize/scroll events to
+  // avoid a false-positive keyboard height during app startup in standalone mode
+  // (where visualViewport.height may momentarily differ from innerHeight).
   useEffect(() => {
     const vv = window.visualViewport;
     if (!vv) return;
 
     const update = () => {
-      // Must subtract offsetTop: on iOS, when there's scrollable content,
-      // Safari scrolls the visual viewport to keep the focused input visible.
-      // position:fixed is relative to the layout viewport, so we need the
-      // distance from the bottom of the visual viewport to the bottom of the
-      // layout viewport, which is innerHeight - height - offsetTop.
       const kbHeight = window.innerHeight - vv.height - vv.offsetTop;
       setKeyboardHeight(kbHeight > 0 ? kbHeight : 0);
     };
 
-    update();
     vv.addEventListener('resize', update);
     vv.addEventListener('scroll', update);
     return () => {
@@ -271,6 +268,15 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
     resetState();
   }, [isChecklistMode, checklistItems, attachments, tags, onExpand, resetState]);
 
+  // Explicitly focus the editor on touch/click to work around iOS standalone
+  // mode where the first tap on a contentEditable after a cold launch may not
+  // trigger the virtual keyboard.
+  const handleEditorTap = useCallback(() => {
+    if (editorRef.current && document.activeElement !== editorRef.current) {
+      editorRef.current.focus();
+    }
+  }, []);
+
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     // Cmd/Ctrl + Enter to save
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -458,8 +464,11 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
               <div
                 ref={editorRef}
                 contentEditable
+                tabIndex={0}
+                role="textbox"
                 className="w-full min-h-[1.5em] max-h-[6em] overflow-y-auto bg-gray-800 text-base text-white rounded-xl px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-blue-500/40 border border-gray-700 focus:border-gray-600 transition-colors prose prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-li:my-0 [&_h1]:text-xl [&_h1]:font-bold [&_h1]:my-1 [&_h2]:text-lg [&_h2]:font-bold [&_h2]:my-1 text-left touch-manipulation"
                 dir="ltr"
+                onClick={handleEditorTap}
                 onKeyUp={checkFormats}
                 onMouseUp={checkFormats}
                 onInput={() => setIsEmpty(!editorRef.current?.innerText.trim())}
