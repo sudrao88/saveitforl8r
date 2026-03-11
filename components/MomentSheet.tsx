@@ -239,19 +239,13 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-2xl mx-auto p-4 sm:p-8 pb-32">
           {isLoading && (
-            <div className="space-y-6 animate-pulse">
-              {[1, 2, 3].map(i => (
-                <div key={i} className="space-y-3">
-                  <div className="h-6 bg-gray-800 rounded-lg w-48" />
-                  <div className="space-y-2">
-                    <div className="h-14 bg-gray-800/60 rounded-xl" />
-                    <div className="h-14 bg-gray-800/60 rounded-xl" />
-                  </div>
-                </div>
-              ))}
-              <div className="flex items-center justify-center gap-2 pt-4">
-                <Loader2 size={20} className="animate-spin text-blue-400" />
-                <span className="text-sm text-gray-400">Synthesizing moment...</span>
+            <div className="flex items-center justify-center py-24">
+              <div className="text-center px-6">
+                <Loader2 size={32} className="animate-spin text-blue-400 mx-auto mb-4" />
+                <h3 className="text-lg font-bold text-gray-200 mb-2">Creating your moment…</h3>
+                <p className="text-sm text-gray-400 max-w-sm">
+                  Our AI is analyzing your notes and building a synthesis. This usually takes 15–30 seconds.
+                </p>
               </div>
             </div>
           )}
