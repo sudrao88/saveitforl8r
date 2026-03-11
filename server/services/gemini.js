@@ -41,7 +41,7 @@ export const isPublicUrl = (urlString) => {
 export const extractUrls = (text) => {
   if (!text) return [];
   const rawMatches = text.match(URL_REGEX) || [];
-  return rawMatches
+  const urls = rawMatches
     .map((url) => {
       let cleaned = url.replace(/[.,;:!?'"]+$/, '');
       while (
@@ -59,6 +59,7 @@ export const extractUrls = (text) => {
       return cleaned;
     })
     .filter(isPublicUrl);
+  return [...new Set(urls)];
 };
 
 // --- Schemas ---
