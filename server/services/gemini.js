@@ -819,7 +819,7 @@ export const sanitizeEnrichmentResult = (parsed) => {
 
   // Smart enrichment fields (strings)
   const stringFields = [
-    'sentiment', 'contentType', 'enrichmentStrategy',
+    'sentiment', 'contentType', 'enrichmentStrategy', 'sourceUrl',
     'price', 'whereToBuy', 'date', 'rsvpStatus', 'ratings',
     'transcriptSummary', 'author', 'engagement', 'methodology', 'company',
     'role', 'salary', 'costEstimate', 'artist', 'album', 'genre', 'mood',

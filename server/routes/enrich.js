@@ -97,6 +97,16 @@ ${momentsContext}`;
 };
 
 /**
+ * Set sourceUrl on the enrichment result to the first user-provided URL.
+ * This is used as the link CTA on the client instead of a generated search link.
+ */
+const attachSourceUrl = (sanitized, detectedUrls) => {
+  if (detectedUrls.length > 0) {
+    sanitized.sourceUrl = detectedUrls[0];
+  }
+};
+
+/**
  * Await and attach OG preview images to a sanitized enrichment result.
  * Non-fatal — logs errors and continues without previews.
  */
@@ -299,6 +309,7 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
           parsed.enrichmentStrategy = enrichmentStrategy;
 
           const sanitized = sanitizeEnrichmentResult(parsed);
+          if (hasUrls) attachSourceUrl(sanitized, detectedUrls);
 
           // Attach OG preview images (awaiting the parallel fetch started earlier)
           await attachOgPreviews(ogImagePromise, sanitized, req.requestId);
@@ -344,6 +355,7 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
           const parsed = parseJsonResponse(response.text || '{}');
           parsed.enrichmentStrategy = 'search';
           const sanitizedFallback = sanitizeEnrichmentResult(parsed);
+          if (hasUrls) attachSourceUrl(sanitizedFallback, detectedUrls);
 
           // Attach OG preview images (from the parallel fetch started earlier)
           await attachOgPreviews(ogImagePromise, sanitizedFallback, req.requestId);

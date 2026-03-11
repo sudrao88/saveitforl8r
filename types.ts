@@ -60,6 +60,7 @@ export interface EnrichmentData {
   sentiment?: string;
   contentType?: string;
   enrichmentStrategy?: string;
+  sourceUrl?: string;            // User-provided URL (used as the link CTA)
 
   // Content-type-specific fields
   ingredients?: string[];        // recipe

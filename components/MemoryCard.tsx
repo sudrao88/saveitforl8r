@@ -261,7 +261,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
   const enrichment = memory.enrichment;
   const locationContext = enrichment?.locationContext;
   let targetUri = locationContext?.mapsUri;
-  
+
   if (!targetUri && locationContext?.name) {
      const lat = memory.location?.latitude;
      const lng = memory.location?.longitude;
@@ -275,7 +275,13 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
 
   const entity = enrichment?.entityContext;
 
-  if (!targetUri) {
+  // If user provided a URL, use it as the link CTA
+  if (!targetUri && enrichment?.sourceUrl) {
+      targetUri = enrichment.sourceUrl;
+  }
+
+  // Only show a Google search link when Gemini actually performed a search
+  if (!targetUri && enrichment?.enrichmentStrategy === 'search') {
       const query = entity?.title || enrichment?.summary;
       if (query && typeof query === 'string' && !query.includes('{')) {
            targetUri = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
