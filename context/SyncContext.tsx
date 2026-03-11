@@ -30,6 +30,8 @@ const SyncContext = createContext<SyncContextType | undefined>(undefined);
 const SNAPSHOT_KEY = 'gdrive_remote_snapshot';
 const LAST_SYNC_KEY = 'gdrive_last_sync_time';
 const SYNC_DEBOUNCE_MS = 2000;
+const PERIODIC_SYNC_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+const STALE_SYNC_THRESHOLD_MS = 2 * 60 * 1000;   // 2 minutes
 
 // ---- Shared Execution Logic ----
 
@@ -800,6 +802,49 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           isSyncingRef.current = false;
       }
   }, [syncFileInternal, getAccessToken]);
+
+  // Periodic sync: poll every 5 minutes while tab is visible,
+  // and sync on tab re-focus if data is stale (>2 min since last sync).
+  useEffect(() => {
+    if (authStatus !== 'linked') return;
+
+    const isStale = async (): Promise<boolean> => {
+        const lastStr = await storage.get(LAST_SYNC_KEY);
+        if (!lastStr) return true;
+        return Date.now() - parseInt(lastStr) > STALE_SYNC_THRESHOLD_MS;
+    };
+
+    const trySyncQuietly = async () => {
+        try {
+            await performSync();
+        } catch {
+            // Periodic sync errors are non-critical; logged inside performSync
+        }
+    };
+
+    // Periodic interval — only syncs when tab is visible
+    const intervalId = setInterval(() => {
+        if (document.visibilityState === 'visible') {
+            trySyncQuietly();
+        }
+    }, PERIODIC_SYNC_INTERVAL_MS);
+
+    // Sync on tab re-focus if stale
+    const handleVisibilityChange = () => {
+        if (document.visibilityState === 'visible') {
+            isStale().then(stale => {
+                if (stale) trySyncQuietly();
+            });
+        }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+        clearInterval(intervalId);
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [authStatus, performSync]);
 
   useEffect(() => {
     return () => {

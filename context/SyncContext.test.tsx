@@ -584,6 +584,126 @@ describe('SyncContext', () => {
     });
   });
 
+  describe('periodic sync', () => {
+    it('should trigger sync at 5-minute intervals when tab is visible', async () => {
+      // Ensure tab is visible
+      Object.defineProperty(document, 'visibilityState', {
+        value: 'visible',
+        writable: true,
+        configurable: true,
+      });
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      // listAllFiles is called during sync — use it as a proxy for sync invocation
+      (driveService.listAllFiles as any).mockResolvedValue([]);
+      (driveService.isLinked as any).mockResolvedValue(true);
+
+      // Initial call count after mount
+      const initialCalls = (driveService.listAllFiles as any).mock.calls.length;
+
+      // Advance 5 minutes (periodic interval)
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+      });
+
+      // Advance past debounce
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2500);
+      });
+
+      expect((driveService.listAllFiles as any).mock.calls.length).toBeGreaterThan(initialCalls);
+    });
+
+    it('should NOT trigger sync at interval when tab is hidden', async () => {
+      Object.defineProperty(document, 'visibilityState', {
+        value: 'hidden',
+        writable: true,
+        configurable: true,
+      });
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      (driveService.listAllFiles as any).mockResolvedValue([]);
+      (driveService.isLinked as any).mockResolvedValue(true);
+
+      const initialCalls = (driveService.listAllFiles as any).mock.calls.length;
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5 * 60 * 1000 + 2500);
+      });
+
+      // Should NOT have synced because tab is hidden
+      expect((driveService.listAllFiles as any).mock.calls.length).toBe(initialCalls);
+    });
+
+    it('should sync on tab re-focus when last sync is stale', async () => {
+      // Set last sync time to 3 minutes ago (stale — beyond 2-minute threshold)
+      mockStorageValues['gdrive_last_sync_time'] = (Date.now() - 3 * 60 * 1000).toString();
+
+      Object.defineProperty(document, 'visibilityState', {
+        value: 'hidden',
+        writable: true,
+        configurable: true,
+      });
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      (driveService.listAllFiles as any).mockResolvedValue([]);
+      (driveService.isLinked as any).mockResolvedValue(true);
+
+      const initialCalls = (driveService.listAllFiles as any).mock.calls.length;
+
+      // Simulate tab becoming visible
+      Object.defineProperty(document, 'visibilityState', {
+        value: 'visible',
+        writable: true,
+        configurable: true,
+      });
+      document.dispatchEvent(new Event('visibilitychange'));
+
+      // Wait for async isStale check and debounce
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2500);
+      });
+
+      expect((driveService.listAllFiles as any).mock.calls.length).toBeGreaterThan(initialCalls);
+    });
+
+    it('should NOT sync on tab re-focus when last sync is recent', async () => {
+      // Set last sync time to 30 seconds ago (fresh — within 2-minute threshold)
+      mockStorageValues['gdrive_last_sync_time'] = (Date.now() - 30 * 1000).toString();
+
+      Object.defineProperty(document, 'visibilityState', {
+        value: 'hidden',
+        writable: true,
+        configurable: true,
+      });
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      (driveService.listAllFiles as any).mockResolvedValue([]);
+      (driveService.isLinked as any).mockResolvedValue(true);
+
+      const initialCalls = (driveService.listAllFiles as any).mock.calls.length;
+
+      // Simulate tab becoming visible
+      Object.defineProperty(document, 'visibilityState', {
+        value: 'visible',
+        writable: true,
+        configurable: true,
+      });
+      document.dispatchEvent(new Event('visibilitychange'));
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2500);
+      });
+
+      // Should NOT have synced because last sync was recent
+      expect((driveService.listAllFiles as any).mock.calls.length).toBe(initialCalls);
+    });
+  });
+
   describe('sync error handling', () => {
     it('should set syncError on auth failure', async () => {
       (storageService.getMemories as any).mockRejectedValue(new Error('Unauthorized 401'));
