@@ -33,7 +33,7 @@ import { useMoments } from './hooks/useMoments';
 import { useCalendarEvents } from './hooks/useCalendarEvents';
 import useNativeOTA from './hooks/useNativeOTA';
 import { SyncProvider } from './context/SyncContext';
-import { reconcileEmbeddings, ReconcileReport } from './services/storageService';
+import { reconcileEmbeddings, ReconcileReport, getMemories as getStoredMemories } from './services/storageService';
 import { ViewMode, Memory, Attachment, Moment, QuickNoteState, CalendarEvent } from './types';
 import { initGA, logPageView, logEvent } from './services/analytics';
 import { escapeHtml } from './utils/editorUtils';
@@ -315,17 +315,23 @@ const AppContent: React.FC = () => {
 
       if (authStatus === 'linked') {
           syncRef.current().then(() => {
-              refreshRef.current();
+              return refreshRef.current();
+          }).then(() => {
+              // Auto-retry enrichment for memories that failed while
+              // unauthenticated. We read from storage after sync+refresh
+              // so we operate on the latest data, not a stale closure.
+              return getStoredMemories();
+          }).then(freshMemories => {
+              const pendingIds = freshMemories
+                .filter(m => !m.isDeleted && (m.isPending || m.processingError))
+                .map(m => m.id);
+              if (pendingIds.length > 0) {
+                  console.log(`[App] Auth linked — auto-retrying ${pendingIds.length} failed memories`);
+                  pendingIds.forEach(id => handleRetry(id));
+              }
           }).catch(err => {
               console.error('[App] Initial sync failed:', err);
           });
-
-          // Auto-retry enrichment for memories that failed while unauthenticated
-          const pendingIds = memories.filter(m => m.isPending || m.processingError).map(m => m.id);
-          if (pendingIds.length > 0) {
-              console.log(`[App] Auth linked — auto-retrying ${pendingIds.length} failed memories`);
-              pendingIds.forEach(id => handleRetry(id));
-          }
       }
     }, 0);
   }, [authStatus]);
