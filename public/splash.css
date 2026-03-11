@@ -20,6 +20,21 @@ body { background-color: #000000; margin: 0; }
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: .8; transform: scale(0.95); }
 }
+.splash-offline-msg {
+  text-align: center;
+  color: #9ca3af;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 15px;
+  animation: fadeIn 0.4s ease-out;
+  position: fixed;
+  bottom: 25vh;
+  left: 50%;
+  transform: translateX(-50%);
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
 .noscript-content {
   max-width: 700px;
   margin: 40px auto;

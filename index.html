@@ -77,10 +77,11 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="SaveItForL8R" />
 
-    <!-- Fonts -->
+    <!-- Fonts — loaded async to avoid blocking rendering on slow/offline networks -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Shantell+Sans:ital,wght@0,300..800;1,300..800&display=swap" rel="stylesheet">
+    <link rel="preload" href="https://fonts.googleapis.com/css2?family=Shantell+Sans:ital,wght@0,300..800;1,300..800&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    <noscript><link href="https://fonts.googleapis.com/css2?family=Shantell+Sans:ital,wght@0,300..800;1,300..800&display=swap" rel="stylesheet"></noscript>
     <link rel="stylesheet" href="/splash.css">
   </head>
   <body>
@@ -107,6 +108,35 @@
       </div>
     </noscript>
     <script type="module" src="/index.tsx"></script>
+    <script>
+       // Stuck-state detection: if React hasn't mounted within 5s, the JS bundles
+       // likely failed to load (offline/lie-fi). Show an offline message so the
+       // user knows the app is alive and can retry or wait for network recovery.
+       (function() {
+         var STUCK_TIMEOUT = 5000;
+         var timer = setTimeout(function() {
+           var root = document.getElementById('root');
+           // React replaces the splash-container children on mount.
+           // If splash-logo still exists, React hasn't mounted yet.
+           if (root && root.querySelector('.splash-logo')) {
+             var msg = document.createElement('div');
+             msg.className = 'splash-offline-msg';
+             msg.innerHTML = '<p>Waiting for network\u2026</p>'
+               + '<p style="font-size:13px;opacity:0.7;margin:4px 0 16px">The app will load automatically when connection improves</p>'
+               + '<button onclick="location.reload()" style="background:#3b82f6;color:#fff;border:none;padding:10px 28px;border-radius:8px;font-size:15px;cursor:pointer;font-weight:600">Retry Now</button>';
+             root.appendChild(msg);
+           }
+         }, STUCK_TIMEOUT);
+         // Cancel timer once React mounts (it removes .splash-logo)
+         var obs = new MutationObserver(function() {
+           if (!document.querySelector('.splash-logo')) {
+             clearTimeout(timer);
+             obs.disconnect();
+           }
+         });
+         obs.observe(document.getElementById('root'), { childList: true, subtree: true });
+       })();
+    </script>
     <script>
        if ('serviceWorker' in navigator) {
          window.addEventListener('load', () => {
