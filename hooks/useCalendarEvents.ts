@@ -14,6 +14,7 @@ import {
   getCalendarEvents,
   saveCalendarEvents,
   softDeleteCalendarEventsByMemoryId,
+  replaceCalendarEventsForMemory,
 } from '../services/storageService';
 import { expandRecurringEvent, expandHorizon } from '../utils/calendarUtils';
 
@@ -79,9 +80,6 @@ export const useCalendarEvents = (): UseCalendarEventsReturn => {
         return tombstones;
       }
 
-      // Soft-delete old events for this memory (creates tombstones for sync)
-      const tombstones = await softDeleteCalendarEventsByMemoryId(memory.id);
-
       const now = Date.now();
       const newEvents: CalendarEvent[] = detected.flatMap((det: DetectedEvent) => {
         if (det.isRecurring && det.recurrenceFrequency) {
@@ -103,7 +101,11 @@ export const useCalendarEvents = (): UseCalendarEventsReturn => {
         }];
       });
 
-      await saveCalendarEvents(newEvents);
+      // Atomically tombstone old events and save new ones in a single IDB
+      // transaction. This prevents data loss if the write were to fail
+      // partway through a non-atomic two-step delete-then-save.
+      const tombstones = await replaceCalendarEventsForMemory(memory.id, newEvents);
+
       setEventsList(prev => [
         ...prev.filter(e => e.memoryId !== memory.id),
         ...newEvents,
