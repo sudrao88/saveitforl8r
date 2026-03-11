@@ -300,27 +300,34 @@ const AppContent: React.FC = () => {
     }
   }, []);
 
-  // INITIALIZATION EFFECT - runs once on mount and when auth status changes
+  // INITIALIZATION EFFECT - runs once on mount and when auth status changes.
+  // Heavy operations (reconcile, sync) are deferred so the UI is interactive
+  // immediately — tapping the quick note bar brings up the keyboard without
+  // competing for the main thread.
   useEffect(() => {
     initGA();
     logPageView('home');
 
-    reconcileEmbeddings().then(setReconcileReport).catch(console.error);
+    // Defer non-critical background work so user interactions (e.g. tapping
+    // the quick note bar to open the keyboard) are not blocked.
+    setTimeout(() => {
+      reconcileEmbeddings().then(setReconcileReport).catch(console.error);
 
-    if (authStatus === 'linked') {
-        syncRef.current().then(() => {
-            refreshRef.current();
-        }).catch(err => {
-            console.error('[App] Initial sync failed:', err);
-        });
+      if (authStatus === 'linked') {
+          syncRef.current().then(() => {
+              refreshRef.current();
+          }).catch(err => {
+              console.error('[App] Initial sync failed:', err);
+          });
 
-        // Auto-retry enrichment for memories that failed while unauthenticated
-        const pendingIds = memories.filter(m => m.isPending || m.processingError).map(m => m.id);
-        if (pendingIds.length > 0) {
-            console.log(`[App] Auth linked — auto-retrying ${pendingIds.length} failed memories`);
-            pendingIds.forEach(id => handleRetry(id));
-        }
-    }
+          // Auto-retry enrichment for memories that failed while unauthenticated
+          const pendingIds = memories.filter(m => m.isPending || m.processingError).map(m => m.id);
+          if (pendingIds.length > 0) {
+              console.log(`[App] Auth linked — auto-retrying ${pendingIds.length} failed memories`);
+              pendingIds.forEach(id => handleRetry(id));
+          }
+      }
+    }, 0);
   }, [authStatus]);
 
   // NATIVE DEEP LINK HANDLING (Google Auth)
