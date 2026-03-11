@@ -68,7 +68,7 @@ const AppContent: React.FC = () => {
 
   const { shareData, clearShareData } = useShareReceiver();
   
-  const { sync, isSyncing, syncError } = useSync();
+  const { sync, isSyncing, isSyncingDownload, syncError, getSyncStatusMap, syncStatusVersion, retrySyncFile } = useSync();
   const { authStatus, login, unlink } = useAuth();
 
   const { modelStatus, downloadProgress, retryDownload, search, embeddingStats, retryFailedEmbeddings, deleteNoteFromIndex, lastError, closeWorkerDB } = useAdaptiveSearch();
@@ -560,6 +560,9 @@ const AppContent: React.FC = () => {
 
   const activeMemoryCount = useMemo(() => memories.filter(m => !m.isDeleted).length, [memories]);
 
+  // Snapshot the sync status map so components re-render when statuses change
+  const syncStatusMap = useMemo(() => new Map(getSyncStatusMap()), [syncStatusVersion]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Keep expanded memory in sync with the memories array so checklist
   // toggles and other content updates are reflected immediately.
   const liveExpandedMemory = useMemo(() => {
@@ -678,7 +681,7 @@ const AppContent: React.FC = () => {
                 updateAvailable={isUpdateAvailable}
                 onUpdateApp={handleUpdateApp}
                 syncError={!!syncError}
-                isSyncing={isSyncing}
+                isSyncingDownload={isSyncingDownload}
                 modelStatus={modelStatus}
                 isOtaDownloading={isOtaDownloading}
               />
@@ -722,6 +725,8 @@ const AppContent: React.FC = () => {
                 onEdit={handleEditMemory}
                 isAuthenticated={authStatus === 'linked'}
                 onSignIn={login}
+                syncStatusMap={syncStatusMap}
+                onSyncRetry={retrySyncFile}
               />
             )}
           </main>
@@ -768,6 +773,8 @@ const AppContent: React.FC = () => {
                     isDialog={true}
                     isAuthenticated={authStatus === 'linked'}
                     onSignIn={login}
+                    syncStatus={syncStatusMap.get(liveExpandedMemory.id)}
+                    onSyncRetry={retrySyncFile}
                 />
              </div>
           </div>

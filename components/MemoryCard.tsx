@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
-import { Trash2, Loader2, Clock, ExternalLink, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, WifiOff, FileText, Paperclip, MoreVertical, AlertTriangle, LogIn, Square, CheckSquare, Maximize2, Eye, Pin, Pencil, Lightbulb, CircleCheck, UtensilsCrossed, ListOrdered, ThumbsUp, ThumbsDown, DollarSign, MapPin, CalendarDays, ClipboardList, MessageSquare, Users, Mic, Code, Heart, Scale, GraduationCap, Briefcase, Music, Film, BookOpenCheck, Bookmark, Phone, Mail, ScrollText, Tag, Clock3, Flame, Quote } from 'lucide-react';
+import { Trash2, Loader2, Clock, ExternalLink, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, RefreshCw, WifiOff, FileText, Paperclip, MoreVertical, AlertTriangle, AlertCircle, LogIn, Square, CheckSquare, Maximize2, Eye, Pin, Pencil, Lightbulb, CircleCheck, UtensilsCrossed, ListOrdered, ThumbsUp, ThumbsDown, DollarSign, MapPin, CalendarDays, ClipboardList, MessageSquare, Users, Mic, Code, Heart, Scale, GraduationCap, Briefcase, Music, Film, BookOpenCheck, Bookmark, Phone, Mail, ScrollText, Tag, Clock3, Flame, Quote } from 'lucide-react';
 import { Memory, Attachment } from '../types.ts';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 
@@ -200,6 +200,8 @@ interface MemoryCardProps {
   isDialog?: boolean;
   isAuthenticated?: boolean;
   onSignIn?: () => void;
+  syncStatus?: 'syncing' | 'synced' | 'error';
+  onSyncRetry?: (id: string) => void;
   /** Index in the feed grid for staggered entrance animation */
   index?: number;
 }
@@ -224,7 +226,7 @@ const linkifyHtml = (html: string): string => {
     }).join('');
 };
 
-const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUpdate, onExpand, onViewAttachment, onTogglePin, onEdit, isDialog, isAuthenticated = true, onSignIn, index }) => {
+const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUpdate, onExpand, onViewAttachment, onTogglePin, onEdit, isDialog, isAuthenticated = true, onSignIn, syncStatus, onSyncRetry, index }) => {
   const [isConfirming, setIsConfirming] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -485,6 +487,15 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
              </div>
              {memory.isPending && <span className="text-xs font-medium text-blue-400 animate-pulse">Enriching...</span>}
              {memory.processingError && <WifiOff size={12} className="text-amber-500" />}
+             {syncStatus === 'syncing' && <RefreshCw size={12} className="text-blue-400 animate-spin" />}
+             {syncStatus === 'synced' && <CircleCheck size={12} className="text-green-400" />}
+             {syncStatus === 'error' && (
+                 <button onClick={(e) => { e.stopPropagation(); onSyncRetry?.(memory.id); }}
+                         className="flex items-center gap-1 text-red-400 hover:text-red-300 transition-colors">
+                     <AlertCircle size={12} />
+                     <span className="text-[10px] font-medium">Retry sync</span>
+                 </button>
+             )}
           </div>
 
           {/* AI Title — below entity type, above user content */}
