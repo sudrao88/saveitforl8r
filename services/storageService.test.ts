@@ -6,6 +6,7 @@ import { Memory } from '../types';
 vi.mock('./encryptionService', () => ({
   encryptData: vi.fn(async (data) => ({ cipherText: 'encrypted', iv: 'iv' })),
   decryptData: vi.fn(async (payload) => ({ content: 'decrypted content' })),
+  decryptBatch: vi.fn(async (payloads) => payloads.map((p: any) => ({ id: p.id, data: { content: 'decrypted content' } }))),
 }));
 
 // Mock IndexedDB

@@ -86,4 +86,4 @@ const MomentsStrip: React.FC<MomentsStripProps> = ({
   );
 };
 
-export default MomentsStrip;
+export default React.memo(MomentsStrip);

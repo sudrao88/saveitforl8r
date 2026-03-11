@@ -19,7 +19,7 @@ const EnrichmentSection: React.FC<EnrichmentSectionProps> = ({ icon, label, item
     </span>
     <ul className="space-y-1">
       {items.map((item, idx) => (
-        <li key={idx} className={`flex items-start gap-2 text-sm ${textClass} font-light leading-relaxed`}>
+        <li key={`${label}-${idx}-${item.slice(0, 30)}`} className={`flex items-start gap-2 text-sm ${textClass} font-light leading-relaxed`}>
           <span className={`${bulletClass} mt-1.5 shrink-0`}>&#8226;</span>
           <span>{item}</span>
         </li>
@@ -378,8 +378,8 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                       const text = item.textContent || '';
                       
                       return (
-                        <div 
-                            key={idx} 
+                        <div
+                            key={`check-${idx}-${text.slice(0, 20)}`}
                             className="flex items-start gap-3 group/item cursor-pointer p-2 -mx-2 hover:bg-white/5 rounded-lg active:bg-white/10 transition-colors"
                             onClick={(e) => { e.stopPropagation(); handleToggleCheck(idx); }}
                         >
@@ -446,9 +446,10 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                 className={`relative overflow-hidden rounded-t-xl bg-gray-900/50 group/image cursor-zoom-in ${isDialog ? 'max-h-[50vh]' : 'aspect-video sm:aspect-[2/1]'}`}
                 onClick={(e) => { e.stopPropagation(); onViewAttachment?.(displayImages[0], [...displayImages, ...documents]); }}
             >
-                <img 
-                    src={displayImages[0].data} 
-                    alt="User content" 
+                <img
+                    src={displayImages[0].data}
+                    alt="User content"
+                    loading="lazy"
                     className="w-full h-full object-cover transition-transform duration-700 group-hover/image:scale-105"
                 />
                 <div className="absolute inset-0 bg-black/20 opacity-0 group-hover/image:opacity-100 transition-opacity flex items-center justify-center">
@@ -611,9 +612,9 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
             {/* Documents */}
             {documents.length > 0 && (
                 <div className="flex flex-col gap-1.5 pt-1">
-                    {documents.map((doc, idx) => (
-                        <div 
-                            key={idx} 
+                    {documents.map((doc) => (
+                        <div
+                            key={doc.id}
                             onClick={(e) => { e.stopPropagation(); onViewAttachment?.(doc, [...displayImages, ...documents]); }}
                             className="flex items-center gap-2 p-3 rounded-xl bg-gray-900/30 border border-gray-700/30 hover:bg-gray-700/50 transition-colors cursor-pointer group/doc active:scale-[0.98]"
                         >
@@ -638,8 +639,8 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
             {/* Footer */}
             <div className="flex flex-wrap items-center gap-y-2 gap-x-4 pt-2 border-t border-gray-700/20 mt-2">
                 <div className="flex flex-wrap gap-1.5 flex-1">
-                    {(memory.tags || []).map((tag, idx) => (
-                        <span key={idx} className="text-[10px] text-gray-500 hover:text-gray-300 bg-gray-900/50 px-2 py-1 rounded-md">#{tag}</span>
+                    {(memory.tags || []).map((tag) => (
+                        <span key={tag} className="text-[10px] text-gray-500 hover:text-gray-300 bg-gray-900/50 px-2 py-1 rounded-md">#{tag}</span>
                     ))}
                 </div>
                 <div className="flex items-center gap-2 ml-auto relative">

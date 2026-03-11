@@ -19,6 +19,7 @@ interface Source {
 }
 
 interface Message {
+  id: string;
   role: 'user' | 'model';
   text: string;
   sources?: Source[]; // Structured sources
@@ -91,7 +92,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
   const handleSend = async () => {
     if (!query.trim() || loading) return;
 
-    const userMsg: Message = { role: 'user', text: query };
+    const userMsg: Message = { id: crypto.randomUUID(), role: 'user', text: query };
 
     // Build conversation history from current messages (before adding the new user message).
     // Strip sources and isOffline — server only needs role + text.
@@ -115,7 +116,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
       
       if (response.mode === 'online') {
           const { answer, sources } = response.result;
-          setMessages(prev => [...prev, { role: 'model', text: answer, sources: sources }]);
+          setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'model', text: answer, sources: sources }]);
       } else if (response.mode === 'offline') {
           const items = response.result;
           const text = items.length > 0
@@ -132,6 +133,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
           }));
 
           setMessages(prev => [...prev, {
+              id: crypto.randomUUID(),
               role: 'model',
               text,
               sources,
@@ -141,17 +143,18 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
           // Model failed to load - likely offline without cached model
           const errorText = response.error || 'The search model is not available.';
           setMessages(prev => [...prev, {
+              id: crypto.randomUUID(),
               role: 'model',
               text: `⚠️ ${errorText}\n\nTo use offline search, please connect to the internet once to download the search model. It will then be cached for future offline use.`,
               isOffline: true
           }]);
       } else {
-           setMessages(prev => [...prev, { role: 'model', text: "Sorry, I encountered an error searching your memories." }]);
+           setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'model', text: "Sorry, I encountered an error searching your memories." }]);
       }
 
     } catch (error) {
       console.error('Search error:', error);
-      setMessages(prev => [...prev, { role: 'model', text: "Sorry, I encountered an error searching your memories." }]);
+      setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'model', text: "Sorry, I encountered an error searching your memories." }]);
     } finally {
       setLoading(false);
       setTimeout(scrollToBottom, 50);
@@ -202,8 +205,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
           </div>
         )}
 
-        {messages.map((msg, idx) => (
-          <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in`}>
+        {messages.map((msg) => (
+          <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in`}>
             <div className={`max-w-[90%] sm:max-w-[80%] rounded-2xl px-5 py-3 ${
               msg.role === 'user' 
                 ? 'bg-blue-600 text-white shadow-md' 
