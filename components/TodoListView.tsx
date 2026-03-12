@@ -58,7 +58,7 @@ const groupTodoItems = (items: TodoItem[]): TodoGroup[] => {
   const today = now.toISOString().split('T')[0];
 
   const endOfWeek = new Date(now);
-  endOfWeek.setDate(now.getDate() + (7 - now.getDay()));
+  endOfWeek.setDate(now.getDate() + (6 - now.getDay()));
   const endOfWeekStr = endOfWeek.toISOString().split('T')[0];
 
   const groups: Record<string, TodoItem[]> = {

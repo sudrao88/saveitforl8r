@@ -67,8 +67,9 @@ export const useTodoItems = (): UseTodoItemsReturn => {
         // No action items detected — soft-delete any old items for this memory
         const tombstones = await softDeleteTodoItemsByMemoryId(memory.id);
         if (tombstones.length > 0) {
+          const tombstoneMap = new Map(tombstones.map(t => [t.id, t]));
           setItemsList(prev => prev.map(item =>
-            item.memoryId === memory.id ? { ...item, isDeleted: true, updatedAt: Date.now() } : item
+            tombstoneMap.has(item.id) ? tombstoneMap.get(item.id)! : item
           ));
         }
         return tombstones;
@@ -90,7 +91,9 @@ export const useTodoItems = (): UseTodoItemsReturn => {
       const tombstones = await replaceTodoItemsForMemory(memory.id, newItems);
 
       setItemsList(prev => [
+        // Keep tombstones in state for consistency with IDB
         ...prev.filter(item => item.memoryId !== memory.id),
+        ...tombstones,
         ...newItems,
       ]);
 
@@ -105,8 +108,9 @@ export const useTodoItems = (): UseTodoItemsReturn => {
   const removeItemsForMemory = useCallback(async (memoryId: string): Promise<TodoItem[]> => {
     const tombstones = await softDeleteTodoItemsByMemoryId(memoryId);
     if (tombstones.length > 0) {
+      const tombstoneMap = new Map(tombstones.map(t => [t.id, t]));
       setItemsList(prev => prev.map(item =>
-        item.memoryId === memoryId ? { ...item, isDeleted: true, updatedAt: Date.now() } : item
+        tombstoneMap.has(item.id) ? tombstoneMap.get(item.id)! : item
       ));
     }
     return tombstones;

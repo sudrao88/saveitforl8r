@@ -905,14 +905,15 @@ const AppContent: React.FC = () => {
             items={todoItems}
             memories={memories}
             onClose={() => setShowTodoList(false)}
-            onToggleComplete={(itemId) => {
-              toggleTodoComplete(itemId).then(updated => {
-                if (updated) {
-                  syncTodoItems([updated]).catch(err =>
-                    console.error('[Todo] Failed to sync toggled item:', err)
-                  );
+            onToggleComplete={async (itemId) => {
+              const updated = await toggleTodoComplete(itemId);
+              if (updated) {
+                try {
+                  await syncTodoItems([updated]);
+                } catch (err) {
+                  console.error('[Todo] Failed to sync toggled item:', err);
                 }
-              });
+              }
             }}
             onViewAttachment={handleViewAttachment}
             onDelete={handleDeleteMemory}
