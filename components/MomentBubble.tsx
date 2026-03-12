@@ -13,6 +13,7 @@ import { Moment } from '../types';
 interface MomentBubbleProps {
   moment: Moment;
   onTap: (moment: Moment) => void;
+  isResynthesizing?: boolean;
 }
 
 export function getMomentIcon(type: string, objective: string): string {
@@ -56,20 +57,21 @@ function truncateLabel(text: string, max: number = 10): string {
 const MomentBubble: React.FC<MomentBubbleProps> = ({
   moment,
   onTap,
+  isResynthesizing = false,
 }) => {
-  const isPending = moment.isPending;
+  const isPending = moment.isPending || isResynthesizing;
   const hasError = moment.processingError;
-  const wasPendingRef = useRef(isPending);
+  const wasCreationPendingRef = useRef(moment.isPending);
   const [showGlow, setShowGlow] = useState(false);
 
   useEffect(() => {
-    if (wasPendingRef.current && !isPending && !hasError) {
+    if (wasCreationPendingRef.current && !moment.isPending && !hasError) {
       setShowGlow(true);
       const timer = setTimeout(() => setShowGlow(false), 800);
       return () => clearTimeout(timer);
     }
-    wasPendingRef.current = isPending;
-  }, [isPending, hasError]);
+    wasCreationPendingRef.current = moment.isPending;
+  }, [moment.isPending, hasError]);
 
   const icon = moment.emoji || getMomentIcon(moment.type, moment.objective);
   const label = isPending

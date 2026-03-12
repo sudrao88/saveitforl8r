@@ -17,6 +17,7 @@ interface MomentsStripProps {
   onShowAll: () => void;
   onCalendarTap: () => void;
   calendarEventCount: number;
+  synthesisLoading?: string | null;
 }
 
 const MomentsStrip: React.FC<MomentsStripProps> = ({
@@ -26,6 +27,7 @@ const MomentsStrip: React.FC<MomentsStripProps> = ({
   onShowAll,
   onCalendarTap,
   calendarEventCount,
+  synthesisLoading,
 }) => {
   return (
     <div className="w-full max-w-4xl mx-auto px-4 sm:px-8 py-3">
@@ -64,6 +66,7 @@ const MomentsStrip: React.FC<MomentsStripProps> = ({
             key={moment.id}
             moment={moment}
             onTap={onMomentTap}
+            isResynthesizing={synthesisLoading === moment.id}
           />
         ))}
 

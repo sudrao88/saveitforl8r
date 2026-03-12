@@ -694,6 +694,7 @@ const AppContent: React.FC = () => {
             onShowAll={handleShowAllMoments}
             onCalendarTap={handleCalendarTap}
             calendarEventCount={calendarUpcomingCount}
+            synthesisLoading={synthesisLoading}
           />
 
           {availableTypes.length > 0 && (
