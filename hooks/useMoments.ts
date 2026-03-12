@@ -38,7 +38,7 @@ interface UseMomentsReturn {
   /** Create a new moment from an objective (returns immediately with pending placeholder) */
   createNewMoment: (objective: string, memories: Memory[]) => Promise<Moment | null>;
   /** Load synthesis for a moment (cache-aware, triggers re-synthesis if new notes) */
-  loadSynthesis: (moment: Moment, memories: Memory[]) => Promise<SynthesisResponse | null>;
+  loadSynthesis: (moment: Moment, memories: Memory[], signal?: AbortSignal) => Promise<SynthesisResponse | null>;
   /** Current synthesis loading state (moment ID or null) */
   synthesisLoading: string | null;
   /** Current moment creation loading state */
@@ -186,7 +186,7 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
 
   // Load synthesis (cache-aware; re-synthesizes if notes have changed)
   const loadSynthesis = useCallback(
-    async (moment: Moment, currentMemories: Memory[]): Promise<SynthesisResponse | null> => {
+    async (moment: Moment, currentMemories: Memory[], signal?: AbortSignal): Promise<SynthesisResponse | null> => {
       const currentHash = computeInputHash(moment.noteIds, currentMemories);
       const currentNoteIdSet = new Set(moment.noteIds);
 
@@ -227,7 +227,7 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
       setSynthesisLoading(moment.id);
       try {
         await submitResynthesis(moment, currentMemories);
-        const rawSynthesis = await pollSynthesisResult(moment.id);
+        const rawSynthesis = await pollSynthesisResult(moment.id, signal);
 
         // Filter out items referencing notes not in this moment.
         // This guards against a race where a concurrent synthesis request
@@ -248,6 +248,13 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
             currentNoteIdSet.has(id)
           ),
         };
+
+        // If this call was aborted (e.g. a note was deleted and a new
+        // loadSynthesis started), do not persist the result — a newer call
+        // with the correct noteIds is already in progress.
+        if (signal?.aborted) {
+          return null;
+        }
 
         const stored: MomentSynthesis = {
           momentId: moment.id,
