@@ -124,6 +124,9 @@ export interface EnrichmentData {
 
   // Calendar event detection (populated when date-based events are found)
   detectedEvents?: DetectedEvent[];
+
+  // Action item detection (populated when tasks/to-dos are found)
+  detectedActionItems?: DetectedActionItem[];
 }
 
 export type RecurrenceFrequency = 'daily' | 'weekly' | 'monthly' | 'yearly';
@@ -162,6 +165,26 @@ export interface CalendarEvent {
     endDate?: string;
   };
   occurrenceDate?: string;     // The specific date this occurrence represents
+}
+
+export interface DetectedActionItem {
+  title: string;
+  deadline?: string;           // ISO 8601 date — "2026-06-15" or "2026-06-15T16:00:00"
+  priority?: 'low' | 'medium' | 'high';
+}
+
+export interface TodoItem {
+  id: string;
+  memoryId: string;            // Source note that generated this item
+  title: string;
+  description?: string;        // Brief context from the note summary
+  deadline?: string;           // ISO 8601
+  priority: 'low' | 'medium' | 'high';
+  isCompleted: boolean;
+  completedAt?: number;        // Timestamp when marked done
+  createdAt: number;
+  updatedAt: number;
+  isDeleted?: boolean;         // Soft-delete for sync
 }
 
 export interface Attachment {

@@ -22,6 +22,7 @@ const MomentSheet = lazy(() => import('./components/MomentSheet'));
 const MomentCreationDialog = lazy(() => import('./components/MomentCreationDialog'));
 const AllMomentsSheet = lazy(() => import('./components/AllMomentsSheet'));
 const CalendarAgendaView = lazy(() => import('./components/CalendarAgendaView'));
+const TodoListView = lazy(() => import('./components/TodoListView'));
 
 import { useMemories } from './hooks/useMemories';
 import { useSettings } from './hooks/useSettings';
@@ -34,6 +35,7 @@ import { useAdaptiveSearch } from './hooks/useAdaptiveSearch';
 import { useHotkeys } from './hooks/useHotkeys';
 import { useMoments } from './hooks/useMoments';
 import { useCalendarEvents } from './hooks/useCalendarEvents';
+import { useTodoItems } from './hooks/useTodoItems';
 import useNativeOTA from './hooks/useNativeOTA';
 import { SyncProvider } from './context/SyncContext';
 import { reconcileEmbeddings, ReconcileReport, getMemories as getStoredMemories } from './services/storageService';
@@ -87,6 +89,8 @@ const AppContent: React.FC = () => {
     setOnNoteMatchedMoments,
     setOnEnrichmentCompleteCalendar,
     setOnCalendarEventsSync,
+    setOnEnrichmentCompleteTodo,
+    setOnTodoItemsSync,
   } = useMemories();
 
   const {
@@ -113,9 +117,19 @@ const AppContent: React.FC = () => {
     checkAndExpandHorizon,
   } = useCalendarEvents();
 
-  const [showCalendarAgenda, setShowCalendarAgenda] = useState(false);
+  const {
+    items: todoItems,
+    processDetectedActionItems,
+    removeItemsForMemory: removeTodoItemsForMemory,
+    toggleComplete: toggleTodoComplete,
+    refreshItems: refreshTodoItems,
+    pendingCount: todoPendingCount,
+  } = useTodoItems();
 
-  const { syncMoment, syncCalendarEvents } = useSync();
+  const [showCalendarAgenda, setShowCalendarAgenda] = useState(false);
+  const [showTodoList, setShowTodoList] = useState(false);
+
+  const { syncMoment, syncCalendarEvents, syncTodoItems } = useSync();
 
   // Wire up moments ref and callback for enrichment-time moment matching
   useEffect(() => {
@@ -135,6 +149,16 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     setOnCalendarEventsSync(syncCalendarEvents);
   }, [syncCalendarEvents, setOnCalendarEventsSync]);
+
+  // Wire up todo item extraction from enrichment
+  useEffect(() => {
+    setOnEnrichmentCompleteTodo(processDetectedActionItems);
+  }, [processDetectedActionItems, setOnEnrichmentCompleteTodo]);
+
+  // Wire up todo items sync callback
+  useEffect(() => {
+    setOnTodoItemsSync(syncTodoItems);
+  }, [syncTodoItems, setOnTodoItemsSync]);
 
   // Expand recurring event horizons on mount
   useEffect(() => {
@@ -168,6 +192,9 @@ const AppContent: React.FC = () => {
     setShowCalendarAgenda(true);
   }, []);
 
+  const handleTodoTap = useCallback(() => {
+    setShowTodoList(true);
+  }, []);
 
   const handleShowAllMoments = useCallback(() => {
     setShowAllMoments(true);
@@ -217,14 +244,15 @@ const AppContent: React.FC = () => {
   }, [createNewMoment, memories]);
 
   const handleFullRefresh = useCallback(async () => {
-      const [, , , report] = await Promise.all([
+      const [, , , , report] = await Promise.all([
         refreshMemories(),
         refreshMoments(),
         refreshEvents(),
+        refreshTodoItems(),
         reconcileEmbeddings(),
       ]);
       setReconcileReport(report);
-  }, [refreshMemories, refreshMoments, refreshEvents]);
+  }, [refreshMemories, refreshMoments, refreshEvents, refreshTodoItems]);
 
   const syncRef = useRef(sync);
   const refreshRef = useRef(handleFullRefresh);
@@ -376,6 +404,8 @@ const AppContent: React.FC = () => {
     const handleBackButton = ({ canGoBack }: { canGoBack: boolean }) => {
       if (viewingGallery) {
         setViewingGallery(null);
+      } else if (showTodoList) {
+        setShowTodoList(false);
       } else if (showCalendarAgenda) {
         setShowCalendarAgenda(false);
       } else if (activeMoment) {
@@ -406,7 +436,7 @@ const AppContent: React.FC = () => {
       // Since addListener is async in some versions, but usually returns PluginListenerHandle
       listener.then(handle => handle.remove()).catch(e => console.error(e));
     };
-  }, [viewingGallery, expandedMemory, isSettingsOpen, editingMemory, isCaptureOpen, view, activeMoment, showAllMoments, showCalendarAgenda, handleCaptureClose, handleEditClose]);
+  }, [viewingGallery, expandedMemory, isSettingsOpen, editingMemory, isCaptureOpen, view, activeMoment, showAllMoments, showCalendarAgenda, showTodoList, handleCaptureClose, handleEditClose]);
 
   useEffect(() => {
     if (shareData) {
@@ -496,9 +526,14 @@ const AppContent: React.FC = () => {
         syncCalendarEvents(tombstones).catch(err => console.error('[Calendar] Failed to sync deleted events:', err));
       }
     }).catch(err => console.error('[Calendar] Failed to remove events for memory:', err));
+    removeTodoItemsForMemory(id).then(tombstones => {
+      if (tombstones.length > 0) {
+        syncTodoItems(tombstones).catch(err => console.error('[Todo] Failed to sync deleted items:', err));
+      }
+    }).catch(err => console.error('[Todo] Failed to remove items for memory:', err));
     logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_DELETED);
     if (expandedMemory?.id === id) setExpandedMemory(null);
-  }, [handleDelete, expandedMemory, deleteNoteFromIndex, removeNoteFromMoments, removeEventsForMemory, syncCalendarEvents]);
+  }, [handleDelete, expandedMemory, deleteNoteFromIndex, removeNoteFromMoments, removeEventsForMemory, syncCalendarEvents, removeTodoItemsForMemory, syncTodoItems]);
 
   const handleRetryMemory = useCallback((id: string) => {
     handleRetry(id);
@@ -694,6 +729,8 @@ const AppContent: React.FC = () => {
             onShowAll={handleShowAllMoments}
             onCalendarTap={handleCalendarTap}
             calendarEventCount={calendarUpcomingCount}
+            onTodoTap={handleTodoTap}
+            todoPendingCount={todoPendingCount}
             synthesisLoading={synthesisLoading}
           />
 
@@ -854,6 +891,29 @@ const AppContent: React.FC = () => {
             events={calendarEvents}
             memories={memories}
             onClose={() => setShowCalendarAgenda(false)}
+            onViewAttachment={handleViewAttachment}
+            onDelete={handleDeleteMemory}
+            onEdit={handleEditMemory}
+            onTogglePin={handleTogglePin}
+          />
+        </Suspense>
+      )}
+
+      {showTodoList && (
+        <Suspense fallback={null}>
+          <TodoListView
+            items={todoItems}
+            memories={memories}
+            onClose={() => setShowTodoList(false)}
+            onToggleComplete={(itemId) => {
+              toggleTodoComplete(itemId).then(updated => {
+                if (updated) {
+                  syncTodoItems([updated]).catch(err =>
+                    console.error('[Todo] Failed to sync toggled item:', err)
+                  );
+                }
+              });
+            }}
             onViewAttachment={handleViewAttachment}
             onDelete={handleDeleteMemory}
             onEdit={handleEditMemory}

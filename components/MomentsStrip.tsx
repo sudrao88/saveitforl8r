@@ -6,7 +6,7 @@
  */
 
 import React from 'react';
-import { Sparkles, ChevronRight, Calendar } from 'lucide-react';
+import { Sparkles, ChevronRight, Calendar, CheckSquare } from 'lucide-react';
 import MomentBubble from './MomentBubble';
 import { Moment } from '../types';
 import { text, layout } from '../styles/design-system';
@@ -18,6 +18,8 @@ interface MomentsStripProps {
   onShowAll: () => void;
   onCalendarTap: () => void;
   calendarEventCount: number;
+  onTodoTap: () => void;
+  todoPendingCount: number;
   synthesisLoading?: string | null;
 }
 
@@ -28,6 +30,8 @@ const MomentsStrip: React.FC<MomentsStripProps> = ({
   onShowAll,
   onCalendarTap,
   calendarEventCount,
+  onTodoTap,
+  todoPendingCount,
   synthesisLoading,
 }) => {
   return (
@@ -59,6 +63,22 @@ const MomentsStrip: React.FC<MomentsStripProps> = ({
           </span>
           <span className="text-xs text-gray-500 leading-tight">
             {calendarEventCount} event{calendarEventCount !== 1 ? 's' : ''}
+          </span>
+        </button>
+
+        {/* Todo List bubble — third in strip */}
+        <button
+          onClick={onTodoTap}
+          className="flex flex-col items-center gap-1.5 shrink-0 group touch-manipulation"
+        >
+          <div className="w-16 h-16 rounded-full flex items-center justify-center bg-green-600/20 border-2 border-green-500/40 ring-2 ring-green-500/30 transition-all group-hover:ring-green-400 group-hover:bg-green-600/30 group-active:scale-95">
+            <CheckSquare size={22} className="text-green-400" />
+          </div>
+          <span className="text-xs font-semibold text-green-400 leading-tight text-center">
+            To Do
+          </span>
+          <span className="text-xs text-gray-500 leading-tight">
+            {todoPendingCount} task{todoPendingCount !== 1 ? 's' : ''}
           </span>
         </button>
 
