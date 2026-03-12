@@ -1,5 +1,6 @@
 import React from 'react';
 import { Bold, Italic, Underline, Heading1, Heading2 } from 'lucide-react';
+import { btn } from '../styles/design-system';
 
 interface FormattingToolbarProps {
   activeFormats: string[];
@@ -17,7 +18,7 @@ const ToolbarButton: React.FC<{
   <button
     onClick={onClick}
     onMouseDown={(e) => e.preventDefault()}
-    className={`${compact ? 'p-2 rounded-lg' : 'p-2.5 rounded-xl'} transition-colors active:scale-95 shrink-0 ${isActive ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`}
+    className={`${compact ? btn.icon : btn.iconLg} shrink-0 ${isActive ? 'bg-blue-600 text-white hover:bg-blue-600 hover:text-white' : ''}`}
     title={title}
   >
     {children}

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { X, Send, BrainCircuit, ExternalLink, Bot, Sparkles, WifiOff, Download, FileText } from 'lucide-react';
 import { Memory, Attachment, ChatMessage } from '../types';
 import MemoryCard from './MemoryCard';
+import { overlay } from '../styles/design-system';
 
 interface ChatInterfaceProps {
   memories: Memory[];
@@ -172,14 +173,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
 
   return (
     <>
-    <div className="fixed inset-0 z-[60] bg-black" aria-hidden="true" style={{ height: '100vh', touchAction: 'none' }} />
+    <div className="fixed inset-0 z-(--z-modal) bg-black" aria-hidden="true" style={{ height: '100vh', touchAction: 'none' }} />
 
     <div
-        className="fixed left-0 right-0 z-[61] flex flex-col overflow-hidden bg-black"
+        className="fixed left-0 right-0 z-(--z-modal) flex flex-col overflow-hidden bg-black"
         style={{ height: viewport.height, top: viewport.top }}
     >
       {/* Header */}
-      <div className="flex-none border-b border-gray-800 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] flex items-center justify-between bg-black z-10 shadow-sm shrink-0">
+      <div className="flex-none border-b border-gray-800 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] flex items-center justify-between bg-black z-(--z-sticky) shadow-sm shrink-0">
         <div className="flex items-center gap-2">
             <BrainCircuit size={24} className="text-blue-500" />
             <h2 className="text-lg font-bold text-gray-100">Brain Search</h2>
@@ -214,7 +215,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
             }`}>
               {msg.isOffline && (
                 <div className="flex items-center mb-1">
-                   <span className="flex items-center gap-1 text-[10px] uppercase font-bold text-yellow-500/80 mb-1">
+                   <span className="flex items-center gap-1 text-xs uppercase font-bold text-yellow-500/80 mb-1">
                       <WifiOff size={10} /> Offline Mode
                    </span>
                 </div>
@@ -226,7 +227,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
               {/* Citations */}
               {msg.sources && msg.sources.length > 0 && (
                 <div className="mt-4 pt-3 border-t border-gray-700/50">
-                    <p className="text-[10px] font-black uppercase text-gray-500 mb-2 tracking-widest">
+                    <p className="text-xs font-black uppercase text-gray-500 mb-2 tracking-widest">
                         {msg.isOffline ? 'Relevant Notes' : 'Sources'}
                     </p>
                     <div className="grid grid-cols-1 gap-2">
@@ -243,10 +244,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
                                         <img src={mem.image} className="w-8 h-8 rounded-md object-cover bg-gray-800 border border-gray-800" alt="" />
                                     )}
                                     <div className="flex-1 overflow-hidden min-w-0">
-                                        <p className="text-[10px] font-bold text-gray-200 truncate">
+                                        <p className="text-xs font-bold text-gray-200 truncate">
                                             {source.preview || mem.enrichment?.summary || mem.content || "Memory Entry"}
                                         </p>
-                                        <p className="text-[9px] text-gray-500">{(() => { const d = new Date(mem.timestamp); return isNaN(d.getTime()) ? 'Unknown date' : d.toLocaleDateString(); })()}</p>
+                                        <p className="text-xs text-gray-500">{(() => { const d = new Date(mem.timestamp); return isNaN(d.getTime()) ? 'Unknown date' : d.toLocaleDateString(); })()}</p>
                                     </div>
                                     <ExternalLink size={12} className="text-gray-600 group-hover:text-blue-400 shrink-0 mx-1" />
                                 </button>
@@ -272,7 +273,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
 
       {/* Input Area */}
       <div 
-        className="flex-none w-full bg-black border-t border-gray-800 shrink-0 z-20"
+        className="flex-none w-full bg-black border-t border-gray-800 shrink-0 z-(--z-dropdown)"
         style={{ 
             paddingBottom: 'max(1rem, env(safe-area-inset-bottom))',
             paddingTop: '1rem',
@@ -307,7 +308,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
       {/* Memory Preview Modal */}
       {previewMemory && (
           <div
-            className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
+            className={`${overlay.previewBackdrop}`}
             onClick={() => setPreviewMemoryId(null)}
           >
               <div className="relative w-full max-w-lg max-h-[80vh] flex flex-col animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
@@ -323,7 +324,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
                   </div>
                   <button
                     onClick={() => setPreviewMemoryId(null)}
-                    className="mt-4 w-full py-3 bg-gray-800 text-white rounded-xl font-bold shadow-xl border border-gray-700 text-sm active:scale-95 shrink-0"
+                    className={overlay.previewCloseBtn}
                   >
                       Close Preview
                   </button>

@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { CalendarEvent, Memory, Attachment } from '../types';
 import MemoryCard from './MemoryCard';
+import { overlay } from '../styles/design-system';
 
 interface CalendarAgendaViewProps {
   events: CalendarEvent[];
@@ -193,7 +194,7 @@ const EventCard: React.FC<{
         <div className="flex flex-col items-end gap-1.5 shrink-0">
           {/* Status badge */}
           <span
-            className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${
+            className={`text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${
               statusColors[event.status] || statusColors.confirmed
             }`}
           >
@@ -201,7 +202,7 @@ const EventCard: React.FC<{
           </span>
           {/* Recurrence indicator */}
           {event.recurringGroupId && (
-            <span className="flex items-center gap-1 text-[10px] text-blue-400">
+            <span className="flex items-center gap-1 text-xs text-blue-400">
               <Repeat size={10} />
               {event.recurrenceRule?.frequency}
             </span>
@@ -256,13 +257,13 @@ const CalendarAgendaView: React.FC<CalendarAgendaViewProps> = ({
   );
 
   return (
-    <div className="fixed inset-0 z-[100] bg-gray-950/95 backdrop-blur-md flex flex-col animate-in fade-in duration-300">
+    <div className={`${overlay.sheet}`}>
       {/* Header */}
-      <div className="sticky top-0 z-10 px-4 py-3 border-b border-gray-800 flex items-center justify-between bg-gray-950/80 backdrop-blur-xl pt-[env(safe-area-inset-top)]">
+      <div className={overlay.sheetHeader}>
         <div className="flex items-center gap-3">
           <button
             onClick={onClose}
-            className="p-3 -ml-3 rounded-full hover:bg-gray-800 text-gray-400 hover:text-white transition-colors active:scale-95"
+            className={overlay.closeBtn}
           >
             <X size={24} />
           </button>
@@ -324,7 +325,7 @@ const CalendarAgendaView: React.FC<CalendarAgendaViewProps> = ({
       {/* Memory Preview Modal */}
       {previewMemory && (
         <div
-          className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
+          className={overlay.previewBackdrop}
           onClick={() => setPreviewMemoryId(null)}
         >
           <div className="relative w-full max-w-lg max-h-[80vh] flex flex-col animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
@@ -340,7 +341,7 @@ const CalendarAgendaView: React.FC<CalendarAgendaViewProps> = ({
             </div>
             <button
               onClick={() => setPreviewMemoryId(null)}
-              className="mt-4 w-full py-3 bg-gray-800 text-white rounded-xl font-bold shadow-xl border border-gray-700 text-sm active:scale-95 shrink-0"
+              className={overlay.previewCloseBtn}
             >
               Close Preview
             </button>

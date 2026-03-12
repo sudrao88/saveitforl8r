@@ -7,6 +7,7 @@ import { processFileInputs } from '../utils/attachmentUtils';
 import { triggerHaptic } from '../services/platform';
 import FormattingToolbar from './FormattingToolbar';
 import TagInput from './TagInput';
+import { btn, zIndex } from '../styles/design-system';
 
 // Configure marked for clean output
 marked.setOptions({ breaks: true, gfm: true });
@@ -366,7 +367,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
   return (
     <div
       ref={containerRef}
-      className={`${keyboardHeight > 0 ? 'fixed left-0 right-0' : 'sticky'} bottom-0 z-[60] px-3 pb-3 pt-1 lg:w-[34%] lg:mx-auto transition-[bottom] duration-200 ease-out`}
+      className={`${keyboardHeight > 0 ? 'fixed left-0 right-0' : 'sticky'} bottom-0 z-(--z-modal) px-3 pb-3 pt-1 lg:w-[34%] lg:mx-auto transition-[bottom] duration-(--duration-fast) ease-out`}
       style={{
         paddingBottom: keyboardHeight > 0 ? '0.75rem' : 'max(0.75rem, env(safe-area-inset-bottom))',
         bottom: keyboardHeight > 0 ? `${keyboardHeight}px` : undefined,
@@ -378,7 +379,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
           <div className="px-4 pt-3 pb-1">
             <div className="flex gap-2 overflow-x-auto no-scrollbar">
               {attachments.map((att) => (
-                <div key={att.id} className="relative shrink-0 animate-in zoom-in-90 duration-200">
+                <div key={att.id} className="relative shrink-0 animate-in zoom-in-90 duration-(--duration-fast)">
                   {att.type === 'image' ? (
                     <div className="w-12 h-12 rounded-xl overflow-hidden border border-gray-700 bg-black/50">
                       <img src={att.data} alt="preview" className="w-full h-full object-cover" />
@@ -386,7 +387,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
                   ) : (
                     <div className="w-12 h-12 rounded-xl border border-gray-700 bg-gray-800/50 flex flex-col items-center justify-center">
                       <FileText size={16} className="text-gray-400" />
-                      <span className="text-[8px] text-gray-500 w-full truncate px-1 text-center">{att.name}</span>
+                      <span className="text-xs text-gray-500 w-full truncate px-1 text-center">{att.name}</span>
                     </div>
                   )}
                   <button
@@ -403,14 +404,14 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
 
         {/* Tag section */}
         {showTags && (
-          <div className="px-4 pt-3 pb-1 animate-in slide-in-from-bottom-2 duration-200">
+          <div className="px-4 pt-3 pb-1 animate-in slide-in-from-bottom-2 duration-(--duration-fast)">
             <TagInput tags={tags} onTagsChange={setTags} compact />
           </div>
         )}
 
         {/* Formatting toolbar */}
         {showFormatting && (
-          <div className="px-4 pt-3 pb-1 animate-in slide-in-from-bottom-2 duration-200">
+          <div className="px-4 pt-3 pb-1 animate-in slide-in-from-bottom-2 duration-(--duration-fast)">
             <FormattingToolbar activeFormats={activeFormats} onFormat={execFormat} compact />
           </div>
         )}
@@ -420,7 +421,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
           {isChecklistMode ? (
             <div className="w-full max-h-[10em] overflow-y-auto bg-gray-800 rounded-xl px-3 py-2.5 border border-gray-700 space-y-2">
               {checklistItems.map((item) => (
-                <div key={item.id} className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2 duration-200">
+                <div key={item.id} className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2 duration-(--duration-fast)">
                   <div
                     className="shrink-0 cursor-pointer p-0.5"
                     onClick={() => toggleChecklistItemChecked(item.id)}
@@ -491,7 +492,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
           <button
             onClick={() => fileInputRef.current?.click()}
             onMouseDown={(e) => e.preventDefault()}
-            className="p-2.5 rounded-xl text-gray-400 hover:text-white hover:bg-gray-800 transition-colors active:scale-95"
+            className={`${btn.iconLg} hover:bg-gray-800`}
             title="Add attachment"
           >
             <Paperclip size={20} />
@@ -508,7 +509,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
           <button
             onClick={() => setShowTags(prev => !prev)}
             onMouseDown={(e) => e.preventDefault()}
-            className={`p-2.5 rounded-xl transition-colors active:scale-95 ${showTags ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
+            className={`${btn.iconLg} ${showTags ? 'bg-blue-600 text-white' : 'hover:bg-gray-800'}`}
             title="Tags"
           >
             <Hash size={20} />
@@ -518,7 +519,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
             <button
               onClick={() => setShowFormatting(prev => !prev)}
               onMouseDown={(e) => e.preventDefault()}
-              className={`p-2.5 rounded-xl transition-colors active:scale-95 ${showFormatting ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
+              className={`${btn.iconLg} ${showFormatting ? 'bg-blue-600 text-white' : 'hover:bg-gray-800'}`}
               title="Formatting"
             >
               <Type size={20} />
@@ -528,7 +529,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
           <button
             onClick={toggleChecklistMode}
             onMouseDown={(e) => e.preventDefault()}
-            className={`p-2.5 rounded-xl transition-colors active:scale-95 ${isChecklistMode ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
+            className={`${btn.iconLg} ${isChecklistMode ? 'bg-blue-600 text-white' : 'hover:bg-gray-800'}`}
             title="Checklist Mode"
           >
             <CheckSquare size={20} />
@@ -537,7 +538,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
           <button
             onClick={handleExpand}
             onMouseDown={(e) => e.preventDefault()}
-            className="p-2.5 rounded-xl text-gray-400 hover:text-white hover:bg-gray-800 transition-colors active:scale-95"
+            className={`${btn.iconLg} hover:bg-gray-800`}
             title="Expand to full editor"
           >
             <Maximize2 size={20} />

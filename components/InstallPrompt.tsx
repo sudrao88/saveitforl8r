@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Share, X } from 'lucide-react';
 import { Logo } from './icons';
+import { btn } from '../styles/design-system';
 
 export const InstallPrompt = () => {
   const [showPrompt, setShowPrompt] = useState(false);
@@ -60,12 +61,12 @@ export const InstallPrompt = () => {
   if (!showPrompt) return null;
 
   return (
-    <div className="bg-gray-800 border-b border-gray-700 relative z-50">
+    <div className="bg-gray-800 border-b border-gray-700 relative z-(--z-overlay)">
       {showInstructions ? (
          <div className="p-4 bg-gray-800 animate-in fade-in slide-in-from-top-2">
             <div className="flex items-start justify-between mb-3">
                 <span className="text-white font-medium text-sm">Install Instructions</span>
-                <button onClick={() => setShowInstructions(false)} className="text-gray-400 hover:text-white">
+                <button onClick={() => setShowInstructions(false)} className={btn.icon}>
                     <X size={18} />
                 </button>
             </div>
@@ -83,7 +84,7 @@ export const InstallPrompt = () => {
          </div>
       ) : (
         <div className="flex items-center p-3 gap-3">
-            <button onClick={dismiss} className="text-gray-400 hover:text-white p-1 -ml-1">
+            <button onClick={dismiss} className={`${btn.icon} -ml-1`}>
                 <X size={18} />
             </button>
             <div className="shrink-0 w-10 h-10 rounded-lg overflow-hidden bg-gray-900 flex items-center justify-center">
@@ -93,9 +94,9 @@ export const InstallPrompt = () => {
                 <h3 className="text-white font-medium text-sm leading-tight truncate">SaveItForL8R</h3>
                 <p className="text-gray-400 text-xs leading-tight truncate">Personal Second Brain</p>
             </div>
-            <button 
+            <button
                 onClick={handleInstall}
-                className="shrink-0 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-xs font-bold px-4 py-1.5 rounded-full transition-colors"
+                className={`${btn.base} ${btn.primary} shrink-0 text-xs px-4 py-1.5 rounded-full`}
             >
                 {deferredPrompt ? 'Install' : 'Get'}
             </button>

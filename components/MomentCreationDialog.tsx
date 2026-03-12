@@ -7,6 +7,7 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { X, Loader2, Sparkles } from 'lucide-react';
+import { btn, overlay } from '../styles/design-system';
 
 interface MomentCreationDialogProps {
   isOpen: boolean;
@@ -57,7 +58,7 @@ const MomentCreationDialog: React.FC<MomentCreationDialogProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center">
+    <div className="fixed inset-0 z-(--z-toast) flex items-end sm:items-center justify-center">
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
@@ -65,7 +66,7 @@ const MomentCreationDialog: React.FC<MomentCreationDialogProps> = ({
       />
 
       {/* Dialog */}
-      <div className="relative w-full max-w-lg mx-4 mb-4 sm:mb-0 bg-gray-900 border border-gray-700/50 rounded-2xl shadow-2xl animate-in slide-in-from-bottom duration-300">
+      <div className={`relative w-full max-w-lg mx-4 mb-4 sm:mb-0 ${overlay.modal} animate-in slide-in-from-bottom duration-(--duration-normal)`}>
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
           <div className="flex items-center gap-2">
@@ -114,7 +115,7 @@ const MomentCreationDialog: React.FC<MomentCreationDialogProps> = ({
           <button
             onClick={handleSubmit}
             disabled={!objective.trim() || isCreating}
-            className="px-5 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition-colors active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            className={`${btn.base} ${btn.primary} px-5 py-2 text-sm flex items-center gap-2 disabled:cursor-not-allowed`}
           >
             {isCreating ? (
               <>

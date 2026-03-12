@@ -582,7 +582,7 @@ const AppContent: React.FC = () => {
 
   if (isLoading) {
     return (
-        <div className="fixed inset-0 bg-black z-[9999] flex flex-col items-center justify-center">
+        <div className="fixed inset-0 bg-black z-(--z-tooltip) flex flex-col items-center justify-center">
             <Logo className="w-20 h-20 mb-6 animate-pulse" />
             <div className="flex gap-1.5 items-center">
                 <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
@@ -673,7 +673,7 @@ const AppContent: React.FC = () => {
       {/* Main UI — hidden when MomentCreationDialog is open */}
       {!showCreateMoment ? (
         <>
-          <div ref={topNavRef} className="sticky top-0 z-[50] bg-black/90 backdrop-blur-md border-b border-gray-800/50 pt-[env(safe-area-inset-top)]">
+          <div ref={topNavRef} className="sticky top-0 z-(--z-overlay) bg-black/90 backdrop-blur-md border-b border-gray-800/50 pt-[env(safe-area-inset-top)]">
               <TopNavigation
                 setView={handleSetView}
                 resetFilters={handleResetFilters}
@@ -698,7 +698,7 @@ const AppContent: React.FC = () => {
           />
 
           {availableTypes.length > 0 && (
-            <div className="sticky z-[49] bg-black/90 backdrop-blur-md border-b border-gray-800/50" style={{ top: `${topNavHeight}px` }}>
+            <div className="sticky z-(--z-dropdown) bg-black/90 backdrop-blur-md border-b border-gray-800/50" style={{ top: `${topNavHeight}px` }}>
               <FilterBar
                 availableTypes={availableTypes}
                 filterType={filterType}
@@ -708,7 +708,7 @@ const AppContent: React.FC = () => {
             </div>
           )}
 
-          <main className="flex-1 p-4 sm:p-8 pb-24 max-w-7xl mx-auto w-full relative z-[40]">
+          <main className="flex-1 p-4 sm:p-8 pb-24 max-w-7xl mx-auto w-full relative z-(--z-dropdown)">
             {filteredMemories.length === 0 ? (
               <EmptyState
                 hasMemories={memories.length > 0}
@@ -742,7 +742,7 @@ const AppContent: React.FC = () => {
         <>
           {/* Overlay for MomentCreationDialog */}
           <div
-            className="fixed inset-0 z-[55] bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
+            className="fixed inset-0 z-(--z-overlay) bg-black/60 backdrop-blur-sm animate-in fade-in duration-(--duration-fast)"
             aria-hidden
           />
           {/* Spacer to maintain layout when main content is hidden for moment creation */}
@@ -751,7 +751,7 @@ const AppContent: React.FC = () => {
       )}
 
       {liveExpandedMemory && (
-        <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-md flex flex-col animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-(--z-sheet) bg-black/90 backdrop-blur-md flex flex-col animate-in fade-in duration-(--duration-normal)">
           <div className="sticky top-0 z-10 px-4 py-3 border-b border-gray-800 flex items-center justify-between bg-black/50 backdrop-blur-xl pt-[env(safe-area-inset-top)]">
              <div className="flex items-center gap-3">
                 <button onClick={() => setExpandedMemory(null)} className="p-3 -ml-3 rounded-full hover:bg-gray-800 text-gray-400 hover:text-white transition-colors active:scale-95">
@@ -863,13 +863,13 @@ const AppContent: React.FC = () => {
       )}
 
       {momentError && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[200] bg-red-900/90 border border-red-700/50 text-red-200 px-4 py-3 rounded-xl text-sm font-medium shadow-lg animate-in fade-in slide-in-from-top-2 duration-300 max-w-sm text-center backdrop-blur-md">
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-(--z-toast) bg-red-900/90 border border-red-700/50 text-red-200 px-4 py-3 rounded-xl text-sm font-medium shadow-lg animate-in fade-in slide-in-from-top-2 duration-(--duration-normal) max-w-sm text-center backdrop-blur-md">
           {momentError}
         </div>
       )}
 
       {isOtaDownloading && (
-        <div className="fixed inset-0 z-[9999] bg-black/95 backdrop-blur-md flex flex-col items-center justify-center gap-6">
+        <div className="fixed inset-0 z-(--z-tooltip) bg-black/95 backdrop-blur-md flex flex-col items-center justify-center gap-6">
           <Logo className="w-16 h-16 text-blue-500" />
           <div className="flex flex-col items-center gap-3">
             <RefreshCw size={32} className="text-blue-400 animate-spin" />

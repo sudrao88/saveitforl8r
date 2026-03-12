@@ -1,6 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { ChevronDown, Check } from 'lucide-react';
+import { text, zIndex } from '../styles/design-system';
 
 interface MultiSelectProps {
   label: string;
@@ -43,7 +44,7 @@ const MultiSelect: React.FC<MultiSelectProps> = ({ label, options, selected, onC
 
   return (
     <div className="relative" ref={containerRef}>
-      <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">{label}</label>
+      <label className={`block ${text.label} mb-1`}>{label}</label>
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="w-full bg-gray-800 text-left text-white text-sm rounded-lg px-3 py-2 border border-gray-600 focus:border-blue-500 outline-none flex justify-between items-center hover:bg-gray-750 transition-colors"
@@ -59,7 +60,7 @@ const MultiSelect: React.FC<MultiSelectProps> = ({ label, options, selected, onC
       </button>
 
       {isOpen && (
-        <div className="absolute z-50 w-full mt-1 bg-gray-800 border border-gray-600 rounded-lg shadow-xl max-h-60 overflow-y-auto overflow-x-hidden">
+        <div className={`absolute ${zIndex.overlay} w-full mt-1 bg-gray-800 border border-gray-600 rounded-lg shadow-xl max-h-60 overflow-y-auto overflow-x-hidden`}>
           {options.length > 0 && (
              <div 
                 onClick={handleSelectAll}

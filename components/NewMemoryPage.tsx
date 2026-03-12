@@ -8,6 +8,7 @@ import { escapeHtml, looksLikeMarkdown, parseChecklistMarkdown, sanitizePastedHt
 import { processFileInputs } from '../utils/attachmentUtils';
 import FormattingToolbar from './FormattingToolbar';
 import TagInput from './TagInput';
+import { btn, overlay } from '../styles/design-system';
 
 interface NewMemoryPageProps {
   onClose: () => void;
@@ -479,7 +480,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
   const hasContent = !isEmpty || attachments.length > 0 || (isChecklistMode && checklistItems.some(item => item.text.trim()));
 
   return (
-    <div className="fixed inset-0 bg-black flex flex-col z-50" dir="ltr">
+    <div className="fixed inset-0 bg-black flex flex-col z-(--z-overlay)" dir="ltr">
         {/* Header */}
         <div className="shrink-0 bg-black/90 backdrop-blur-md border-b border-gray-800 px-4 py-3 flex items-center justify-between pt-[calc(env(safe-area-inset-top)+12px)]">
             <div className="flex items-center gap-3">
@@ -513,7 +514,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                 {isChecklistMode ? (
                     <div className="space-y-3">
                         {checklistItems.map((item, index) => (
-                            <div key={item.id} className="flex items-center gap-3 animate-in fade-in slide-in-from-left-2 duration-200">
+                            <div key={item.id} className="flex items-center gap-3 animate-in fade-in slide-in-from-left-2 duration-(--duration-fast)">
                                 <div
                                     className="shrink-0 text-gray-500 cursor-pointer p-1 -m-1"
                                     onClick={() => setChecklistItems(prev => prev.map(i => i.id === item.id ? { ...i, checked: !i.checked } : i))}
@@ -588,7 +589,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                 <div className="px-4 pt-3 pb-1">
                     <div className="flex gap-2 overflow-x-auto no-scrollbar">
                         {attachments.map((att) => (
-                            <div key={att.id} className="relative shrink-0 animate-in zoom-in-90 duration-200">
+                            <div key={att.id} className="relative shrink-0 animate-in zoom-in-90 duration-(--duration-fast)">
                                 {att.type === 'image' ? (
                                     <div className="w-14 h-14 rounded-xl overflow-hidden border border-gray-700 bg-black/50">
                                         <img src={att.data} alt="preview" className="w-full h-full object-cover" />
@@ -596,7 +597,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                                 ) : (
                                     <div className="w-14 h-14 rounded-xl border border-gray-700 bg-gray-800/50 flex flex-col items-center justify-center">
                                         <FileText size={18} className="text-gray-400" />
-                                        <span className="text-[8px] text-gray-500 w-full truncate px-1 text-center">{att.name}</span>
+                                        <span className="text-xs text-gray-500 w-full truncate px-1 text-center">{att.name}</span>
                                     </div>
                                 )}
                                 <button
@@ -613,14 +614,14 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
 
             {/* Tag section (expandable) */}
             {showTags && (
-                <div className="px-4 pt-3 pb-1 animate-in slide-in-from-bottom-2 duration-200">
+                <div className="px-4 pt-3 pb-1 animate-in slide-in-from-bottom-2 duration-(--duration-fast)">
                     <TagInput tags={tags} onTagsChange={setTags} compact />
                 </div>
             )}
 
             {/* Formatting toolbar (expandable) */}
             {showFormatting && !isChecklistMode && (
-                <div className="px-4 pt-3 pb-1 animate-in slide-in-from-bottom-2 duration-200">
+                <div className="px-4 pt-3 pb-1 animate-in slide-in-from-bottom-2 duration-(--duration-fast)">
                     <FormattingToolbar activeFormats={activeFormats} onFormat={handleFormat} compact />
                 </div>
             )}
@@ -710,8 +711,8 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
 
         {/* Discard Changes Confirmation Dialog */}
         {showDiscardConfirm && (
-            <div className="fixed inset-0 z-[100] bg-gray-950/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
-                <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 max-w-sm w-full shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="fixed inset-0 z-(--z-sheet) bg-gray-950/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-(--duration-fast)">
+                <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 max-w-sm w-full shadow-2xl animate-in zoom-in-95 duration-(--duration-fast)">
                     <div className="flex flex-col items-center text-center">
                         <div className="w-16 h-16 bg-amber-900/30 rounded-full flex items-center justify-center mb-4">
                             <AlertTriangle size={32} className="text-amber-500" />
