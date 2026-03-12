@@ -82,5 +82,99 @@ The client-side React application uses Vite to inject environment variables at b
 - **Client Secret in Bundle**: `VITE_GOOGLE_CLIENT_SECRET` is embedded in the client-side JavaScript at build time. This is an accepted risk because Google treats web client secrets as non-confidential when used with PKCE. The secret alone cannot be used to impersonate users. A future Backend-for-Frontend (BFF) refactor could move token exchange to the proxy server.
 - **Query Endpoint Privacy**: The `/api/query` endpoint requires decrypted memories to be sent to the server for AI-powered search. The proxy temporarily has access to plaintext content during request processing. This is architecturally necessary for the feature.
 
+## Design System
+
+All UI components must follow these design standards. The source of truth is:
+- **Tokens**: `index.css` `@theme` block (CSS custom properties)
+- **Style constants**: `styles/design-system.ts` (reusable class strings)
+
+### Color Palette
+
+| Token | Value | Usage |
+|-------|-------|-------|
+| `--color-surface-base` | `#000000` | App background |
+| `--color-surface-raised` | `#1f2937` | Cards, inputs, elevated surfaces |
+| `--color-surface-overlay` | `#030712` | Modals, sheets, overlays |
+| `--color-border-default` | `#374151` | Standard borders |
+| `--color-border-subtle` | `rgba(55,65,81,0.3)` | Card borders, subtle dividers |
+| `--color-text-primary` | `#f3f4f6` | Headings, primary text |
+| `--color-text-secondary` | `#9ca3af` | Body text, secondary labels |
+| `--color-text-tertiary` | `#6b7280` | Captions, timestamps, muted text |
+| `--color-accent` | `#2563eb` | Primary actions, links, active states |
+| `--color-accent-hover` | `#3b82f6` | Hover state for accent |
+| `--color-accent-muted` | `rgba(37,99,235,0.2)` | Accent backgrounds |
+| `--color-danger` | `#dc2626` | Delete, errors |
+| `--color-success` | `#22c55e` | Success states |
+| `--color-warning` | `#f59e0b` | Warnings |
+
+Content-specific colors (enrichment icons, status badges) may use Tailwind palette colors directly, but core UI surfaces and text must use semantic tokens.
+
+### Typography
+
+Allowed text sizes: `text-xs`, `text-sm`, `text-base`, `text-lg`, `text-xl`, `text-2xl`, `text-3xl`. **Never use arbitrary values** like `text-[10px]` or `text-[11px]` — use `text-xs` instead.
+
+### Spacing
+
+Preferred scale: `1`, `1.5`, `2`, `3`, `4`, `6`, `8`. Avoid `2.5` except for button padding (`py-2.5`).
+
+### Border Radius
+
+| Token | Value | Usage |
+|-------|-------|-------|
+| `--radius-sm` | `0.375rem` | Chips, tags, small badges |
+| `--radius-md` | `0.5rem` | List items, inline elements |
+| `--radius-lg` | `0.75rem` | Buttons, inputs |
+| `--radius-xl` | `1rem` | Cards, modals, sheets |
+| `--radius-full` | `9999px` | Pills, avatars, circular buttons |
+
+### Z-Index Layers
+
+| Token | Value | Usage |
+|-------|-------|-------|
+| `--z-sticky` | `10` | Sticky headers, toolbars |
+| `--z-dropdown` | `30` | Dropdowns, popovers |
+| `--z-overlay` | `50` | Lightweight overlays, install bars |
+| `--z-modal` | `60` | Modal dialogs |
+| `--z-sheet` | `70` | Full-screen sheets, chat |
+| `--z-toast` | `80` | Toast notifications |
+| `--z-tooltip` | `90` | Tooltips |
+
+**Never use arbitrary z-index values** like `z-[55]` or `z-[9999]`. Always use named tokens.
+
+### Transition Durations
+
+| Token | Value | Usage |
+|-------|-------|-------|
+| `--duration-fast` | `150ms` | Hover states, color changes |
+| `--duration-normal` | `250ms` | Expanding panels, layout shifts |
+| `--duration-slow` | `400ms` | Page transitions, complex animations |
+
+### Component Patterns
+
+Import from `styles/design-system.ts`:
+
+```tsx
+import { btn, card, overlay, text, chip, menu, zIndex } from '../styles/design-system';
+```
+
+- **Buttons**: `${btn.base} ${btn.primary}` / `btn.secondary` / `btn.ghost` / `btn.danger` / `btn.icon`
+- **Cards**: `card.base` / `card.interactive` / `card.elevated`
+- **Inputs**: `input.base` / `input.textarea`
+- **Sheets**: `overlay.sheet` + `overlay.sheetHeader` + `overlay.closeBtn`
+- **Modals**: `overlay.dialogBackdrop` + `overlay.modal`
+- **Menus**: `menu.panel` + `menu.item` / `menu.itemDanger`
+- **Chips**: `${chip.base} ${chip.active}` / `chip.inactive`
+- **Typography**: `text.heading` / `text.subheading` / `text.body` / `text.caption` / `text.label`
+
+### Rules
+
+1. **Always import** from `styles/design-system.ts` for standard component patterns
+2. **Never introduce new color values** without adding them as tokens in `@theme`
+3. **Never use arbitrary z-index** — use named `--z-*` tokens
+4. **Never use arbitrary text sizes** — use Tailwind's default scale
+5. **Use semantic border-radius tokens**, not ad-hoc `rounded-*` values
+6. **Prefer duration tokens** (`--duration-fast`, `--duration-normal`, `--duration-slow`) over arbitrary durations
+7. **Enrichment/content-type colors** (in `SECTION_CONFIG_MAP`) are exempt from token rules — they use Tailwind palette for variety
+
 ## Common Development Tasks
 (omitted for brevity)

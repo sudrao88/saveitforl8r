@@ -1,4 +1,5 @@
 import React from 'react';
+import { btn, card, text } from '../styles/design-system';
 
 interface EmptyStateProps {
   hasMemories: boolean;
@@ -14,10 +15,10 @@ const EmptyState: React.FC<EmptyStateProps> = ({ hasMemories, clearFilters }) =>
              <span className="text-3xl">🔍</span>
           </div>
           <h3 className="text-xl font-bold text-gray-200">No matching memories</h3>
-          <p className="text-gray-500 mt-2">Try adjusting your filters.</p>
-          <button 
+          <p className={`${text.body} mt-2`}>Try adjusting your filters.</p>
+          <button
             onClick={clearFilters}
-            className="mt-6 px-4 py-2 bg-gray-800 text-blue-400 text-sm font-bold rounded-xl border border-gray-700 hover:bg-gray-700 transition-colors"
+            className={`${btn.base} ${btn.secondary} mt-6 text-blue-400`}
           >
             Clear Filters
           </button>
@@ -32,29 +33,29 @@ const EmptyState: React.FC<EmptyStateProps> = ({ hasMemories, clearFilters }) =>
             </p>
 
             <div className="grid grid-cols-2 gap-3 max-w-md mb-8 text-left">
-              <div className="bg-gray-800/60 border border-gray-700/50 rounded-xl px-3 py-3">
+              <div className={`${card.base} px-3 py-3`}>
                 <div className="text-lg mb-1">✨</div>
-                <h3 className="text-sm font-bold text-gray-200">AI Enrichment</h3>
-                <p className="text-xs text-gray-500 leading-snug">Auto-summarized, tagged &amp; classified</p>
+                <h3 className={text.subheading}>AI Enrichment</h3>
+                <p className={`${text.caption} leading-snug`}>Auto-summarized, tagged &amp; classified</p>
               </div>
-              <div className="bg-gray-800/60 border border-gray-700/50 rounded-xl px-3 py-3">
+              <div className={`${card.base} px-3 py-3`}>
                 <div className="text-lg mb-1">🔮</div>
-                <h3 className="text-sm font-bold text-gray-200">Brain Search</h3>
-                <p className="text-xs text-gray-500 leading-snug">Ask questions, get answers from your notes</p>
+                <h3 className={text.subheading}>Brain Search</h3>
+                <p className={`${text.caption} leading-snug`}>Ask questions, get answers from your notes</p>
               </div>
-              <div className="bg-gray-800/60 border border-gray-700/50 rounded-xl px-3 py-3">
+              <div className={`${card.base} px-3 py-3`}>
                 <div className="text-lg mb-1">🧩</div>
-                <h3 className="text-sm font-bold text-gray-200">Synthesize</h3>
-                <p className="text-xs text-gray-500 leading-snug">Turn notes into itineraries, briefs &amp; more</p>
+                <h3 className={text.subheading}>Synthesize</h3>
+                <p className={`${text.caption} leading-snug`}>Turn notes into itineraries, briefs &amp; more</p>
               </div>
-              <div className="bg-gray-800/60 border border-gray-700/50 rounded-xl px-3 py-3">
+              <div className={`${card.base} px-3 py-3`}>
                 <div className="text-lg mb-1">🔒</div>
-                <h3 className="text-sm font-bold text-gray-200">Private &amp; Secure</h3>
-                <p className="text-xs text-gray-500 leading-snug">256-bit encrypted, your eyes only</p>
+                <h3 className={text.subheading}>Private &amp; Secure</h3>
+                <p className={`${text.caption} leading-snug`}>256-bit encrypted, your eyes only</p>
               </div>
             </div>
 
-            <p className="text-gray-500 text-sm">
+            <p className={text.body}>
               Start by dropping a thought below 👇
             </p>
         </>

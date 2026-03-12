@@ -24,6 +24,7 @@ import {
   Memory,
 } from '../types';
 import MemoryCard from './MemoryCard';
+import { overlay } from '../styles/design-system';
 
 // Shared loading indicator for pending creation and resynthesis states
 const SynthesisLoadingState: React.FC = () => (
@@ -44,12 +45,12 @@ const SheetShell: React.FC<{
   onClose: () => void;
   children: React.ReactNode;
 }> = ({ title, subtitle, headerRight, onClose, children }) => (
-  <div className="fixed inset-0 z-[100] bg-gray-950/95 backdrop-blur-md flex flex-col animate-in fade-in duration-300">
-    <div className="sticky top-0 z-10 px-4 py-3 border-b border-gray-800 flex items-center justify-between bg-gray-950/80 backdrop-blur-xl pt-[env(safe-area-inset-top)]">
+  <div className={`${overlay.sheet}`}>
+    <div className={overlay.sheetHeader}>
       <div className="flex items-center gap-3">
         <button
           onClick={onClose}
-          className="p-3 -ml-3 rounded-full hover:bg-gray-800 text-gray-400 hover:text-white transition-colors active:scale-95"
+          className={overlay.closeBtn}
         >
           <X size={24} />
         </button>
@@ -312,7 +313,7 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
       {/* Memory Preview Modal */}
       {previewMemory && (
         <div
-          className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
+          className={overlay.previewBackdrop}
           onClick={() => setPreviewMemoryId(null)}
         >
           <div className="relative w-full max-w-lg max-h-[80vh] flex flex-col animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
@@ -324,7 +325,7 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
             </div>
             <button
               onClick={() => setPreviewMemoryId(null)}
-              className="mt-4 w-full py-3 bg-gray-800 text-white rounded-xl font-bold shadow-xl border border-gray-700 text-sm active:scale-95 shrink-0"
+              className={overlay.previewCloseBtn}
             >
               Close Preview
             </button>
@@ -434,7 +435,7 @@ const ItemView: React.FC<{
           className="flex items-center gap-1.5 mt-1.5 group/cite hover:opacity-80 transition-opacity text-left"
         >
           <FileText size={10} className="text-gray-500 shrink-0 group-hover/cite:text-blue-400" />
-          <span className="text-[10px] text-gray-500 truncate group-hover/cite:text-blue-400">
+          <span className="text-xs text-gray-500 truncate group-hover/cite:text-blue-400">
             {truncateCitation(sourceMemory.content)}
           </span>
         </button>

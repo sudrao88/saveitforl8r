@@ -9,6 +9,7 @@ import { useSync } from '../hooks/useSync';
 import { useAuth } from '../hooks/useAuth';
 import { ModelStatus, EmbeddingStats } from '../hooks/useAdaptiveSearch';
 import { factoryReset, forceReindexAll, ReconcileReport } from '../services/storageService';
+import { overlay } from '../styles/design-system';
 
 // Props interface remains the same as all functionality is preserved
 interface SettingsModalProps {
@@ -61,7 +62,7 @@ const ExpandableSection: React.FC<{ children: React.ReactNode }> = ({ children }
         <ChevronDown size={16} className={`text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </button>
       {isOpen && (
-        <div className="mt-3 pt-3 border-t border-gray-700/50 animate-in fade-in duration-300">
+        <div className="mt-3 pt-3 border-t border-gray-700/50 animate-in fade-in duration-(--duration-normal)">
           {children}
         </div>
       )}
@@ -76,7 +77,7 @@ const FactoryResetModal: React.FC<{ isOpen: boolean; onClose: () => void; onConf
     const isConfirmed = confirmationText === 'DELETE';
 
     return (
-        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/80 backdrop-blur-md animate-in fade-in duration-300 p-4">
+        <div className="absolute inset-0 z-(--z-dropdown) flex items-center justify-center bg-black/80 backdrop-blur-md animate-in fade-in duration-(--duration-normal) p-4">
             <div className="bg-red-900/20 border border-red-800 rounded-2xl max-w-sm w-full p-6 shadow-2xl text-center">
                 <div className="w-14 h-14 bg-red-900/50 border-4 border-red-800 rounded-full mx-auto flex items-center justify-center">
                     <AlertTriangle size={32} className="text-red-300" />
@@ -165,9 +166,9 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
   const statsFailed = embeddingStats?.failed || 0;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-(--z-sheet) flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in duration-(--duration-fast)">
       {/* Modal container: Use calc with safe-area for Safari incognito compatibility */}
-      <div className="bg-black border border-gray-700 rounded-t-3xl sm:rounded-3xl max-w-2xl w-full shadow-2xl relative flex flex-col overflow-hidden animate-in slide-in-from-bottom-10 sm:zoom-in-95 duration-200"
+      <div className="bg-black border border-gray-700 rounded-t-3xl sm:rounded-3xl max-w-2xl w-full shadow-2xl relative flex flex-col overflow-hidden animate-in slide-in-from-bottom-10 sm:zoom-in-95 duration-(--duration-fast)"
            style={{ maxHeight: 'calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 16px)' }}>
         <div className="p-4 sm:p-6 border-b border-gray-700 flex items-center justify-between shrink-0 bg-black z-10 pt-[max(16px,env(safe-area-inset-top))] sm:pt-6">
           <div className="flex items-center gap-3">
@@ -294,7 +295,7 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
           </div>
         </div>
         
-        {appVersion && <div className="text-center py-2 border-t border-gray-700 text-[10px] font-mono text-gray-500 shrink-0 bg-black">Version: {appVersion}</div>}
+        {appVersion && <div className="text-center py-2 border-t border-gray-700 text-xs font-mono text-gray-500 shrink-0 bg-black">Version: {appVersion}</div>}
         
         <FactoryResetModal 
             isOpen={isResetModalOpen}

@@ -1,5 +1,6 @@
 import React from 'react';
 import { X, Share, Download } from 'lucide-react';
+import { overlay } from '../styles/design-system';
 
 interface ShareOnboardingModalProps {
   onClose: () => void;
@@ -9,8 +10,8 @@ const ShareOnboardingModal: React.FC<ShareOnboardingModalProps> = ({ onClose }) 
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div className="bg-gray-800 border border-gray-700 rounded-2xl max-w-sm w-full shadow-2xl overflow-hidden flex flex-col">
+    <div className={`${overlay.backdropLight} z-(--z-overlay) flex items-center justify-center p-4 animate-in fade-in duration-(--duration-fast)`}>
+      <div className={`${overlay.modal} max-w-sm w-full overflow-hidden flex flex-col`}>
         {/* Header */}
         <div className="bg-gray-900/50 p-4 flex justify-between items-center border-b border-gray-700">
            <h3 className="text-lg font-bold text-gray-100 flex items-center gap-2">

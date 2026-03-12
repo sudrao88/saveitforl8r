@@ -2,6 +2,7 @@ import React from 'react';
 import { X } from 'lucide-react';
 import { Moment } from '../types';
 import { getMomentIcon } from './MomentBubble';
+import { overlay, card } from '../styles/design-system';
 
 interface AllMomentsSheetProps {
   moments: Moment[];
@@ -14,12 +15,12 @@ const AllMomentsSheet: React.FC<AllMomentsSheetProps> = ({
   onClose,
   onSelectMoment,
 }) => (
-  <div className="fixed inset-0 z-[100] bg-gray-950/95 backdrop-blur-md flex flex-col animate-in fade-in duration-300">
-    <div className="sticky top-0 z-10 px-4 py-3 border-b border-gray-800 flex items-center justify-between bg-gray-950/80 backdrop-blur-xl pt-[env(safe-area-inset-top)]">
+  <div className={`${overlay.sheet} duration-(--duration-normal)`}>
+    <div className={overlay.sheetHeader}>
       <div className="flex items-center gap-3">
         <button
           onClick={onClose}
-          className="p-3 -ml-3 rounded-full hover:bg-gray-800 text-gray-400 hover:text-white transition-colors active:scale-95"
+          className={overlay.closeBtn}
         >
           <X size={24} />
         </button>
@@ -40,7 +41,7 @@ const AllMomentsSheet: React.FC<AllMomentsSheetProps> = ({
             <button
               key={moment.id}
               onClick={() => onSelectMoment(moment)}
-              className="w-full text-left p-4 bg-gray-800/50 border border-gray-700/50 rounded-xl hover:border-gray-600/50 transition-all active:scale-[0.98] flex items-center gap-4"
+              className={`w-full text-left p-4 ${card.elevated} hover:border-gray-600/50 transition-all active:scale-[0.98] flex items-center gap-4`}
             >
               <div className="w-12 h-12 rounded-full bg-gray-700/50 flex items-center justify-center text-xl shrink-0">
                 {moment.emoji || getMomentIcon(moment.type, moment.objective)}
