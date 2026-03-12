@@ -40,6 +40,9 @@ vi.mock('../services/storageService', () => ({
   getAllCalendarEventsIncludingDeleted: vi.fn().mockResolvedValue([]),
   saveCalendarEvent: vi.fn().mockResolvedValue(undefined),
   deleteCalendarEventHard: vi.fn().mockResolvedValue(undefined),
+  getAllTodoItemsIncludingDeleted: vi.fn().mockResolvedValue([]),
+  updateTodoItem: vi.fn().mockResolvedValue(undefined),
+  deleteTodoItemHard: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../services/googleDriveService', () => ({

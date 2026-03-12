@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getMemories, deleteMemory, saveMemory, getMemory } from '../services/storageService';
 import { submitEnrichment } from '../services/geminiService';
-import { Memory, Attachment, Moment, CalendarEvent } from '../types';
+import { Memory, Attachment, Moment, CalendarEvent, TodoItem } from '../types';
 import { useSync } from './useSync';
 import { useAuth } from './useAuth';
 import { useEnrichmentPolling } from './useEnrichmentPolling';
@@ -40,6 +40,20 @@ export const useMemories = () => {
 
   const setOnEnrichmentCompleteCalendar = useCallback((cb: (memory: Memory) => Promise<CalendarEvent[]>) => {
     onEnrichmentCompleteCalendarRef.current = cb;
+  }, []);
+
+  // Todo items callback for enrichment-time action item extraction
+  const onEnrichmentCompleteTodoRef = useRef<((memory: Memory) => Promise<TodoItem[]>) | undefined>(undefined);
+
+  const setOnEnrichmentCompleteTodo = useCallback((cb: (memory: Memory) => Promise<TodoItem[]>) => {
+    onEnrichmentCompleteTodoRef.current = cb;
+  }, []);
+
+  // Todo items sync callback — set by App.tsx to sync items to Drive
+  const onTodoItemsSyncRef = useRef<((items: TodoItem[]) => Promise<void>) | undefined>(undefined);
+
+  const setOnTodoItemsSync = useCallback((cb: (items: TodoItem[]) => Promise<void>) => {
+    onTodoItemsSyncRef.current = cb;
   }, []);
 
   // Calendar events sync callback — set by App.tsx to sync events to Drive
@@ -98,6 +112,18 @@ export const useMemories = () => {
           }
         }).catch(err =>
           console.error(`[Calendar] Failed to process detected events:`, err)
+        );
+      }
+      // Process todo items from enrichment results and sync to Drive
+      if (onEnrichmentCompleteTodoRef.current) {
+        onEnrichmentCompleteTodoRef.current(memory).then(itemsToSync => {
+          if (itemsToSync.length > 0 && onTodoItemsSyncRef.current) {
+            onTodoItemsSyncRef.current(itemsToSync).catch(err =>
+              console.error(`[Todo] Failed to sync todo items:`, err)
+            );
+          }
+        }).catch(err =>
+          console.error(`[Todo] Failed to process detected action items:`, err)
         );
       }
     }, [authStatus, syncFile]),
@@ -394,5 +420,7 @@ export const useMemories = () => {
     setOnNoteMatchedMoments,
     setOnEnrichmentCompleteCalendar,
     setOnCalendarEventsSync,
+    setOnEnrichmentCompleteTodo,
+    setOnTodoItemsSync,
   };
 };

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, ReactNode, useRef, useEffect } from 'react';
-import { getMemories, getMemory, saveMemory, deleteMemory, reconcileEmbeddings, getAllMomentsIncludingDeleted, saveMoment, deleteMomentHard, getMomentSynthesis, saveMomentSynthesis, deleteMomentSynthesis, getAllCalendarEventsIncludingDeleted, saveCalendarEvent, deleteCalendarEventHard } from '../services/storageService';
+import { getMemories, getMemory, saveMemory, deleteMemory, reconcileEmbeddings, getAllMomentsIncludingDeleted, saveMoment, deleteMomentHard, getMomentSynthesis, saveMomentSynthesis, deleteMomentSynthesis, getAllCalendarEventsIncludingDeleted, saveCalendarEvent, deleteCalendarEventHard, getAllTodoItemsIncludingDeleted, updateTodoItem, deleteTodoItemHard } from '../services/storageService';
 
 import {
     listAllFiles,
@@ -11,7 +11,7 @@ import {
     isLinked as checkIsLinked,
     deleteRemoteNote
 } from '../services/googleDriveService';
-import { Memory, Moment, MomentSynthesis, CalendarEvent } from '../types';
+import { Memory, Moment, MomentSynthesis, CalendarEvent, TodoItem } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { storage } from '../services/platform';
 
@@ -25,6 +25,7 @@ interface SyncContextType {
   syncFile: (memory: Memory) => Promise<void>;
   syncMoment: (moment: Moment) => Promise<void>;
   syncCalendarEvents: (events: CalendarEvent[]) => Promise<void>;
+  syncTodoItems: (items: TodoItem[]) => Promise<void>;
   retrySyncFile: (memoryId: string) => Promise<void>;
   getSyncStatusMap: () => Map<string, SyncStatus>;
   syncStatusVersion: number;
@@ -102,6 +103,35 @@ const executeSyncPlan = async (plan: SyncPlan): Promise<string[]> => {
                 continue;
             }
 
+            // Handle todo item files
+            if (item.noteId.startsWith('todo-')) {
+                const todoContent = content as unknown as TodoItem;
+                const verifiedTodoId = item.noteId.replace('todo-', '');
+                const safeTodo: TodoItem = { ...todoContent, id: verifiedTodoId };
+                if (item.localTodoItem) {
+                    if (safeTodo.updatedAt > item.localTodoItem.updatedAt) {
+                        if (safeTodo.isDeleted) {
+                            await deleteTodoItemHard(verifiedTodoId);
+                        } else {
+                            await updateTodoItem(safeTodo);
+                        }
+                    } else if (item.localTodoItem.updatedAt > safeTodo.updatedAt) {
+                        plan.toUpload.push({
+                            noteId: item.noteId,
+                            memory: item.localTodoItem,
+                            remoteFileId: item.fileId
+                        });
+                    }
+                } else {
+                    if (safeTodo.isDeleted) {
+                        await deleteTodoItemHard(verifiedTodoId);
+                    } else {
+                        await updateTodoItem(safeTodo);
+                    }
+                }
+                continue;
+            }
+
             // Handle moment files with proper conflict resolution
             if (item.noteId.startsWith('moment-')) {
                 const momentContent = content as unknown as Moment;
@@ -171,7 +201,7 @@ const executeSyncPlan = async (plan: SyncPlan): Promise<string[]> => {
     const downloadedNotes: Array<{ id: string; enrichment?: { matchedMomentIds?: string[] } }> = [];
     for (const item of plan.toDownload) {
         if (dlFailureSet.has(item.fileId)) continue;
-        if (item.noteId.startsWith('moment-') || item.noteId.startsWith('event-')) continue;
+        if (item.noteId.startsWith('moment-') || item.noteId.startsWith('event-') || item.noteId.startsWith('todo-')) continue;
         const content = downloadedContents.get(item.fileId);
         if (content) downloadedNotes.push({ id: item.noteId, enrichment: (content as Memory).enrichment });
     }
@@ -195,7 +225,7 @@ const executeSyncPlan = async (plan: SyncPlan): Promise<string[]> => {
     }
 
     // Build upload list, including synthesis files for any moments being uploaded
-    const uploadItems: Array<{ filename: string; content: Memory | Moment | MomentSynthesis | CalendarEvent; existingFileId?: string }> = plan.toUpload.map(u => ({
+    const uploadItems: Array<{ filename: string; content: Memory | Moment | MomentSynthesis | CalendarEvent | TodoItem; existingFileId?: string }> = plan.toUpload.map(u => ({
         filename: `${u.noteId}.json`,
         content: u.memory,
         existingFileId: u.remoteFileId
@@ -247,7 +277,9 @@ const executeSyncPlan = async (plan: SyncPlan): Promise<string[]> => {
 
     for (const id of [...plan.toHardDeleteLocal, ...plan.toDeleteLocal]) {
         try {
-            if (id.startsWith('event-')) {
+            if (id.startsWith('todo-')) {
+                await deleteTodoItemHard(id.replace('todo-', ''));
+            } else if (id.startsWith('event-')) {
                 await deleteCalendarEventHard(id.replace('event-', ''));
             } else if (id.startsWith('moment-synthesis-')) {
                 // Synthesis-only deletion (orphan cleanup)
@@ -353,11 +385,12 @@ interface DownloadItem {
     local?: Memory;
     localMoment?: Moment;
     localCalendarEvent?: CalendarEvent;
+    localTodoItem?: TodoItem;
 }
 
 interface UploadItem {
     noteId: string;
-    memory: Memory | Moment | CalendarEvent;
+    memory: Memory | Moment | CalendarEvent | TodoItem;
     remoteFileId?: string;
 }
 
@@ -477,6 +510,10 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const localCalendarEvents = await getAllCalendarEventsIncludingDeleted();
     const localEventMap = new Map(localCalendarEvents.map(e => [`event-${e.id}`, e]));
 
+    // Load local todo items for sync
+    const localTodoItems = await getAllTodoItemsIncludingDeleted();
+    const localTodoMap = new Map(localTodoItems.map(t => [`todo-${t.id}`, t]));
+
     const remoteFiles = await listAllFiles();
     const remoteMap = new Map(remoteFiles.map((f: any) => [f.name.replace('.json', ''), f]));
 
@@ -508,6 +545,18 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 plan.toHardDeleteLocal.push(noteId);
             } else {
                 plan.toDownload.push({ noteId, fileId: remoteFile.id, localCalendarEvent: localEvent });
+            }
+            continue;
+        }
+
+        // Handle todo item files
+        if (noteId.startsWith('todo-')) {
+            const localTodo = localTodoMap.get(noteId);
+            if (localTodo?.isDeleted) {
+                plan.toDeleteRemote.push({ noteId, fileId: remoteFile.id });
+                plan.toHardDeleteLocal.push(noteId);
+            } else {
+                plan.toDownload.push({ noteId, fileId: remoteFile.id, localTodoItem: localTodo });
             }
             continue;
         }
@@ -562,6 +611,17 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             if (localEvent?.isDeleted) {
                 plan.toHardDeleteLocal.push(noteId);
             } else if (localEvent) {
+                plan.toDeleteLocal.push(noteId);
+            }
+            continue;
+        }
+
+        // Handle todo item files that were removed from remote
+        if (noteId.startsWith('todo-')) {
+            const localTodo = localTodoMap.get(noteId);
+            if (localTodo?.isDeleted) {
+                plan.toHardDeleteLocal.push(noteId);
+            } else if (localTodo) {
                 plan.toDeleteLocal.push(noteId);
             }
             continue;
@@ -646,6 +706,25 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         } else if (event.updatedAt > lastSyncTime) {
             const remote = remoteMap.get(key);
             plan.toUpload.push({ noteId: key, memory: event, remoteFileId: remote?.id });
+            handled.add(key);
+        }
+    }
+
+    // Upload local todo items that haven't been synced yet
+    for (const item of localTodoItems) {
+        const key = `todo-${item.id}`;
+        if (handled.has(key)) continue;
+
+        if (item.isDeleted) {
+            const remote = remoteMap.get(key);
+            if (remote) {
+                plan.toDeleteRemote.push({ noteId: key, fileId: remote.id });
+            }
+            plan.toHardDeleteLocal.push(key);
+            handled.add(key);
+        } else if (item.updatedAt > lastSyncTime) {
+            const remote = remoteMap.get(key);
+            plan.toUpload.push({ noteId: key, memory: item, remoteFileId: remote?.id });
             handled.add(key);
         }
     }
@@ -803,6 +882,42 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
   }, [getAccessToken]);
 
+  const performTodoItemsSync = useCallback(async (items: TodoItem[]) => {
+      const linked = await checkIsLinked();
+      if (!linked || items.length === 0) return;
+
+      try {
+          await getAccessToken();
+
+          const snapshotJSON = await storage.get(SNAPSHOT_KEY);
+          const snapshot = snapshotJSON ? JSON.parse(snapshotJSON) : {};
+
+          const results = await Promise.all(
+              items.map(async (item) => {
+                  try {
+                      const filename = `todo-${item.id}.json`;
+                      const remoteFile = await findFileByName(filename);
+                      const uploaded = await uploadFile(filename, item, remoteFile?.id);
+                      return { itemId: item.id, modifiedTime: uploaded?.modifiedTime };
+                  } catch (e) {
+                      console.error(`[Sync] Todo item sync failed for ${item.id}:`, e);
+                      return { itemId: item.id, modifiedTime: undefined };
+                  }
+              })
+          );
+
+          for (const result of results) {
+              if (result.modifiedTime) {
+                  snapshot[`todo-${result.itemId}`] = result.modifiedTime;
+              }
+          }
+
+          await storage.set(SNAPSHOT_KEY, JSON.stringify(snapshot));
+      } catch (e: any) {
+          console.error(`[Sync] Todo items sync failed:`, e);
+      }
+  }, [getAccessToken]);
+
   const performSingleSync = useCallback(async (memory: Memory) => {
       const linked = await checkIsLinked();
       if (isSyncingRef.current || !linked) return;
@@ -880,6 +995,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         syncFile: performSingleSync,
         syncMoment: performMomentSync,
         syncCalendarEvents: performCalendarEventsSync,
+        syncTodoItems: performTodoItemsSync,
         retrySyncFile,
         getSyncStatusMap,
         syncStatusVersion,
