@@ -227,7 +227,27 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
       setSynthesisLoading(moment.id);
       try {
         await submitResynthesis(moment, currentMemories);
-        const synthesis = await pollSynthesisResult(moment.id);
+        const rawSynthesis = await pollSynthesisResult(moment.id);
+
+        // Filter out items referencing notes not in this moment.
+        // This guards against a race where a concurrent synthesis request
+        // (with a different set of notes) completes first and its result
+        // is picked up by our polling — e.g. when a note is deleted while
+        // a previous synthesis is still in-flight on the server.
+        const synthesis: SynthesisResponse = {
+          ...rawSynthesis,
+          sections: rawSynthesis.sections
+            .map(section => ({
+              ...section,
+              items: section.items.filter(item =>
+                currentNoteIdSet.has(item.sourceNoteId)
+              ),
+            }))
+            .filter(section => section.items.length > 0),
+          generatedFrom: rawSynthesis.generatedFrom.filter(id =>
+            currentNoteIdSet.has(id)
+          ),
+        };
 
         const stored: MomentSynthesis = {
           momentId: moment.id,
