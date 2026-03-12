@@ -72,7 +72,7 @@ interface MomentSheetProps {
   moment: Moment;
   memories: Memory[];
   onClose: () => void;
-  loadSynthesis: (moment: Moment, memories: Memory[]) => Promise<SynthesisResponse | null>;
+  loadSynthesis: (moment: Moment, memories: Memory[], signal?: AbortSignal) => Promise<SynthesisResponse | null>;
   onDelete: (momentId: string) => Promise<void>;
 }
 
@@ -127,28 +127,32 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
       return;
     }
 
-    let cancelled = false;
+    const abortController = new AbortController();
 
     const load = async () => {
       setIsLoading(true);
       setError(false);
       try {
-        const result = await loadSynthesis(momentRef.current, memoriesRef.current);
-        if (!cancelled) {
+        const result = await loadSynthesis(momentRef.current, memoriesRef.current, abortController.signal);
+        if (!abortController.signal.aborted) {
           setSynthesis(result);
           if (!result) setError(true);
         }
-      } catch {
-        if (!cancelled) setError(true);
+      } catch (err) {
+        if (!abortController.signal.aborted) {
+          // Ignore AbortError — it just means a newer loadSynthesis superseded this one
+          if (err instanceof DOMException && err.name === 'AbortError') return;
+          setError(true);
+        }
       } finally {
-        if (!cancelled) setIsLoading(false);
+        if (!abortController.signal.aborted) setIsLoading(false);
       }
     };
 
     load();
 
     return () => {
-      cancelled = true;
+      abortController.abort();
     };
   }, [moment.id, noteIdsKey, moment.isPending, loadSynthesis]);
 
