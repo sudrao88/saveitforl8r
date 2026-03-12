@@ -25,6 +25,17 @@ import {
 } from '../types';
 import MemoryCard from './MemoryCard';
 
+// Shared loading indicator for pending creation and resynthesis states
+const SynthesisLoadingState: React.FC = () => (
+  <div className="text-center px-6">
+    <Loader2 size={32} className="animate-spin text-blue-400 mx-auto mb-4" />
+    <h3 className="text-lg font-bold text-gray-200 mb-2">Creating your moment…</h3>
+    <p className="text-sm text-gray-400 max-w-sm">
+      Our AI is analyzing your notes and building a synthesis. This usually takes 15–30 seconds.
+    </p>
+  </div>
+);
+
 // Shared shell for all sheet states (pending, error, normal)
 const SheetShell: React.FC<{
   title: string;
@@ -177,13 +188,7 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
     return (
       <SheetShell title={moment.objective} onClose={onClose}>
         <div className="flex-1 flex items-center justify-center">
-          <div className="text-center px-6">
-            <Loader2 size={32} className="animate-spin text-blue-400 mx-auto mb-4" />
-            <h3 className="text-lg font-bold text-gray-200 mb-2">Creating your moment…</h3>
-            <p className="text-sm text-gray-400 max-w-sm">
-              Our AI is analyzing your notes and building a synthesis. This usually takes 15–30 seconds.
-            </p>
-          </div>
+          <SynthesisLoadingState />
         </div>
       </SheetShell>
     );
@@ -240,13 +245,7 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
         <div className="max-w-2xl mx-auto p-4 sm:p-8 pb-32">
           {isLoading && (
             <div className="flex items-center justify-center py-24">
-              <div className="text-center px-6">
-                <Loader2 size={32} className="animate-spin text-blue-400 mx-auto mb-4" />
-                <h3 className="text-lg font-bold text-gray-200 mb-2">Creating your moment…</h3>
-                <p className="text-sm text-gray-400 max-w-sm">
-                  Our AI is analyzing your notes and building a synthesis. This usually takes 15–30 seconds.
-                </p>
-              </div>
+              <SynthesisLoadingState />
             </div>
           )}
 
