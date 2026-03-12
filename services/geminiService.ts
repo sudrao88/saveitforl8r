@@ -365,11 +365,18 @@ export const pollSynthesisResult = async (
       ? SYNTH_FAST_POLL_INTERVAL_MS
       : SYNTH_SLOW_POLL_INTERVAL_MS;
 
-    await new Promise(resolve => setTimeout(resolve, interval));
-
-    if (signal?.aborted) {
-      throw new DOMException('Synthesis polling aborted', 'AbortError');
-    }
+    // Abort-aware delay: rejects immediately if signal fires during the wait
+    await new Promise<void>((resolve, reject) => {
+      const onAbort = () => {
+        clearTimeout(timer);
+        reject(new DOMException('Synthesis polling aborted', 'AbortError'));
+      };
+      const timer = setTimeout(() => {
+        signal?.removeEventListener('abort', onAbort);
+        resolve();
+      }, interval);
+      signal?.addEventListener('abort', onAbort, { once: true });
+    });
 
     const results = await fetchPendingSynthesisResults([momentId]);
     const result = results[momentId];
