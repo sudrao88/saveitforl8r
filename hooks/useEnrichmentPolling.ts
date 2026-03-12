@@ -63,8 +63,15 @@ export const applyEnrichmentResult = async (
         }));
 
       // Deduplicate: skip previews whose ID already exists in attachments
+      // or that duplicate another preview in the same batch
       const existingIds = new Set(existingAttachments.map(a => a.id));
-      const newPreviews = previewAttachments.filter(a => !existingIds.has(a.id));
+      const newPreviews = previewAttachments.reduce<Attachment[]>((acc, a) => {
+        if (!existingIds.has(a.id)) {
+          existingIds.add(a.id);
+          acc.push(a);
+        }
+        return acc;
+      }, []);
 
       if (newPreviews.length > 0) {
         updatedMemory.attachments = [...existingAttachments, ...newPreviews];
