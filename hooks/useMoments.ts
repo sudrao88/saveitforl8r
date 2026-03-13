@@ -39,8 +39,8 @@ interface UseMomentsReturn {
   createNewMoment: (objective: string, memories: Memory[]) => Promise<Moment | null>;
   /** Load synthesis for a moment (cache-aware, triggers re-synthesis if new notes) */
   loadSynthesis: (moment: Moment, memories: Memory[], signal?: AbortSignal) => Promise<SynthesisResponse | null>;
-  /** Current synthesis loading state (moment ID or null) */
-  synthesisLoading: string | null;
+  /** Set of moment IDs currently loading synthesis */
+  synthesisLoading: Set<string>;
   /** Current moment creation loading state */
   creating: boolean;
   /** Add a note to a moment (called when enrichment matches) */
@@ -64,10 +64,14 @@ interface UseMomentsReturn {
 export const useMoments = (memories: Memory[]): UseMomentsReturn => {
   const [momentsList, setMomentsList] = useState<Moment[]>([]);
   const [synthesesMap, setSynthesesMap] = useState<Map<string, MomentSynthesis>>(new Map());
-  const [synthesisLoading, setSynthesisLoading] = useState<string | null>(null);
+  const [synthesisLoading, setSynthesisLoading] = useState<Set<string>>(new Set());
   const [creating, setCreating] = useState(false);
   const loaded = useRef(false);
   const onMomentChangedRef = useRef<((moment: Moment) => void) | undefined>(undefined);
+
+  // Track in-flight synthesis polling promises so concurrent calls for the
+  // same moment reuse the same promise instead of submitting duplicate requests.
+  const inFlightPolling = useRef<Map<string, Promise<SynthesisResponse>>>(new Map());
 
   // Keep refs for polling access
   const momentsListRef = useRef<Moment[]>([]);
@@ -223,11 +227,24 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
         return persisted.content;
       }
 
-      // Cache miss — submit re-synthesis asynchronously and poll for result
-      setSynthesisLoading(moment.id);
+      // Cache miss — submit re-synthesis asynchronously and poll for result.
+      // Polling is decoupled from the caller's AbortSignal so that navigating
+      // away from a MomentSheet doesn't cancel background polling — the result
+      // is cached and ready when the user returns.
+      setSynthesisLoading(prev => new Set(prev).add(moment.id));
       try {
-        await submitResynthesis(moment, currentMemories);
-        const rawSynthesis = await pollSynthesisResult(moment.id, signal);
+        // Reuse an existing in-flight polling promise for this moment if one
+        // exists (e.g. if the user re-opens the sheet while polling is still
+        // running from the first open).
+        let pollingPromise = inFlightPolling.current.get(moment.id);
+        if (!pollingPromise) {
+          await submitResynthesis(moment, currentMemories);
+          pollingPromise = pollSynthesisResult(moment.id);
+          inFlightPolling.current.set(moment.id, pollingPromise);
+        }
+
+        const rawSynthesis = await pollingPromise;
+        inFlightPolling.current.delete(moment.id);
 
         // Filter out items referencing notes not in this moment.
         // This guards against a race where a concurrent synthesis request
@@ -248,13 +265,6 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
             currentNoteIdSet.has(id)
           ),
         };
-
-        // If this call was aborted (e.g. a note was deleted and a new
-        // loadSynthesis started), do not persist the result — a newer call
-        // with the correct noteIds is already in progress.
-        if (signal?.aborted) {
-          return null;
-        }
 
         const stored: MomentSynthesis = {
           momentId: moment.id,
@@ -284,12 +294,23 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
 
         onMomentChangedRef.current?.(updatedMoment);
 
+        // If the caller was aborted (e.g. MomentSheet unmounted), the result
+        // is still cached above — the caller just won't use the return value.
+        if (signal?.aborted) {
+          return null;
+        }
+
         return synthesis;
       } catch (err) {
+        inFlightPolling.current.delete(moment.id);
         console.error('[Moments] Synthesis failed:', err);
         return null;
       } finally {
-        setSynthesisLoading(null);
+        setSynthesisLoading(prev => {
+          const next = new Set(prev);
+          next.delete(moment.id);
+          return next;
+        });
       }
     },
     [synthesesMap]

@@ -20,7 +20,7 @@ interface MomentsStripProps {
   calendarEventCount: number;
   onTodoTap: () => void;
   todoPendingCount: number;
-  synthesisLoading?: string | null;
+  synthesisLoading?: Set<string>;
 }
 
 const MomentsStrip: React.FC<MomentsStripProps> = ({
@@ -87,7 +87,7 @@ const MomentsStrip: React.FC<MomentsStripProps> = ({
             key={moment.id}
             moment={moment}
             onTap={onMomentTap}
-            isResynthesizing={synthesisLoading === moment.id}
+            isResynthesizing={synthesisLoading?.has(moment.id) ?? false}
           />
         ))}
 
