@@ -386,9 +386,18 @@ self.addEventListener('fetch', (event) => {
           return networkResponse;
         }).catch((err) => {
           console.error('[SW] Asset fetch failed (offline?):', event.request.url, err);
+          // Use the correct MIME type so the browser treats the response
+          // as a valid module/stylesheet instead of rejecting it outright
+          // with "Importing a module script failed".
+          const assetUrl = event.request.url;
+          const contentType = assetUrl.endsWith('.css')
+            ? 'text/css'
+            : assetUrl.endsWith('.js')
+              ? 'application/javascript'
+              : 'text/plain';
           return new Response('/* offline — asset unavailable */', {
             status: 503,
-            headers: { 'Content-Type': 'text/plain' }
+            headers: { 'Content-Type': contentType }
           });
         });
       })
