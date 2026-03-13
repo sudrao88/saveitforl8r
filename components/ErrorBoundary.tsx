@@ -1,6 +1,7 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { btn, overlay, text, zIndex } from '../styles/design-system';
+import { isChunkLoadError, clearServiceWorkerCaches } from '../utils/chunkErrorUtils';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -32,29 +33,11 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   handleReload = async () => {
     // If the error looks like a stale chunk / module import failure,
     // clear all SW caches first so the reload fetches fresh assets.
-    if (this.isChunkLoadError(this.state.error)) {
-      try {
-        if ('caches' in window) {
-          const keys = await caches.keys();
-          await Promise.all(keys.map((key) => caches.delete(key)));
-        }
-      } catch {
-        // Best-effort — proceed with reload even if cache clearing fails
-      }
+    if (isChunkLoadError(this.state.error)) {
+      await clearServiceWorkerCaches();
     }
     window.location.reload();
   };
-
-  private isChunkLoadError(error: Error | null): boolean {
-    if (!error) return false;
-    const msg = error.message.toLowerCase();
-    return (
-      msg.includes('failed to fetch dynamically imported module') ||
-      msg.includes('importing a module script failed') ||
-      msg.includes('loading chunk') ||
-      msg.includes('loading css chunk')
-    );
-  }
 
   handleDismiss = () => {
     this.setState({ hasError: false, error: null });

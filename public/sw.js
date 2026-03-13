@@ -389,10 +389,11 @@ self.addEventListener('fetch', (event) => {
           // Use the correct MIME type so the browser treats the response
           // as a valid module/stylesheet instead of rejecting it outright
           // with "Importing a module script failed".
-          const assetUrl = event.request.url;
-          const contentType = assetUrl.endsWith('.css')
+          // Parse the pathname to ignore query parameters (e.g. ?v=123).
+          const pathname = new URL(event.request.url).pathname;
+          const contentType = pathname.endsWith('.css')
             ? 'text/css'
-            : assetUrl.endsWith('.js')
+            : pathname.endsWith('.js')
               ? 'application/javascript'
               : 'text/plain';
           return new Response('/* offline — asset unavailable */', {

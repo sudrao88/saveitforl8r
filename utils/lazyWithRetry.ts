@@ -1,4 +1,5 @@
 import { lazy, ComponentType } from 'react';
+import { isChunkLoadError, clearServiceWorkerCaches } from './chunkErrorUtils';
 
 /**
  * Wraps React.lazy() with retry logic for failed dynamic imports.
@@ -10,6 +11,9 @@ import { lazy, ComponentType } from 'react';
  *
  * This wrapper catches that failure, clears all service worker caches so
  * the next navigation gets a fresh index.html, and reloads the page.
+ *
+ * Only chunk/module loading errors trigger the retry — syntax errors and
+ * other runtime exceptions propagate immediately to the ErrorBoundary.
  */
 export function lazyWithRetry<T extends ComponentType<any>>(
   importFn: () => Promise<{ default: T }>,
@@ -20,6 +24,12 @@ export function lazyWithRetry<T extends ComponentType<any>>(
     try {
       return await importFn();
     } catch (error) {
+      // Only attempt cache-clear + reload for chunk loading errors.
+      // Syntax errors, runtime errors, etc. should propagate immediately.
+      if (!isChunkLoadError(error)) {
+        throw error;
+      }
+
       // If we already refreshed once this session and it still fails,
       // let the error propagate to the ErrorBoundary.
       if (hasRefreshed) {
@@ -27,13 +37,10 @@ export function lazyWithRetry<T extends ComponentType<any>>(
         throw error;
       }
 
-      console.warn('[lazyWithRetry] Dynamic import failed, clearing caches and reloading:', error);
+      console.warn('[lazyWithRetry] Chunk load failed, clearing caches and reloading:', error);
 
       // Clear all service worker caches so the next load gets fresh assets
-      if ('caches' in window) {
-        const keys = await caches.keys();
-        await Promise.all(keys.map((key) => caches.delete(key)));
-      }
+      await clearServiceWorkerCaches();
 
       // Mark that we're about to refresh so we don't loop forever
       sessionStorage.setItem('chunk_retry_refresh', '1');
