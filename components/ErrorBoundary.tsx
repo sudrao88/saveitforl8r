@@ -1,6 +1,7 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { btn, overlay, text, zIndex } from '../styles/design-system';
+import { isChunkLoadError, clearServiceWorkerCaches } from '../utils/chunkErrorUtils';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -29,7 +30,12 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
     this.props.onError?.(error, errorInfo);
   }
 
-  handleReload = () => {
+  handleReload = async () => {
+    // If the error looks like a stale chunk / module import failure,
+    // clear all SW caches first so the reload fetches fresh assets.
+    if (isChunkLoadError(this.state.error)) {
+      await clearServiceWorkerCaches();
+    }
     window.location.reload();
   };
 
