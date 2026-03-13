@@ -140,6 +140,209 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
       .catch((err) => console.error(`[Firestore] Failed to persist result for ${memoryId}:`, err.message));
   };
 
+  /**
+   * Run background enrichment pipeline for a memory.
+   * Extracted as a reusable function so both the enrich route and the
+   * WhatsApp webhook can trigger enrichment without duplicating logic.
+   *
+   * @param {object} params
+   * @param {string} params.userId - Authenticated user ID
+   * @param {string} params.requestId - Request ID for log correlation
+   * @param {string} params.memoryId - Memory UUID
+   * @param {string} params.text - Memory text content
+   * @param {Array} params.attachments - Attachment objects with data/mimeType
+   * @param {Array} params.tags - Tags array
+   * @param {object} params.location - Optional { latitude, longitude }
+   * @param {Array} params.moments - Optional moments for matching
+   * @param {Function} [params.onComplete] - Optional callback on enrichment completion with enrichment result
+   */
+  const runBackgroundEnrichment = ({ userId, requestId, memoryId, text, attachments, tags, location, moments, onComplete }) => {
+    aiLimiter.run(async () => {
+      const startTime = Date.now();
+      const parts = [];
+
+      if (attachments && Array.isArray(attachments)) {
+        for (const att of attachments) {
+          if (!att.data) continue;
+          const base64Data = att.data.includes(',') ? att.data.split(',')[1] : att.data;
+          if (base64Data) {
+            parts.push({ inlineData: { data: base64Data, mimeType: att.mimeType } });
+          }
+        }
+      }
+
+      const detectedUrls = extractUrls(text);
+      const hasUrls = detectedUrls.length > 0;
+
+      const ogImagePromise = hasUrls
+        ? fetchOgImages(detectedUrls).catch(() => [])
+        : Promise.resolve([]);
+
+      const userContent = buildEnrichmentUserContent(text, tags);
+      if (userContent) parts.push({ text: userContent });
+
+      try {
+        // Phase 1: Classification
+        let classification = null;
+
+        if (hasUrls) {
+          try {
+            console.log(`[Classify] [${requestId}] Starting URL classification...`);
+            const classifyController = new AbortController();
+            const classifyTimeout = setTimeout(() => classifyController.abort(), 25_000);
+            const classifyResponse = await ai.models.generateContent({
+              model: MODEL_NAME,
+              contents: [{ role: 'user', parts }],
+              config: {
+                systemInstruction: URL_CLASSIFICATION_SYSTEM_PROMPT,
+                tools: [{ urlContext: {} }, { googleSearch: {} }],
+                responseMimeType: 'application/json',
+                responseSchema: classificationSchema,
+                thinkingConfig: { thinkingBudget: 0 },
+              },
+              requestOptions: { signal: classifyController.signal },
+            });
+            clearTimeout(classifyTimeout);
+            classification = JSON.parse(classifyResponse.text || '{}');
+            console.log(`[Classify] [${requestId}] URL type=${classification.contentType} search=${classification.searchRecommendation?.value} (${Date.now() - startTime}ms)`);
+          } catch (classifyError) {
+            console.error(`[Classify] [${requestId}] URL classification failed:`, classifyError.message);
+          }
+        } else {
+          try {
+            console.log(`[Classify] [${requestId}] Starting classification...`);
+            const classifyController = new AbortController();
+            const classifyTimeout = setTimeout(() => classifyController.abort(), 15_000);
+            const classifyResponse = await ai.models.generateContent({
+              model: MODEL_NAME,
+              contents: [{ role: 'user', parts }],
+              config: {
+                systemInstruction: CLASSIFICATION_SYSTEM_PROMPT,
+                responseMimeType: 'application/json',
+                responseSchema: classificationSchema,
+                thinkingConfig: { thinkingBudget: 0 },
+              },
+              requestOptions: { signal: classifyController.signal },
+            });
+            clearTimeout(classifyTimeout);
+            classification = JSON.parse(classifyResponse.text || '{}');
+            console.log(`[Classify] [${requestId}] type=${classification.contentType} search=${classification.searchRecommendation?.value} (${Date.now() - startTime}ms)`);
+          } catch (classifyError) {
+            console.error(`[Classify] [${requestId}] Classification failed:`, classifyError.message);
+          }
+        }
+
+        // Phase 2: Enrichment
+        let systemPrompt;
+        let tools;
+
+        if (classification) {
+          systemPrompt = buildSmartEnrichmentPrompt(classification, tags, location, text, hasUrls ? detectedUrls : undefined);
+          tools = selectEnrichmentTools(classification, hasUrls);
+        } else if (hasUrls) {
+          systemPrompt = buildUrlEnrichmentSystemPrompt(tags, location, detectedUrls);
+          tools = [{ urlContext: {} }, { googleSearch: {} }];
+        } else {
+          systemPrompt = buildEnrichmentSystemPrompt(tags, location, text);
+          tools = [{ googleSearch: {} }];
+        }
+
+        const enrichmentStrategy = hasUrls ? 'url'
+          : (classification && classification.searchRecommendation?.value !== 'high' && classification.searchRecommendation?.value !== 'medium') ? 'summarize' : 'search';
+
+        console.log(`[Enrich] [${requestId}] user=${userId} strategy=${enrichmentStrategy} text="${text?.substring(0, 50)}" urls=${detectedUrls.length}`);
+
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
+
+        try {
+          const config = { systemInstruction: systemPrompt, thinkingConfig: { thinkingBudget: 0 } };
+          if (tools.length > 0) config.tools = tools;
+
+          const response = await ai.models.generateContent({
+            model: MODEL_NAME,
+            contents: [{ role: 'user', parts }],
+            config,
+            requestOptions: { signal: controller.signal },
+          });
+          clearTimeout(timeout);
+
+          const responseText = response.text || '{}';
+          console.log(`[Enrich] [${requestId}] Completed in ${Date.now() - startTime}ms. Response length: ${responseText.length}`);
+
+          const parsed = parseJsonResponse(responseText);
+          if (classification) parsed.contentType = classification.contentType;
+          parsed.enrichmentStrategy = enrichmentStrategy;
+
+          const sanitized = sanitizeEnrichmentResult(parsed);
+          if (hasUrls) attachSourceUrl(sanitized, detectedUrls);
+
+          await attachOgPreviews(ogImagePromise, sanitized, requestId);
+
+          if (moments && Array.isArray(moments) && moments.length > 0) {
+            try {
+              const matchResult = await performMomentMatching(ai, MODEL_NAME, GEMINI_TIMEOUT_MS, requestId, text, tags, sanitized, moments);
+              sanitized.matchedMomentIds = matchResult;
+            } catch (matchErr) {
+              console.error(`[Enrich] [${requestId}] Moment matching failed (non-fatal):`, matchErr.message);
+              sanitized.matchedMomentIds = [];
+            }
+          }
+
+          persistEnrichmentResult(memoryId, userId, 'completed', sanitized);
+          if (onComplete) onComplete(sanitized);
+        } catch (primaryError) {
+          clearTimeout(timeout);
+          throw primaryError;
+        }
+      } catch (error) {
+        const duration = Date.now() - startTime;
+        console.error(`[Enrich] [${requestId}] Primary failed after ${duration}ms:`, error.message);
+
+        try {
+          const fallbackController = new AbortController();
+          const fallbackTimeout = setTimeout(() => fallbackController.abort(), GEMINI_TIMEOUT_MS);
+          const fallbackSystemPrompt = hasUrls
+            ? buildUrlEnrichmentSystemPrompt(tags, location, detectedUrls)
+            : buildEnrichmentSystemPrompt(tags, location, text);
+          const fallbackConfig = { systemInstruction: fallbackSystemPrompt, thinkingConfig: { thinkingBudget: 0 } };
+          if (hasUrls) fallbackConfig.tools = [{ urlContext: {} }, { googleSearch: {} }];
+
+          const response = await ai.models.generateContent({
+            model: FALLBACK_MODEL_NAME,
+            contents: [{ role: 'user', parts }],
+            config: fallbackConfig,
+            requestOptions: { signal: fallbackController.signal },
+          });
+          clearTimeout(fallbackTimeout);
+
+          const parsed = parseJsonResponse(response.text || '{}');
+          parsed.enrichmentStrategy = 'search';
+          const sanitizedFallback = sanitizeEnrichmentResult(parsed);
+          if (hasUrls) attachSourceUrl(sanitizedFallback, detectedUrls);
+
+          await attachOgPreviews(ogImagePromise, sanitizedFallback, requestId);
+
+          if (moments && Array.isArray(moments) && moments.length > 0) {
+            try {
+              const matchResult = await performMomentMatching(ai, MODEL_NAME, GEMINI_TIMEOUT_MS, requestId, text, tags, sanitizedFallback, moments);
+              sanitizedFallback.matchedMomentIds = matchResult;
+            } catch (matchErr) {
+              console.error(`[Enrich] [${requestId}] Moment matching failed (non-fatal):`, matchErr.message);
+              sanitizedFallback.matchedMomentIds = [];
+            }
+          }
+
+          persistEnrichmentResult(memoryId, userId, 'completed', sanitizedFallback);
+          if (onComplete) onComplete(sanitizedFallback);
+        } catch (fallbackError) {
+          console.error(`[Enrich] [${requestId}] Fallback also failed:`, fallbackError.message);
+          persistEnrichmentResult(memoryId, userId, 'failed', null);
+        }
+      }
+    }).catch((err) => console.error(`[Enrich] Limiter error:`, err.message));
+  };
+
   const enrichLimiter = rateLimit({
     windowMs: 60_000,
     max: 20,
@@ -189,195 +392,17 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
       // Acknowledge receipt immediately
       res.json({ status: 'accepted' });
 
-      // --- Background enrichment processing (concurrency-limited) ---
-      aiLimiter.run(async () => {
-      const startTime = Date.now();
-      const parts = [];
-
-      if (attachments && Array.isArray(attachments)) {
-        for (const att of attachments) {
-          if (!att.data) continue;
-          const base64Data = att.data.includes(',') ? att.data.split(',')[1] : att.data;
-          if (base64Data) {
-            parts.push({ inlineData: { data: base64Data, mimeType: att.mimeType } });
-          }
-        }
-      }
-
-      const detectedUrls = extractUrls(text);
-      const hasUrls = detectedUrls.length > 0;
-
-      // Start OG image fetch in parallel with classification (non-blocking)
-      const ogImagePromise = hasUrls
-        ? fetchOgImages(detectedUrls).catch(() => [])
-        : Promise.resolve([]);
-
-      const userContent = buildEnrichmentUserContent(text, tags);
-      if (userContent) parts.push({ text: userContent });
-
-      try {
-        // --- Phase 1: Classification ---
-        let classification = null;
-
-        if (hasUrls) {
-          try {
-            console.log(`[Classify] [${req.requestId}] Starting URL classification...`);
-            const classifyController = new AbortController();
-            const classifyTimeout = setTimeout(() => classifyController.abort(), 25_000);
-            const classifyResponse = await ai.models.generateContent({
-              model: MODEL_NAME,
-              contents: [{ role: 'user', parts }],
-              config: {
-                systemInstruction: URL_CLASSIFICATION_SYSTEM_PROMPT,
-                tools: [{ urlContext: {} }, { googleSearch: {} }],
-                responseMimeType: 'application/json',
-                responseSchema: classificationSchema,
-                thinkingConfig: { thinkingBudget: 0 },
-              },
-              requestOptions: { signal: classifyController.signal },
-            });
-            clearTimeout(classifyTimeout);
-            classification = JSON.parse(classifyResponse.text || '{}');
-            console.log(`[Classify] [${req.requestId}] URL type=${classification.contentType} search=${classification.searchRecommendation?.value} (${Date.now() - startTime}ms)`);
-          } catch (classifyError) {
-            console.error(`[Classify] [${req.requestId}] URL classification failed:`, classifyError.message);
-          }
-        } else {
-          try {
-            console.log(`[Classify] [${req.requestId}] Starting classification...`);
-            const classifyController = new AbortController();
-            const classifyTimeout = setTimeout(() => classifyController.abort(), 15_000);
-            const classifyResponse = await ai.models.generateContent({
-              model: MODEL_NAME,
-              contents: [{ role: 'user', parts }],
-              config: {
-                systemInstruction: CLASSIFICATION_SYSTEM_PROMPT,
-                responseMimeType: 'application/json',
-                responseSchema: classificationSchema,
-                thinkingConfig: { thinkingBudget: 0 },
-              },
-              requestOptions: { signal: classifyController.signal },
-            });
-            clearTimeout(classifyTimeout);
-            classification = JSON.parse(classifyResponse.text || '{}');
-            console.log(`[Classify] [${req.requestId}] type=${classification.contentType} search=${classification.searchRecommendation?.value} (${Date.now() - startTime}ms)`);
-          } catch (classifyError) {
-            console.error(`[Classify] [${req.requestId}] Classification failed:`, classifyError.message);
-          }
-        }
-
-        // --- Phase 2: Enrichment ---
-        let systemPrompt;
-        let tools;
-
-        if (classification) {
-          systemPrompt = buildSmartEnrichmentPrompt(classification, tags, location, text, hasUrls ? detectedUrls : undefined);
-          tools = selectEnrichmentTools(classification, hasUrls);
-        } else if (hasUrls) {
-          systemPrompt = buildUrlEnrichmentSystemPrompt(tags, location, detectedUrls);
-          tools = [{ urlContext: {} }, { googleSearch: {} }];
-        } else {
-          systemPrompt = buildEnrichmentSystemPrompt(tags, location, text);
-          tools = [{ googleSearch: {} }];
-        }
-
-        const enrichmentStrategy = hasUrls ? 'url'
-          : (classification && classification.searchRecommendation?.value !== 'high' && classification.searchRecommendation?.value !== 'medium') ? 'summarize' : 'search';
-
-        console.log(`[Enrich] [${req.requestId}] user=${req.userId} strategy=${enrichmentStrategy} text="${text?.substring(0, 50)}" urls=${detectedUrls.length}`);
-
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
-
-        try {
-          const config = { systemInstruction: systemPrompt, thinkingConfig: { thinkingBudget: 0 } };
-          if (tools.length > 0) config.tools = tools;
-
-          const response = await ai.models.generateContent({
-            model: MODEL_NAME,
-            contents: [{ role: 'user', parts }],
-            config,
-            requestOptions: { signal: controller.signal },
-          });
-          clearTimeout(timeout);
-
-          const responseText = response.text || '{}';
-          console.log(`[Enrich] [${req.requestId}] Completed in ${Date.now() - startTime}ms. Response length: ${responseText.length}`);
-
-          const parsed = parseJsonResponse(responseText);
-          if (classification) parsed.contentType = classification.contentType;
-          parsed.enrichmentStrategy = enrichmentStrategy;
-
-          const sanitized = sanitizeEnrichmentResult(parsed);
-          if (hasUrls) attachSourceUrl(sanitized, detectedUrls);
-
-          // Attach OG preview images (awaiting the parallel fetch started earlier)
-          await attachOgPreviews(ogImagePromise, sanitized, req.requestId);
-
-          // Moment matching phase (non-fatal)
-          if (moments && Array.isArray(moments) && moments.length > 0) {
-            try {
-              const matchResult = await performMomentMatching(ai, MODEL_NAME, GEMINI_TIMEOUT_MS, req.requestId, text, tags, sanitized, moments);
-              sanitized.matchedMomentIds = matchResult;
-            } catch (matchErr) {
-              console.error(`[Enrich] [${req.requestId}] Moment matching failed (non-fatal):`, matchErr.message);
-              sanitized.matchedMomentIds = [];
-            }
-          }
-
-          persistEnrichmentResult(memoryId, req.userId, 'completed', sanitized);
-        } catch (primaryError) {
-          clearTimeout(timeout);
-          throw primaryError;
-        }
-      } catch (error) {
-        const duration = Date.now() - startTime;
-        console.error(`[Enrich] [${req.requestId}] Primary failed after ${duration}ms:`, error.message);
-
-        // Fallback with stable model
-        try {
-          const fallbackController = new AbortController();
-          const fallbackTimeout = setTimeout(() => fallbackController.abort(), GEMINI_TIMEOUT_MS);
-          const fallbackSystemPrompt = hasUrls
-            ? buildUrlEnrichmentSystemPrompt(tags, location, detectedUrls)
-            : buildEnrichmentSystemPrompt(tags, location, text);
-          const fallbackConfig = { systemInstruction: fallbackSystemPrompt, thinkingConfig: { thinkingBudget: 0 } };
-          if (hasUrls) fallbackConfig.tools = [{ urlContext: {} }, { googleSearch: {} }];
-
-          const response = await ai.models.generateContent({
-            model: FALLBACK_MODEL_NAME,
-            contents: [{ role: 'user', parts }],
-            config: fallbackConfig,
-            requestOptions: { signal: fallbackController.signal },
-          });
-          clearTimeout(fallbackTimeout);
-
-          const parsed = parseJsonResponse(response.text || '{}');
-          parsed.enrichmentStrategy = 'search';
-          const sanitizedFallback = sanitizeEnrichmentResult(parsed);
-          if (hasUrls) attachSourceUrl(sanitizedFallback, detectedUrls);
-
-          // Attach OG preview images (from the parallel fetch started earlier)
-          await attachOgPreviews(ogImagePromise, sanitizedFallback, req.requestId);
-
-          // Moment matching phase (non-fatal)
-          if (moments && Array.isArray(moments) && moments.length > 0) {
-            try {
-              const matchResult = await performMomentMatching(ai, MODEL_NAME, GEMINI_TIMEOUT_MS, req.requestId, text, tags, sanitizedFallback, moments);
-              sanitizedFallback.matchedMomentIds = matchResult;
-            } catch (matchErr) {
-              console.error(`[Enrich] [${req.requestId}] Moment matching failed (non-fatal):`, matchErr.message);
-              sanitizedFallback.matchedMomentIds = [];
-            }
-          }
-
-          persistEnrichmentResult(memoryId, req.userId, 'completed', sanitizedFallback);
-        } catch (fallbackError) {
-          console.error(`[Enrich] [${req.requestId}] Fallback also failed:`, fallbackError.message);
-          persistEnrichmentResult(memoryId, req.userId, 'failed', null);
-        }
-      }
-      }).catch((err) => console.error(`[Enrich] Limiter error:`, err.message));
+      // Delegate to the reusable background enrichment function
+      runBackgroundEnrichment({
+        userId: req.userId,
+        requestId: req.requestId,
+        memoryId,
+        text,
+        attachments,
+        tags,
+        location,
+        moments,
+      });
     }
   );
 
@@ -422,5 +447,5 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
     }
   );
 
-  return router;
+  return { router, runBackgroundEnrichment, persistEnrichmentResult };
 };

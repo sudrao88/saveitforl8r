@@ -215,6 +215,7 @@ export interface Memory {
   processingError?: boolean;
   isDeleted?: boolean; // Persistent soft-delete flag for sync
   isPinned?: boolean;
+  source?: 'web' | 'whatsapp'; // Origin of the note
 }
 
 export interface ChatMessage {

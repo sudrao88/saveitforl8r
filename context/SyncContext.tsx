@@ -14,6 +14,8 @@ import {
 import { Memory, Moment, MomentSynthesis, CalendarEvent, TodoItem } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { storage } from '../services/platform';
+import { fetchWhatsAppNotes, acknowledgeNotes } from '../services/whatsappService';
+import type { WhatsAppNote } from '../services/whatsappService';
 
 type SyncStatus = 'syncing' | 'synced' | 'error';
 
@@ -813,6 +815,52 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
                 console.log(`--- [Sync] Starting DELTA Sync ---`);
                 await doDeltaSync(previousSnapshot);
+
+                // Fetch WhatsApp notes from Firestore and import into local storage
+                try {
+                    const whatsappNotes = await fetchWhatsAppNotes();
+                    if (whatsappNotes.length > 0) {
+                        console.log(`[Sync] Importing ${whatsappNotes.length} WhatsApp note(s)`);
+                        const importedIds: string[] = [];
+                        for (const note of whatsappNotes) {
+                            try {
+                                const memory: Memory = {
+                                    id: note.id,
+                                    timestamp: note.timestamp,
+                                    content: note.content,
+                                    attachments: note.attachments || [],
+                                    tags: note.tags || [],
+                                    enrichment: note.enrichment as Memory['enrichment'] || undefined,
+                                    source: 'whatsapp',
+                                };
+                                await saveMemory(memory);
+                                importedIds.push(note.id);
+
+                                // Sync to Google Drive
+                                try {
+                                    const filename = `${note.id}.json`;
+                                    const remoteFile = await findFileByName(filename);
+                                    await uploadFile(filename, memory, remoteFile?.id);
+                                } catch (driveErr) {
+                                    console.warn(`[Sync] WhatsApp note Drive upload failed for ${note.id}:`, driveErr);
+                                }
+                            } catch (noteErr) {
+                                console.error(`[Sync] Failed to import WhatsApp note ${note.id}:`, noteErr);
+                            }
+                        }
+                        // Acknowledge successfully imported notes
+                        if (importedIds.length > 0) {
+                            await acknowledgeNotes(importedIds).catch(ackErr =>
+                                console.error('[Sync] WhatsApp note acknowledgment failed:', ackErr)
+                            );
+                            console.log(`[Sync] Acknowledged ${importedIds.length} WhatsApp note(s)`);
+                        }
+                    }
+                } catch (waErr) {
+                    // Non-fatal — don't block sync completion
+                    console.warn('[Sync] WhatsApp note fetch failed (non-fatal):', waErr);
+                }
+
                 reconcileEmbeddings().catch(e => console.error("[Sync] RAG Reconciliation failed:", e));
                 resolve();
             } catch (e: any) {

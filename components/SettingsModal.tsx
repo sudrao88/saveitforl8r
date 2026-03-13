@@ -1,7 +1,8 @@
 
 import React, { useState, useRef } from 'react';
 
-import { X, Download, Upload, Info, RefreshCw, Cloud, AlertTriangle, AlertCircle, ShieldCheck, LogOut, Settings, Cpu, CheckCircle2, Loader2, Database, ChevronDown, Trash2 } from 'lucide-react';
+import { X, Download, Upload, Info, RefreshCw, Cloud, AlertTriangle, AlertCircle, ShieldCheck, LogOut, Settings, Cpu, CheckCircle2, Loader2, Database, ChevronDown, Trash2, MessageCircle } from 'lucide-react';
+import WhatsAppLinkSection from './WhatsAppLinkSection';
 
 import { useExportImport } from '../hooks/useExportImport';
 import { useEncryptionSettings } from '../hooks/useEncryptionSettings';
@@ -268,6 +269,12 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
                 </div>
             </SettingsRow>
           </SettingsCard>
+
+          {authStatus === 'linked' && (
+            <SettingsCard title="WhatsApp" icon={MessageCircle}>
+              <WhatsAppLinkSection />
+            </SettingsCard>
+          )}
 
           <SettingsCard title="Security" icon={ShieldCheck}>
              <SettingsRow>

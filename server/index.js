@@ -21,6 +21,7 @@ import { Firestore } from '@google-cloud/firestore';
 import { createEnrichRouter } from './routes/enrich.js';
 import { createQueryRouter } from './routes/query.js';
 import { createMomentRouter } from './routes/moment.js';
+import { createWhatsAppRouter } from './routes/whatsapp.js';
 import { authenticateRequest } from './middleware/auth.js';
 import { validateSynthesizeInput, validateSynthesizeResultsInput } from './middleware/validation.js';
 import { sanitizeUserInput } from './lib/sanitize.js';
@@ -100,7 +101,7 @@ app.use(
         callback(new Error('Not allowed by CORS'));
       }
     },
-    methods: ['GET', 'POST'],
+    methods: ['GET', 'POST', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     maxAge: 86400,
   })
@@ -108,6 +109,7 @@ app.use(
 
 app.use(compression());
 app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: false })); // Twilio webhooks send form-encoded data
 
 // Attach an anonymous request ID for log correlation
 app.use((req, _res, next) => {
@@ -147,8 +149,10 @@ app.get('/health', healthLimiter, async (_req, res) => {
 
 const sharedDeps = { ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GEMINI_TIMEOUT_MS, ENRICHMENT_COLLECTION, ENRICHMENT_TTL_MS, ENRICHMENT_FAILED_TTL_MS, aiLimiter };
 
-app.use('/api/enrich', createEnrichRouter(sharedDeps));
+const { router: enrichRouter, runBackgroundEnrichment, persistEnrichmentResult: persistEnrichment } = createEnrichRouter(sharedDeps);
+app.use('/api/enrich', enrichRouter);
 app.use('/api/query', createQueryRouter(sharedDeps));
+app.use('/api/whatsapp', createWhatsAppRouter({ db, runBackgroundEnrichment, persistEnrichmentResult: persistEnrichment }));
 
 // --- Moment schemas & routes ---
 
