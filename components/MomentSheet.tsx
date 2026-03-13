@@ -358,8 +358,9 @@ const SectionView: React.FC<{
     <div className="space-y-2">
       {section.items.map((item, iIdx) => {
         const key = `${sectionIndex}-${iIdx}`;
-        const isCompleted =
-          item.completed || completedItems.has(key);
+        const isCompleted = item.completed
+          ? !completedItems.has(key)
+          : completedItems.has(key);
         return (
           <ItemView
             key={key}
