@@ -22,6 +22,7 @@ import {
   SynthesisSection,
   SynthesisItem,
   Memory,
+  Attachment,
 } from '../types';
 import MemoryCard from './MemoryCard';
 import { overlay } from '../styles/design-system';
@@ -75,6 +76,7 @@ interface MomentSheetProps {
   onClose: () => void;
   loadSynthesis: (moment: Moment, memories: Memory[], signal?: AbortSignal) => Promise<SynthesisResponse | null>;
   onDelete: (momentId: string) => Promise<void>;
+  onViewAttachment?: (attachment: Attachment, allAttachments: Attachment[]) => void;
 }
 
 const MomentSheet: React.FC<MomentSheetProps> = ({
@@ -83,6 +85,7 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
   onClose,
   loadSynthesis,
   onDelete,
+  onViewAttachment,
 }) => {
   const [synthesis, setSynthesis] = useState<SynthesisResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -325,6 +328,7 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
               <MemoryCard
                 memory={previewMemory}
                 isDialog={true}
+                onViewAttachment={onViewAttachment}
               />
             </div>
             <button
