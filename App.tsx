@@ -862,6 +862,7 @@ const AppContent: React.FC = () => {
             onClose={handleMomentClose}
             loadSynthesis={loadSynthesis}
             onDelete={deleteMoment}
+            onViewAttachment={handleViewAttachment}
           />
         </Suspense>
       )}
