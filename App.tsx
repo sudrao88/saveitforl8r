@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, Suspense } from 'react';
 import { RefreshCw, X } from 'lucide-react';
 import { App as CapacitorApp, URLOpenListenerEvent } from '@capacitor/app';
 import { isNative } from './services/platform';
@@ -13,16 +13,18 @@ import ErrorBoundary from './components/ErrorBoundary';
 import { Logo } from './components/icons';
 import QuickNoteBar, { QuickNoteBarHandle } from './components/QuickNoteBar';
 import GalleryViewer from './components/GalleryViewer';
+import { lazyWithRetry } from './utils/lazyWithRetry';
 
-// Lazy-load heavy components that aren't needed on initial render
-const ChatInterface = lazy(() => import('./components/ChatInterface'));
-const SettingsModal = lazy(() => import('./components/SettingsModal'));
-const NewMemoryPage = lazy(() => import('./components/NewMemoryPage'));
-const MomentSheet = lazy(() => import('./components/MomentSheet'));
-const MomentCreationDialog = lazy(() => import('./components/MomentCreationDialog'));
-const AllMomentsSheet = lazy(() => import('./components/AllMomentsSheet'));
-const CalendarAgendaView = lazy(() => import('./components/CalendarAgendaView'));
-const TodoListView = lazy(() => import('./components/TodoListView'));
+// Lazy-load heavy components that aren't needed on initial render.
+// lazyWithRetry clears stale SW caches and reloads if a chunk fails to import.
+const ChatInterface = lazyWithRetry(() => import('./components/ChatInterface'));
+const SettingsModal = lazyWithRetry(() => import('./components/SettingsModal'));
+const NewMemoryPage = lazyWithRetry(() => import('./components/NewMemoryPage'));
+const MomentSheet = lazyWithRetry(() => import('./components/MomentSheet'));
+const MomentCreationDialog = lazyWithRetry(() => import('./components/MomentCreationDialog'));
+const AllMomentsSheet = lazyWithRetry(() => import('./components/AllMomentsSheet'));
+const CalendarAgendaView = lazyWithRetry(() => import('./components/CalendarAgendaView'));
+const TodoListView = lazyWithRetry(() => import('./components/TodoListView'));
 
 import { useMemories } from './hooks/useMemories';
 import { useSettings } from './hooks/useSettings';
