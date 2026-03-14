@@ -86,7 +86,7 @@ self.addEventListener('install', (event) => {
             assetUrls.map(async (url) => {
               const existing = await staticCache.match(url);
               if (existing) return; // Already cached
-              const resp = await fetch(url);
+              const resp = await fetchWithTimeout(url);
               if (resp.ok) await staticCache.put(url, resp);
             })
           );
