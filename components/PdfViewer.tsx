@@ -45,6 +45,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ dataUri, fileName }) => {
         setLoading(true);
         setError(null);
         setLoadingProgress(0);
+        setPages([]);
 
         const response = await fetch(dataUri);
         const arrayBuffer = await response.arrayBuffer();
@@ -52,8 +53,6 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ dataUri, fileName }) => {
 
         if (cancelled) return;
         setTotalPages(pdf.numPages);
-
-        const renderedPages: PageData[] = [];
 
         for (let i = 1; i <= pdf.numPages; i++) {
           if (cancelled) return;
@@ -65,23 +64,25 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ dataUri, fileName }) => {
           canvas.width = viewport.width;
           canvas.height = viewport.height;
 
-          const ctx = canvas.getContext('2d')!;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            console.error(`Failed to get 2d context for page ${i}`);
+            continue;
+          }
           await page.render({ canvas, canvasContext: ctx, viewport }).promise;
 
-          renderedPages.push({
+          const pageData: PageData = {
             dataUrl: canvas.toDataURL('image/png'),
             width: viewport.width,
             height: viewport.height,
-          });
+          };
 
           if (!cancelled) {
+            // Update pages incrementally so users see pages as they render
+            setPages(prev => [...prev, pageData]);
             setLoadingProgress(Math.round((i / pdf.numPages) * 100));
+            if (i === 1) setLoading(false);
           }
-        }
-
-        if (!cancelled) {
-          setPages(renderedPages);
-          setLoading(false);
         }
       } catch (err) {
         if (!cancelled) {

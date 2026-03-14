@@ -27,17 +27,10 @@ function getSafeDataUri(attachment: Attachment): string {
   return data;
 }
 
-/** Converts a data URI to a Blob */
-function dataUriToBlob(dataUri: string): Blob {
-  const [header, base64] = dataUri.split(',');
-  const mimeMatch = header.match(/data:([^;]+)/);
-  const mime = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return new Blob([bytes], { type: mime });
+/** Converts a data URI to a Blob using the Fetch API */
+async function dataUriToBlob(dataUri: string): Promise<Blob> {
+  const response = await fetch(dataUri);
+  return response.blob();
 }
 
 /** Shares the given attachment using the Web Share API (with file support) */
@@ -45,7 +38,7 @@ async function shareAttachment(attachment: Attachment): Promise<void> {
   const safeUri = getSafeDataUri(attachment);
   if (!safeUri) return;
 
-  const blob = dataUriToBlob(safeUri);
+  const blob = await dataUriToBlob(safeUri);
   const file = new File([blob], attachment.name, { type: attachment.mimeType });
 
   if (navigator.canShare && navigator.canShare({ files: [file] })) {

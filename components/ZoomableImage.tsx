@@ -12,6 +12,7 @@ const MAX_SCALE = 5;
 const DOUBLE_TAP_SCALE = 2.5;
 const DOUBLE_TAP_THRESHOLD_MS = 300;
 const DOUBLE_TAP_DISTANCE_PX = 30;
+const ANIMATION_DURATION_MS = 300;
 
 const ZoomableImage: React.FC<ZoomableImageProps> = ({ src, alt, onZoomChange, resetKey }) => {
   const [scale, setScale] = useState(1);
@@ -35,7 +36,7 @@ const ZoomableImage: React.FC<ZoomableImageProps> = ({ src, alt, onZoomChange, r
     setScale(1);
     setTranslate({ x: 0, y: 0 });
     onZoomChange?.(false);
-  }, [resetKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [resetKey, onZoomChange]);
 
   const clampTranslate = useCallback((tx: number, ty: number, s: number) => {
     if (s <= 1) return { x: 0, y: 0 };
@@ -114,7 +115,7 @@ const ZoomableImage: React.FC<ZoomableImageProps> = ({ src, alt, onZoomChange, r
             onZoomChange?.(true);
           }
         }
-        setTimeout(() => setIsAnimating(false), 300);
+        setTimeout(() => setIsAnimating(false), ANIMATION_DURATION_MS);
         return;
       }
 
@@ -167,7 +168,7 @@ const ZoomableImage: React.FC<ZoomableImageProps> = ({ src, alt, onZoomChange, r
         setScale(1);
         setTranslate({ x: 0, y: 0 });
         onZoomChange?.(false);
-        setTimeout(() => setIsAnimating(false), 300);
+        setTimeout(() => setIsAnimating(false), ANIMATION_DURATION_MS);
       }
     }
     if (e.touches.length < 2) {
@@ -192,7 +193,7 @@ const ZoomableImage: React.FC<ZoomableImageProps> = ({ src, alt, onZoomChange, r
         draggable={false}
         style={{
           transform: `translate(${translate.x}px, ${translate.y}px) scale(${scale})`,
-          transition: isAnimating ? 'transform 0.3s ease-out' : 'none',
+          transition: isAnimating ? `transform ${ANIMATION_DURATION_MS}ms ease-out` : 'none',
           transformOrigin: 'center center',
         }}
       />
