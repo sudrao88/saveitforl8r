@@ -1,7 +1,9 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { X, Download, ChevronLeft, ChevronRight, FileText } from 'lucide-react';
+import { X, Download, ChevronLeft, ChevronRight, FileText, Share2 } from 'lucide-react';
 import { Attachment } from '../types';
 import { zIndex } from '../styles/design-system';
+import ZoomableImage from './ZoomableImage';
+import PdfViewer from './PdfViewer';
 
 const MAX_DOT_INDICATORS = 12;
 
@@ -25,6 +27,42 @@ function getSafeDataUri(attachment: Attachment): string {
   return data;
 }
 
+/** Converts a data URI to a Blob using the Fetch API */
+async function dataUriToBlob(dataUri: string): Promise<Blob> {
+  const response = await fetch(dataUri);
+  return response.blob();
+}
+
+/** Shares the given attachment using the Web Share API (with file support) */
+async function shareAttachment(attachment: Attachment): Promise<void> {
+  const safeUri = getSafeDataUri(attachment);
+  if (!safeUri) return;
+
+  const blob = await dataUriToBlob(safeUri);
+  const file = new File([blob], attachment.name, { type: attachment.mimeType });
+
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({
+        files: [file],
+        title: attachment.name,
+      });
+    } catch (err: unknown) {
+      // User cancelled — not an error
+      if (err instanceof Error && err.name === 'AbortError') return;
+      console.error('Share failed:', err);
+    }
+  } else if (navigator.share) {
+    // Fallback: share without file (just title)
+    try {
+      await navigator.share({ title: attachment.name, text: `Shared from SaveItForL8R: ${attachment.name}` });
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === 'AbortError') return;
+      console.error('Share failed:', err);
+    }
+  }
+}
+
 interface GalleryViewerProps {
   attachments: Attachment[];
   initialIndex: number;
@@ -33,6 +71,8 @@ interface GalleryViewerProps {
 
 const GalleryViewer: React.FC<GalleryViewerProps> = ({ attachments, initialIndex, onClose }) => {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
+  const [isZoomed, setIsZoomed] = useState(false);
+  const [canShare, setCanShare] = useState(false);
   const touchStartX = useRef<number | null>(null);
   const touchDeltaX = useRef(0);
   const [swipeOffset, setSwipeOffset] = useState(0);
@@ -40,11 +80,19 @@ const GalleryViewer: React.FC<GalleryViewerProps> = ({ attachments, initialIndex
   const current = attachments[currentIndex];
   const hasPrev = currentIndex > 0;
   const hasNext = currentIndex < attachments.length - 1;
+  const isPdf = current.mimeType === 'application/pdf';
+  const isImage = current.type === 'image';
+
+  // Check share API support
+  useEffect(() => {
+    setCanShare(typeof navigator.share === 'function');
+  }, []);
 
   const goTo = useCallback((index: number) => {
     if (index >= 0 && index < attachments.length) {
       setCurrentIndex(index);
       setSwipeOffset(0);
+      setIsZoomed(false);
     }
   }, [attachments]);
 
@@ -55,33 +103,34 @@ const GalleryViewer: React.FC<GalleryViewerProps> = ({ attachments, initialIndex
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
-      else if (e.key === 'ArrowLeft') goPrev();
-      else if (e.key === 'ArrowRight') goNext();
+      else if (e.key === 'ArrowLeft' && !isZoomed) goPrev();
+      else if (e.key === 'ArrowRight' && !isZoomed) goNext();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose, goPrev, goNext]);
+  }, [onClose, goPrev, goNext, isZoomed]);
 
-  // Touch/swipe handling
+  // Touch/swipe handling (only when not zoomed and not viewing PDF)
   const handleTouchStart = (e: React.TouchEvent) => {
+    if (isZoomed || isPdf) return;
     touchStartX.current = e.touches[0].clientX;
     touchDeltaX.current = 0;
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
+    if (isZoomed || isPdf) return;
     if (touchStartX.current === null) return;
     const delta = e.touches[0].clientX - touchStartX.current;
     touchDeltaX.current = delta;
-    // Only show swipe offset if swiping in a valid direction
     if ((delta > 0 && hasPrev) || (delta < 0 && hasNext)) {
       setSwipeOffset(delta);
     } else {
-      // Dampen swipe at edges
       setSwipeOffset(delta * 0.2);
     }
   };
 
   const handleTouchEnd = () => {
+    if (isZoomed || isPdf) return;
     const threshold = 60;
     if (touchDeltaX.current < -threshold && hasNext) {
       goNext();
@@ -94,28 +143,30 @@ const GalleryViewer: React.FC<GalleryViewerProps> = ({ attachments, initialIndex
     touchDeltaX.current = 0;
   };
 
+  const handleShare = useCallback(() => {
+    shareAttachment(current);
+  }, [current]);
+
   const renderContent = (attachment: Attachment) => {
     const safeUri = getSafeDataUri(attachment);
 
     if (attachment.type === 'image') {
       if (!safeUri) return <p className="text-red-400 text-sm">Unable to display this image.</p>;
       return (
-        <img
+        <ZoomableImage
           src={safeUri}
           alt={attachment.name}
-          className="max-w-full max-h-full object-contain shadow-2xl rounded-lg select-none"
-          draggable={false}
+          onZoomChange={setIsZoomed}
+          resetKey={currentIndex}
         />
       );
     }
     if (attachment.mimeType === 'application/pdf') {
       if (!safeUri) return <p className="text-red-400 text-sm">Unable to display this PDF.</p>;
       return (
-        <iframe
-          src={safeUri}
-          className="w-full h-full rounded-lg bg-white shadow-2xl border-none"
-          title={attachment.name}
-          sandbox="allow-same-origin"
+        <PdfViewer
+          dataUri={safeUri}
+          fileName={attachment.name}
         />
       );
     }
@@ -157,26 +208,37 @@ const GalleryViewer: React.FC<GalleryViewerProps> = ({ attachments, initialIndex
             <span className="text-xs text-gray-500 shrink-0">{currentIndex + 1} of {attachments.length}</span>
           )}
         </div>
-        {getSafeDataUri(current) && (
-          <a
-            href={getSafeDataUri(current)}
-            download={current.name}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all active:scale-95 shrink-0"
-          >
-            <Download size={14} /> Download
-          </a>
-        )}
+        <div className="flex items-center gap-2 shrink-0">
+          {canShare && getSafeDataUri(current) && (
+            <button
+              onClick={handleShare}
+              className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-xl text-xs font-bold transition-all active:scale-95"
+              aria-label="Share"
+            >
+              <Share2 size={14} /> Share
+            </button>
+          )}
+          {getSafeDataUri(current) && (
+            <a
+              href={getSafeDataUri(current)}
+              download={current.name}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all active:scale-95"
+            >
+              <Download size={14} /> Download
+            </a>
+          )}
+        </div>
       </div>
 
       {/* Content area with swipe */}
       <div
-        className="flex-1 flex items-center justify-center overflow-hidden relative"
+        className={`flex-1 flex ${isPdf ? 'flex-col' : 'items-center justify-center'} overflow-hidden relative`}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
       >
-        {/* Previous arrow */}
-        {hasPrev && (
+        {/* Previous arrow (not shown for PDFs) */}
+        {hasPrev && !isPdf && (
           <button
             onClick={goPrev}
             className="absolute left-2 sm:left-4 z-(--z-sticky) p-3 rounded-full bg-black/40 hover:bg-black/70 text-white/70 hover:text-white transition-all active:scale-90 backdrop-blur-sm"
@@ -187,17 +249,21 @@ const GalleryViewer: React.FC<GalleryViewerProps> = ({ attachments, initialIndex
 
         {/* Main content with swipe transform */}
         <div
-          className="flex items-center justify-center w-full h-full p-4"
-          style={{
-            transform: `translateX(${swipeOffset}px)`,
-            transition: swipeOffset === 0 ? 'transform 0.25s ease-out' : 'none',
-          }}
+          className={`flex items-center justify-center ${isPdf ? 'flex-1 overflow-hidden' : 'w-full h-full p-4'}`}
+          style={
+            isPdf
+              ? undefined
+              : {
+                  transform: `translateX(${swipeOffset}px)`,
+                  transition: swipeOffset === 0 ? 'transform 0.25s ease-out' : 'none',
+                }
+          }
         >
           {renderContent(current)}
         </div>
 
-        {/* Next arrow */}
-        {hasNext && (
+        {/* Next arrow (not shown for PDFs) */}
+        {hasNext && !isPdf && (
           <button
             onClick={goNext}
             className="absolute right-2 sm:right-4 z-(--z-sticky) p-3 rounded-full bg-black/40 hover:bg-black/70 text-white/70 hover:text-white transition-all active:scale-90 backdrop-blur-sm"
@@ -207,8 +273,8 @@ const GalleryViewer: React.FC<GalleryViewerProps> = ({ attachments, initialIndex
         )}
       </div>
 
-      {/* Dot indicators */}
-      {attachments.length > 1 && attachments.length <= MAX_DOT_INDICATORS && (
+      {/* Dot indicators (not shown for PDFs) */}
+      {!isPdf && attachments.length > 1 && attachments.length <= MAX_DOT_INDICATORS && (
         <div className="flex items-center justify-center gap-1.5 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
           {attachments.map((_, idx) => (
             <button
@@ -224,8 +290,8 @@ const GalleryViewer: React.FC<GalleryViewerProps> = ({ attachments, initialIndex
         </div>
       )}
 
-      {/* Counter for many items (no dots) */}
-      {attachments.length > MAX_DOT_INDICATORS && (
+      {/* Counter for many items (no dots, not shown for PDFs) */}
+      {!isPdf && attachments.length > MAX_DOT_INDICATORS && (
         <div className="flex items-center justify-center py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
           <span className="text-xs text-gray-500">{currentIndex + 1} / {attachments.length}</span>
         </div>
