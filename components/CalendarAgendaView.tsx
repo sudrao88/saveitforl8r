@@ -2,7 +2,7 @@
  * CalendarAgendaView.tsx
  *
  * Full-screen agenda view showing calendar events extracted from notes.
- * Events are grouped by time period: Today, This Week, This Month, Later, Past.
+ * Events are grouped by time period: Today, Tomorrow, This Week, This Month, Later, Past.
  * Tapping an event card navigates to the source memory.
  */
 
@@ -84,8 +84,14 @@ const groupEvents = (events: CalendarEvent[]): EventGroup[] => {
   const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
   const endOfMonthStr = endOfMonth.toISOString().split('T')[0];
 
+  // Calculate tomorrow
+  const tomorrow = new Date(now);
+  tomorrow.setDate(now.getDate() + 1);
+  const tomorrowStr = tomorrow.toISOString().split('T')[0];
+
   const groups: Record<string, CalendarEvent[]> = {
     today: [],
+    tomorrow: [],
     thisWeek: [],
     thisMonth: [],
     later: [],
@@ -99,6 +105,8 @@ const groupEvents = (events: CalendarEvent[]): EventGroup[] => {
       groups.past.push(event);
     } else if (dateStr === today) {
       groups.today.push(event);
+    } else if (dateStr === tomorrowStr) {
+      groups.tomorrow.push(event);
     } else if (dateStr <= endOfWeekStr) {
       groups.thisWeek.push(event);
     } else if (dateStr <= endOfMonthStr) {
@@ -110,6 +118,7 @@ const groupEvents = (events: CalendarEvent[]): EventGroup[] => {
 
   const result: EventGroup[] = [];
   if (groups.today.length > 0) result.push({ label: 'Today', events: groups.today });
+  if (groups.tomorrow.length > 0) result.push({ label: 'Tomorrow', events: groups.tomorrow });
   if (groups.thisWeek.length > 0) result.push({ label: 'This Week', events: groups.thisWeek });
   if (groups.thisMonth.length > 0) result.push({ label: 'This Month', events: groups.thisMonth });
   if (groups.later.length > 0) result.push({ label: 'Later', events: groups.later });
@@ -298,9 +307,11 @@ const CalendarAgendaView: React.FC<CalendarAgendaViewProps> = ({
                   className={`text-xs font-bold uppercase tracking-wider mb-3 ${
                     group.label === 'Today'
                       ? 'text-blue-400'
-                      : group.label === 'Past'
-                        ? 'text-gray-600'
-                        : 'text-gray-400'
+                      : group.label === 'Tomorrow'
+                        ? 'text-blue-400'
+                        : group.label === 'Past'
+                          ? 'text-gray-600'
+                          : 'text-gray-400'
                   }`}
                 >
                   {group.label}
