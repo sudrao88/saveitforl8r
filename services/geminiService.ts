@@ -346,19 +346,37 @@ const SYNTH_POLL_TIMEOUT_MS = 120_000;
 /**
  * Polls for a re-synthesis result with tiered intervals (1s for 15s, then 2s).
  * Returns the SynthesisResponse when complete, or throws on failure/timeout.
+ * Accepts an optional AbortSignal to stop polling early when the caller is
+ * cancelled (e.g. when a note deletion triggers a new synthesis request).
  */
 export const pollSynthesisResult = async (
   momentId: string,
+  signal?: AbortSignal,
 ): Promise<SynthesisResponse> => {
   const start = Date.now();
 
   while (Date.now() - start < SYNTH_POLL_TIMEOUT_MS) {
+    if (signal?.aborted) {
+      throw new DOMException('Synthesis polling aborted', 'AbortError');
+    }
+
     const elapsed = Date.now() - start;
     const interval = elapsed < SYNTH_FAST_POLL_TIER_MS
       ? SYNTH_FAST_POLL_INTERVAL_MS
       : SYNTH_SLOW_POLL_INTERVAL_MS;
 
-    await new Promise(resolve => setTimeout(resolve, interval));
+    // Abort-aware delay: rejects immediately if signal fires during the wait
+    await new Promise<void>((resolve, reject) => {
+      const onAbort = () => {
+        clearTimeout(timer);
+        reject(new DOMException('Synthesis polling aborted', 'AbortError'));
+      };
+      const timer = setTimeout(() => {
+        signal?.removeEventListener('abort', onAbort);
+        resolve();
+      }, interval);
+      signal?.addEventListener('abort', onAbort, { once: true });
+    });
 
     const results = await fetchPendingSynthesisResults([momentId]);
     const result = results[momentId];

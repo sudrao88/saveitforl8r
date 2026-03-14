@@ -1,6 +1,6 @@
 
-import { Memory, Moment, MomentSynthesis, CalendarEvent } from '../types.ts';
-import { encryptData, decryptData, EncryptedPayload } from './encryptionService';
+import { Memory, Moment, MomentSynthesis, CalendarEvent, TodoItem } from '../types.ts';
+import { encryptData, decryptData, decryptBatch, EncryptedPayload } from './encryptionService';
 import { db } from './db';
 
 const DB_NAME = 'SaveItForL8rDB';
@@ -8,7 +8,8 @@ const STORE_NAME = 'memories';
 const MOMENTS_STORE = 'moments';
 const MOMENT_SYNTHESIS_STORE = 'momentSyntheses';
 const CALENDAR_EVENTS_STORE = 'calendarEvents';
-const DB_VERSION = 4;
+const TODO_ITEMS_STORE = 'todoItems';
+const DB_VERSION = 5;
 
 export interface ReconcileReport {
     total: number;
@@ -57,6 +58,11 @@ const openDB = (): Promise<IDBDatabase> => {
         const eventStore = dbInstance.createObjectStore(CALENDAR_EVENTS_STORE, { keyPath: 'id' });
         eventStore.createIndex('startDate', 'startDate', { unique: false });
         eventStore.createIndex('memoryId', 'memoryId', { unique: false });
+      }
+      // v5: Todo items store for action items extracted from notes
+      if (!dbInstance.objectStoreNames.contains(TODO_ITEMS_STORE)) {
+        const todoStore = dbInstance.createObjectStore(TODO_ITEMS_STORE, { keyPath: 'id' });
+        todoStore.createIndex('memoryId', 'memoryId', { unique: false });
       }
     };
 
@@ -197,7 +203,42 @@ export const getMemories = async (): Promise<Memory[]> => {
       request.onerror = () => reject(request.error);
     });
 
-    const memories = await Promise.all(storedMemories.map(rehydrateMemory));
+    // Batch decrypt all encrypted memories in the worker to avoid main-thread blocking
+    const encrypted = storedMemories.filter(s => s.encryptedData);
+    const unencrypted = storedMemories.filter(s => !s.encryptedData);
+
+    let decryptedMap: Map<string, any> | undefined;
+    if (encrypted.length > 0) {
+      const payloads = encrypted.map(s => ({
+        id: s.id,
+        cipherText: s.encryptedData!.cipherText,
+        iv: s.encryptedData!.iv,
+      }));
+      const results = await decryptBatch(payloads);
+      decryptedMap = new Map(results.map(r => [r.id, r]));
+    }
+
+    const memories: Memory[] = [];
+    for (const stored of storedMemories) {
+      if (stored.encryptedData && decryptedMap) {
+        const result = decryptedMap.get(stored.id);
+        if (result?.data) {
+          memories.push(normalizeMemory({ id: stored.id, timestamp: stored.timestamp, ...result.data }));
+        } else {
+          console.error(`Failed to decrypt memory ${stored.id}`, result?.error);
+          memories.push({
+            id: stored.id,
+            timestamp: stored.timestamp,
+            content: "Error: Could not decrypt memory.",
+            tags: [],
+            processingError: true,
+          });
+        }
+      } else {
+        memories.push(normalizeMemory(stored as unknown as Memory));
+      }
+    }
+
     return memories.sort((a, b) => b.timestamp - a.timestamp);
   } catch (error) {
     console.error("Storage Error:", error);
@@ -491,6 +532,50 @@ export const softDeleteCalendarEventsByMemoryId = async (memoryId: string): Prom
   return tombstones;
 };
 
+/**
+ * Atomically replace all calendar events for a memory: soft-delete existing
+ * events and save new ones in a single IDB transaction. This prevents data
+ * loss if the save step were to fail after a non-atomic soft-delete.
+ *
+ * Returns the tombstones of the old events (for sync).
+ */
+export const replaceCalendarEventsForMemory = async (
+  memoryId: string,
+  newEvents: CalendarEvent[],
+): Promise<CalendarEvent[]> => {
+  const dbInstance = await openDB();
+  const now = Date.now();
+
+  return new Promise((resolve, reject) => {
+    const tx = dbInstance.transaction(CALENDAR_EVENTS_STORE, 'readwrite');
+    const store = tx.objectStore(CALENDAR_EVENTS_STORE);
+    const index = store.index('memoryId');
+
+    const tombstones: CalendarEvent[] = [];
+
+    // Phase 1: read existing events for this memory and tombstone them
+    const cursorReq = index.openCursor(IDBKeyRange.only(memoryId));
+    cursorReq.onsuccess = () => {
+      const cursor = cursorReq.result;
+      if (cursor) {
+        const existing = cursor.value as CalendarEvent;
+        const tombstone: CalendarEvent = { ...existing, isDeleted: true, updatedAt: now };
+        tombstones.push(tombstone);
+        cursor.update(tombstone);
+        cursor.continue();
+      } else {
+        // Phase 2: cursor exhausted — write all new events in the same tx
+        for (const event of newEvents) {
+          store.put(event);
+        }
+      }
+    };
+
+    tx.oncomplete = () => resolve(tombstones);
+    tx.onerror = () => reject(tx.error);
+  });
+};
+
 export const deleteCalendarEventsByMemoryId = async (memoryId: string): Promise<void> => {
   const dbInstance = await openDB();
   return new Promise((resolve, reject) => {
@@ -521,6 +606,151 @@ export const deleteCalendarEventHard = async (id: string): Promise<void> => {
   });
 };
 
+// --- TodoItem CRUD ---
+
+export const getTodoItems = async (): Promise<TodoItem[]> => {
+  try {
+    const dbInstance = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = dbInstance.transaction(TODO_ITEMS_STORE, 'readonly');
+      const store = tx.objectStore(TODO_ITEMS_STORE);
+      const request = store.getAll();
+      request.onsuccess = () => resolve((request.result as TodoItem[]).filter(item => !item.isDeleted));
+      request.onerror = () => reject(request.error);
+    });
+  } catch (error) {
+    console.error("Failed to get todo items:", error);
+    return [];
+  }
+};
+
+export const getAllTodoItemsIncludingDeleted = async (): Promise<TodoItem[]> => {
+  try {
+    const dbInstance = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = dbInstance.transaction(TODO_ITEMS_STORE, 'readonly');
+      const store = tx.objectStore(TODO_ITEMS_STORE);
+      const request = store.getAll();
+      request.onsuccess = () => resolve(request.result as TodoItem[]);
+      request.onerror = () => reject(request.error);
+    });
+  } catch (error) {
+    console.error("Failed to get all todo items:", error);
+    return [];
+  }
+};
+
+export const saveTodoItems = async (items: TodoItem[]): Promise<void> => {
+  if (items.length === 0) return;
+  const dbInstance = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = dbInstance.transaction(TODO_ITEMS_STORE, 'readwrite');
+    const store = tx.objectStore(TODO_ITEMS_STORE);
+    for (const item of items) {
+      store.put(item);
+    }
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+};
+
+export const updateTodoItem = async (item: TodoItem): Promise<void> => {
+  const dbInstance = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = dbInstance.transaction(TODO_ITEMS_STORE, 'readwrite');
+    const store = tx.objectStore(TODO_ITEMS_STORE);
+    store.put(item);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+};
+
+export const getTodoItemsByMemoryId = async (memoryId: string): Promise<TodoItem[]> => {
+  const dbInstance = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = dbInstance.transaction(TODO_ITEMS_STORE, 'readonly');
+    const store = tx.objectStore(TODO_ITEMS_STORE);
+    const index = store.index('memoryId');
+    const request = index.getAll(IDBKeyRange.only(memoryId));
+    request.onsuccess = () => resolve(request.result as TodoItem[]);
+    request.onerror = () => reject(request.error);
+  });
+};
+
+export const softDeleteTodoItemsByMemoryId = async (memoryId: string): Promise<TodoItem[]> => {
+  const items = await getTodoItemsByMemoryId(memoryId);
+  if (items.length === 0) return [];
+  const now = Date.now();
+  const tombstones = items.map(item => ({ ...item, isDeleted: true, updatedAt: now }));
+  await saveTodoItems(tombstones);
+  return tombstones;
+};
+
+export const replaceTodoItemsForMemory = async (
+  memoryId: string,
+  newItems: TodoItem[],
+): Promise<TodoItem[]> => {
+  const dbInstance = await openDB();
+  const now = Date.now();
+
+  return new Promise((resolve, reject) => {
+    const tx = dbInstance.transaction(TODO_ITEMS_STORE, 'readwrite');
+    const store = tx.objectStore(TODO_ITEMS_STORE);
+    const index = store.index('memoryId');
+
+    const tombstones: TodoItem[] = [];
+
+    const cursorReq = index.openCursor(IDBKeyRange.only(memoryId));
+    cursorReq.onsuccess = () => {
+      const cursor = cursorReq.result;
+      if (cursor) {
+        const existing = cursor.value as TodoItem;
+        const tombstone: TodoItem = { ...existing, isDeleted: true, updatedAt: now };
+        tombstones.push(tombstone);
+        cursor.update(tombstone);
+        cursor.continue();
+      } else {
+        for (const item of newItems) {
+          store.put(item);
+        }
+      }
+    };
+
+    tx.oncomplete = () => resolve(tombstones);
+    tx.onerror = () => reject(tx.error);
+  });
+};
+
+export const deleteTodoItemsByMemoryId = async (memoryId: string): Promise<void> => {
+  const dbInstance = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = dbInstance.transaction(TODO_ITEMS_STORE, 'readwrite');
+    const store = tx.objectStore(TODO_ITEMS_STORE);
+    const index = store.index('memoryId');
+    const request = index.openCursor(IDBKeyRange.only(memoryId));
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (cursor) {
+        cursor.delete();
+        cursor.continue();
+      }
+    };
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+};
+
+export const deleteTodoItemHard = async (id: string): Promise<void> => {
+  const dbInstance = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = dbInstance.transaction(TODO_ITEMS_STORE, 'readwrite');
+    const store = tx.objectStore(TODO_ITEMS_STORE);
+    store.delete(id);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+};
+
 export const factoryReset = async () => {
     try {
         console.log("Starting Factory Reset...");
@@ -541,7 +771,7 @@ export const factoryReset = async () => {
         localStorage.clear();
 
         const dbsToReset = [
-            { name: 'SaveItForL8rDB', stores: ['memories', 'moments', 'momentSyntheses', 'calendarEvents'] },
+            { name: 'SaveItForL8rDB', stores: ['memories', 'moments', 'momentSyntheses', 'calendarEvents', 'todoItems'] },
             { name: 'SaveItForL8rRAG', stores: ['vectors', 'processingQueue'] },
             { name: 'auth_db', stores: ['tokens'] },
             { name: 'saveitforl8r-share', stores: ['shares'] }

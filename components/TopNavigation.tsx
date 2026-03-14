@@ -3,6 +3,7 @@ import { Settings, Search, RefreshCw, AlertCircle, Download, AlertTriangle, Load
 import { Logo } from './icons';
 import { ViewMode } from '../types';
 import { ModelStatus } from '../hooks/useAdaptiveSearch';
+import { btn } from '../styles/design-system';
 
 interface TopNavigationProps {
   setView: (view: ViewMode) => void;
@@ -11,7 +12,7 @@ interface TopNavigationProps {
   updateAvailable: boolean;
   onUpdateApp: () => void;
   syncError: boolean;
-  isSyncing: boolean;
+  isSyncingDownload: boolean;
   modelStatus: ModelStatus;
   isOtaDownloading?: boolean;
 }
@@ -23,7 +24,7 @@ const TopNavigation: React.FC<TopNavigationProps> = ({
     updateAvailable,
     onUpdateApp,
     syncError,
-    isSyncing,
+    isSyncingDownload,
     modelStatus,
     isOtaDownloading
 }) => {
@@ -63,20 +64,20 @@ const TopNavigation: React.FC<TopNavigationProps> = ({
                </button>
            )}
 
-          <button 
+          <button
             onClick={() => setView(ViewMode.RECALL)}
-            className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-gray-600 transition-all rounded-xl px-4 py-2.5 text-gray-400 hover:text-white group active:scale-95 touch-manipulation"
+            className={`${btn.base} ${btn.secondary} group touch-manipulation`}
           >
             <Search size={18} className="text-gray-500 group-hover:text-blue-400" />
             <span className="font-medium text-sm">Search</span>
           </button>
 
-          <button 
+          <button
             onClick={onSettingsClick}
-            className="relative flex items-center justify-center bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-gray-600 transition-all rounded-xl p-2.5 text-gray-400 hover:text-white group shrink-0 active:scale-95 touch-manipulation"
+            className={`relative ${btn.base} ${btn.iconLg} bg-(--color-surface-raised) border border-(--color-border-default) hover:bg-gray-700 hover:border-gray-600 group shrink-0 touch-manipulation`}
             title="Settings"
           >
-            {isSyncing ? (
+            {isSyncingDownload ? (
                 <RefreshCw size={20} className="text-blue-400 animate-spin" />
             ) : modelStatus === 'downloading' ? (
                 <Loader2 size={20} className="text-blue-400 animate-spin" />
@@ -85,10 +86,10 @@ const TopNavigation: React.FC<TopNavigationProps> = ({
             ) : modelStatus === 'error' ? (
                 <AlertTriangle size={20} className="text-red-500" />
             ) : (
-                <Settings size={20} className="text-gray-500 group-hover:text-white group-hover:rotate-90 transition-transform duration-300" />
+                <Settings size={20} className="text-gray-500 group-hover:text-white group-hover:rotate-90 transition-transform duration-(--duration-normal)" />
             )}
             
-            {(syncError || modelStatus === 'error') && !isSyncing && modelStatus !== 'downloading' && (
+            {(syncError || modelStatus === 'error') && !isSyncingDownload && modelStatus !== 'downloading' && (
                 <span className="absolute -top-1 -right-1 flex h-3 w-3">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                     <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>

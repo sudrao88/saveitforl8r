@@ -1,5 +1,61 @@
 @import "tailwindcss";
 
+@font-face {
+  font-family: 'Shantell Sans';
+  font-style: normal;
+  font-weight: 300 800;
+  font-display: swap;
+  src: url('/fonts/ShantellSans-Variable.woff2') format('woff2');
+}
+
+@theme {
+  /* Surface colors */
+  --color-surface-base: #000000;
+  --color-surface-raised: #1f2937;
+  --color-surface-overlay: #030712;
+
+  /* Border colors */
+  --color-border-default: #374151;
+  --color-border-subtle: rgba(55, 65, 81, 0.3);
+
+  /* Text colors */
+  --color-text-primary: #f3f4f6;
+  --color-text-secondary: #9ca3af;
+  --color-text-tertiary: #6b7280;
+
+  /* Accent colors */
+  --color-accent: #2563eb;
+  --color-accent-hover: #3b82f6;
+  --color-accent-muted: rgba(37, 99, 235, 0.2);
+
+  /* Semantic colors */
+  --color-danger: #dc2626;
+  --color-danger-hover: #b91c1c;
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+
+  /* Z-index layers */
+  --z-sticky: 10;
+  --z-dropdown: 30;
+  --z-overlay: 50;
+  --z-modal: 60;
+  --z-sheet: 70;
+  --z-toast: 80;
+  --z-tooltip: 90;
+
+  /* Border radius */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-full: 9999px;
+
+  /* Transition durations */
+  --duration-fast: 150ms;
+  --duration-normal: 250ms;
+  --duration-slow: 400ms;
+}
+
 :root {
   color-scheme: dark;
   --sat: env(safe-area-inset-top);

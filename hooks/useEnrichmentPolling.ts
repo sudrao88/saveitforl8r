@@ -1,7 +1,7 @@
 import { useCallback, useRef } from 'react';
 import { fetchPendingEnrichments } from '../services/geminiService';
 import { getMemory, saveMemory } from '../services/storageService';
-import { Memory } from '../types';
+import { Attachment, LinkPreview, Memory } from '../types';
 
 const ENRICHMENT_TIMEOUT_MS = 120_000;
 
@@ -33,6 +33,10 @@ export const applyEnrichmentResult = async (
   const current = await getMemory(memory.id);
   if (!current || current.isDeleted) return null;
 
+  // Skip if the memory was already enriched (prevents double-processing
+  // when the polling loop fires again with a stale memoriesRef).
+  if (!current.isPending) return null;
+
   if (result?.status === 'completed' && result.data) {
     const allTags = Array.from(new Set([...(current.tags || []), ...(result.data.suggestedTags || [])]));
     const updatedMemory: Memory = {
@@ -43,6 +47,37 @@ export const applyEnrichmentResult = async (
       processingError: false,
       timestamp: Date.now(),
     };
+
+    // Convert link preview images into attachments so they display in the memory card
+    const linkPreviews: LinkPreview[] | undefined = result.data.linkPreviews;
+    if (linkPreviews?.length) {
+      const existingAttachments = current.attachments || [];
+      const previewAttachments: Attachment[] = linkPreviews
+        .filter((p: LinkPreview) => p.imageData && p.imageMimeType)
+        .map((preview: LinkPreview) => ({
+          id: `og-${encodeURIComponent(preview.url).substring(0, 80)}`,
+          type: 'image' as const,
+          mimeType: preview.imageMimeType,
+          data: preview.imageData,
+          name: preview.title || 'Link Preview',
+        }));
+
+      // Deduplicate: skip previews whose ID already exists in attachments
+      // or that duplicate another preview in the same batch
+      const existingIds = new Set(existingAttachments.map(a => a.id));
+      const newPreviews = previewAttachments.reduce<Attachment[]>((acc, a) => {
+        if (!existingIds.has(a.id)) {
+          existingIds.add(a.id);
+          acc.push(a);
+        }
+        return acc;
+      }, []);
+
+      if (newPreviews.length > 0) {
+        updatedMemory.attachments = [...existingAttachments, ...newPreviews];
+      }
+    }
+
     await saveMemory(updatedMemory);
     return { updated: updatedMemory, action: 'completed' };
   }

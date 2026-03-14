@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractHashtags, mergeTagsWithHashtags } from './editorUtils';
+import { extractHashtags, mergeTagsWithHashtags, containsUrl, linkifyUrls } from './editorUtils';
 
 describe('extractHashtags', () => {
   it('extracts a single hashtag', () => {
@@ -50,6 +50,55 @@ describe('extractHashtags', () => {
 
   it('handles HTML entities in content', () => {
     expect(extractHashtags('&amp; #notes &lt;tag&gt;')).toEqual(['notes']);
+  });
+});
+
+describe('containsUrl', () => {
+  it('detects http URLs', () => {
+    expect(containsUrl('Visit http://example.com')).toBe(true);
+  });
+
+  it('detects https URLs', () => {
+    expect(containsUrl('Check out https://puttingscene.com/events/3349')).toBe(true);
+  });
+
+  it('returns false for text without URLs', () => {
+    expect(containsUrl('Just some plain text')).toBe(false);
+  });
+
+  it('returns false for empty string', () => {
+    expect(containsUrl('')).toBe(false);
+  });
+});
+
+describe('linkifyUrls', () => {
+  it('converts a URL to a clickable link', () => {
+    const input = 'Check out https://puttingscene.com/events/3349';
+    const result = linkifyUrls(input);
+    expect(result).toBe(
+      'Check out <a href="https://puttingscene.com/events/3349" target="_blank" rel="noopener noreferrer">https://puttingscene.com/events/3349</a>'
+    );
+  });
+
+  it('handles text with URL and surrounding content', () => {
+    const input = 'Hello https://example.com world';
+    const result = linkifyUrls(input);
+    expect(result).toContain('<a href="https://example.com"');
+    expect(result).toContain('>https://example.com</a>');
+    expect(result).toContain('Hello ');
+    expect(result).toContain(' world');
+  });
+
+  it('handles escaped ampersands in URLs', () => {
+    const input = 'https://example.com?a=1&amp;b=2';
+    const result = linkifyUrls(input);
+    expect(result).toBe(
+      '<a href="https://example.com?a=1&b=2" target="_blank" rel="noopener noreferrer">https://example.com?a=1&amp;b=2</a>'
+    );
+  });
+
+  it('leaves text without URLs unchanged', () => {
+    expect(linkifyUrls('Just plain text')).toBe('Just plain text');
   });
 });
 

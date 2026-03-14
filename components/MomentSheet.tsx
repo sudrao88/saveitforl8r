@@ -22,8 +22,21 @@ import {
   SynthesisSection,
   SynthesisItem,
   Memory,
+  Attachment,
 } from '../types';
 import MemoryCard from './MemoryCard';
+import { overlay } from '../styles/design-system';
+
+// Shared loading indicator for pending creation and resynthesis states
+const SynthesisLoadingState: React.FC = () => (
+  <div className="text-center px-6">
+    <Loader2 size={32} className="animate-spin text-blue-400 mx-auto mb-4" />
+    <h3 className="text-lg font-bold text-gray-200 mb-2">Creating your moment…</h3>
+    <p className="text-sm text-gray-400 max-w-sm">
+      Our AI is analyzing your notes and building a synthesis. This usually takes 15–30 seconds.
+    </p>
+  </div>
+);
 
 // Shared shell for all sheet states (pending, error, normal)
 const SheetShell: React.FC<{
@@ -33,12 +46,12 @@ const SheetShell: React.FC<{
   onClose: () => void;
   children: React.ReactNode;
 }> = ({ title, subtitle, headerRight, onClose, children }) => (
-  <div className="fixed inset-0 z-[100] bg-gray-950/95 backdrop-blur-md flex flex-col animate-in fade-in duration-300">
-    <div className="sticky top-0 z-10 px-4 py-3 border-b border-gray-800 flex items-center justify-between bg-gray-950/80 backdrop-blur-xl pt-[env(safe-area-inset-top)]">
+  <div className={`${overlay.sheet}`}>
+    <div className={overlay.sheetHeader}>
       <div className="flex items-center gap-3">
         <button
           onClick={onClose}
-          className="p-3 -ml-3 rounded-full hover:bg-gray-800 text-gray-400 hover:text-white transition-colors active:scale-95"
+          className={overlay.closeBtn}
         >
           <X size={24} />
         </button>
@@ -61,8 +74,9 @@ interface MomentSheetProps {
   moment: Moment;
   memories: Memory[];
   onClose: () => void;
-  loadSynthesis: (moment: Moment, memories: Memory[]) => Promise<SynthesisResponse | null>;
+  loadSynthesis: (moment: Moment, memories: Memory[], signal?: AbortSignal) => Promise<SynthesisResponse | null>;
   onDelete: (momentId: string) => Promise<void>;
+  onViewAttachment?: (attachment: Attachment, allAttachments: Attachment[]) => void;
 }
 
 const MomentSheet: React.FC<MomentSheetProps> = ({
@@ -71,6 +85,7 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
   onClose,
   loadSynthesis,
   onDelete,
+  onViewAttachment,
 }) => {
   const [synthesis, setSynthesis] = useState<SynthesisResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -105,6 +120,10 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
   momentRef.current = moment;
   memoriesRef.current = memories;
 
+  // Track actual noteIds content (not just length) so the effect re-runs
+  // when notes are added or removed — even if the count stays the same.
+  const noteIdsKey = useMemo(() => moment.noteIds.slice().sort().join(','), [moment.noteIds]);
+
   useEffect(() => {
     // Don't load synthesis for pending moments
     if (moment.isPending) {
@@ -112,30 +131,34 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
       return;
     }
 
-    let cancelled = false;
+    const abortController = new AbortController();
 
     const load = async () => {
       setIsLoading(true);
       setError(false);
       try {
-        const result = await loadSynthesis(momentRef.current, memoriesRef.current);
-        if (!cancelled) {
+        const result = await loadSynthesis(momentRef.current, memoriesRef.current, abortController.signal);
+        if (!abortController.signal.aborted) {
           setSynthesis(result);
           if (!result) setError(true);
         }
-      } catch {
-        if (!cancelled) setError(true);
+      } catch (err) {
+        if (!abortController.signal.aborted) {
+          // Ignore AbortError — it just means a newer loadSynthesis superseded this one
+          if (err instanceof DOMException && err.name === 'AbortError') return;
+          setError(true);
+        }
       } finally {
-        if (!cancelled) setIsLoading(false);
+        if (!abortController.signal.aborted) setIsLoading(false);
       }
     };
 
     load();
 
     return () => {
-      cancelled = true;
+      abortController.abort();
     };
-  }, [moment.id, moment.noteIds.length, moment.isPending, loadSynthesis]);
+  }, [moment.id, noteIdsKey, moment.isPending, loadSynthesis]);
 
   const handleRetry = useCallback(async () => {
     setIsLoading(true);
@@ -173,13 +196,7 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
     return (
       <SheetShell title={moment.objective} onClose={onClose}>
         <div className="flex-1 flex items-center justify-center">
-          <div className="text-center px-6">
-            <Loader2 size={32} className="animate-spin text-blue-400 mx-auto mb-4" />
-            <h3 className="text-lg font-bold text-gray-200 mb-2">Creating your moment…</h3>
-            <p className="text-sm text-gray-400 max-w-sm">
-              Our AI is analyzing your notes and building a synthesis. This usually takes 15–30 seconds.
-            </p>
-          </div>
+          <SynthesisLoadingState />
         </div>
       </SheetShell>
     );
@@ -235,20 +252,8 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-2xl mx-auto p-4 sm:p-8 pb-32">
           {isLoading && (
-            <div className="space-y-6 animate-pulse">
-              {[1, 2, 3].map(i => (
-                <div key={i} className="space-y-3">
-                  <div className="h-6 bg-gray-800 rounded-lg w-48" />
-                  <div className="space-y-2">
-                    <div className="h-14 bg-gray-800/60 rounded-xl" />
-                    <div className="h-14 bg-gray-800/60 rounded-xl" />
-                  </div>
-                </div>
-              ))}
-              <div className="flex items-center justify-center gap-2 pt-4">
-                <Loader2 size={20} className="animate-spin text-blue-400" />
-                <span className="text-sm text-gray-400">Synthesizing moment...</span>
-              </div>
+            <div className="flex items-center justify-center py-24">
+              <SynthesisLoadingState />
             </div>
           )}
 
@@ -315,7 +320,7 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
       {/* Memory Preview Modal */}
       {previewMemory && (
         <div
-          className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
+          className={overlay.previewBackdrop}
           onClick={() => setPreviewMemoryId(null)}
         >
           <div className="relative w-full max-w-lg max-h-[80vh] flex flex-col animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
@@ -323,11 +328,12 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
               <MemoryCard
                 memory={previewMemory}
                 isDialog={true}
+                onViewAttachment={onViewAttachment}
               />
             </div>
             <button
               onClick={() => setPreviewMemoryId(null)}
-              className="mt-4 w-full py-3 bg-gray-800 text-white rounded-xl font-bold shadow-xl border border-gray-700 text-sm active:scale-95 shrink-0"
+              className={overlay.previewCloseBtn}
             >
               Close Preview
             </button>
@@ -356,8 +362,9 @@ const SectionView: React.FC<{
     <div className="space-y-2">
       {section.items.map((item, iIdx) => {
         const key = `${sectionIndex}-${iIdx}`;
-        const isCompleted =
-          item.completed || completedItems.has(key);
+        const isCompleted = item.completed
+          ? !completedItems.has(key)
+          : completedItems.has(key);
         return (
           <ItemView
             key={key}
@@ -437,7 +444,7 @@ const ItemView: React.FC<{
           className="flex items-center gap-1.5 mt-1.5 group/cite hover:opacity-80 transition-opacity text-left"
         >
           <FileText size={10} className="text-gray-500 shrink-0 group-hover/cite:text-blue-400" />
-          <span className="text-[10px] text-gray-500 truncate group-hover/cite:text-blue-400">
+          <span className="text-xs text-gray-500 truncate group-hover/cite:text-blue-400">
             {truncateCitation(sourceMemory.content)}
           </span>
         </button>

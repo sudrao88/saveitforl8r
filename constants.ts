@@ -72,4 +72,10 @@ export const ANALYTICS_EVENTS = {
     CATEGORY: 'CalendarEvent',
     ACTION_CREATED: 'Created',
   },
+  TODO_ITEM: {
+    CATEGORY: 'TodoItem',
+    ACTION_CREATED: 'Created',
+    ACTION_COMPLETED: 'Completed',
+    ACTION_UNCOMPLETED: 'Uncompleted',
+  },
 } as const;

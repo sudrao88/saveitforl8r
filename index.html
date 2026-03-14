@@ -77,11 +77,8 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="SaveItForL8R" />
 
-    <!-- Fonts — loaded async to avoid blocking rendering on slow/offline networks -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="preload" href="https://fonts.googleapis.com/css2?family=Shantell+Sans:ital,wght@0,300..800;1,300..800&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
-    <noscript><link href="https://fonts.googleapis.com/css2?family=Shantell+Sans:ital,wght@0,300..800;1,300..800&display=swap" rel="stylesheet"></noscript>
+    <!-- Fonts (self-hosted for offline-first, instant launch) -->
+    <link rel="preload" href="/fonts/ShantellSans-Variable.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="/splash.css">
   </head>
   <body>

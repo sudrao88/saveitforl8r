@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
-import { Trash2, Loader2, Clock, ExternalLink, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, WifiOff, FileText, Paperclip, MoreVertical, AlertTriangle, LogIn, Square, CheckSquare, Maximize2, Eye, Pin, Pencil, Lightbulb, CircleCheck, UtensilsCrossed, ListOrdered, ThumbsUp, ThumbsDown, DollarSign, MapPin, CalendarDays, ClipboardList, MessageSquare, Users, Mic, Code, Heart, Scale, GraduationCap, Briefcase, Music, Film, BookOpenCheck, Bookmark, Phone, Mail, ScrollText, Tag, Clock3, Flame, Quote } from 'lucide-react';
+import { Trash2, Loader2, Clock, ExternalLink, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, RefreshCw, WifiOff, FileText, Paperclip, MoreVertical, AlertTriangle, AlertCircle, LogIn, Square, CheckSquare, Maximize2, Eye, Pin, Pencil, Lightbulb, CircleCheck, UtensilsCrossed, ListOrdered, ThumbsUp, ThumbsDown, DollarSign, MapPin, CalendarDays, ClipboardList, MessageSquare, Users, Mic, Code, Heart, Scale, GraduationCap, Briefcase, Music, Film, BookOpenCheck, Bookmark, Phone, Mail, ScrollText, Tag, Clock3, Flame, Quote } from 'lucide-react';
 import { Memory, Attachment } from '../types.ts';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
+import { card, menu, overlay, text } from '../styles/design-system';
 
 interface EnrichmentSectionProps {
   icon: React.ReactNode;
@@ -13,13 +14,13 @@ interface EnrichmentSectionProps {
 
 const EnrichmentSection: React.FC<EnrichmentSectionProps> = ({ icon, label, items, textClass = 'text-gray-400', bulletClass = 'text-gray-600' }) => (
   <div className="pt-1 space-y-1.5">
-    <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-500">
+    <span className={`flex items-center gap-1.5 ${text.label}`}>
       {icon}
       {label}
     </span>
     <ul className="space-y-1">
       {items.map((item, idx) => (
-        <li key={idx} className={`flex items-start gap-2 text-sm ${textClass} font-light leading-relaxed`}>
+        <li key={`${label}-${idx}-${item.slice(0, 30)}`} className={`flex items-start gap-2 text-sm ${textClass} font-light leading-relaxed`}>
           <span className={`${bulletClass} mt-1.5 shrink-0`}>&#8226;</span>
           <span>{item}</span>
         </li>
@@ -37,7 +38,7 @@ interface EnrichmentDetailProps {
 
 const EnrichmentDetail: React.FC<EnrichmentDetailProps> = ({ icon, label, value, textClass = 'text-gray-400' }) => (
   <div className="pt-1 space-y-1">
-    <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-500">
+    <span className={`flex items-center gap-1.5 ${text.label}`}>
       {icon}
       {label}
     </span>
@@ -200,6 +201,8 @@ interface MemoryCardProps {
   isDialog?: boolean;
   isAuthenticated?: boolean;
   onSignIn?: () => void;
+  syncStatus?: 'syncing' | 'synced' | 'error';
+  onSyncRetry?: (id: string) => void;
   /** Index in the feed grid for staggered entrance animation */
   index?: number;
 }
@@ -224,7 +227,7 @@ const linkifyHtml = (html: string): string => {
     }).join('');
 };
 
-const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUpdate, onExpand, onViewAttachment, onTogglePin, onEdit, isDialog, isAuthenticated = true, onSignIn, index }) => {
+const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUpdate, onExpand, onViewAttachment, onTogglePin, onEdit, isDialog, isAuthenticated = true, onSignIn, syncStatus, onSyncRetry, index }) => {
   const [isConfirming, setIsConfirming] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -253,14 +256,15 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
     }
   }, [memory.content, isDialog]);
 
-  const dateStr = new Date(memory.timestamp).toLocaleDateString(undefined, {
-    month: 'short', day: 'numeric', year: 'numeric'
-  });
+  const dateObj = new Date(memory.timestamp);
+  const dateStr = isNaN(dateObj.getTime())
+    ? 'Unknown date'
+    : dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 
   const enrichment = memory.enrichment;
   const locationContext = enrichment?.locationContext;
   let targetUri = locationContext?.mapsUri;
-  
+
   if (!targetUri && locationContext?.name) {
      const lat = memory.location?.latitude;
      const lng = memory.location?.longitude;
@@ -274,7 +278,13 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
 
   const entity = enrichment?.entityContext;
 
-  if (!targetUri) {
+  // If user provided a URL, use it as the link CTA
+  if (!targetUri && enrichment?.sourceUrl) {
+      targetUri = enrichment.sourceUrl;
+  }
+
+  // Only show a Google search link when Gemini actually performed a search
+  if (!targetUri && enrichment?.enrichmentStrategy === 'search') {
       const query = entity?.title || enrichment?.summary;
       if (query && typeof query === 'string' && !query.includes('{')) {
            targetUri = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
@@ -377,8 +387,8 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                       const text = item.textContent || '';
                       
                       return (
-                        <div 
-                            key={idx} 
+                        <div
+                            key={`check-${idx}-${text.slice(0, 20)}`}
                             className="flex items-start gap-3 group/item cursor-pointer p-2 -mx-2 hover:bg-white/5 rounded-lg active:bg-white/10 transition-colors"
                             onClick={(e) => { e.stopPropagation(); handleToggleCheck(idx); }}
                         >
@@ -409,19 +419,19 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
   return (
     <>
       <div
-        className={`group relative w-full ${isDialog ? 'mb-0' : 'mb-6'} rounded-xl transition-all duration-300 ${isDialog ? 'overflow-visible' : 'overflow-hidden'} flex flex-col
-        ${isDialog ? 'bg-gray-900 border border-gray-800' : 'bg-gray-800/40 border border-gray-700/30 hover:bg-gray-800/60 hover:border-gray-600/50 hover:shadow-lg'}
+        className={`group relative w-full ${isDialog ? 'mb-0' : 'mb-6'} rounded-xl transition-all duration-(--duration-normal) ${isDialog ? 'overflow-visible' : 'overflow-hidden'} flex flex-col
+        ${isDialog ? 'bg-gray-900 border border-gray-800' : card.interactive}
         ${memory.isPending ? 'opacity-70 border-blue-900/30' : ''}
         ${memory.processingError ? 'border-amber-900/30 bg-amber-900/5' : ''}
         ${showErrorOverlay || showSignInOverlay ? 'min-h-[350px]' : ''}
-        ${!isDialog ? 'animate-in fade-in slide-in-from-bottom-4 duration-300 fill-mode-backwards' : ''}
+        ${!isDialog ? 'animate-in fade-in slide-in-from-bottom-4 duration-(--duration-normal) fill-mode-backwards' : ''}
         ${isShaking ? 'animate-shake' : ''}
         `}
         style={!isDialog && index != null ? { animationDelay: `${index * 60}ms` } : undefined}
       >
         {/* Sign In Overlay — shown when enrichment failed due to missing auth */}
         {showSignInOverlay && (
-            <div className="absolute inset-0 z-20 bg-gray-900/95 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-300">
+            <div className="absolute inset-0 z-(--z-dropdown) bg-gray-900/95 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-(--duration-normal)">
                 <div className="w-12 h-12 bg-blue-900/50 border-4 border-blue-800 rounded-full mb-4 flex items-center justify-center">
                     <LogIn size={24} className="text-blue-300" />
                 </div>
@@ -442,19 +452,20 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
         {/* Image Preview */}
         {displayImages.length > 0 && (
             <div 
-                className={`relative overflow-hidden rounded-t-xl bg-gray-900/50 group/image cursor-zoom-in ${isDialog ? 'max-h-[50vh]' : 'aspect-video sm:aspect-[2/1]'}`}
+                className={`relative overflow-hidden rounded-t-xl bg-gray-900/50 group/image cursor-zoom-in aspect-video sm:aspect-[2/1] ${isDialog ? 'max-h-[50vh]' : ''}`}
                 onClick={(e) => { e.stopPropagation(); onViewAttachment?.(displayImages[0], [...displayImages, ...documents]); }}
             >
-                <img 
-                    src={displayImages[0].data} 
-                    alt="User content" 
-                    className="w-full h-full object-cover transition-transform duration-700 group-hover/image:scale-105"
+                <img
+                    src={displayImages[0].data}
+                    alt="User content"
+                    loading="lazy"
+                    className="w-full h-full object-cover transition-transform duration-(--duration-slow) group-hover/image:scale-105"
                 />
                 <div className="absolute inset-0 bg-black/20 opacity-0 group-hover/image:opacity-100 transition-opacity flex items-center justify-center">
                     <Maximize2 className="text-white" size={24} />
                 </div>
                 {displayImages.length > 1 && (
-                  <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] font-medium px-2 py-0.5 rounded-full backdrop-blur-md">
+                  <div className="absolute bottom-2 right-2 bg-black/60 text-white text-xs font-medium px-2 py-0.5 rounded-full backdrop-blur-md">
                       +{displayImages.length - 1}
                   </div>
                 )}
@@ -467,16 +478,25 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
              <div className="flex items-center gap-2">
                  {memory.isPinned && <Pin size={12} className="text-blue-400 rotate-45" />}
                  {entity?.type && (
-                    <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-500">
+                    <span className={`flex items-center gap-1.5 ${text.label}`}>
                         {getEntityIcon(entity.type)}
                         {entity.type}
                     </span>
                  )}
                  {!entity?.type && <Clock size={12} className="text-gray-600" />}
-                 <span className="text-[10px] text-gray-600 font-medium">{dateStr}</span>
+                 <span className="text-xs text-gray-600 font-medium">{dateStr}</span>
              </div>
              {memory.isPending && <span className="text-xs font-medium text-blue-400 animate-pulse">Enriching...</span>}
              {memory.processingError && <WifiOff size={12} className="text-amber-500" />}
+             {syncStatus === 'syncing' && <RefreshCw size={12} className="text-blue-400 animate-spin" />}
+             {syncStatus === 'synced' && <CircleCheck size={12} className="text-green-400" />}
+             {syncStatus === 'error' && (
+                 <button onClick={(e) => { e.stopPropagation(); onSyncRetry?.(memory.id); }}
+                         className="flex items-center gap-1 text-red-400 hover:text-red-300 transition-colors">
+                     <AlertCircle size={14} />
+                     <span className="text-xs font-medium">Retry sync</span>
+                 </button>
+             )}
           </div>
 
           {/* AI Title — below entity type, above user content */}
@@ -485,7 +505,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                   <h3 className="text-lg font-semibold text-gray-100 leading-tight">{entity.title}</h3>
                   <div className="flex items-center gap-2 mt-1">
                       {entity.subtitle && <span className="text-xs text-gray-400">{entity.subtitle}</span>}
-                      {entity.rating && <span className="text-[10px] px-1.5 py-0.5 bg-yellow-500/10 text-yellow-500 rounded font-medium">★ {entity.rating}</span>}
+                      {entity.rating && <span className="text-xs px-1.5 py-0.5 bg-yellow-500/10 text-yellow-500 rounded font-medium">★ {entity.rating}</span>}
                   </div>
               </div>
           )}
@@ -496,7 +516,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                 <div className="relative">
                     <div 
                         ref={contentRef}
-                        className={`transition-all duration-300 ${!isDialog && isTruncated ? 'max-h-[300px] overflow-hidden' : ''}`}
+                        className={`transition-all duration-(--duration-normal) ${!isDialog && isTruncated ? 'max-h-[300px] overflow-hidden' : ''}`}
                         style={!isDialog && isTruncated ? {
                             WebkitMaskImage: 'linear-gradient(to bottom, black 150px, transparent 300px)',
                             maskImage: 'linear-gradient(to bottom, black 150px, transparent 300px)'
@@ -572,7 +592,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
 
                         {/* Expandable Summary */}
                         {showSummary && aiText && (
-                            <div className="text-sm text-gray-400 font-light leading-relaxed pl-1 animate-in fade-in slide-in-from-top-1 duration-200">
+                            <div className="text-sm text-gray-400 font-light leading-relaxed pl-1 animate-in fade-in slide-in-from-top-1 duration-(--duration-fast)">
                                 {String(aiText)}
                             </div>
                         )}
@@ -584,7 +604,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                             if (!value) return null;
 
                             return (
-                                <div key={section.key} className="animate-in fade-in slide-in-from-top-1 duration-200">
+                                <div key={section.key} className="animate-in fade-in slide-in-from-top-1 duration-(--duration-fast)">
                                     {section.type === 'list' && Array.isArray(value) ? (
                                         <EnrichmentSection
                                             icon={section.icon}
@@ -610,9 +630,9 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
             {/* Documents */}
             {documents.length > 0 && (
                 <div className="flex flex-col gap-1.5 pt-1">
-                    {documents.map((doc, idx) => (
-                        <div 
-                            key={idx} 
+                    {documents.map((doc) => (
+                        <div
+                            key={doc.id}
                             onClick={(e) => { e.stopPropagation(); onViewAttachment?.(doc, [...displayImages, ...documents]); }}
                             className="flex items-center gap-2 p-3 rounded-xl bg-gray-900/30 border border-gray-700/30 hover:bg-gray-700/50 transition-colors cursor-pointer group/doc active:scale-[0.98]"
                         >
@@ -637,8 +657,8 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
             {/* Footer */}
             <div className="flex flex-wrap items-center gap-y-2 gap-x-4 pt-2 border-t border-gray-700/20 mt-2">
                 <div className="flex flex-wrap gap-1.5 flex-1">
-                    {(memory.tags || []).map((tag, idx) => (
-                        <span key={idx} className="text-[10px] text-gray-500 hover:text-gray-300 bg-gray-900/50 px-2 py-1 rounded-md">#{tag}</span>
+                    {(memory.tags || []).map((tag) => (
+                        <span key={tag} className="text-xs text-gray-500 hover:text-gray-300 bg-gray-900/50 px-2 py-1 rounded-md">#{tag}</span>
                     ))}
                 </div>
                 <div className="flex items-center gap-2 ml-auto relative">
@@ -657,23 +677,23 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                         {isMenuOpen && (
                             <>
                             <div
-                                className={`fixed inset-0 cursor-default touch-manipulation ${isDialog ? 'z-[75]' : 'z-[55]'}`}
+                                className={`${menu.backdrop} ${isDialog ? 'z-(--z-sheet)' : 'z-(--z-overlay)'}`}
                                 onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); }}
                             />
-                            <div className={`absolute bottom-full right-0 mb-1 w-40 bg-gray-900 border border-gray-700 rounded-xl shadow-xl overflow-hidden animate-in slide-in-from-bottom-2 fade-in duration-200 ${isDialog ? 'z-[76]' : 'z-[56]'}`}>
+                            <div className={`${menu.panel} ${isDialog ? 'z-(--z-toast)' : 'z-(--z-modal)'}`}>
                                 {onTogglePin && (
-                                    <button onClick={handlePin} className="w-full px-4 py-3 text-left text-sm font-medium text-gray-300 hover:bg-gray-800 hover:text-white flex items-center gap-3 active:bg-gray-700">
+                                    <button onClick={handlePin} className={menu.item}>
                                         <Pin size={16} className={memory.isPinned ? "fill-current" : ""} />
                                         {memory.isPinned ? 'Unpin' : 'Pin'}
                                     </button>
                                 )}
                                 {onEdit && (
-                                    <button onClick={handleEdit} className="w-full px-4 py-3 text-left text-sm font-medium text-gray-300 hover:bg-gray-800 hover:text-white flex items-center gap-3 border-t border-gray-800 active:bg-gray-700">
+                                    <button onClick={handleEdit} className={`${menu.item} ${menu.divider}`}>
                                         <Pencil size={16} /> Edit
                                     </button>
                                 )}
                                 {onDelete && (
-                                    <button onClick={startDelete} className="w-full px-4 py-3 text-left text-sm font-medium text-red-400 hover:bg-red-900/10 hover:text-red-300 flex items-center gap-3 border-t border-gray-800 active:bg-red-900/20">
+                                    <button onClick={startDelete} className={menu.itemDanger}>
                                         <Trash2 size={16} /> Delete
                                     </button>
                                 )}
@@ -685,7 +705,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
             </div>
             {/* Confirmation Dialog */}
             {isConfirming && (
-                <div className="absolute inset-0 z-30 bg-gray-900/95 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-200">
+                <div className="absolute inset-0 z-(--z-dropdown) bg-gray-900/95 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-(--duration-fast)">
                     <AlertTriangle size={32} className="text-amber-500 mb-3" />
                     <h4 className="text-gray-100 font-bold mb-1">Delete Memory?</h4>
                     <p className="text-xs text-gray-400 mb-4">This action cannot be undone.</p>

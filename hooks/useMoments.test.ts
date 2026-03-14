@@ -41,6 +41,7 @@ describe('useMoments', () => {
     (storageService.saveMoment as any).mockResolvedValue(undefined);
     (storageService.getMomentSynthesis as any).mockResolvedValue(null);
     (storageService.saveMomentSynthesis as any).mockResolvedValue(undefined);
+    (storageService.deleteMomentSynthesis as any).mockResolvedValue(undefined);
   });
 
   it('should load moments on mount', async () => {
@@ -199,6 +200,111 @@ describe('useMoments', () => {
 
       // saveMoment should NOT have been called for the deleted moment
       expect(storageService.saveMoment).not.toHaveBeenCalled();
+    });
+
+    it('should clear in-memory synthesis cache for affected moments', async () => {
+      const moments = [
+        { ...makeMoment('m1', ['note-1', 'note-2']), inputHash: 'old-hash' },
+      ];
+      (storageService.getMoments as any).mockResolvedValue(moments);
+
+      const memories = [makeMemory('note-1'), makeMemory('note-2')];
+
+      const { result } = renderHook(() => useMoments(memories));
+
+      await waitFor(() => {
+        expect(result.current.moments).toHaveLength(1);
+      });
+
+      await act(async () => {
+        await result.current.removeNoteFromMoments('note-1');
+      });
+
+      // The in-memory synthesis cache should no longer have an entry for m1
+      expect(result.current.synthesesMap.has('m1')).toBe(false);
+    });
+
+    it('should filter stale items from resynthesis referencing notes no longer in moment', async () => {
+      const moments = [
+        makeMoment('m1', ['note-1', 'note-2']),
+      ];
+      (storageService.getMoments as any).mockResolvedValue(moments);
+
+      const memories = [makeMemory('note-1'), makeMemory('note-2')];
+
+      // Mock submitResynthesis and pollSynthesisResult to return a stale
+      // result that references a deleted note ('note-3' is not in moment)
+      (geminiService.submitResynthesis as any).mockResolvedValue({ momentId: 'm1' });
+      (geminiService.pollSynthesisResult as any).mockResolvedValue({
+        format: 'general',
+        title: 'Test',
+        sections: [
+          {
+            heading: 'Section A',
+            items: [
+              { label: 'Valid item', sourceNoteId: 'note-1' },
+              { label: 'Stale item', sourceNoteId: 'note-3' },
+            ],
+          },
+          {
+            heading: 'Section B (all stale)',
+            items: [
+              { label: 'Another stale item', sourceNoteId: 'note-3' },
+            ],
+          },
+        ],
+        generatedFrom: ['note-1', 'note-3'],
+      });
+
+      const { result } = renderHook(() => useMoments(memories));
+
+      await waitFor(() => {
+        expect(result.current.moments).toHaveLength(1);
+      });
+
+      let synthesis: any;
+      await act(async () => {
+        synthesis = await result.current.loadSynthesis(
+          result.current.moments[0],
+          memories
+        );
+      });
+
+      // The stale item referencing 'note-3' should be filtered out
+      expect(synthesis).not.toBeNull();
+      expect(synthesis.sections).toHaveLength(1); // Section B removed entirely
+      expect(synthesis.sections[0].heading).toBe('Section A');
+      expect(synthesis.sections[0].items).toHaveLength(1);
+      expect(synthesis.sections[0].items[0].label).toBe('Valid item');
+      expect(synthesis.generatedFrom).toEqual(['note-1']);
+    });
+
+    it('should delete persisted synthesis cache for affected moments', async () => {
+      (storageService.deleteMomentSynthesis as any).mockResolvedValue(undefined);
+
+      const moments = [
+        { ...makeMoment('m1', ['note-1', 'note-2']), inputHash: 'old-hash' },
+        makeMoment('m2', ['note-1', 'note-3']),
+      ];
+      (storageService.getMoments as any).mockResolvedValue(moments);
+
+      const memories = [makeMemory('note-1'), makeMemory('note-2'), makeMemory('note-3')];
+
+      const { result } = renderHook(() => useMoments(memories));
+
+      await waitFor(() => {
+        expect(result.current.moments).toHaveLength(2);
+      });
+
+      (storageService.saveMoment as any).mockClear();
+
+      await act(async () => {
+        await result.current.removeNoteFromMoments('note-1');
+      });
+
+      // deleteMomentSynthesis should have been called for both affected moments
+      expect(storageService.deleteMomentSynthesis).toHaveBeenCalledWith('m1');
+      expect(storageService.deleteMomentSynthesis).toHaveBeenCalledWith('m2');
     });
   });
 });

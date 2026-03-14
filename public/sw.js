@@ -1,5 +1,5 @@
 // public/sw.js
-const CACHE_NAME = 'saveitforl8r-v39'; // Increment version to force update
+const CACHE_NAME = 'saveitforl8r-v41'; // Increment version to force update
 const STATIC_CACHE = 'saveitforl8r-static-v1';
 const SCOPE = '/';
 
@@ -21,7 +21,8 @@ const PRECACHE_ASSETS = [
   SCOPE + 'icon.svg',
   SCOPE + 'version.json',
   SCOPE + 'splash.css',
-  SCOPE + 'logo-full.svg'
+  SCOPE + 'logo-full.svg',
+  SCOPE + 'fonts/ShantellSans-Variable.woff2'
 ];
 
 // Track if we're running in a native app context.
@@ -354,7 +355,11 @@ self.addEventListener('fetch', (event) => {
     // arbitrary navigation URLs must never overwrite the cached index.html.
     const shellUrl = SCOPE + 'index.html';
 
-    const backgroundRevalidation = fetchWithTimeout(shellUrl)
+    // Defer background revalidation by 3 seconds so it doesn't compete
+    // with the app's JS/CSS chunk downloads during initial page load.
+    // The cached shell is still served instantly via event.respondWith below.
+    const backgroundRevalidation = new Promise(resolve => setTimeout(resolve, 3000))
+      .then(() => fetchWithTimeout(shellUrl))
       .then(async (networkResponse) => {
         if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
           // Before caching new HTML, ensure its referenced assets are also cached.
@@ -438,10 +443,42 @@ self.addEventListener('fetch', (event) => {
           return networkResponse;
         }).catch((err) => {
           console.error('[SW] Asset fetch failed (offline?):', event.request.url, err);
+          // Use the correct MIME type so the browser treats the response
+          // as a valid module/stylesheet instead of rejecting it outright
+          // with "Importing a module script failed".
+          // Parse the pathname to ignore query parameters (e.g. ?v=123).
+          const pathname = new URL(event.request.url).pathname;
+          const contentType = pathname.endsWith('.css')
+            ? 'text/css'
+            : pathname.endsWith('.js')
+              ? 'application/javascript'
+              : 'text/plain';
           return new Response('/* offline — asset unavailable */', {
             status: 503,
-            headers: { 'Content-Type': 'text/plain' }
+            headers: { 'Content-Type': contentType }
           });
+        });
+      })
+    );
+    return;
+  }
+
+  // Font files - cache-first (immutable content, self-hosted)
+  if (url.pathname.startsWith('/fonts/')) {
+    event.respondWith(
+      caches.match(event.request).then((cachedResponse) => {
+        if (cachedResponse) {
+          return cachedResponse;
+        }
+        return fetch(event.request).then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
+            const responseToCache = networkResponse.clone();
+            const cachePromise = caches.open(STATIC_CACHE).then((cache) => {
+              return cache.put(event.request, responseToCache);
+            });
+            event.waitUntil(cachePromise);
+          }
+          return networkResponse;
         });
       })
     );

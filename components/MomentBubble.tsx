@@ -9,10 +9,12 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Moment } from '../types';
+import { text } from '../styles/design-system';
 
 interface MomentBubbleProps {
   moment: Moment;
   onTap: (moment: Moment) => void;
+  isResynthesizing?: boolean;
 }
 
 export function getMomentIcon(type: string, objective: string): string {
@@ -56,20 +58,21 @@ function truncateLabel(text: string, max: number = 10): string {
 const MomentBubble: React.FC<MomentBubbleProps> = ({
   moment,
   onTap,
+  isResynthesizing = false,
 }) => {
-  const isPending = moment.isPending;
+  const isPending = moment.isPending || isResynthesizing;
   const hasError = moment.processingError;
-  const wasPendingRef = useRef(isPending);
+  const wasCreationPendingRef = useRef(moment.isPending);
   const [showGlow, setShowGlow] = useState(false);
 
   useEffect(() => {
-    if (wasPendingRef.current && !isPending && !hasError) {
+    if (wasCreationPendingRef.current && !moment.isPending && !hasError) {
       setShowGlow(true);
       const timer = setTimeout(() => setShowGlow(false), 800);
       return () => clearTimeout(timer);
     }
-    wasPendingRef.current = isPending;
-  }, [isPending, hasError]);
+    wasCreationPendingRef.current = moment.isPending;
+  }, [moment.isPending, hasError]);
 
   const icon = moment.emoji || getMomentIcon(moment.type, moment.objective);
   const label = isPending
@@ -106,15 +109,15 @@ const MomentBubble: React.FC<MomentBubbleProps> = ({
           </span>
         )}
       </div>
-      <span className="text-[11px] font-semibold text-gray-300 leading-tight text-center max-w-[72px] truncate">
+      <span className="text-xs font-semibold text-gray-300 leading-tight text-center max-w-[72px] truncate">
         {label}
       </span>
       {isPending ? (
-        <span className="text-[10px] text-blue-400 leading-tight">Creating…</span>
+        <span className={`${text.caption} text-blue-400 leading-tight`}>Creating…</span>
       ) : hasError ? (
-        <span className="text-[10px] text-red-400 leading-tight">Failed</span>
+        <span className={`${text.caption} text-red-400 leading-tight`}>Failed</span>
       ) : (
-        <span className="text-[10px] text-gray-500 leading-tight">
+        <span className={`${text.caption} leading-tight`}>
           {noteCount} note{noteCount !== 1 ? 's' : ''}
         </span>
       )}
@@ -122,4 +125,4 @@ const MomentBubble: React.FC<MomentBubbleProps> = ({
   );
 };
 
-export default MomentBubble;
+export default React.memo(MomentBubble);

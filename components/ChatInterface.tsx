@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { X, Send, BrainCircuit, ExternalLink, Bot, Sparkles, WifiOff, Download, FileText } from 'lucide-react';
 import { Memory, Attachment, ChatMessage } from '../types';
 import MemoryCard from './MemoryCard';
+import { overlay } from '../styles/design-system';
 
 interface ChatInterfaceProps {
   memories: Memory[];
@@ -19,6 +20,7 @@ interface Source {
 }
 
 interface Message {
+  id: string;
   role: 'user' | 'model';
   text: string;
   sources?: Source[]; // Structured sources
@@ -91,7 +93,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
   const handleSend = async () => {
     if (!query.trim() || loading) return;
 
-    const userMsg: Message = { role: 'user', text: query };
+    const userMsg: Message = { id: crypto.randomUUID(), role: 'user', text: query };
 
     // Build conversation history from current messages (before adding the new user message).
     // Strip sources and isOffline — server only needs role + text.
@@ -115,7 +117,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
       
       if (response.mode === 'online') {
           const { answer, sources } = response.result;
-          setMessages(prev => [...prev, { role: 'model', text: answer, sources: sources }]);
+          setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'model', text: answer, sources: sources }]);
       } else if (response.mode === 'offline') {
           const items = response.result;
           const text = items.length > 0
@@ -132,6 +134,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
           }));
 
           setMessages(prev => [...prev, {
+              id: crypto.randomUUID(),
               role: 'model',
               text,
               sources,
@@ -141,17 +144,18 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
           // Model failed to load - likely offline without cached model
           const errorText = response.error || 'The search model is not available.';
           setMessages(prev => [...prev, {
+              id: crypto.randomUUID(),
               role: 'model',
               text: `⚠️ ${errorText}\n\nTo use offline search, please connect to the internet once to download the search model. It will then be cached for future offline use.`,
               isOffline: true
           }]);
       } else {
-           setMessages(prev => [...prev, { role: 'model', text: "Sorry, I encountered an error searching your memories." }]);
+           setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'model', text: "Sorry, I encountered an error searching your memories." }]);
       }
 
     } catch (error) {
       console.error('Search error:', error);
-      setMessages(prev => [...prev, { role: 'model', text: "Sorry, I encountered an error searching your memories." }]);
+      setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'model', text: "Sorry, I encountered an error searching your memories." }]);
     } finally {
       setLoading(false);
       setTimeout(scrollToBottom, 50);
@@ -169,14 +173,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
 
   return (
     <>
-    <div className="fixed inset-0 z-[60] bg-black" aria-hidden="true" style={{ height: '100vh', touchAction: 'none' }} />
+    <div className="fixed inset-0 z-(--z-modal) bg-black" aria-hidden="true" style={{ height: '100vh', touchAction: 'none' }} />
 
     <div
-        className="fixed left-0 right-0 z-[61] flex flex-col overflow-hidden bg-black"
+        className="fixed left-0 right-0 z-(--z-modal) flex flex-col overflow-hidden bg-black"
         style={{ height: viewport.height, top: viewport.top }}
     >
       {/* Header */}
-      <div className="flex-none border-b border-gray-800 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] flex items-center justify-between bg-black z-10 shadow-sm shrink-0">
+      <div className="flex-none border-b border-gray-800 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] flex items-center justify-between bg-black z-(--z-sticky) shadow-sm shrink-0">
         <div className="flex items-center gap-2">
             <BrainCircuit size={24} className="text-blue-500" />
             <h2 className="text-lg font-bold text-gray-100">Brain Search</h2>
@@ -202,8 +206,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
           </div>
         )}
 
-        {messages.map((msg, idx) => (
-          <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in`}>
+        {messages.map((msg) => (
+          <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in`}>
             <div className={`max-w-[90%] sm:max-w-[80%] rounded-2xl px-5 py-3 ${
               msg.role === 'user' 
                 ? 'bg-blue-600 text-white shadow-md' 
@@ -211,7 +215,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
             }`}>
               {msg.isOffline && (
                 <div className="flex items-center mb-1">
-                   <span className="flex items-center gap-1 text-[10px] uppercase font-bold text-yellow-500/80 mb-1">
+                   <span className="flex items-center gap-1 text-xs uppercase font-bold text-yellow-500/80 mb-1">
                       <WifiOff size={10} /> Offline Mode
                    </span>
                 </div>
@@ -223,7 +227,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
               {/* Citations */}
               {msg.sources && msg.sources.length > 0 && (
                 <div className="mt-4 pt-3 border-t border-gray-700/50">
-                    <p className="text-[10px] font-black uppercase text-gray-500 mb-2 tracking-widest">
+                    <p className="text-xs font-black uppercase text-gray-500 mb-2 tracking-widest">
                         {msg.isOffline ? 'Relevant Notes' : 'Sources'}
                     </p>
                     <div className="grid grid-cols-1 gap-2">
@@ -240,10 +244,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
                                         <img src={mem.image} className="w-8 h-8 rounded-md object-cover bg-gray-800 border border-gray-800" alt="" />
                                     )}
                                     <div className="flex-1 overflow-hidden min-w-0">
-                                        <p className="text-[10px] font-bold text-gray-200 truncate">
+                                        <p className="text-xs font-bold text-gray-200 truncate">
                                             {source.preview || mem.enrichment?.summary || mem.content || "Memory Entry"}
                                         </p>
-                                        <p className="text-[9px] text-gray-500">{new Date(mem.timestamp).toLocaleDateString()}</p>
+                                        <p className="text-xs text-gray-500">{(() => { const d = new Date(mem.timestamp); return isNaN(d.getTime()) ? 'Unknown date' : d.toLocaleDateString(); })()}</p>
                                     </div>
                                     <ExternalLink size={12} className="text-gray-600 group-hover:text-blue-400 shrink-0 mx-1" />
                                 </button>
@@ -269,7 +273,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
 
       {/* Input Area */}
       <div 
-        className="flex-none w-full bg-black border-t border-gray-800 shrink-0 z-20"
+        className="flex-none w-full bg-black border-t border-gray-800 shrink-0 z-(--z-dropdown)"
         style={{ 
             paddingBottom: 'max(1rem, env(safe-area-inset-bottom))',
             paddingTop: '1rem',
@@ -304,7 +308,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
       {/* Memory Preview Modal */}
       {previewMemory && (
           <div
-            className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
+            className={`${overlay.previewBackdrop}`}
             onClick={() => setPreviewMemoryId(null)}
           >
               <div className="relative w-full max-w-lg max-h-[80vh] flex flex-col animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
@@ -320,7 +324,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
                   </div>
                   <button
                     onClick={() => setPreviewMemoryId(null)}
-                    className="mt-4 w-full py-3 bg-gray-800 text-white rounded-xl font-bold shadow-xl border border-gray-700 text-sm active:scale-95 shrink-0"
+                    className={overlay.previewCloseBtn}
                   >
                       Close Preview
                   </button>

@@ -14,6 +14,7 @@ import {
   getCalendarEvents,
   saveCalendarEvents,
   softDeleteCalendarEventsByMemoryId,
+  replaceCalendarEventsForMemory,
 } from '../services/storageService';
 import { expandRecurringEvent, expandHorizon } from '../utils/calendarUtils';
 
@@ -35,6 +36,10 @@ export interface UseCalendarEventsReturn {
 export const useCalendarEvents = (): UseCalendarEventsReturn => {
   const [eventsList, setEventsList] = useState<CalendarEvent[]>([]);
   const loaded = useRef(false);
+  // Guard against concurrent processDetectedEvents calls for the same memory.
+  // Without this, interleaved IDB reads/writes can cause both calls to miss
+  // each other's events, resulting in duplicates.
+  const processingMemoryIds = useRef(new Set<string>());
 
   const refreshEvents = useCallback(async () => {
     try {
@@ -53,51 +58,65 @@ export const useCalendarEvents = (): UseCalendarEventsReturn => {
   }, [refreshEvents]);
 
   const processDetectedEvents = useCallback(async (memory: Memory): Promise<CalendarEvent[]> => {
-    const detected = memory.enrichment?.detectedEvents;
-    if (!detected || detected.length === 0) {
-      // No events detected — soft-delete any old events for this memory
-      const tombstones = await softDeleteCalendarEventsByMemoryId(memory.id);
-      if (tombstones.length > 0) {
-        setEventsList(prev => prev.map(e =>
-          e.memoryId === memory.id ? { ...e, isDeleted: true, updatedAt: Date.now() } : e
-        ));
-      }
-      return tombstones;
+    // Prevent concurrent processing for the same memory — if two calls
+    // interleave, the second can miss events created by the first and
+    // produce duplicates instead of replacing them.
+    if (processingMemoryIds.current.has(memory.id)) {
+      console.log(`[Calendar] Skipping concurrent processDetectedEvents for memory ${memory.id}`);
+      return [];
     }
+    processingMemoryIds.current.add(memory.id);
 
-    // Soft-delete old events for this memory (creates tombstones for sync)
-    const tombstones = await softDeleteCalendarEventsByMemoryId(memory.id);
-
-    const now = Date.now();
-    const newEvents: CalendarEvent[] = detected.flatMap((det: DetectedEvent) => {
-      if (det.isRecurring && det.recurrenceFrequency) {
-        return expandRecurringEvent(det, memory.id, memory.enrichment?.summary);
+    try {
+      const detected = memory.enrichment?.detectedEvents;
+      if (!detected || detected.length === 0) {
+        // No events detected — soft-delete any old events for this memory
+        const tombstones = await softDeleteCalendarEventsByMemoryId(memory.id);
+        if (tombstones.length > 0) {
+          setEventsList(prev => prev.map(e =>
+            e.memoryId === memory.id ? { ...e, isDeleted: true, updatedAt: Date.now() } : e
+          ));
+        }
+        return tombstones;
       }
-      return [{
-        id: crypto.randomUUID(),
-        memoryId: memory.id,
-        title: det.title,
-        description: memory.enrichment?.summary,
-        startDate: det.startDate,
-        endDate: det.endDate,
-        allDay: det.allDay,
-        location: det.location,
-        people: det.people,
-        status: det.status,
-        createdAt: now,
-        updatedAt: now,
-      }];
-    });
 
-    await saveCalendarEvents(newEvents);
-    setEventsList(prev => [
-      ...prev.filter(e => e.memoryId !== memory.id),
-      ...newEvents,
-    ]);
+      const now = Date.now();
+      const newEvents: CalendarEvent[] = detected.flatMap((det: DetectedEvent) => {
+        if (det.isRecurring && det.recurrenceFrequency) {
+          return expandRecurringEvent(det, memory.id, memory.enrichment?.summary);
+        }
+        return [{
+          id: crypto.randomUUID(),
+          memoryId: memory.id,
+          title: det.title,
+          description: memory.enrichment?.summary,
+          startDate: det.startDate,
+          endDate: det.endDate,
+          allDay: det.allDay,
+          location: det.location,
+          people: det.people,
+          status: det.status,
+          createdAt: now,
+          updatedAt: now,
+        }];
+      });
 
-    logEvent(ANALYTICS_EVENTS.CALENDAR_EVENT.CATEGORY, ANALYTICS_EVENTS.CALENDAR_EVENT.ACTION_CREATED, undefined, newEvents.length);
-    console.log(`[Calendar] Created ${newEvents.length} event(s) from memory ${memory.id}`);
-    return [...tombstones, ...newEvents];
+      // Atomically tombstone old events and save new ones in a single IDB
+      // transaction. This prevents data loss if the write were to fail
+      // partway through a non-atomic two-step delete-then-save.
+      const tombstones = await replaceCalendarEventsForMemory(memory.id, newEvents);
+
+      setEventsList(prev => [
+        ...prev.filter(e => e.memoryId !== memory.id),
+        ...newEvents,
+      ]);
+
+      logEvent(ANALYTICS_EVENTS.CALENDAR_EVENT.CATEGORY, ANALYTICS_EVENTS.CALENDAR_EVENT.ACTION_CREATED, undefined, newEvents.length);
+      console.log(`[Calendar] Created ${newEvents.length} event(s) from memory ${memory.id}`);
+      return [...tombstones, ...newEvents];
+    } finally {
+      processingMemoryIds.current.delete(memory.id);
+    }
   }, []);
 
   const removeEventsForMemory = useCallback(async (memoryId: string): Promise<CalendarEvent[]> => {

@@ -347,8 +347,9 @@ app.post(
   async (req, res) => {
     const { notes, momentType, momentTitle, objective, momentId } = req.body;
 
-    // Persist "processing" status
-    persistSynthesisResult(momentId, req.userId, 'processing', null);
+    // Persist "processing" status before responding so that any concurrent
+    // polling requests see "processing" rather than a stale "completed" result.
+    await persistSynthesisResult(momentId, req.userId, 'processing', null);
 
     // Acknowledge immediately
     res.json({ status: 'accepted', momentId });

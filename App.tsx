@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, Suspense } from 'react';
 import { RefreshCw, X } from 'lucide-react';
 import { App as CapacitorApp, URLOpenListenerEvent } from '@capacitor/app';
 import { isNative } from './services/platform';
@@ -6,19 +6,25 @@ import MemoryCard from './components/MemoryCard';
 import TopNavigation from './components/TopNavigation';
 import FilterBar from './components/FilterBar';
 import MomentsStrip from './components/MomentsStrip';
-import MomentSheet from './components/MomentSheet';
-import MomentCreationDialog from './components/MomentCreationDialog';
-import AllMomentsSheet from './components/AllMomentsSheet';
-import CalendarAgendaView from './components/CalendarAgendaView';
 import EmptyState from './components/EmptyState';
+import VirtualizedMemoryGrid from './components/VirtualizedMemoryGrid';
 
 import ErrorBoundary from './components/ErrorBoundary';
 import { Logo } from './components/icons';
 import QuickNoteBar, { QuickNoteBarHandle } from './components/QuickNoteBar';
 import GalleryViewer from './components/GalleryViewer';
-import ChatInterface from './components/ChatInterface';
-import SettingsModal from './components/SettingsModal';
-import NewMemoryPage from './components/NewMemoryPage';
+import { lazyWithRetry } from './utils/lazyWithRetry';
+
+// Lazy-load heavy components that aren't needed on initial render.
+// lazyWithRetry clears stale SW caches and reloads if a chunk fails to import.
+const ChatInterface = lazyWithRetry(() => import('./components/ChatInterface'));
+const SettingsModal = lazyWithRetry(() => import('./components/SettingsModal'));
+const NewMemoryPage = lazyWithRetry(() => import('./components/NewMemoryPage'));
+const MomentSheet = lazyWithRetry(() => import('./components/MomentSheet'));
+const MomentCreationDialog = lazyWithRetry(() => import('./components/MomentCreationDialog'));
+const AllMomentsSheet = lazyWithRetry(() => import('./components/AllMomentsSheet'));
+const CalendarAgendaView = lazyWithRetry(() => import('./components/CalendarAgendaView'));
+const TodoListView = lazyWithRetry(() => import('./components/TodoListView'));
 
 import { useMemories } from './hooks/useMemories';
 import { useSettings } from './hooks/useSettings';
@@ -31,9 +37,10 @@ import { useAdaptiveSearch } from './hooks/useAdaptiveSearch';
 import { useHotkeys } from './hooks/useHotkeys';
 import { useMoments } from './hooks/useMoments';
 import { useCalendarEvents } from './hooks/useCalendarEvents';
+import { useTodoItems } from './hooks/useTodoItems';
 import useNativeOTA from './hooks/useNativeOTA';
 import { SyncProvider } from './context/SyncContext';
-import { reconcileEmbeddings, ReconcileReport } from './services/storageService';
+import { reconcileEmbeddings, ReconcileReport, getMemories as getStoredMemories } from './services/storageService';
 import { ViewMode, Memory, Attachment, Moment, QuickNoteState, CalendarEvent } from './types';
 import { initGA, logPageView, logEvent } from './services/analytics';
 import { escapeHtml } from './utils/editorUtils';
@@ -65,7 +72,7 @@ const AppContent: React.FC = () => {
 
   const { shareData, clearShareData } = useShareReceiver();
   
-  const { sync, isSyncing, syncError } = useSync();
+  const { sync, isSyncing, isSyncingDownload, syncError, getSyncStatusMap, syncStatusVersion, retrySyncFile } = useSync();
   const { authStatus, login, unlink } = useAuth();
 
   const { modelStatus, downloadProgress, retryDownload, search, embeddingStats, retryFailedEmbeddings, deleteNoteFromIndex, lastError, closeWorkerDB } = useAdaptiveSearch();
@@ -84,6 +91,8 @@ const AppContent: React.FC = () => {
     setOnNoteMatchedMoments,
     setOnEnrichmentCompleteCalendar,
     setOnCalendarEventsSync,
+    setOnEnrichmentCompleteTodo,
+    setOnTodoItemsSync,
   } = useMemories();
 
   const {
@@ -110,9 +119,19 @@ const AppContent: React.FC = () => {
     checkAndExpandHorizon,
   } = useCalendarEvents();
 
-  const [showCalendarAgenda, setShowCalendarAgenda] = useState(false);
+  const {
+    items: todoItems,
+    processDetectedActionItems,
+    removeItemsForMemory: removeTodoItemsForMemory,
+    toggleComplete: toggleTodoComplete,
+    refreshItems: refreshTodoItems,
+    pendingCount: todoPendingCount,
+  } = useTodoItems();
 
-  const { syncMoment, syncCalendarEvents } = useSync();
+  const [showCalendarAgenda, setShowCalendarAgenda] = useState(false);
+  const [showTodoList, setShowTodoList] = useState(false);
+
+  const { syncMoment, syncCalendarEvents, syncTodoItems } = useSync();
 
   // Wire up moments ref and callback for enrichment-time moment matching
   useEffect(() => {
@@ -132,6 +151,16 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     setOnCalendarEventsSync(syncCalendarEvents);
   }, [syncCalendarEvents, setOnCalendarEventsSync]);
+
+  // Wire up todo item extraction from enrichment
+  useEffect(() => {
+    setOnEnrichmentCompleteTodo(processDetectedActionItems);
+  }, [processDetectedActionItems, setOnEnrichmentCompleteTodo]);
+
+  // Wire up todo items sync callback
+  useEffect(() => {
+    setOnTodoItemsSync(syncTodoItems);
+  }, [syncTodoItems, setOnTodoItemsSync]);
 
   // Expand recurring event horizons on mount
   useEffect(() => {
@@ -165,6 +194,9 @@ const AppContent: React.FC = () => {
     setShowCalendarAgenda(true);
   }, []);
 
+  const handleTodoTap = useCallback(() => {
+    setShowTodoList(true);
+  }, []);
 
   const handleShowAllMoments = useCallback(() => {
     setShowAllMoments(true);
@@ -214,12 +246,15 @@ const AppContent: React.FC = () => {
   }, [createNewMoment, memories]);
 
   const handleFullRefresh = useCallback(async () => {
-      await refreshMemories();
-      await refreshMoments();
-      await refreshEvents();
-      const report = await reconcileEmbeddings();
+      const [, , , , report] = await Promise.all([
+        refreshMemories(),
+        refreshMoments(),
+        refreshEvents(),
+        refreshTodoItems(),
+        reconcileEmbeddings(),
+      ]);
       setReconcileReport(report);
-  }, [refreshMemories, refreshMoments, refreshEvents]);
+  }, [refreshMemories, refreshMoments, refreshEvents, refreshTodoItems]);
 
   const syncRef = useRef(sync);
   const refreshRef = useRef(handleFullRefresh);
@@ -300,27 +335,40 @@ const AppContent: React.FC = () => {
     }
   }, []);
 
-  // INITIALIZATION EFFECT - runs once on mount and when auth status changes
+  // INITIALIZATION EFFECT - runs once on mount and when auth status changes.
+  // Heavy operations (reconcile, sync) are deferred so the UI is interactive
+  // immediately — tapping the quick note bar brings up the keyboard without
+  // competing for the main thread.
   useEffect(() => {
     initGA();
     logPageView('home');
 
-    reconcileEmbeddings().then(setReconcileReport).catch(console.error);
+    // Defer non-critical background work so user interactions (e.g. tapping
+    // the quick note bar to open the keyboard) are not blocked.
+    setTimeout(() => {
+      reconcileEmbeddings().then(setReconcileReport).catch(console.error);
 
-    if (authStatus === 'linked') {
-        syncRef.current().then(() => {
-            refreshRef.current();
-        }).catch(err => {
-            console.error('[App] Initial sync failed:', err);
-        });
-
-        // Auto-retry enrichment for memories that failed while unauthenticated
-        const pendingIds = memories.filter(m => m.isPending || m.processingError).map(m => m.id);
-        if (pendingIds.length > 0) {
-            console.log(`[App] Auth linked — auto-retrying ${pendingIds.length} failed memories`);
-            pendingIds.forEach(id => handleRetry(id));
-        }
-    }
+      if (authStatus === 'linked') {
+          syncRef.current().then(() => {
+              return refreshRef.current();
+          }).then(() => {
+              // Auto-retry enrichment for memories that failed while
+              // unauthenticated. We read from storage after sync+refresh
+              // so we operate on the latest data, not a stale closure.
+              return getStoredMemories();
+          }).then(freshMemories => {
+              const pendingIds = freshMemories
+                .filter(m => !m.isDeleted && (m.isPending || m.processingError))
+                .map(m => m.id);
+              if (pendingIds.length > 0) {
+                  console.log(`[App] Auth linked — auto-retrying ${pendingIds.length} failed memories`);
+                  pendingIds.forEach(id => handleRetry(id));
+              }
+          }).catch(err => {
+              console.error('[App] Initial sync failed:', err);
+          });
+      }
+    }, 0);
   }, [authStatus]);
 
   // NATIVE DEEP LINK HANDLING (Google Auth)
@@ -358,6 +406,8 @@ const AppContent: React.FC = () => {
     const handleBackButton = ({ canGoBack }: { canGoBack: boolean }) => {
       if (viewingGallery) {
         setViewingGallery(null);
+      } else if (showTodoList) {
+        setShowTodoList(false);
       } else if (showCalendarAgenda) {
         setShowCalendarAgenda(false);
       } else if (activeMoment) {
@@ -388,7 +438,7 @@ const AppContent: React.FC = () => {
       // Since addListener is async in some versions, but usually returns PluginListenerHandle
       listener.then(handle => handle.remove()).catch(e => console.error(e));
     };
-  }, [viewingGallery, expandedMemory, isSettingsOpen, editingMemory, isCaptureOpen, view, activeMoment, showAllMoments, showCalendarAgenda, handleCaptureClose, handleEditClose]);
+  }, [viewingGallery, expandedMemory, isSettingsOpen, editingMemory, isCaptureOpen, view, activeMoment, showAllMoments, showCalendarAgenda, showTodoList, handleCaptureClose, handleEditClose]);
 
   useEffect(() => {
     if (shareData) {
@@ -478,9 +528,14 @@ const AppContent: React.FC = () => {
         syncCalendarEvents(tombstones).catch(err => console.error('[Calendar] Failed to sync deleted events:', err));
       }
     }).catch(err => console.error('[Calendar] Failed to remove events for memory:', err));
+    removeTodoItemsForMemory(id).then(tombstones => {
+      if (tombstones.length > 0) {
+        syncTodoItems(tombstones).catch(err => console.error('[Todo] Failed to sync deleted items:', err));
+      }
+    }).catch(err => console.error('[Todo] Failed to remove items for memory:', err));
     logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_DELETED);
     if (expandedMemory?.id === id) setExpandedMemory(null);
-  }, [handleDelete, expandedMemory, deleteNoteFromIndex, removeNoteFromMoments, removeEventsForMemory, syncCalendarEvents]);
+  }, [handleDelete, expandedMemory, deleteNoteFromIndex, removeNoteFromMoments, removeEventsForMemory, syncCalendarEvents, removeTodoItemsForMemory, syncTodoItems]);
 
   const handleRetryMemory = useCallback((id: string) => {
     handleRetry(id);
@@ -542,6 +597,9 @@ const AppContent: React.FC = () => {
 
   const activeMemoryCount = useMemo(() => memories.filter(m => !m.isDeleted).length, [memories]);
 
+  // Snapshot the sync status map so components re-render when statuses change
+  const syncStatusMap = useMemo(() => new Map(getSyncStatusMap()), [syncStatusVersion]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Keep expanded memory in sync with the memories array so checklist
   // toggles and other content updates are reflected immediately.
   const liveExpandedMemory = useMemo(() => {
@@ -561,7 +619,7 @@ const AppContent: React.FC = () => {
 
   if (isLoading) {
     return (
-        <div className="fixed inset-0 bg-black z-[9999] flex flex-col items-center justify-center">
+        <div className="fixed inset-0 bg-black z-(--z-tooltip) flex flex-col items-center justify-center">
             <Logo className="w-20 h-20 mb-6 animate-pulse" />
             <div className="flex gap-1.5 items-center">
                 <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
@@ -578,12 +636,14 @@ const AppContent: React.FC = () => {
         fallbackTitle="Memory editor encountered an error"
         fallbackMessage="Something went wrong while editing. Your data is safe — try reloading."
       >
-        <NewMemoryPage
-            onClose={handleEditClose}
-            onCreate={handleCreateMemory}
-            onUpdate={handleUpdateMemory}
-            editMemory={editingMemory}
-          />
+        <Suspense fallback={null}>
+          <NewMemoryPage
+              onClose={handleEditClose}
+              onCreate={handleCreateMemory}
+              onUpdate={handleUpdateMemory}
+              editMemory={editingMemory}
+            />
+        </Suspense>
       </ErrorBoundary>
     );
   }
@@ -599,11 +659,13 @@ const AppContent: React.FC = () => {
         fallbackTitle="Memory capture encountered an error"
         fallbackMessage="Something went wrong while capturing. Your data is safe — try reloading."
       >
-        <NewMemoryPage
-            onClose={handleCaptureClose}
-            onCreate={handleCreateMemory}
-            initialContent={expandInitial || (shareData ? { ...shareData, text: escapeHtml(shareData.text) } : undefined)}
-          />
+        <Suspense fallback={null}>
+          <NewMemoryPage
+              onClose={handleCaptureClose}
+              onCreate={handleCreateMemory}
+              initialContent={expandInitial || (shareData ? { ...shareData, text: escapeHtml(shareData.text) } : undefined)}
+            />
+        </Suspense>
       </ErrorBoundary>
     );
   }
@@ -615,15 +677,17 @@ const AppContent: React.FC = () => {
             fallbackTitle="Brain Search encountered an error"
             fallbackMessage="The AI search feature hit an unexpected issue. Your memories are safe — try reloading."
           >
-            <ChatInterface
-                memories={displayMemories}
-                onClose={handleChatClose}
-                searchFunction={search}
-                onViewAttachment={handleViewAttachment}
-                onDelete={handleDeleteMemory}
-                onEdit={handleEditMemory}
-                onTogglePin={handleTogglePin}
-              />
+            <Suspense fallback={null}>
+              <ChatInterface
+                  memories={displayMemories}
+                  onClose={handleChatClose}
+                  searchFunction={search}
+                  onViewAttachment={handleViewAttachment}
+                  onDelete={handleDeleteMemory}
+                  onEdit={handleEditMemory}
+                  onTogglePin={handleTogglePin}
+                />
+            </Suspense>
           </ErrorBoundary>
           {viewingGallery && (
             <ErrorBoundary
@@ -646,7 +710,7 @@ const AppContent: React.FC = () => {
       {/* Main UI — hidden when MomentCreationDialog is open */}
       {!showCreateMoment ? (
         <>
-          <div ref={topNavRef} className="sticky top-0 z-[50] bg-black/90 backdrop-blur-md border-b border-gray-800/50 pt-[env(safe-area-inset-top)]">
+          <div ref={topNavRef} className="sticky top-0 z-(--z-overlay) bg-black/90 backdrop-blur-md border-b border-gray-800/50 pt-[env(safe-area-inset-top)]">
               <TopNavigation
                 setView={handleSetView}
                 resetFilters={handleResetFilters}
@@ -654,7 +718,7 @@ const AppContent: React.FC = () => {
                 updateAvailable={isUpdateAvailable}
                 onUpdateApp={handleUpdateApp}
                 syncError={!!syncError}
-                isSyncing={isSyncing}
+                isSyncingDownload={isSyncingDownload}
                 modelStatus={modelStatus}
                 isOtaDownloading={isOtaDownloading}
               />
@@ -667,10 +731,13 @@ const AppContent: React.FC = () => {
             onShowAll={handleShowAllMoments}
             onCalendarTap={handleCalendarTap}
             calendarEventCount={calendarUpcomingCount}
+            onTodoTap={handleTodoTap}
+            todoPendingCount={todoPendingCount}
+            synthesisLoading={synthesisLoading}
           />
 
           {availableTypes.length > 0 && (
-            <div className="sticky z-[49] bg-black/90 backdrop-blur-md border-b border-gray-800/50" style={{ top: `${topNavHeight}px` }}>
+            <div className="sticky z-(--z-dropdown) bg-black/90 backdrop-blur-md border-b border-gray-800/50" style={{ top: `${topNavHeight}px` }}>
               <FilterBar
                 availableTypes={availableTypes}
                 filterType={filterType}
@@ -680,31 +747,27 @@ const AppContent: React.FC = () => {
             </div>
           )}
 
-          <main className="flex-1 p-4 sm:p-8 pb-24 max-w-7xl mx-auto w-full relative z-[40]">
+          <main className="flex-1 p-4 sm:p-8 pb-24 max-w-7xl mx-auto w-full relative z-(--z-dropdown)">
             {filteredMemories.length === 0 ? (
               <EmptyState
                 hasMemories={memories.length > 0}
                 clearFilters={handleClearFiltersEmptyState}
               />
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                {displayMemories.map((mem, idx) => (
-                  <MemoryCard
-                    key={mem.id}
-                    memory={mem}
-                    index={idx}
-                    onDelete={handleDeleteMemory}
-                    onRetry={handleRetryMemory}
-                    onUpdate={updateMemoryContent}
-                    onExpand={setExpandedMemory}
-                    onViewAttachment={handleViewAttachment}
-                    onTogglePin={handleTogglePin}
-                    onEdit={handleEditMemory}
-                    isAuthenticated={authStatus === 'linked'}
-                    onSignIn={login}
-                  />
-                ))}
-              </div>
+              <VirtualizedMemoryGrid
+                memories={displayMemories}
+                onDelete={handleDeleteMemory}
+                onRetry={handleRetryMemory}
+                onUpdate={updateMemoryContent}
+                onExpand={setExpandedMemory}
+                onViewAttachment={handleViewAttachment}
+                onTogglePin={handleTogglePin}
+                onEdit={handleEditMemory}
+                isAuthenticated={authStatus === 'linked'}
+                onSignIn={login}
+                syncStatusMap={syncStatusMap}
+                onSyncRetry={retrySyncFile}
+              />
             )}
           </main>
 
@@ -718,7 +781,7 @@ const AppContent: React.FC = () => {
         <>
           {/* Overlay for MomentCreationDialog */}
           <div
-            className="fixed inset-0 z-[55] bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
+            className="fixed inset-0 z-(--z-overlay) bg-black/60 backdrop-blur-sm animate-in fade-in duration-(--duration-fast)"
             aria-hidden
           />
           {/* Spacer to maintain layout when main content is hidden for moment creation */}
@@ -727,7 +790,7 @@ const AppContent: React.FC = () => {
       )}
 
       {liveExpandedMemory && (
-        <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-md flex flex-col animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-(--z-sheet) bg-black/90 backdrop-blur-md flex flex-col animate-in fade-in duration-(--duration-normal)">
           <div className="sticky top-0 z-10 px-4 py-3 border-b border-gray-800 flex items-center justify-between bg-black/50 backdrop-blur-xl pt-[env(safe-area-inset-top)]">
              <div className="flex items-center gap-3">
                 <button onClick={() => setExpandedMemory(null)} className="p-3 -ml-3 rounded-full hover:bg-gray-800 text-gray-400 hover:text-white transition-colors active:scale-95">
@@ -750,6 +813,8 @@ const AppContent: React.FC = () => {
                     isDialog={true}
                     isAuthenticated={authStatus === 'linked'}
                     onSignIn={login}
+                    syncStatus={syncStatusMap.get(liveExpandedMemory.id)}
+                    onSyncRetry={retrySyncFile}
                 />
              </div>
           </div>
@@ -770,70 +835,105 @@ const AppContent: React.FC = () => {
       )}
 
       {isSettingsOpen && (
-          <SettingsModal
-              onClose={handleSettingsClose}
-              availableTypes={availableTypes}
-              onImportSuccess={handleImportSuccess}
-              appVersion={versionToDisplay}
-              syncError={syncError}
-              onSyncComplete={handleFullRefresh}
-              modelStatus={modelStatus}
-              downloadProgress={downloadProgress}
-              retryDownload={retryDownload}
-              embeddingStats={embeddingStats}
-              retryFailedEmbeddings={retryFailedEmbeddings}
-              totalMemories={activeMemoryCount}
-              lastError={lastError}
-              closeWorkerDB={closeWorkerDB}
-              reconcileReport={reconcileReport}
-          />
+          <Suspense fallback={null}>
+            <SettingsModal
+                onClose={handleSettingsClose}
+                availableTypes={availableTypes}
+                onImportSuccess={handleImportSuccess}
+                appVersion={versionToDisplay}
+                syncError={syncError}
+                onSyncComplete={handleFullRefresh}
+                modelStatus={modelStatus}
+                downloadProgress={downloadProgress}
+                retryDownload={retryDownload}
+                embeddingStats={embeddingStats}
+                retryFailedEmbeddings={retryFailedEmbeddings}
+                totalMemories={activeMemoryCount}
+                lastError={lastError}
+                closeWorkerDB={closeWorkerDB}
+                reconcileReport={reconcileReport}
+            />
+          </Suspense>
       )}
 
       {liveActiveMoment && (
-        <MomentSheet
-          moment={liveActiveMoment}
-          memories={memories}
-          onClose={handleMomentClose}
-          loadSynthesis={loadSynthesis}
-          onDelete={deleteMoment}
-        />
+        <Suspense fallback={null}>
+          <MomentSheet
+            moment={liveActiveMoment}
+            memories={memories}
+            onClose={handleMomentClose}
+            loadSynthesis={loadSynthesis}
+            onDelete={deleteMoment}
+            onViewAttachment={handleViewAttachment}
+          />
+        </Suspense>
       )}
 
-      <MomentCreationDialog
-        isOpen={showCreateMoment}
-        isCreating={momentCreating}
-        onClose={() => setShowCreateMoment(false)}
-        onCreate={handleCreateMomentSubmit}
-      />
+      <Suspense fallback={null}>
+        <MomentCreationDialog
+          isOpen={showCreateMoment}
+          isCreating={momentCreating}
+          onClose={() => setShowCreateMoment(false)}
+          onCreate={handleCreateMomentSubmit}
+        />
+      </Suspense>
 
       {showAllMoments && (
-        <AllMomentsSheet
-          moments={moments}
-          onClose={() => setShowAllMoments(false)}
-          onSelectMoment={handleSelectMomentFromList}
-        />
+        <Suspense fallback={null}>
+          <AllMomentsSheet
+            moments={moments}
+            onClose={() => setShowAllMoments(false)}
+            onSelectMoment={handleSelectMomentFromList}
+          />
+        </Suspense>
       )}
 
       {showCalendarAgenda && (
-        <CalendarAgendaView
-          events={calendarEvents}
-          memories={memories}
-          onClose={() => setShowCalendarAgenda(false)}
-          onViewAttachment={handleViewAttachment}
-          onDelete={handleDeleteMemory}
-          onEdit={handleEditMemory}
-          onTogglePin={handleTogglePin}
-        />
+        <Suspense fallback={null}>
+          <CalendarAgendaView
+            events={calendarEvents}
+            memories={memories}
+            onClose={() => setShowCalendarAgenda(false)}
+            onViewAttachment={handleViewAttachment}
+            onDelete={handleDeleteMemory}
+            onEdit={handleEditMemory}
+            onTogglePin={handleTogglePin}
+          />
+        </Suspense>
+      )}
+
+      {showTodoList && (
+        <Suspense fallback={null}>
+          <TodoListView
+            items={todoItems}
+            memories={memories}
+            onClose={() => setShowTodoList(false)}
+            onToggleComplete={async (itemId) => {
+              const updated = await toggleTodoComplete(itemId);
+              if (updated) {
+                try {
+                  await syncTodoItems([updated]);
+                } catch (err) {
+                  console.error('[Todo] Failed to sync toggled item:', err);
+                }
+              }
+            }}
+            onViewAttachment={handleViewAttachment}
+            onDelete={handleDeleteMemory}
+            onEdit={handleEditMemory}
+            onTogglePin={handleTogglePin}
+          />
+        </Suspense>
       )}
 
       {momentError && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[200] bg-red-900/90 border border-red-700/50 text-red-200 px-4 py-3 rounded-xl text-sm font-medium shadow-lg animate-in fade-in slide-in-from-top-2 duration-300 max-w-sm text-center backdrop-blur-md">
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-(--z-toast) bg-red-900/90 border border-red-700/50 text-red-200 px-4 py-3 rounded-xl text-sm font-medium shadow-lg animate-in fade-in slide-in-from-top-2 duration-(--duration-normal) max-w-sm text-center backdrop-blur-md">
           {momentError}
         </div>
       )}
 
       {isOtaDownloading && (
-        <div className="fixed inset-0 z-[9999] bg-black/95 backdrop-blur-md flex flex-col items-center justify-center gap-6">
+        <div className="fixed inset-0 z-(--z-tooltip) bg-black/95 backdrop-blur-md flex flex-col items-center justify-center gap-6">
           <Logo className="w-16 h-16 text-blue-500" />
           <div className="flex flex-col items-center gap-3">
             <RefreshCw size={32} className="text-blue-400 animate-spin" />

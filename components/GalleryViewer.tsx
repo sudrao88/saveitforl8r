@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { X, Download, ChevronLeft, ChevronRight, FileText } from 'lucide-react';
 import { Attachment } from '../types';
+import { zIndex } from '../styles/design-system';
 
 const MAX_DOT_INDICATORS = 12;
 
@@ -141,7 +142,7 @@ const GalleryViewer: React.FC<GalleryViewerProps> = ({ attachments, initialIndex
   };
 
   return (
-    <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-md flex flex-col animate-in fade-in zoom-in-95 duration-200">
+    <div className={`fixed inset-0 ${zIndex.tooltip} bg-black/95 backdrop-blur-md flex flex-col animate-in fade-in zoom-in-95 duration-(--duration-fast)`}>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 bg-black/50 border-b border-white/10 pt-[env(safe-area-inset-top)]">
         <div className="flex items-center gap-3 min-w-0">
@@ -178,7 +179,7 @@ const GalleryViewer: React.FC<GalleryViewerProps> = ({ attachments, initialIndex
         {hasPrev && (
           <button
             onClick={goPrev}
-            className="absolute left-2 sm:left-4 z-10 p-3 rounded-full bg-black/40 hover:bg-black/70 text-white/70 hover:text-white transition-all active:scale-90 backdrop-blur-sm"
+            className="absolute left-2 sm:left-4 z-(--z-sticky) p-3 rounded-full bg-black/40 hover:bg-black/70 text-white/70 hover:text-white transition-all active:scale-90 backdrop-blur-sm"
           >
             <ChevronLeft size={24} />
           </button>
@@ -199,7 +200,7 @@ const GalleryViewer: React.FC<GalleryViewerProps> = ({ attachments, initialIndex
         {hasNext && (
           <button
             onClick={goNext}
-            className="absolute right-2 sm:right-4 z-10 p-3 rounded-full bg-black/40 hover:bg-black/70 text-white/70 hover:text-white transition-all active:scale-90 backdrop-blur-sm"
+            className="absolute right-2 sm:right-4 z-(--z-sticky) p-3 rounded-full bg-black/40 hover:bg-black/70 text-white/70 hover:text-white transition-all active:scale-90 backdrop-blur-sm"
           >
             <ChevronRight size={24} />
           </button>
