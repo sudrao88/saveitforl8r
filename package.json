@@ -26,7 +26,7 @@
     "@capacitor/share": "^8.0.0",
     "@capacitor/status-bar": "^8.0.0",
     "@orama/orama": "^3.1.18",
-    "@tanstack/react-virtual": "^3.13.21",
+    "@tanstack/react-virtual": "^3.13.22",
     "@types/marked": "^5.0.2",
     "@xenova/transformers": "^2.17.2",
     "dexie": "^4.2.1",

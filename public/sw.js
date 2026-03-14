@@ -8,6 +8,12 @@ const SCOPE = '/';
 // 5 is a conservative floor ensuring critical bundles (main JS, vendor JS, CSS, etc.) are present.
 const MIN_ASSETS_FOR_CACHE_READY = 5;
 
+// Network timeout for fetch requests (milliseconds).
+// On "lie-fi" (connected but unusable network), fetch() hangs indefinitely.
+// After this timeout, the SW falls back to cache or returns an offline response,
+// so the user can start using the app immediately.
+const NETWORK_TIMEOUT_MS = 3000;
+
 // Critical assets that MUST be cached for offline use
 const PRECACHE_ASSETS = [
   SCOPE + 'index.html',
@@ -23,6 +29,23 @@ const PRECACHE_ASSETS = [
 // Default false — client-side code sets this via SET_NATIVE_CONTEXT message
 // using Capacitor.isNativePlatform() which is the authoritative source.
 let nativeAppContext = false;
+
+// Fetch with a timeout. Rejects with a TimeoutError if the network doesn't respond
+// within the specified duration. This prevents "lie-fi" from hanging the app.
+function fetchWithTimeout(request, timeoutMs = NETWORK_TIMEOUT_MS) {
+  return new Promise((resolve, reject) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      controller.abort();
+      reject(new DOMException('Network timeout', 'TimeoutError'));
+    }, timeoutMs);
+
+    fetch(request, { signal: controller.signal })
+      .then(resolve)
+      .catch(reject)
+      .finally(() => clearTimeout(timer));
+  });
+}
 
 // Extract JS/CSS asset URLs from HTML to ensure they're cached before updating the shell.
 function extractAssetUrls(html) {
@@ -45,6 +68,35 @@ self.addEventListener('install', (event) => {
       .then((cache) => {
         console.log('[SW] Pre-caching critical assets');
         return cache.addAll(PRECACHE_ASSETS);
+      })
+      .then(async () => {
+        // After precaching index.html, also pre-fetch the JS/CSS bundles it references.
+        // This prevents a gap where the new SW has a cached index.html referencing
+        // new hashed bundles that aren't in STATIC_CACHE yet.
+        try {
+          const dynamicCache = await caches.open(CACHE_NAME);
+          const indexResponse = await dynamicCache.match(SCOPE + 'index.html');
+          if (!indexResponse) return;
+
+          const html = await indexResponse.text();
+          const assetUrls = extractAssetUrls(html);
+          if (assetUrls.length === 0) return;
+
+          const staticCache = await caches.open(STATIC_CACHE);
+          const results = await Promise.allSettled(
+            assetUrls.map(async (url) => {
+              const existing = await staticCache.match(url);
+              if (existing) return; // Already cached
+              const resp = await fetchWithTimeout(url);
+              if (resp.ok) await staticCache.put(url, resp);
+            })
+          );
+          const fetched = results.filter(r => r.status === 'fulfilled').length;
+          console.log(`[SW] Install: pre-fetched ${fetched}/${assetUrls.length} referenced assets`);
+        } catch (err) {
+          // Non-fatal: assets will be fetched on first navigation
+          console.warn('[SW] Install: asset pre-fetch failed (non-fatal):', err);
+        }
       })
   );
 });
@@ -307,7 +359,7 @@ self.addEventListener('fetch', (event) => {
     // with the app's JS/CSS chunk downloads during initial page load.
     // The cached shell is still served instantly via event.respondWith below.
     const backgroundRevalidation = new Promise(resolve => setTimeout(resolve, 3000))
-      .then(() => fetch(shellUrl))
+      .then(() => fetchWithTimeout(shellUrl))
       .then(async (networkResponse) => {
         if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
           // Before caching new HTML, ensure its referenced assets are also cached.
@@ -327,7 +379,7 @@ self.addEventListener('fetch', (event) => {
             console.log(`[SW] New index.html references ${missingAssets.length} uncached assets, pre-fetching...`);
             const results = await Promise.allSettled(
               missingAssets.map(async (assetUrl) => {
-                const resp = await fetch(assetUrl);
+                const resp = await fetchWithTimeout(assetUrl);
                 if (resp.ok) {
                   await staticCache.put(assetUrl, resp);
                   return 'ok';
@@ -381,7 +433,7 @@ self.addEventListener('fetch', (event) => {
         if (cachedResponse) {
           return cachedResponse;
         }
-        return fetch(event.request).then((networkResponse) => {
+        return fetchWithTimeout(event.request).then((networkResponse) => {
           if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
             const responseToCache = networkResponse.clone();
             caches.open(STATIC_CACHE).then((cache) => {
@@ -435,7 +487,7 @@ self.addEventListener('fetch', (event) => {
 
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
-      const fetchPromise = fetch(event.request).then((networkResponse) => {
+      const fetchPromise = fetchWithTimeout(event.request).then((networkResponse) => {
         if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
           const responseToCache = networkResponse.clone();
           caches.open(CACHE_NAME).then((cache) => {

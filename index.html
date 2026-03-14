@@ -106,6 +106,35 @@
     </noscript>
     <script type="module" src="/index.tsx"></script>
     <script>
+       // Stuck-state detection: if React hasn't mounted within 5s, the JS bundles
+       // likely failed to load (offline/lie-fi). Show an offline message so the
+       // user knows the app is alive and can retry or wait for network recovery.
+       (function() {
+         const STUCK_TIMEOUT = 5000;
+         const timer = setTimeout(function() {
+           const root = document.getElementById('root');
+           // React replaces the splash-container children on mount.
+           // If splash-logo still exists, React hasn't mounted yet.
+           if (root && root.querySelector('.splash-logo')) {
+             const msg = document.createElement('div');
+             msg.className = 'splash-offline-msg';
+             msg.innerHTML = '<p>Waiting for network\u2026</p>'
+               + '<p class="splash-offline-subtext">The app will load automatically when connection improves</p>'
+               + '<button onclick="location.reload()" class="splash-retry-btn">Retry Now</button>';
+             root.appendChild(msg);
+           }
+         }, STUCK_TIMEOUT);
+         // Cancel timer once React mounts (it removes .splash-logo)
+         const obs = new MutationObserver(function() {
+           if (!document.querySelector('.splash-logo')) {
+             clearTimeout(timer);
+             obs.disconnect();
+           }
+         });
+         obs.observe(document.getElementById('root'), { childList: true, subtree: true });
+       })();
+    </script>
+    <script>
        if ('serviceWorker' in navigator) {
          window.addEventListener('load', () => {
            // Skip service worker on native platforms (Capacitor).
