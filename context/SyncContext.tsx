@@ -830,11 +830,14 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }, PERIODIC_SYNC_INTERVAL_MS);
 
     // Sync on tab re-focus if stale
-    const handleVisibilityChange = () => {
+    const handleVisibilityChange = async () => {
         if (document.visibilityState === 'visible') {
-            isStale().then(stale => {
+            try {
+                const stale = await isStale();
                 if (stale) trySyncQuietly();
-            });
+            } catch (err) {
+                console.error('[Sync] Error checking for stale sync on visibility change:', err);
+            }
         }
     };
 
