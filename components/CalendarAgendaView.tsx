@@ -79,10 +79,13 @@ const groupEventsByDate = (events: CalendarEvent[]): DateGroup[] => {
     dateMap.get(dateStr)!.push(event);
   }
 
-  // Sort dates chronologically
+  // Sort dates chronologically, then reorder so past dates come after today+future
   const sortedDates = [...dateMap.keys()].sort();
+  const futureDates = sortedDates.filter(d => d >= today);
+  const pastDates = sortedDates.filter(d => d < today).reverse();
+  const orderedDates = [...futureDates, ...pastDates];
 
-  return sortedDates.map(dateKey => {
+  return orderedDates.map(dateKey => {
     const date = new Date(dateKey + 'T00:00:00');
     const isPast = dateKey < today;
     const isToday = dateKey === today;
