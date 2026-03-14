@@ -101,30 +101,48 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ dataUri, fileName }) => {
   const zoomOut = useCallback(() => setZoom(z => Math.max(z - ZOOM_STEP, MIN_ZOOM)), []);
   const resetZoom = useCallback(() => setZoom(1), []);
 
-  // Pinch-to-zoom handlers
-  const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    if (e.touches.length === 2) {
-      isPinching.current = true;
-      const dx = e.touches[0].clientX - e.touches[1].clientX;
-      const dy = e.touches[0].clientY - e.touches[1].clientY;
-      pinchStartDist.current = Math.hypot(dx, dy);
-      pinchStartZoom.current = zoom;
-    }
-  }, [zoom]);
+  // Pinch-to-zoom via native event listeners (passive: false needed to prevent iOS native zoom)
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
 
-  const handleTouchMove = useCallback((e: React.TouchEvent) => {
-    if (isPinching.current && e.touches.length === 2) {
-      const dx = e.touches[0].clientX - e.touches[1].clientX;
-      const dy = e.touches[0].clientY - e.touches[1].clientY;
-      const dist = Math.hypot(dx, dy);
-      const ratio = dist / pinchStartDist.current;
-      const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, pinchStartZoom.current * ratio));
-      setZoom(newZoom);
-    }
-  }, []);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
 
-  const handleTouchEnd = useCallback(() => {
-    isPinching.current = false;
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        isPinching.current = true;
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        pinchStartDist.current = Math.hypot(dx, dy);
+        pinchStartZoom.current = zoomRef.current;
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (isPinching.current && e.touches.length === 2) {
+        e.preventDefault();
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        const dist = Math.hypot(dx, dy);
+        const ratio = dist / pinchStartDist.current;
+        const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, pinchStartZoom.current * ratio));
+        setZoom(newZoom);
+      }
+    };
+
+    const onTouchEnd = () => {
+      isPinching.current = false;
+    };
+
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', onTouchEnd, { passive: true });
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
+    };
   }, []);
 
   if (loading) {
@@ -182,20 +200,16 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ dataUri, fileName }) => {
       <div
         ref={containerRef}
         className="flex-1 overflow-auto"
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
+        style={{ touchAction: 'pan-x pan-y' }}
       >
         <div
           className="flex flex-col items-center gap-4 p-4 pb-8"
           style={{
-            transform: `scale(${zoom})`,
-            transformOrigin: 'top center',
-            width: zoom > 1 ? `${100 / zoom}%` : '100%',
+            width: `${zoom * 100}%`,
           }}
         >
           {pages.map((page, idx) => (
-            <div key={idx} className="w-full max-w-2xl relative">
+            <div key={idx} className="w-full max-w-none relative">
               <img
                 src={page.dataUrl}
                 alt={`${fileName} - Page ${idx + 1}`}

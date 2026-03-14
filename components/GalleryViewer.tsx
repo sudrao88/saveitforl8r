@@ -196,7 +196,7 @@ const GalleryViewer: React.FC<GalleryViewerProps> = ({ attachments, initialIndex
     <div className={`fixed inset-0 ${zIndex.tooltip} bg-black/95 backdrop-blur-md flex flex-col animate-in fade-in zoom-in-95 duration-(--duration-fast)`}>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 bg-black/50 border-b border-white/10 pt-[env(safe-area-inset-top)]">
-        <div className="flex items-center gap-3 min-w-0">
+        <div className="flex items-center gap-3 flex-1 min-w-0 overflow-hidden">
           <button
             onClick={onClose}
             className="p-3 -ml-3 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition-colors active:scale-95 shrink-0"
@@ -208,7 +208,7 @@ const GalleryViewer: React.FC<GalleryViewerProps> = ({ attachments, initialIndex
             <span className="text-xs text-gray-500 shrink-0">{currentIndex + 1} of {attachments.length}</span>
           )}
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 ml-3">
           {canShare && getSafeDataUri(current) && (
             <button
               onClick={handleShare}
