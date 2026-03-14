@@ -2,7 +2,8 @@
  * CalendarAgendaView.tsx
  *
  * Full-screen agenda view showing calendar events extracted from notes.
- * Events are grouped by time period: Today, Tomorrow, This Week, This Month, Later, Past.
+ * Events are grouped by individual date with month separators (Google Calendar agenda-style).
+ * Today and Tomorrow get special labels; all other dates show weekday + date.
  * Tapping an event card navigates to the source memory.
  */
 
@@ -31,30 +32,21 @@ interface CalendarAgendaViewProps {
   onTogglePin?: (id: string, isPinned: boolean) => void;
 }
 
-// Group events into time-based sections
-interface EventGroup {
+// Group events by individual date (Google Calendar agenda-style)
+interface DateGroup {
+  dateKey: string;
   label: string;
+  sublabel?: string;
   events: CalendarEvent[];
+  isPast: boolean;
+  isToday: boolean;
+  month: string;
+  monthLabel: string;
 }
 
 const getDateOnly = (isoString: string): string => {
   // Handle both date-only "2026-06-15" and datetime "2026-06-15T16:00:00"
   return isoString.split('T')[0];
-};
-
-const formatDate = (isoString: string): string => {
-  try {
-    const date = new Date(isoString);
-    if (isNaN(date.getTime())) return isoString;
-    return date.toLocaleDateString(undefined, {
-      weekday: 'long',
-      month: 'long',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  } catch {
-    return isoString;
-  }
 };
 
 const formatTime = (isoString: string): string | null => {
@@ -71,60 +63,78 @@ const formatTime = (isoString: string): string | null => {
   }
 };
 
-const groupEvents = (events: CalendarEvent[]): EventGroup[] => {
+const groupEventsByDate = (events: CalendarEvent[]): DateGroup[] => {
   const now = new Date();
   const today = now.toISOString().split('T')[0];
 
-  // Calculate end of week (Sunday)
-  const endOfWeek = new Date(now);
-  endOfWeek.setDate(now.getDate() + (7 - now.getDay()));
-  const endOfWeekStr = endOfWeek.toISOString().split('T')[0];
-
-  // Calculate end of month
-  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  const endOfMonthStr = endOfMonth.toISOString().split('T')[0];
-
-  // Calculate tomorrow
   const tomorrow = new Date(now);
   tomorrow.setDate(now.getDate() + 1);
   const tomorrowStr = tomorrow.toISOString().split('T')[0];
 
-  const groups: Record<string, CalendarEvent[]> = {
-    today: [],
-    tomorrow: [],
-    thisWeek: [],
-    thisMonth: [],
-    later: [],
-    past: [],
-  };
-
+  // Group events by date
+  const dateMap = new Map<string, CalendarEvent[]>();
   for (const event of events) {
     const dateStr = getDateOnly(event.startDate);
-
-    if (dateStr < today) {
-      groups.past.push(event);
-    } else if (dateStr === today) {
-      groups.today.push(event);
-    } else if (dateStr === tomorrowStr) {
-      groups.tomorrow.push(event);
-    } else if (dateStr <= endOfWeekStr) {
-      groups.thisWeek.push(event);
-    } else if (dateStr <= endOfMonthStr) {
-      groups.thisMonth.push(event);
-    } else {
-      groups.later.push(event);
-    }
+    if (!dateMap.has(dateStr)) dateMap.set(dateStr, []);
+    dateMap.get(dateStr)!.push(event);
   }
 
-  const result: EventGroup[] = [];
-  if (groups.today.length > 0) result.push({ label: 'Today', events: groups.today });
-  if (groups.tomorrow.length > 0) result.push({ label: 'Tomorrow', events: groups.tomorrow });
-  if (groups.thisWeek.length > 0) result.push({ label: 'This Week', events: groups.thisWeek });
-  if (groups.thisMonth.length > 0) result.push({ label: 'This Month', events: groups.thisMonth });
-  if (groups.later.length > 0) result.push({ label: 'Later', events: groups.later });
-  if (groups.past.length > 0) result.push({ label: 'Past', events: groups.past.reverse() });
+  // Sort dates chronologically
+  const sortedDates = [...dateMap.keys()].sort();
 
-  return result;
+  return sortedDates.map(dateKey => {
+    const date = new Date(dateKey + 'T00:00:00');
+    const isPast = dateKey < today;
+    const isToday = dateKey === today;
+    const isTomorrow = dateKey === tomorrowStr;
+    const month = dateKey.substring(0, 7);
+
+    let label: string;
+    let sublabel: string | undefined;
+
+    if (isToday) {
+      label = 'Today';
+      sublabel = date.toLocaleDateString(undefined, {
+        weekday: 'long',
+        month: 'long',
+        day: 'numeric',
+      });
+    } else if (isTomorrow) {
+      label = 'Tomorrow';
+      sublabel = date.toLocaleDateString(undefined, {
+        weekday: 'long',
+        month: 'long',
+        day: 'numeric',
+      });
+    } else {
+      label = date.toLocaleDateString(undefined, {
+        weekday: 'long',
+        month: 'short',
+        day: 'numeric',
+      });
+    }
+
+    const monthLabel = date.toLocaleDateString(undefined, {
+      month: 'long',
+      year: 'numeric',
+    });
+
+    // Sort events within each day by time
+    const dayEvents = dateMap
+      .get(dateKey)!
+      .sort((a, b) => a.startDate.localeCompare(b.startDate));
+
+    return {
+      dateKey,
+      label,
+      sublabel,
+      events: dayEvents,
+      isPast,
+      isToday,
+      month,
+      monthLabel,
+    };
+  });
 };
 
 const statusColors: Record<string, string> = {
@@ -141,16 +151,15 @@ const EventCard: React.FC<{
 }> = ({ event, memory, isPast, onViewMemory }) => {
   const time = formatTime(event.startDate);
   const endTime = event.endDate ? formatTime(event.endDate) : null;
-  const date = formatDate(event.startDate);
 
   return (
     <div
-      className={`rounded-xl border p-4 transition-all ${
+      className={`rounded-(--radius-xl) border p-4 transition-all duration-(--duration-fast) ${
         isPast
-          ? 'border-gray-800/50 bg-gray-900/30 opacity-60'
+          ? 'border-(--color-border-subtle) bg-gray-900/30 opacity-60'
           : event.status === 'cancelled'
             ? 'border-red-900/30 bg-red-950/20'
-            : 'border-gray-700/50 bg-gray-800/30 hover:bg-gray-800/50'
+            : 'border-(--color-border-subtle) bg-(--color-surface-raised)/30 hover:bg-(--color-surface-raised)/50'
       }`}
     >
       <div className="flex items-start justify-between gap-3">
@@ -161,20 +170,16 @@ const EventCard: React.FC<{
               event.status === 'cancelled'
                 ? 'text-red-400 line-through'
                 : isPast
-                  ? 'text-gray-400'
-                  : 'text-gray-100'
+                  ? 'text-(--color-text-tertiary)'
+                  : 'text-(--color-text-primary)'
             }`}
           >
             {event.title}
           </h3>
 
-          {/* Date & Time */}
-          <div className="flex items-center gap-1.5 mt-1.5 text-sm text-gray-400">
-            <CalendarDays size={14} className="shrink-0" />
-            <span>{date}</span>
-          </div>
+          {/* Time */}
           {!event.allDay && time && (
-            <div className="flex items-center gap-1.5 mt-1 text-sm text-gray-400">
+            <div className="flex items-center gap-1.5 mt-1.5 text-sm text-(--color-text-secondary)">
               <Clock size={14} className="shrink-0" />
               <span>
                 {time}
@@ -182,10 +187,16 @@ const EventCard: React.FC<{
               </span>
             </div>
           )}
+          {event.allDay && (
+            <div className="flex items-center gap-1.5 mt-1.5 text-sm text-(--color-text-secondary)">
+              <CalendarDays size={14} className="shrink-0" />
+              <span>All day</span>
+            </div>
+          )}
 
           {/* Location */}
           {event.location && (
-            <div className="flex items-center gap-1.5 mt-1 text-sm text-gray-400">
+            <div className="flex items-center gap-1.5 mt-1 text-sm text-(--color-text-secondary)">
               <MapPin size={14} className="shrink-0" />
               <span className="truncate">{event.location}</span>
             </div>
@@ -193,7 +204,7 @@ const EventCard: React.FC<{
 
           {/* People */}
           {event.people && event.people.length > 0 && (
-            <div className="flex items-center gap-1.5 mt-1 text-sm text-gray-400">
+            <div className="flex items-center gap-1.5 mt-1 text-sm text-(--color-text-secondary)">
               <Users size={14} className="shrink-0" />
               <span className="truncate">{event.people.join(', ')}</span>
             </div>
@@ -221,7 +232,7 @@ const EventCard: React.FC<{
 
       {/* Description */}
       {event.description && (
-        <p className="mt-2 text-xs text-gray-500 line-clamp-2">{event.description}</p>
+        <p className="mt-2 text-xs text-(--color-text-tertiary) line-clamp-2">{event.description}</p>
       )}
 
       {/* View source note */}
@@ -254,7 +265,7 @@ const CalendarAgendaView: React.FC<CalendarAgendaViewProps> = ({
     [memories]
   );
 
-  const eventGroups = useMemo(() => groupEvents(events), [events]);
+  const dateGroups = useMemo(() => groupEventsByDate(events), [events]);
 
   const previewMemory = previewMemoryId ? memoryMap.get(previewMemoryId) ?? null : null;
 
@@ -300,35 +311,58 @@ const CalendarAgendaView: React.FC<CalendarAgendaViewProps> = ({
             </p>
           </div>
         ) : (
-          <div className="px-4 py-4 pb-20 max-w-2xl mx-auto w-full space-y-6">
-            {eventGroups.map((group) => (
-              <section key={group.label}>
-                <h3
-                  className={`text-xs font-bold uppercase tracking-wider mb-3 ${
-                    group.label === 'Today'
-                      ? 'text-blue-400'
-                      : group.label === 'Tomorrow'
-                        ? 'text-blue-400'
-                        : group.label === 'Past'
-                          ? 'text-gray-600'
-                          : 'text-gray-400'
-                  }`}
-                >
-                  {group.label}
-                </h3>
-                <div className="space-y-3">
-                  {group.events.map((event) => (
-                    <EventCard
-                      key={event.id}
-                      event={event}
-                      memory={memoryMap.get(event.memoryId)}
-                      isPast={group.label === 'Past'}
-                      onViewMemory={handleViewMemory}
-                    />
-                  ))}
-                </div>
-              </section>
-            ))}
+          <div className="px-4 py-4 pb-20 max-w-2xl mx-auto w-full">
+            {dateGroups.map((group, idx) => {
+              const prevMonth = idx > 0 ? dateGroups[idx - 1].month : null;
+              const showMonthSeparator = group.month !== prevMonth;
+
+              return (
+                <React.Fragment key={group.dateKey}>
+                  {/* Month separator */}
+                  {showMonthSeparator && (
+                    <div className={`flex items-center gap-3 ${idx > 0 ? 'mt-8' : ''} mb-4`}>
+                      <h2 className="text-sm font-bold text-(--color-text-primary) whitespace-nowrap">
+                        {group.monthLabel}
+                      </h2>
+                      <div className="flex-1 h-px bg-(--color-border-default)" />
+                    </div>
+                  )}
+
+                  {/* Date group */}
+                  <section className="mb-4">
+                    <div className="flex items-baseline gap-2 mb-2">
+                      <h3
+                        className={`text-sm font-semibold ${
+                          group.isToday
+                            ? 'text-(--color-accent)'
+                            : group.isPast
+                              ? 'text-(--color-text-tertiary)'
+                              : 'text-(--color-text-secondary)'
+                        }`}
+                      >
+                        {group.label}
+                      </h3>
+                      {group.sublabel && (
+                        <span className="text-xs text-(--color-text-tertiary)">
+                          {group.sublabel}
+                        </span>
+                      )}
+                    </div>
+                    <div className="space-y-3">
+                      {group.events.map((event) => (
+                        <EventCard
+                          key={event.id}
+                          event={event}
+                          memory={memoryMap.get(event.memoryId)}
+                          isPast={group.isPast}
+                          onViewMemory={handleViewMemory}
+                        />
+                      ))}
+                    </div>
+                  </section>
+                </React.Fragment>
+              );
+            })}
           </div>
         )}
       </div>
