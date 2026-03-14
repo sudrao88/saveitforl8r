@@ -452,7 +452,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
         {/* Image Preview */}
         {displayImages.length > 0 && (
             <div 
-                className={`relative overflow-hidden rounded-t-xl bg-gray-900/50 group/image cursor-zoom-in ${isDialog ? 'max-h-[50vh]' : 'aspect-video sm:aspect-[2/1]'}`}
+                className={`relative overflow-hidden rounded-t-xl bg-gray-900/50 group/image cursor-zoom-in aspect-video sm:aspect-[2/1] ${isDialog ? 'max-h-[50vh]' : ''}`}
                 onClick={(e) => { e.stopPropagation(); onViewAttachment?.(displayImages[0], [...displayImages, ...documents]); }}
             >
                 <img
