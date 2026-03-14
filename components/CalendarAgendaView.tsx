@@ -92,15 +92,8 @@ const groupEventsByDate = (events: CalendarEvent[]): DateGroup[] => {
     let label: string;
     let sublabel: string | undefined;
 
-    if (isToday) {
-      label = 'Today';
-      sublabel = date.toLocaleDateString(undefined, {
-        weekday: 'long',
-        month: 'long',
-        day: 'numeric',
-      });
-    } else if (isTomorrow) {
-      label = 'Tomorrow';
+    if (isToday || isTomorrow) {
+      label = isToday ? 'Today' : 'Tomorrow';
       sublabel = date.toLocaleDateString(undefined, {
         weekday: 'long',
         month: 'long',
