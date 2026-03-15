@@ -10,7 +10,7 @@ export interface ChecklistItemData {
 
 // ─── Checkbox (shared between display and edit modes) ─────────
 
-function Checkbox({ checked, onClick }: { checked: boolean; onClick: () => void }) {
+function Checkbox({ checked, onClick }: { checked: boolean; onClick?: () => void }) {
   return (
     <div className="shrink-0 cursor-pointer p-0.5" onClick={onClick}>
       <div className={`${checklist.checkbox} ${checked ? checklist.checkboxChecked : checklist.checkboxUnchecked}`}>
@@ -23,7 +23,7 @@ function Checkbox({ checked, onClick }: { checked: boolean; onClick: () => void 
 // ─── Display mode (MemoryCard) ────────────────────────────────
 
 interface ChecklistDisplayProps {
-  items: { text: string; checked: boolean }[];
+  items: { id: string; text: string; checked: boolean }[];
   onToggle: (index: number) => void;
 }
 
@@ -32,11 +32,11 @@ export function ChecklistDisplay({ items, onToggle }: ChecklistDisplayProps) {
     <div className="space-y-2 mt-2">
       {items.map((item, idx) => (
         <div
-          key={`check-${idx}-${item.text.slice(0, 20)}`}
+          key={item.id}
           className={`${checklist.itemRow} group/item cursor-pointer p-2 -mx-2 hover:bg-white/5 rounded-lg active:bg-white/10 transition-colors`}
           onClick={(e) => { e.stopPropagation(); onToggle(idx); }}
         >
-          <Checkbox checked={item.checked} onClick={() => onToggle(idx)} />
+          <Checkbox checked={item.checked} />
           <span className={`${checklist.itemText} leading-relaxed ${item.checked ? checklist.itemTextChecked : checklist.itemTextDefault}`}>
             {item.text}
           </span>
@@ -52,7 +52,7 @@ interface ChecklistEditorProps {
   items: ChecklistItemData[];
   onToggle: (id: string) => void;
   onUpdate: (id: string, text: string) => void;
-  onAdd: (afterId: string) => void;
+  onAdd: (afterId?: string) => void;
   onRemove: (id: string) => void;
   onSave?: () => void;
   autoFocusLast?: boolean;

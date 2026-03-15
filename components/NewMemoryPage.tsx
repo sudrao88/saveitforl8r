@@ -341,7 +341,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
       setChecklistItems(prev => prev.map(item => item.id === id ? { ...item, text } : item));
   };
 
-  const addChecklistItem = (afterId: string) => {
+  const addChecklistItem = (afterId?: string) => {
       setChecklistItems(prev => {
           const index = prev.findIndex(item => item.id === afterId);
           const newItem = { id: crypto.randomUUID(), text: '', checked: false };

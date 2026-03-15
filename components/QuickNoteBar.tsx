@@ -326,7 +326,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
     setChecklistItems(prev => prev.map(item => item.id === id ? { ...item, text } : item));
   }, []);
 
-  const addChecklistItem = useCallback((afterId: string) => {
+  const addChecklistItem = useCallback((afterId?: string) => {
     const newId = crypto.randomUUID();
     focusItemIdRef.current = newId;
     setChecklistItems(prev => {

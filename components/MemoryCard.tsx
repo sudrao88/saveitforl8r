@@ -379,7 +379,8 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
       if (isChecklist) {
           const parser = new DOMParser();
           const doc = parser.parseFromString(memory.content, 'text/html');
-          const items = Array.from(doc.querySelectorAll('li')).map(item => ({
+          const items = Array.from(doc.querySelectorAll('li')).map((item, idx) => ({
+              id: `${memory.id}-${idx}`,
               text: item.textContent || '',
               checked: item.getAttribute('data-checked') === 'true',
           }));
