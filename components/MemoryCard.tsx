@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
-import { Trash2, Loader2, Clock, ExternalLink, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, RefreshCw, WifiOff, FileText, Paperclip, MoreVertical, AlertTriangle, AlertCircle, LogIn, Square, CheckSquare, Maximize2, Eye, Pin, Pencil, Lightbulb, CircleCheck, UtensilsCrossed, ListOrdered, ThumbsUp, ThumbsDown, DollarSign, MapPin, CalendarDays, ClipboardList, MessageSquare, Users, Mic, Code, Heart, Scale, GraduationCap, Briefcase, Music, Film, BookOpenCheck, Bookmark, Phone, Mail, ScrollText, Tag, Clock3, Flame, Quote } from 'lucide-react';
+import { Trash2, Loader2, Clock, ExternalLink, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, RefreshCw, WifiOff, FileText, Paperclip, MoreVertical, AlertTriangle, AlertCircle, LogIn, Maximize2, Eye, Pin, Pencil, Lightbulb, CircleCheck, UtensilsCrossed, ListOrdered, ThumbsUp, ThumbsDown, DollarSign, MapPin, CalendarDays, ClipboardList, MessageSquare, Users, Mic, Code, Heart, Scale, GraduationCap, Briefcase, Music, Film, BookOpenCheck, Bookmark, Phone, Mail, ScrollText, Tag, Clock3, Flame, Quote } from 'lucide-react';
 import { Memory, Attachment } from '../types.ts';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { card, menu, overlay, text } from '../styles/design-system';
+import { ChecklistDisplay } from './ChecklistItems';
 
 interface EnrichmentSectionProps {
   icon: React.ReactNode;
@@ -378,31 +379,12 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
       if (isChecklist) {
           const parser = new DOMParser();
           const doc = parser.parseFromString(memory.content, 'text/html');
-          const items = Array.from(doc.querySelectorAll('li'));
-          
-          return (
-              <div className="space-y-2 mt-2">
-                  {items.map((item, idx) => {
-                      const checked = item.getAttribute('data-checked') === 'true';
-                      const text = item.textContent || '';
-                      
-                      return (
-                        <div
-                            key={`check-${idx}-${text.slice(0, 20)}`}
-                            className="flex items-start gap-3 group/item cursor-pointer p-2 -mx-2 hover:bg-white/5 rounded-lg active:bg-white/10 transition-colors"
-                            onClick={(e) => { e.stopPropagation(); handleToggleCheck(idx); }}
-                        >
-                            <div className={`mt-0.5 transition-colors ${checked ? 'text-blue-500' : 'text-gray-500 group-hover/item:text-gray-400'}`}>
-                                {checked ? <CheckSquare size={18} /> : <Square size={18} />}
-                            </div>
-                            <span className={`text-sm leading-relaxed transition-all ${checked ? 'text-gray-500 line-through decoration-gray-600' : 'text-gray-200'}`}>
-                                {text}
-                            </span>
-                        </div>
-                      );
-                  })}
-              </div>
-          );
+          const items = Array.from(doc.querySelectorAll('li')).map(item => ({
+              text: item.textContent || '',
+              checked: item.getAttribute('data-checked') === 'true',
+          }));
+
+          return <ChecklistDisplay items={items} onToggle={handleToggleCheck} />;
       }
       
       return (
