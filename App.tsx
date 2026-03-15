@@ -72,7 +72,7 @@ const AppContent: React.FC = () => {
 
   const { shareData, clearShareData } = useShareReceiver();
   
-  const { sync, isSyncing, isSyncingDownload, syncError, getSyncStatusMap, syncStatusVersion, retrySyncFile } = useSync();
+  const { sync, isSyncing, isSyncingDownload, syncError, getSyncStatusMap, syncStatusVersion, retrySyncFile, setOnSyncProgress } = useSync();
   const { authStatus, login, unlink } = useAuth();
 
   const { modelStatus, downloadProgress, retryDownload, search, embeddingStats, retryFailedEmbeddings, deleteNoteFromIndex, lastError, closeWorkerDB } = useAdaptiveSearch();
@@ -370,6 +370,27 @@ const AppContent: React.FC = () => {
       }
     }, 0);
   }, [authStatus]);
+
+  // Render notes incrementally as they are downloaded during sync, rather
+  // than waiting for the entire sync to finish. A debounce timer coalesces
+  // rapid per-item callbacks into batched refreshes (~300ms apart).
+  const syncProgressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  useEffect(() => {
+    const debouncedRefresh = () => {
+      if (syncProgressTimerRef.current) clearTimeout(syncProgressTimerRef.current);
+      syncProgressTimerRef.current = setTimeout(() => {
+        refreshMemories();
+        refreshMoments();
+        refreshEvents();
+        refreshTodoItems();
+      }, 300);
+    };
+    setOnSyncProgress(debouncedRefresh);
+    return () => {
+      setOnSyncProgress(undefined);
+      if (syncProgressTimerRef.current) clearTimeout(syncProgressTimerRef.current);
+    };
+  }, [setOnSyncProgress, refreshMemories, refreshMoments, refreshEvents, refreshTodoItems]);
 
   // Refresh memory state after periodic/visibility-triggered sync downloads
   // complete. The init effect above handles the first sync; this covers
