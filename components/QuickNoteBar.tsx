@@ -8,6 +8,7 @@ import { triggerHaptic } from '../services/platform';
 import FormattingToolbar from './FormattingToolbar';
 import TagInput from './TagInput';
 import { btn, zIndex } from '../styles/design-system';
+import { ChecklistEditor } from './ChecklistItems';
 
 // Configure marked for clean output
 marked.setOptions({ breaks: true, gfm: true });
@@ -325,7 +326,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
     setChecklistItems(prev => prev.map(item => item.id === id ? { ...item, text } : item));
   }, []);
 
-  const addChecklistItem = useCallback((afterId: string) => {
+  const addChecklistItem = useCallback((afterId?: string) => {
     const newId = crypto.randomUUID();
     focusItemIdRef.current = newId;
     setChecklistItems(prev => {
@@ -419,46 +420,16 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
         {/* Text area */}
         <div className="px-4 pt-3 relative">
           {isChecklistMode ? (
-            <div className="w-full max-h-[10em] overflow-y-auto bg-gray-800 rounded-xl px-3 py-2.5 border border-gray-700 space-y-2">
-              {checklistItems.map((item) => (
-                <div key={item.id} className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2 duration-(--duration-fast)">
-                  <div
-                    className="shrink-0 cursor-pointer p-0.5"
-                    onClick={() => toggleChecklistItemChecked(item.id)}
-                  >
-                    <div className={`w-5 h-5 border-2 rounded-md flex items-center justify-center transition-colors ${item.checked ? 'border-blue-500 bg-blue-500/20' : 'border-gray-600'}`}>
-                      {item.checked && <div className="w-2.5 h-2.5 bg-blue-500 rounded-sm" />}
-                    </div>
-                  </div>
-                  <input
-                    type="text"
-                    value={item.text}
-                    data-checklist-id={item.id}
-                    onChange={(e) => updateChecklistItem(item.id, e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                        e.preventDefault();
-                        handleSave();
-                      } else if (e.key === 'Enter') {
-                        e.preventDefault();
-                        addChecklistItem(item.id);
-                      } else if (e.key === 'Backspace' && item.text === '' && checklistItems.length > 1) {
-                        e.preventDefault();
-                        removeChecklistItem(item.id);
-                      }
-                    }}
-                    placeholder="List item..."
-                    className={`flex-1 bg-transparent text-base text-white placeholder-gray-600 focus:outline-none transition-all text-left ${item.checked ? 'line-through text-gray-500' : ''}`}
-                    dir="ltr"
-                  />
-                </div>
-              ))}
-              <button
-                onClick={() => addChecklistItem(checklistItems[checklistItems.length - 1]?.id)}
-                className="flex items-center gap-1.5 text-gray-500 hover:text-blue-400 text-sm transition-colors py-1 active:text-blue-500"
-              >
-                <Plus size={16} /> Add Item
-              </button>
+            <div className="w-full max-h-[10em] overflow-y-auto bg-gray-800 rounded-xl px-3 py-2.5 border border-gray-700">
+              <ChecklistEditor
+                items={checklistItems}
+                onToggle={toggleChecklistItemChecked}
+                onUpdate={updateChecklistItem}
+                onAdd={addChecklistItem}
+                onRemove={removeChecklistItem}
+                onSave={handleSave}
+                dataIdAttr
+              />
             </div>
           ) : (
             <>

@@ -113,6 +113,22 @@ export const zIndex = {
   tooltip: 'z-(--z-tooltip)',
 } as const;
 
+// ─── Checklist ─────────────────────────────────────────────
+
+export const checklist = {
+  checkbox:
+    'w-5 h-5 border-2 rounded-md flex items-center justify-center transition-colors shrink-0',
+  checkboxChecked: 'border-blue-500 bg-blue-500/20',
+  checkboxUnchecked: 'border-gray-600',
+  checkboxDot: 'w-2.5 h-2.5 bg-blue-500 rounded-sm',
+  itemRow: 'flex items-center gap-3',
+  itemText: 'text-sm transition-all',
+  itemTextDefault: 'text-gray-200',
+  itemTextChecked: 'line-through text-gray-500',
+  addBtn:
+    'flex items-center gap-1.5 text-gray-500 hover:text-blue-400 text-sm transition-colors py-1 active:text-blue-500',
+} as const;
+
 // ─── Layout Helpers ─────────────────────────────────────────
 
 export const layout = {

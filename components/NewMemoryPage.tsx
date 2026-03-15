@@ -9,6 +9,7 @@ import { processFileInputs } from '../utils/attachmentUtils';
 import FormattingToolbar from './FormattingToolbar';
 import TagInput from './TagInput';
 import { btn, overlay } from '../styles/design-system';
+import { ChecklistEditor } from './ChecklistItems';
 
 interface NewMemoryPageProps {
   onClose: () => void;
@@ -340,7 +341,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
       setChecklistItems(prev => prev.map(item => item.id === id ? { ...item, text } : item));
   };
 
-  const addChecklistItem = (afterId: string) => {
+  const addChecklistItem = (afterId?: string) => {
       setChecklistItems(prev => {
           const index = prev.findIndex(item => item.id === afterId);
           const newItem = { id: crypto.randomUUID(), text: '', checked: false };
@@ -512,45 +513,14 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
         >
             <div className="min-h-full relative text-left flex flex-col" dir="ltr">
                 {isChecklistMode ? (
-                    <div className="space-y-3">
-                        {checklistItems.map((item, index) => (
-                            <div key={item.id} className="flex items-center gap-3 animate-in fade-in slide-in-from-left-2 duration-(--duration-fast)">
-                                <div
-                                    className="shrink-0 text-gray-500 cursor-pointer p-1 -m-1"
-                                    onClick={() => setChecklistItems(prev => prev.map(i => i.id === item.id ? { ...i, checked: !i.checked } : i))}
-                                >
-                                    <div className={`w-6 h-6 border-2 rounded-lg flex items-center justify-center transition-colors ${item.checked ? 'border-blue-500 bg-blue-500/20' : 'border-gray-600'}`}>
-                                        {item.checked && <div className="w-3 h-3 bg-blue-500 rounded-sm" />}
-                                    </div>
-                                </div>
-                                <input
-                                    type="text"
-                                    value={item.text}
-                                    onChange={(e) => updateChecklistItem(item.id, e.target.value)}
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter') {
-                                            e.preventDefault();
-                                            addChecklistItem(item.id);
-                                        }
-                                        if (e.key === 'Backspace' && item.text === '' && checklistItems.length > 1) {
-                                            e.preventDefault();
-                                            removeChecklistItem(item.id);
-                                        }
-                                    }}
-                                    autoFocus={index === checklistItems.length - 1}
-                                    placeholder="List item..."
-                                    className={`flex-1 bg-transparent text-lg text-white placeholder-gray-600 focus:outline-none border-b border-transparent focus:border-gray-700/50 pb-2 transition-all text-left ${item.checked ? 'line-through text-gray-500' : ''}`}
-                                    dir="ltr"
-                                />
-                            </div>
-                        ))}
-                        <button
-                            onClick={() => addChecklistItem(checklistItems[checklistItems.length - 1]?.id)}
-                            className="flex items-center gap-2 text-gray-500 hover:text-blue-400 mt-4 pl-1 transition-colors text-base font-medium py-2 active:text-blue-500"
-                        >
-                            <Plus size={20} /> Add Item
-                        </button>
-                    </div>
+                    <ChecklistEditor
+                        items={checklistItems}
+                        onToggle={(id) => setChecklistItems(prev => prev.map(i => i.id === id ? { ...i, checked: !i.checked } : i))}
+                        onUpdate={updateChecklistItem}
+                        onAdd={addChecklistItem}
+                        onRemove={removeChecklistItem}
+                        autoFocusLast
+                    />
                 ) : (
                     <>
                         <div
