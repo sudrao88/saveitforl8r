@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect, useState } from 'react';
+import React, { useMemo, useEffect, useRef, useState } from 'react';
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import MemoryCard from './MemoryCard';
 import { Memory, Attachment } from '../types';
@@ -63,11 +63,29 @@ const VirtualizedMemoryGrid: React.FC<VirtualizedMemoryGridProps> = ({
     return result;
   }, [memories, columnCount]);
 
+  const getItemKey = useMemo(() => {
+    return (index: number) => rows[index].map(m => m.id).join('-');
+  }, [rows]);
+
   const virtualizer = useWindowVirtualizer({
     count: rows.length,
     estimateSize: () => ESTIMATED_ROW_HEIGHT + GAP,
     overscan: 3,
+    getItemKey,
   });
+
+  // Reset cached measurements when the memory list changes so the
+  // virtualizer doesn't use stale heights from a previous render.
+  const prevRowKeyRef = useRef('');
+  useEffect(() => {
+    const key = rows.length > 0
+      ? `${rows.length}-${rows[0][0]?.id}`
+      : '';
+    if (prevRowKeyRef.current && prevRowKeyRef.current !== key) {
+      virtualizer.measure();
+    }
+    prevRowKeyRef.current = key;
+  }, [rows, virtualizer]);
 
   const items = virtualizer.getVirtualItems();
 
