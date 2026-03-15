@@ -402,7 +402,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
   return (
     <>
       <div
-        className={`group relative w-full ${isDialog ? 'mb-0' : 'mb-6'} rounded-xl transition-all duration-(--duration-normal) ${isDialog ? 'overflow-visible' : 'overflow-hidden'} flex flex-col
+        className={`group relative w-full rounded-xl transition-all duration-(--duration-normal) ${isDialog ? 'overflow-visible' : 'overflow-hidden'} flex flex-col
         ${isDialog ? 'bg-gray-900 border border-gray-800' : card.interactive}
         ${memory.isPending ? 'opacity-70 border-blue-900/30' : ''}
         ${memory.processingError ? 'border-amber-900/30 bg-amber-900/5' : ''}
