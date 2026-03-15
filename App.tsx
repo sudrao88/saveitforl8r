@@ -603,7 +603,7 @@ const AppContent: React.FC = () => {
     return active.sort((a, b) => {
       if (a.isPinned && !b.isPinned) return -1;
       if (!a.isPinned && b.isPinned) return 1;
-      return 0; 
+      return b.timestamp - a.timestamp;
     });
   }, [filteredMemories]);
 
