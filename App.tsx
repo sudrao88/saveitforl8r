@@ -371,6 +371,18 @@ const AppContent: React.FC = () => {
     }, 0);
   }, [authStatus]);
 
+  // Refresh memory state after periodic/visibility-triggered sync downloads
+  // complete. The init effect above handles the first sync; this covers
+  // subsequent background syncs that write to IndexedDB without updating
+  // React state.
+  const wasSyncingDownload = useRef(false);
+  useEffect(() => {
+    if (wasSyncingDownload.current && !isSyncingDownload) {
+      refreshMemories();
+    }
+    wasSyncingDownload.current = isSyncingDownload;
+  }, [isSyncingDownload, refreshMemories]);
+
   // NATIVE DEEP LINK HANDLING (Google Auth)
   useEffect(() => {
     if (!isNative()) return;
