@@ -143,7 +143,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ dataUri, fileName }) => {
       el.removeEventListener('touchmove', onTouchMove);
       el.removeEventListener('touchend', onTouchEnd);
     };
-  }, []);
+  }, [loading]);
 
   if (loading) {
     return (
