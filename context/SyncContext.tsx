@@ -46,6 +46,13 @@ const STALE_SYNC_THRESHOLD_MS = 2 * 60 * 1000;   // 2 minutes
 const executeSyncPlan = async (plan: SyncPlan, onProgress?: () => void): Promise<string[]> => {
     const errors: string[] = [];
 
+    /** Call onProgress after awaiting the given promise. */
+    const withProgress = async <T,>(promise: Promise<T>): Promise<T> => {
+        const result = await promise;
+        onProgress?.();
+        return result;
+    };
+
     const fileIdsToDownload = plan.toDownload.map(d => d.fileId);
     const { contents: downloadedContents, failures: dlFailures } =
         await downloadMultipleFiles(fileIdsToDownload);
@@ -72,8 +79,7 @@ const executeSyncPlan = async (plan: SyncPlan, onProgress?: () => void): Promise
 
                 const localSynthesis = await getMomentSynthesis(momentId);
                 if (!localSynthesis || safeSynthesis.generatedAt > localSynthesis.generatedAt) {
-                    await saveMomentSynthesis(safeSynthesis);
-                    onProgress?.();
+                    await withProgress(saveMomentSynthesis(safeSynthesis));
                 }
                 continue;
             }
@@ -86,11 +92,10 @@ const executeSyncPlan = async (plan: SyncPlan, onProgress?: () => void): Promise
                 if (item.localCalendarEvent) {
                     if (safeEvent.updatedAt > item.localCalendarEvent.updatedAt) {
                         if (safeEvent.isDeleted) {
-                            await deleteCalendarEventHard(verifiedEventId);
+                            await withProgress(deleteCalendarEventHard(verifiedEventId));
                         } else {
-                            await saveCalendarEvent(safeEvent);
+                            await withProgress(saveCalendarEvent(safeEvent));
                         }
-                        onProgress?.();
                     } else if (item.localCalendarEvent.updatedAt > safeEvent.updatedAt) {
                         plan.toUpload.push({
                             noteId: item.noteId,
@@ -100,11 +105,10 @@ const executeSyncPlan = async (plan: SyncPlan, onProgress?: () => void): Promise
                     }
                 } else {
                     if (safeEvent.isDeleted) {
-                        await deleteCalendarEventHard(verifiedEventId);
+                        await withProgress(deleteCalendarEventHard(verifiedEventId));
                     } else {
-                        await saveCalendarEvent(safeEvent);
+                        await withProgress(saveCalendarEvent(safeEvent));
                     }
-                    onProgress?.();
                 }
                 continue;
             }
@@ -117,11 +121,10 @@ const executeSyncPlan = async (plan: SyncPlan, onProgress?: () => void): Promise
                 if (item.localTodoItem) {
                     if (safeTodo.updatedAt > item.localTodoItem.updatedAt) {
                         if (safeTodo.isDeleted) {
-                            await deleteTodoItemHard(verifiedTodoId);
+                            await withProgress(deleteTodoItemHard(verifiedTodoId));
                         } else {
-                            await updateTodoItem(safeTodo);
+                            await withProgress(updateTodoItem(safeTodo));
                         }
-                        onProgress?.();
                     } else if (item.localTodoItem.updatedAt > safeTodo.updatedAt) {
                         plan.toUpload.push({
                             noteId: item.noteId,
@@ -131,11 +134,10 @@ const executeSyncPlan = async (plan: SyncPlan, onProgress?: () => void): Promise
                     }
                 } else {
                     if (safeTodo.isDeleted) {
-                        await deleteTodoItemHard(verifiedTodoId);
+                        await withProgress(deleteTodoItemHard(verifiedTodoId));
                     } else {
-                        await updateTodoItem(safeTodo);
+                        await withProgress(updateTodoItem(safeTodo));
                     }
-                    onProgress?.();
                 }
                 continue;
             }
@@ -150,11 +152,10 @@ const executeSyncPlan = async (plan: SyncPlan, onProgress?: () => void): Promise
                     // Both local and remote exist — compare updatedAt timestamps
                     if (safeMoment.updatedAt > item.localMoment.updatedAt) {
                         if (safeMoment.isDeleted) {
-                            await deleteMomentHard(verifiedMomentId);
+                            await withProgress(deleteMomentHard(verifiedMomentId));
                         } else {
-                            await saveMoment(safeMoment);
+                            await withProgress(saveMoment(safeMoment));
                         }
-                        onProgress?.();
                     } else if (item.localMoment.updatedAt > safeMoment.updatedAt) {
                         // Local is newer — push to upload instead
                         plan.toUpload.push({
@@ -167,11 +168,10 @@ const executeSyncPlan = async (plan: SyncPlan, onProgress?: () => void): Promise
                 } else {
                     // Remote-only moment
                     if (safeMoment.isDeleted) {
-                        await deleteMomentHard(verifiedMomentId);
+                        await withProgress(deleteMomentHard(verifiedMomentId));
                     } else {
-                        await saveMoment(safeMoment);
+                        await withProgress(saveMoment(safeMoment));
                     }
-                    onProgress?.();
                 }
                 continue;
             }
@@ -185,9 +185,8 @@ const executeSyncPlan = async (plan: SyncPlan, onProgress?: () => void): Promise
 
             if (item.local) {
                 if (content.timestamp > item.local.timestamp) {
-                    if (content.isDeleted) await deleteMemory(item.noteId);
-                    else await saveMemory(content);
-                    onProgress?.();
+                    if (content.isDeleted) await withProgress(deleteMemory(item.noteId));
+                    else await withProgress(saveMemory(content));
                 } else if (item.local.timestamp > content.timestamp) {
                     plan.toUpload.push({
                         noteId: item.noteId,
@@ -196,8 +195,7 @@ const executeSyncPlan = async (plan: SyncPlan, onProgress?: () => void): Promise
                     });
                 }
             } else {
-                if (!content.isDeleted) await saveMemory(content);
-                onProgress?.();
+                if (!content.isDeleted) await withProgress(saveMemory(content));
             }
         } catch (e) {
             console.error(`[Sync] Process download failed for ${item.noteId}:`, e);
