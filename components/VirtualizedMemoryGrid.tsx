@@ -41,7 +41,7 @@ const VirtualizedMemoryGrid: React.FC<VirtualizedMemoryGridProps> = ({
       {memories.map((mem, index) => (
         <div
           key={mem.id}
-          style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 400px' }}
+          className="[content-visibility:auto] [contain-intrinsic-size:auto_400px]"
         >
           <MemoryCard
             memory={mem}
