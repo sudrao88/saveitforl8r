@@ -30,6 +30,7 @@ interface SyncContextType {
   getSyncStatusMap: () => Map<string, SyncStatus>;
   syncStatusVersion: number;
   pendingCount: number;
+  setOnSyncProgress: (cb: (() => void) | undefined) => void;
 }
 
 const SyncContext = createContext<SyncContextType | undefined>(undefined);
@@ -42,7 +43,7 @@ const STALE_SYNC_THRESHOLD_MS = 2 * 60 * 1000;   // 2 minutes
 
 // ---- Shared Execution Logic ----
 
-const executeSyncPlan = async (plan: SyncPlan): Promise<string[]> => {
+const executeSyncPlan = async (plan: SyncPlan, onProgress?: () => void): Promise<string[]> => {
     const errors: string[] = [];
 
     const fileIdsToDownload = plan.toDownload.map(d => d.fileId);
@@ -72,6 +73,7 @@ const executeSyncPlan = async (plan: SyncPlan): Promise<string[]> => {
                 const localSynthesis = await getMomentSynthesis(momentId);
                 if (!localSynthesis || safeSynthesis.generatedAt > localSynthesis.generatedAt) {
                     await saveMomentSynthesis(safeSynthesis);
+                    onProgress?.();
                 }
                 continue;
             }
@@ -88,6 +90,7 @@ const executeSyncPlan = async (plan: SyncPlan): Promise<string[]> => {
                         } else {
                             await saveCalendarEvent(safeEvent);
                         }
+                        onProgress?.();
                     } else if (item.localCalendarEvent.updatedAt > safeEvent.updatedAt) {
                         plan.toUpload.push({
                             noteId: item.noteId,
@@ -101,6 +104,7 @@ const executeSyncPlan = async (plan: SyncPlan): Promise<string[]> => {
                     } else {
                         await saveCalendarEvent(safeEvent);
                     }
+                    onProgress?.();
                 }
                 continue;
             }
@@ -117,6 +121,7 @@ const executeSyncPlan = async (plan: SyncPlan): Promise<string[]> => {
                         } else {
                             await updateTodoItem(safeTodo);
                         }
+                        onProgress?.();
                     } else if (item.localTodoItem.updatedAt > safeTodo.updatedAt) {
                         plan.toUpload.push({
                             noteId: item.noteId,
@@ -130,6 +135,7 @@ const executeSyncPlan = async (plan: SyncPlan): Promise<string[]> => {
                     } else {
                         await updateTodoItem(safeTodo);
                     }
+                    onProgress?.();
                 }
                 continue;
             }
@@ -148,6 +154,7 @@ const executeSyncPlan = async (plan: SyncPlan): Promise<string[]> => {
                         } else {
                             await saveMoment(safeMoment);
                         }
+                        onProgress?.();
                     } else if (item.localMoment.updatedAt > safeMoment.updatedAt) {
                         // Local is newer — push to upload instead
                         plan.toUpload.push({
@@ -164,6 +171,7 @@ const executeSyncPlan = async (plan: SyncPlan): Promise<string[]> => {
                     } else {
                         await saveMoment(safeMoment);
                     }
+                    onProgress?.();
                 }
                 continue;
             }
@@ -179,6 +187,7 @@ const executeSyncPlan = async (plan: SyncPlan): Promise<string[]> => {
                 if (content.timestamp > item.local.timestamp) {
                     if (content.isDeleted) await deleteMemory(item.noteId);
                     else await saveMemory(content);
+                    onProgress?.();
                 } else if (item.local.timestamp > content.timestamp) {
                     plan.toUpload.push({
                         noteId: item.noteId,
@@ -188,6 +197,7 @@ const executeSyncPlan = async (plan: SyncPlan): Promise<string[]> => {
                 }
             } else {
                 if (!content.isDeleted) await saveMemory(content);
+                onProgress?.();
             }
         } catch (e) {
             console.error(`[Sync] Process download failed for ${item.noteId}:`, e);
@@ -421,6 +431,11 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const syncStatusMapRef = useRef<Map<string, SyncStatus>>(new Map());
   const syncStatusTimersRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const onSyncProgressRef = useRef<(() => void) | undefined>(undefined);
+
+  const setOnSyncProgress = useCallback((cb: (() => void) | undefined) => {
+    onSyncProgressRef.current = cb;
+  }, []);
 
   const updateSyncStatus = useCallback((noteId: string, status: SyncStatus) => {
       // Clear any existing auto-clear timer for this note
@@ -500,7 +515,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       await storage.set(LAST_SYNC_KEY, Date.now().toString());
   }, []);
 
-  const doDeltaSync = useCallback(async (previousSnapshot: Record<string, string>) => {
+  const doDeltaSync = useCallback(async (previousSnapshot: Record<string, string>, onProgress?: () => void) => {
     const localMemories = await getMemories();
     const localMap = new Map(localMemories.map(m => [m.id, m]));
 
@@ -748,7 +763,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     console.log(`[Sync] Delta sync plan: download=${plan.toDownload.length} upload=${plan.toUpload.length} deleteRemote=${plan.toDeleteRemote.length}`);
 
-    const errors = await executeSyncPlan(plan);
+    const errors = await executeSyncPlan(plan, onProgress);
 
     // ALWAYS rebuild snapshot from Drive's actual state, even on partial failure.
     // This ensures successfully synced files keep their snapshot entry even when
@@ -814,7 +829,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 }
 
                 console.log(`--- [Sync] Starting DELTA Sync ---`);
-                await doDeltaSync(previousSnapshot);
+                await doDeltaSync(previousSnapshot, onSyncProgressRef.current);
                 reconcileEmbeddings().catch(e => console.error("[Sync] RAG Reconciliation failed:", e));
                 resolve();
             } catch (e: any) {
@@ -1047,7 +1062,8 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         retrySyncFile,
         getSyncStatusMap,
         syncStatusVersion,
-        pendingCount
+        pendingCount,
+        setOnSyncProgress
     }}>
       {children}
     </SyncContext.Provider>
