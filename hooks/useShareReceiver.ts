@@ -69,19 +69,10 @@ export const useShareReceiver = () => {
 
     for (const att of rawAttachments) {
         try {
-            // The path comes as "file:///..."
-            // We need to read this file. 
-            // Since it's in our cache dir, we can read it directly.
-            
-            // Convert file:// path to something usable if needed, 
-            // but Filesystem.readFile can often handle absolute paths if we don't specify directory,
-            // or we might need to fetch it.
-            
-            // Let's try fetching the local file first as it's often the easiest way 
-            // to get a blob from a file:// URI in a WebView (if allowed).
-            // Capacitor apps usually allow fetching file:// or strictly convertFileSrc.
-            
-            const webPath = Capacitor.convertFileSrc(att.path);
+            // Convert the file path to a web-accessible URL
+            // Android: file:///... paths, iOS: absolute paths from app group container
+            const filePath = att.path.startsWith('file://') ? att.path : `file://${att.path}`;
+            const webPath = Capacitor.convertFileSrc(filePath);
             console.log('[ShareReceiver] Reading attachment from:', webPath);
 
             const response = await fetch(webPath);
