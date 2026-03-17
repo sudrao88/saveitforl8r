@@ -200,16 +200,18 @@ const fetchSingleOgImage = async (url) => {
     const imageResult = await fetchImageAsBase64(resolvedImageUrl);
     if (!imageResult) return null;
 
-    const title = extractMetaContent(html, 'og:title') || undefined;
-    const description = extractMetaContent(html, 'og:description') || undefined;
-
-    return {
+    const preview = {
       url,
       imageData: imageResult.dataUri,
       imageMimeType: imageResult.mimeType,
-      title,
-      description,
     };
+
+    const title = extractMetaContent(html, 'og:title');
+    const description = extractMetaContent(html, 'og:description');
+    if (title) preview.title = title;
+    if (description) preview.description = description;
+
+    return preview;
   } catch (err) {
     console.warn(`[OG] fetchSingleOgImage failed for ${url}: ${err.message}`);
     return null;
