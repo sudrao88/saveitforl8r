@@ -117,26 +117,26 @@ const groupTodoItems = (items: TodoItem[]): { groups: TodoGroup[]; dismissed: To
 };
 
 const groupLabelColors: Record<string, string> = {
-  Overdue: 'text-red-400',
-  Today: 'text-blue-400',
-  'This Week': 'text-gray-400',
-  Later: 'text-gray-400',
-  'No Deadline': 'text-gray-500',
-  Done: 'text-gray-600',
+  Overdue: 'text-(--color-danger)',
+  Today: 'text-(--color-accent)',
+  'This Week': 'text-(--color-text-secondary)',
+  Later: 'text-(--color-text-secondary)',
+  'No Deadline': 'text-(--color-text-secondary)',
+  Done: 'text-(--color-text-tertiary)',
 };
 
 const priorityColors: Record<string, string> = {
-  high: 'text-red-400',
-  medium: 'text-amber-400',
-  low: 'text-gray-500',
+  high: 'text-(--color-danger)',
+  medium: 'text-(--color-warning)',
+  low: 'text-(--color-text-secondary)',
 };
 
 const deadlineColor = (deadline: string): string => {
   const today = new Date().toISOString().split('T')[0];
   const dateStr = getDateOnly(deadline);
-  if (dateStr < today) return 'text-red-400';
-  if (dateStr === today) return 'text-amber-400';
-  return 'text-gray-500';
+  if (dateStr < today) return 'text-(--color-danger)';
+  if (dateStr === today) return 'text-(--color-warning)';
+  return 'text-(--color-text-secondary)';
 };
 
 const TodoItemCard: React.FC<{
@@ -148,20 +148,20 @@ const TodoItemCard: React.FC<{
 }> = ({ item, memory, onToggle, onDismiss, onViewMemory }) => {
   return (
     <div
-      className={`rounded-xl border p-4 transition-all ${
+      className={`rounded-(--radius-xl) border p-4 transition-all duration-(--duration-fast) ${
         item.isCompleted
-          ? 'border-gray-800/50 bg-gray-900/30 opacity-60'
-          : 'border-gray-700/50 bg-gray-800/30 hover:bg-gray-800/50'
+          ? 'border-(--color-border-subtle) bg-(--color-surface-raised)/30 opacity-60'
+          : 'border-(--color-border-subtle) bg-(--color-surface-raised)/30 hover:bg-(--color-surface-raised)/50'
       }`}
     >
       <div className="flex items-start gap-3">
         {/* Checkbox */}
         <button
           onClick={() => onToggle(item.id)}
-          className="mt-0.5 shrink-0 text-gray-400 hover:text-green-400 transition-colors"
+          className="mt-0.5 shrink-0 text-(--color-text-secondary) hover:text-(--color-success) transition-colors duration-(--duration-fast)"
         >
           {item.isCompleted ? (
-            <CheckSquare size={20} className="text-green-400" />
+            <CheckSquare size={20} className="text-(--color-success)" />
           ) : (
             <Square size={20} />
           )}
@@ -172,8 +172,8 @@ const TodoItemCard: React.FC<{
           <h3
             className={`font-semibold text-base ${
               item.isCompleted
-                ? 'text-gray-500 line-through'
-                : 'text-gray-100'
+                ? 'text-(--color-text-secondary) line-through'
+                : 'text-(--color-text-primary)'
             }`}
           >
             {item.title}
@@ -182,7 +182,7 @@ const TodoItemCard: React.FC<{
           <div className="flex items-center gap-3 mt-1.5 flex-wrap">
             {/* Deadline */}
             {item.deadline && (
-              <div className={`flex items-center gap-1 text-sm ${item.isCompleted ? 'text-gray-600' : deadlineColor(item.deadline)}`}>
+              <div className={`flex items-center gap-1 text-sm ${item.isCompleted ? 'text-(--color-text-tertiary)' : deadlineColor(item.deadline)}`}>
                 <CalendarDays size={13} className="shrink-0" />
                 <span>{formatDeadline(item.deadline)}</span>
               </div>
@@ -199,14 +199,14 @@ const TodoItemCard: React.FC<{
 
           {/* Description */}
           {item.description && !item.isCompleted && (
-            <p className="mt-1.5 text-xs text-gray-500 line-clamp-2">{item.description}</p>
+            <p className="mt-1.5 text-xs text-(--color-text-secondary) line-clamp-2">{item.description}</p>
           )}
 
           {/* View source note */}
           {memory && (
             <button
               onClick={() => onViewMemory(memory)}
-              className="mt-2 flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition-colors"
+              className="mt-2 flex items-center gap-1.5 text-xs text-(--color-accent) hover:text-(--color-accent-hover) transition-colors duration-(--duration-fast)"
             >
               <FileText size={12} />
               View source note
@@ -313,11 +313,11 @@ const TodoListView: React.FC<TodoListViewProps> = ({
             <X size={24} />
           </button>
           <div className="flex items-center gap-2">
-            <CheckSquare size={20} className="text-green-400" />
-            <h2 className="text-lg font-bold text-gray-100">To Do</h2>
+            <CheckSquare size={20} className="text-(--color-success)" />
+            <h2 className="text-lg font-bold text-(--color-text-primary)">To Do</h2>
           </div>
         </div>
-        <span className="text-sm text-gray-500">
+        <span className="text-sm text-(--color-text-secondary)">
           {pendingCount} pending
         </span>
       </div>
@@ -326,11 +326,11 @@ const TodoListView: React.FC<TodoListViewProps> = ({
       <div className="flex-1 overflow-y-auto">
         {items.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full px-8 text-center">
-            <CheckSquare size={48} className="text-gray-700 mb-4" />
-            <h3 className="text-lg font-semibold text-gray-400 mb-2">
+            <CheckSquare size={48} className="text-(--color-text-tertiary) mb-4" />
+            <h3 className="text-lg font-semibold text-(--color-text-secondary) mb-2">
               No action items yet
             </h3>
-            <p className="text-sm text-gray-500 max-w-xs">
+            <p className="text-sm text-(--color-text-secondary) max-w-xs">
               Your to-do list builds itself. Save a note with tasks or
               follow-ups and they&apos;ll appear here.
             </p>
@@ -341,11 +341,11 @@ const TodoListView: React.FC<TodoListViewProps> = ({
               <section key={group.label}>
                 <h3
                   className={`text-xs font-bold uppercase tracking-wider mb-3 ${
-                    groupLabelColors[group.label] || 'text-gray-400'
+                    groupLabelColors[group.label] || 'text-(--color-text-secondary)'
                   }`}
                 >
                   {group.label}
-                  <span className="ml-2 text-gray-600">{group.items.length}</span>
+                  <span className="ml-2 text-(--color-text-tertiary)">{group.items.length}</span>
                 </h3>
                 <div className="space-y-3">
                   {group.items.map((item) => (
