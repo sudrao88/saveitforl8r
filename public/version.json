@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v42",
-  "buildNumber": 42,
-  "buildDate": "2026-03-16T01:00:31.072Z",
+  "version": "saveitforl8r-v43",
+  "buildNumber": 43,
+  "buildDate": "2026-03-19T00:00:00.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Initial OTA update support"
+  "changelog": "Fix share extension, CORS for native OTA checks"
 }
