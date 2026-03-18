@@ -157,13 +157,21 @@ class ShareViewController: SLComposeServiceViewController {
         }
     }
 
-    // Share Extensions cannot use extensionContext?.open() — that API only works
-    // in Today/Widget extensions. The responder-chain traversal is the standard
-    // workaround to open the containing app from a Share Extension.
     private func openMainApp() {
-        guard let url = URL(string: "com.saveitforl8r.app://share") else { return }
-        let selector = sel_registerName("openURL:")
+        let url = URL(string: "com.saveitforl8r.app://share")!
+        // Try the modern UIApplication.open API via responder chain
         var responder: UIResponder? = self
+        while responder != nil {
+            if let application = responder as? UIApplication {
+                application.open(url, options: [:], completionHandler: nil)
+                return
+            }
+            responder = responder?.next
+        }
+        // Fallback: use openURL selector for environments where UIApplication
+        // is not directly castable in the responder chain
+        let selector = sel_registerName("openURL:")
+        responder = self
         while let current = responder {
             if current.responds(to: selector) {
                 current.perform(selector, with: url)
