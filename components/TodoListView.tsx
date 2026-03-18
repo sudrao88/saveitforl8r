@@ -3,17 +3,21 @@
  *
  * Full-screen view showing action items extracted from notes.
  * Items are grouped by urgency: Overdue, Today, This Week, Later, No Deadline, Done.
- * Users can tap to toggle completion and view the source note.
+ * Users can tap to toggle completion, dismiss unwanted items, or restore dismissed ones.
  */
 
 import React, { useMemo, useCallback, useState } from 'react';
 import {
   X,
+  XCircle,
   CheckSquare,
   Square,
   CalendarDays,
   FileText,
   Circle,
+  ChevronDown,
+  ChevronRight,
+  RotateCcw,
 } from 'lucide-react';
 import { TodoItem, Memory, Attachment } from '../types';
 import MemoryCard from './MemoryCard';
@@ -24,6 +28,8 @@ interface TodoListViewProps {
   memories: Memory[];
   onClose: () => void;
   onToggleComplete: (itemId: string) => void;
+  onDismiss: (itemId: string) => void;
+  onRestore: (itemId: string) => void;
   onViewAttachment?: (attachment: Attachment, allAttachments: Attachment[]) => void;
   onDelete?: (id: string) => void;
   onEdit?: (memory: Memory) => void;
@@ -53,7 +59,7 @@ const formatDeadline = (isoString: string): string => {
   }
 };
 
-const groupTodoItems = (items: TodoItem[]): TodoGroup[] => {
+const groupTodoItems = (items: TodoItem[]): { groups: TodoGroup[]; dismissed: TodoItem[] } => {
   const now = new Date();
   const today = now.toISOString().split('T')[0];
 
@@ -69,8 +75,14 @@ const groupTodoItems = (items: TodoItem[]): TodoGroup[] => {
     noDeadline: [],
     done: [],
   };
+  const dismissed: TodoItem[] = [];
 
   for (const item of items) {
+    if (item.isDismissed) {
+      dismissed.push(item);
+      continue;
+    }
+
     if (item.isCompleted) {
       groups.done.push(item);
       continue;
@@ -101,7 +113,7 @@ const groupTodoItems = (items: TodoItem[]): TodoGroup[] => {
   if (groups.noDeadline.length > 0) result.push({ label: 'No Deadline', items: groups.noDeadline });
   if (groups.done.length > 0) result.push({ label: 'Done', items: groups.done });
 
-  return result;
+  return { groups: result, dismissed };
 };
 
 const groupLabelColors: Record<string, string> = {
@@ -131,8 +143,9 @@ const TodoItemCard: React.FC<{
   item: TodoItem;
   memory?: Memory;
   onToggle: (itemId: string) => void;
+  onDismiss: (itemId: string) => void;
   onViewMemory: (memory: Memory) => void;
-}> = ({ item, memory, onToggle, onViewMemory }) => {
+}> = ({ item, memory, onToggle, onDismiss, onViewMemory }) => {
   return (
     <div
       className={`rounded-xl border p-4 transition-all ${
@@ -200,6 +213,50 @@ const TodoItemCard: React.FC<{
             </button>
           )}
         </div>
+
+        {/* Dismiss button — only on active (non-completed) items */}
+        {!item.isCompleted && (
+          <button
+            onClick={() => onDismiss(item.id)}
+            className="mt-0.5 shrink-0 text-gray-600 hover:text-red-400 transition-colors"
+            title="Dismiss this item"
+          >
+            <XCircle size={18} />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const DismissedItemCard: React.FC<{
+  item: TodoItem;
+  onRestore: (itemId: string) => void;
+}> = ({ item, onRestore }) => {
+  return (
+    <div className="rounded-xl border border-gray-800/30 bg-gray-900/20 p-4 opacity-50">
+      <div className="flex items-start gap-3">
+        <div className="flex-1 min-w-0">
+          <h3 className="font-semibold text-base text-gray-500 line-through">
+            {item.title}
+          </h3>
+          {item.dismissedAt && (
+            <p className="mt-1 text-xs text-gray-600">
+              Dismissed {new Date(item.dismissedAt).toLocaleDateString(undefined, {
+                month: 'short',
+                day: 'numeric',
+              })}
+            </p>
+          )}
+        </div>
+        <button
+          onClick={() => onRestore(item.id)}
+          className="shrink-0 flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition-colors"
+          title="Restore this item"
+        >
+          <RotateCcw size={14} />
+          Restore
+        </button>
       </div>
     </div>
   );
@@ -210,22 +267,28 @@ const TodoListView: React.FC<TodoListViewProps> = ({
   memories,
   onClose,
   onToggleComplete,
+  onDismiss,
+  onRestore,
   onViewAttachment,
   onDelete,
   onEdit,
   onTogglePin,
 }) => {
   const [previewMemoryId, setPreviewMemoryId] = useState<string | null>(null);
+  const [dismissedExpanded, setDismissedExpanded] = useState(false);
 
   const memoryMap = useMemo(
     () => new Map(memories.map(m => [m.id, m])),
     [memories]
   );
 
-  const todoGroups = useMemo(() => groupTodoItems(items), [items]);
+  const { groups: todoGroups, dismissed: dismissedItems } = useMemo(
+    () => groupTodoItems(items),
+    [items]
+  );
 
   const pendingCount = useMemo(
-    () => items.filter(item => !item.isCompleted).length,
+    () => items.filter(item => !item.isCompleted && !item.isDismissed).length,
     [items]
   );
 
@@ -291,12 +354,38 @@ const TodoListView: React.FC<TodoListViewProps> = ({
                       item={item}
                       memory={memoryMap.get(item.memoryId)}
                       onToggle={onToggleComplete}
+                      onDismiss={onDismiss}
                       onViewMemory={handleViewMemory}
                     />
                   ))}
                 </div>
               </section>
             ))}
+
+            {/* Dismissed section — collapsible */}
+            {dismissedItems.length > 0 && (
+              <section>
+                <button
+                  onClick={() => setDismissedExpanded(prev => !prev)}
+                  className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-gray-600 hover:text-gray-500 transition-colors mb-3"
+                >
+                  {dismissedExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  Dismissed
+                  <span className="ml-1 text-gray-700">{dismissedItems.length}</span>
+                </button>
+                {dismissedExpanded && (
+                  <div className="space-y-3">
+                    {dismissedItems.map((item) => (
+                      <DismissedItemCard
+                        key={item.id}
+                        item={item}
+                        onRestore={onRestore}
+                      />
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
           </div>
         )}
       </div>

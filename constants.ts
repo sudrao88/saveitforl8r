@@ -77,5 +77,7 @@ export const ANALYTICS_EVENTS = {
     ACTION_CREATED: 'Created',
     ACTION_COMPLETED: 'Completed',
     ACTION_UNCOMPLETED: 'Uncompleted',
+    ACTION_DISMISSED: 'Dismissed',
+    ACTION_RESTORED: 'Restored',
   },
 } as const;

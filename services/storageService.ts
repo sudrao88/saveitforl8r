@@ -689,7 +689,7 @@ export const softDeleteTodoItemsByMemoryId = async (memoryId: string): Promise<T
 export const replaceTodoItemsForMemory = async (
   memoryId: string,
   newItems: TodoItem[],
-): Promise<TodoItem[]> => {
+): Promise<{ tombstones: TodoItem[]; preserved: TodoItem[] }> => {
   const dbInstance = await openDB();
   const now = Date.now();
 
@@ -699,15 +699,21 @@ export const replaceTodoItemsForMemory = async (
     const index = store.index('memoryId');
 
     const tombstones: TodoItem[] = [];
+    const preserved: TodoItem[] = [];
 
     const cursorReq = index.openCursor(IDBKeyRange.only(memoryId));
     cursorReq.onsuccess = () => {
       const cursor = cursorReq.result;
       if (cursor) {
         const existing = cursor.value as TodoItem;
-        const tombstone: TodoItem = { ...existing, isDeleted: true, updatedAt: now };
-        tombstones.push(tombstone);
-        cursor.update(tombstone);
+        // Preserve dismissed and completed items — don't tombstone them
+        if (existing.isDismissed || existing.isCompleted) {
+          preserved.push(existing);
+        } else if (!existing.isDeleted) {
+          const tombstone: TodoItem = { ...existing, isDeleted: true, updatedAt: now };
+          tombstones.push(tombstone);
+          cursor.update(tombstone);
+        }
         cursor.continue();
       } else {
         for (const item of newItems) {
@@ -716,7 +722,7 @@ export const replaceTodoItemsForMemory = async (
       }
     };
 
-    tx.oncomplete = () => resolve(tombstones);
+    tx.oncomplete = () => resolve({ tombstones, preserved });
     tx.onerror = () => reject(tx.error);
   });
 };
