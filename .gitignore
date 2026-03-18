@@ -131,6 +131,9 @@ dist-ssr
 /ios/App/App/public
 /android/app/src/main/assets/public
 
+# macOS
+.DS_Store
+
 # iOS/xcode
 build/
 DerivedData/
