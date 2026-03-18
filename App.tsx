@@ -124,6 +124,8 @@ const AppContent: React.FC = () => {
     processDetectedActionItems,
     removeItemsForMemory: removeTodoItemsForMemory,
     toggleComplete: toggleTodoComplete,
+    dismissItem: dismissTodoItem,
+    restoreItem: restoreTodoItem,
     refreshItems: refreshTodoItems,
     pendingCount: todoPendingCount,
   } = useTodoItems();
@@ -940,6 +942,7 @@ const AppContent: React.FC = () => {
           <TodoListView
             items={todoItems}
             memories={memories}
+            pendingCount={todoPendingCount}
             onClose={() => setShowTodoList(false)}
             onToggleComplete={async (itemId) => {
               const updated = await toggleTodoComplete(itemId);
@@ -948,6 +951,26 @@ const AppContent: React.FC = () => {
                   await syncTodoItems([updated]);
                 } catch (err) {
                   console.error('[Todo] Failed to sync toggled item:', err);
+                }
+              }
+            }}
+            onDismiss={async (itemId) => {
+              const updated = await dismissTodoItem(itemId);
+              if (updated) {
+                try {
+                  await syncTodoItems([updated]);
+                } catch (err) {
+                  console.error('[Todo] Failed to sync dismissed item:', err);
+                }
+              }
+            }}
+            onRestore={async (itemId) => {
+              const updated = await restoreTodoItem(itemId);
+              if (updated) {
+                try {
+                  await syncTodoItems([updated]);
+                } catch (err) {
+                  console.error('[Todo] Failed to sync restored item:', err);
                 }
               }
             }}

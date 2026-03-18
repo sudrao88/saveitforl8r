@@ -185,6 +185,8 @@ export interface TodoItem {
   createdAt: number;
   updatedAt: number;
   isDeleted?: boolean;         // Soft-delete for sync
+  isDismissed?: boolean;       // User explicitly rejected this item
+  dismissedAt?: number;        // Timestamp when dismissed
 }
 
 export interface Attachment {
