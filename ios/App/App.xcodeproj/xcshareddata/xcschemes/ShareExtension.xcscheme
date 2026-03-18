@@ -57,11 +57,6 @@
       debugServiceExtension = "internal"
       allowLocationSimulation = "YES"
       launchAutomaticallySubstyle = "2">
-      <RemoteRunnable
-         runnableDebuggingMode = "1"
-         BundleIdentifier = "com.saveitforl8r.app"
-         RemotePath = "/Users/sudhanva/Library/Developer/CoreSimulator/Devices/2AA3EA45-9286-4BEA-B259-9E51D404E909/data/Containers/Bundle/Application/9811D944-08DD-4204-A506-8F8914D0F452/App.app">
-      </RemoteRunnable>
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
@@ -80,11 +75,6 @@
       debugDocumentVersioning = "YES"
       askForAppToLaunch = "Yes"
       launchAutomaticallySubstyle = "2">
-      <RemoteRunnable
-         runnableDebuggingMode = "1"
-         BundleIdentifier = "com.saveitforl8r.app"
-         RemotePath = "/Users/sudhanva/Library/Developer/CoreSimulator/Devices/2AA3EA45-9286-4BEA-B259-9E51D404E909/data/Containers/Bundle/Application/A623BE5D-4345-4891-877C-B19F6217EB18/App.app">
-      </RemoteRunnable>
    </ProfileAction>
    <AnalyzeAction
       buildConfiguration = "Debug">

@@ -207,8 +207,7 @@ export const useShareReceiver = () => {
 
         if (!hasSignaledReady.current) {
             hasSignaledReady.current = true;
-            // Short delay to ensure listeners are bound
-            setTimeout(signalAppReady, 100);
+            signalAppReady();
         }
 
         return () => {

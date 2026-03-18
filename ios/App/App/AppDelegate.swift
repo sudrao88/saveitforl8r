@@ -87,10 +87,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         if url.scheme == "com.saveitforl8r.app" && url.host == "share" {
             print("[Share] Received share URL, will dispatch to JS")
             pendingShareDispatch = true
-            // Dispatch after a short delay to ensure WebView is ready
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-                self?.dispatchShareDataToJS()
-            }
             return true
         }
 
@@ -113,7 +109,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
         // Clear the share data immediately to prevent re-processing
         userDefaults.removeObject(forKey: shareKey)
-        userDefaults.synchronize()
 
         print("[Share] Dispatching share data to JS: \(jsonString.prefix(100))...")
 
@@ -123,14 +118,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             return
         }
 
-        // Sanitize the JSON string for safe JS injection
-        let escaped = jsonString
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "'", with: "\\'")
-            .replacingOccurrences(of: "\n", with: "\\n")
-            .replacingOccurrences(of: "\r", with: "\\r")
+        // Encode as Base64 to avoid JS string injection issues with user-controlled content
+        guard let jsonData = jsonString.data(using: .utf8) else {
+            print("[Share] Failed to encode share data")
+            return
+        }
+        let base64 = jsonData.base64EncodedString()
 
-        let js = "window.dispatchEvent(new CustomEvent('onShareReceived', { detail: JSON.parse('\(escaped)') }));"
+        let js = "window.dispatchEvent(new CustomEvent('onShareReceived', { detail: JSON.parse(atob('\(base64)')) }));"
         bridge.webView?.evaluateJavaScript(js) { _, error in
             if let error = error {
                 print("[Share] JS dispatch error: \(error)")

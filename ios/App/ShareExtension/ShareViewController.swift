@@ -28,6 +28,7 @@ class ShareViewController: SLComposeServiceViewController {
             return
         }
 
+        let serialQueue = DispatchQueue(label: "com.saveitforl8r.share.serial")
         var shareText = contentText ?? ""
         var attachments: [[String: String]] = []
         let group = DispatchGroup()
@@ -45,10 +46,15 @@ class ShareViewController: SLComposeServiceViewController {
 
                         if let url = data as? URL,
                            let fileData = try? Data(contentsOf: url) {
-                            self?.saveAttachment(data: fileData, name: url.lastPathComponent, mimeType: "image/jpeg", attachments: &attachments)
+                            let mimeType = self?.mimeTypeForURL(url) ?? "image/jpeg"
+                            serialQueue.sync {
+                                self?.saveAttachment(data: fileData, name: url.lastPathComponent, mimeType: mimeType, attachments: &attachments)
+                            }
                         } else if let image = data as? UIImage,
                                   let imageData = image.jpegData(compressionQuality: 0.8) {
-                            self?.saveAttachment(data: imageData, name: "shared_image.jpg", mimeType: "image/jpeg", attachments: &attachments)
+                            serialQueue.sync {
+                                self?.saveAttachment(data: imageData, name: "shared_image.jpg", mimeType: "image/jpeg", attachments: &attachments)
+                            }
                         }
                     }
                 }
@@ -59,7 +65,9 @@ class ShareViewController: SLComposeServiceViewController {
                         defer { group.leave() }
                         guard error == nil, let url = data as? URL,
                               let fileData = try? Data(contentsOf: url) else { return }
-                        self?.saveAttachment(data: fileData, name: url.lastPathComponent, mimeType: "application/pdf", attachments: &attachments)
+                        serialQueue.sync {
+                            self?.saveAttachment(data: fileData, name: url.lastPathComponent, mimeType: "application/pdf", attachments: &attachments)
+                        }
                     }
                 }
                 // Handle URLs
@@ -68,8 +76,10 @@ class ShareViewController: SLComposeServiceViewController {
                     provider.loadItem(forTypeIdentifier: UTType.url.identifier, options: nil) { data, error in
                         defer { group.leave() }
                         if let url = data as? URL {
-                            if !shareText.isEmpty { shareText += "\n" }
-                            shareText += url.absoluteString
+                            serialQueue.sync {
+                                if !shareText.isEmpty { shareText += "\n" }
+                                shareText += url.absoluteString
+                            }
                         }
                     }
                 }
@@ -79,8 +89,10 @@ class ShareViewController: SLComposeServiceViewController {
                     provider.loadItem(forTypeIdentifier: UTType.plainText.identifier, options: nil) { data, error in
                         defer { group.leave() }
                         if let text = data as? String {
-                            if !shareText.isEmpty { shareText += "\n" }
-                            shareText += text
+                            serialQueue.sync {
+                                if !shareText.isEmpty { shareText += "\n" }
+                                shareText += text
+                            }
                         }
                     }
                 }
@@ -91,6 +103,20 @@ class ShareViewController: SLComposeServiceViewController {
             self?.saveShareData(text: shareText, attachments: attachments)
             self?.openMainApp()
             completion()
+        }
+    }
+
+    private func mimeTypeForURL(_ url: URL) -> String {
+        let ext = url.pathExtension.lowercased()
+        switch ext {
+        case "png": return "image/png"
+        case "gif": return "image/gif"
+        case "webp": return "image/webp"
+        case "heic", "heif": return "image/heic"
+        case "bmp": return "image/bmp"
+        case "tiff", "tif": return "image/tiff"
+        case "svg": return "image/svg+xml"
+        default: return "image/jpeg"
         }
     }
 
@@ -127,30 +153,12 @@ class ShareViewController: SLComposeServiceViewController {
         if let jsonData = try? JSONSerialization.data(withJSONObject: shareData),
            let jsonString = String(data: jsonData, encoding: .utf8) {
             userDefaults.set(jsonString, forKey: shareKey)
-            userDefaults.synchronize()
             print("[ShareExtension] Saved share data: \(text.prefix(50))... with \(attachments.count) attachments")
         }
     }
 
     private func openMainApp() {
-        let url = URL(string: "com.saveitforl8r.app://share")!
-        var responder: UIResponder? = self
-        while responder != nil {
-            if let application = responder as? UIApplication {
-                application.open(url, options: [:], completionHandler: nil)
-                return
-            }
-            responder = responder?.next
-        }
-        // Fallback: use openURL selector
-        let selector = sel_registerName("openURL:")
-        var nextResponder: UIResponder? = self
-        while let nr = nextResponder {
-            if nr.responds(to: selector) {
-                nr.perform(selector, with: url)
-                return
-            }
-            nextResponder = nr.next
-        }
+        guard let url = URL(string: "com.saveitforl8r.app://share") else { return }
+        extensionContext?.open(url, completionHandler: nil)
     }
 }
