@@ -175,6 +175,7 @@ import { btn, card, overlay, text, chip, menu, zIndex } from '../styles/design-s
 5. **Use semantic border-radius tokens**, not ad-hoc `rounded-*` values
 6. **Prefer duration tokens** (`--duration-fast`, `--duration-normal`, `--duration-slow`) over arbitrary durations
 7. **Enrichment/content-type colors** (in `SECTION_CONFIG_MAP`) are exempt from token rules — they use Tailwind palette for variety
+8. **All UI changes must use semantic tokens** (`--color-*`, `--radius-*`, `--duration-*`, `--z-*`) instead of raw Tailwind color/radius/duration/z-index values. This applies to every component, not just new ones — when touching existing code, migrate any raw values to tokens.
 
 ## Common Development Tasks
 (omitted for brevity)
