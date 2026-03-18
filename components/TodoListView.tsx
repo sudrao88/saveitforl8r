@@ -218,7 +218,7 @@ const TodoItemCard: React.FC<{
         {!item.isCompleted && (
           <button
             onClick={() => onDismiss(item.id)}
-            className="mt-0.5 shrink-0 text-gray-600 hover:text-red-400 transition-colors"
+            className="mt-0.5 shrink-0 text-(--color-text-tertiary) hover:text-(--color-danger) transition-colors duration-(--duration-fast)"
             title="Dismiss this item"
           >
             <XCircle size={18} />
@@ -234,14 +234,14 @@ const DismissedItemCard: React.FC<{
   onRestore: (itemId: string) => void;
 }> = ({ item, onRestore }) => {
   return (
-    <div className="rounded-xl border border-gray-800/30 bg-gray-900/20 p-4 opacity-50">
+    <div className="rounded-(--radius-xl) border border-(--color-border-subtle) bg-(--color-surface-raised)/20 p-4 opacity-50">
       <div className="flex items-start gap-3">
         <div className="flex-1 min-w-0">
-          <h3 className="font-semibold text-base text-gray-500 line-through">
+          <h3 className="font-semibold text-base text-(--color-text-secondary) line-through">
             {item.title}
           </h3>
           {item.dismissedAt && (
-            <p className="mt-1 text-xs text-gray-600">
+            <p className="mt-1 text-xs text-(--color-text-tertiary)">
               Dismissed {new Date(item.dismissedAt).toLocaleDateString(undefined, {
                 month: 'short',
                 day: 'numeric',
@@ -251,7 +251,7 @@ const DismissedItemCard: React.FC<{
         </div>
         <button
           onClick={() => onRestore(item.id)}
-          className="shrink-0 flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition-colors"
+          className="shrink-0 flex items-center gap-1.5 text-xs text-(--color-accent) hover:text-(--color-accent-hover) transition-colors duration-(--duration-fast)"
           title="Restore this item"
         >
           <RotateCcw size={14} />
@@ -367,11 +367,11 @@ const TodoListView: React.FC<TodoListViewProps> = ({
               <section>
                 <button
                   onClick={() => setDismissedExpanded(prev => !prev)}
-                  className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-gray-600 hover:text-gray-500 transition-colors mb-3"
+                  className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-(--color-text-tertiary) hover:text-(--color-text-secondary) transition-colors duration-(--duration-fast) mb-3"
                 >
                   {dismissedExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                   Dismissed
-                  <span className="ml-1 text-gray-700">{dismissedItems.length}</span>
+                  <span className="ml-1 text-(--color-text-tertiary)">{dismissedItems.length}</span>
                 </button>
                 {dismissedExpanded && (
                   <div className="space-y-3">
