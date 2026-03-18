@@ -942,6 +942,7 @@ const AppContent: React.FC = () => {
           <TodoListView
             items={todoItems}
             memories={memories}
+            pendingCount={todoPendingCount}
             onClose={() => setShowTodoList(false)}
             onToggleComplete={async (itemId) => {
               const updated = await toggleTodoComplete(itemId);

@@ -706,10 +706,13 @@ export const replaceTodoItemsForMemory = async (
       const cursor = cursorReq.result;
       if (cursor) {
         const existing = cursor.value as TodoItem;
-        // Preserve dismissed and completed items — don't tombstone them
-        if (existing.isDismissed || existing.isCompleted) {
+        // Skip already-deleted items — don't resurrect them
+        if (existing.isDeleted) {
+          // no-op: leave tombstone as-is
+        } else if (existing.isDismissed || existing.isCompleted) {
+          // Preserve dismissed and completed items — don't tombstone them
           preserved.push(existing);
-        } else if (!existing.isDeleted) {
+        } else {
           const tombstone: TodoItem = { ...existing, isDeleted: true, updatedAt: now };
           tombstones.push(tombstone);
           cursor.update(tombstone);

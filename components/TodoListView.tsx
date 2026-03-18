@@ -26,6 +26,7 @@ import { overlay } from '../styles/design-system';
 interface TodoListViewProps {
   items: TodoItem[];
   memories: Memory[];
+  pendingCount: number;
   onClose: () => void;
   onToggleComplete: (itemId: string) => void;
   onDismiss: (itemId: string) => void;
@@ -265,6 +266,7 @@ const DismissedItemCard: React.FC<{
 const TodoListView: React.FC<TodoListViewProps> = ({
   items,
   memories,
+  pendingCount,
   onClose,
   onToggleComplete,
   onDismiss,
@@ -284,11 +286,6 @@ const TodoListView: React.FC<TodoListViewProps> = ({
 
   const { groups: todoGroups, dismissed: dismissedItems } = useMemo(
     () => groupTodoItems(items),
-    [items]
-  );
-
-  const pendingCount = useMemo(
-    () => items.filter(item => !item.isCompleted && !item.isDismissed).length,
     [items]
   );
 
