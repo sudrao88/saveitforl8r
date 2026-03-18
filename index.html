@@ -109,14 +109,16 @@
        // Stuck-state detection: if React hasn't mounted within 5s, the JS bundles
        // likely failed to load (offline/lie-fi). Show an offline message so the
        // user knows the app is alive and can retry or wait for network recovery.
+       // Skipped on native platforms where assets load from local filesystem.
        (function() {
-         const STUCK_TIMEOUT = 5000;
-         const timer = setTimeout(function() {
-           const root = document.getElementById('root');
+         if (window.Capacitor && window.Capacitor.isNativePlatform()) return;
+         var STUCK_TIMEOUT = 5000;
+         var timer = setTimeout(function() {
+           var root = document.getElementById('root');
            // React replaces the splash-container children on mount.
            // If splash-logo still exists, React hasn't mounted yet.
            if (root && root.querySelector('.splash-logo')) {
-             const msg = document.createElement('div');
+             var msg = document.createElement('div');
              msg.className = 'splash-offline-msg';
              msg.innerHTML = '<p>Waiting for network\u2026</p>'
                + '<p class="splash-offline-subtext">The app will load automatically when connection improves</p>'
@@ -125,7 +127,7 @@
            }
          }, STUCK_TIMEOUT);
          // Cancel timer once React mounts (it removes .splash-logo)
-         const obs = new MutationObserver(function() {
+         var obs = new MutationObserver(function() {
            if (!document.querySelector('.splash-logo')) {
              clearTimeout(timer);
              obs.disconnect();
