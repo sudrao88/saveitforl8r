@@ -652,19 +652,6 @@ const AppContent: React.FC = () => {
   const isUpdateAvailable = isNative() ? nativeUpdateAvailable : updateAvailable;
   const versionToDisplay = isNative() ? nativeVersion : appVersion;
 
-  if (isLoading) {
-    return (
-        <div className="fixed inset-0 bg-black z-(--z-tooltip) flex flex-col items-center justify-center">
-            <Logo className="w-20 h-20 mb-6 animate-pulse" />
-            <div className="flex gap-1.5 items-center">
-                <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-                <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-                <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></div>
-            </div>
-        </div>
-    );
-  }
-
   if (editingMemory) {
     return (
       <ErrorBoundary
@@ -783,7 +770,18 @@ const AppContent: React.FC = () => {
           )}
 
           <main className="flex-1 p-4 sm:p-8 pb-24 max-w-7xl mx-auto w-full relative z-(--z-dropdown)">
-            {filteredMemories.length === 0 ? (
+            {isLoading ? (
+              <div className="columns-1 sm:columns-2 lg:columns-3 gap-4 space-y-4">
+                {[1, 2, 3, 4, 5, 6].map(i => (
+                  <div key={i} className="break-inside-avoid rounded-xl bg-(--color-surface-raised) border border-(--color-border-subtle) p-4 animate-pulse">
+                    <div className="h-4 bg-gray-700/50 rounded w-3/4 mb-3"></div>
+                    <div className="h-3 bg-gray-700/30 rounded w-full mb-2"></div>
+                    <div className="h-3 bg-gray-700/30 rounded w-5/6 mb-2"></div>
+                    <div className="h-3 bg-gray-700/30 rounded w-2/3"></div>
+                  </div>
+                ))}
+              </div>
+            ) : filteredMemories.length === 0 ? (
               <EmptyState
                 hasMemories={memories.length > 0}
                 clearFilters={handleClearFiltersEmptyState}
