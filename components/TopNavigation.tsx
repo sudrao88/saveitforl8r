@@ -36,6 +36,7 @@ const TopNavigation: React.FC<TopNavigationProps> = ({
             onClick={() => {
                 resetFilters();
                 setView(ViewMode.FEED);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
             }}
         >
           <Logo className="w-8 h-8 rounded-lg shadow-sm group-hover:scale-105 transition-transform" />
