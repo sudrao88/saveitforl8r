@@ -759,7 +759,7 @@ const AppContent: React.FC = () => {
           />
 
           {availableTypes.length > 0 && (
-            <div className="sticky z-(--z-dropdown) bg-(--color-surface-base) border-b border-gray-800/50" style={{ top: `${topNavHeight}px` }}>
+            <div className="sticky z-(--z-dropdown) bg-(--color-surface-base) border-b border-gray-800/50 will-change-transform" style={{ top: `${topNavHeight}px` }}>
               <FilterBar
                 availableTypes={availableTypes}
                 filterType={filterType}
@@ -769,7 +769,7 @@ const AppContent: React.FC = () => {
             </div>
           )}
 
-          <main className="flex-1 p-4 sm:p-8 pb-24 max-w-7xl mx-auto w-full relative z-(--z-dropdown)">
+          <main className="flex-1 p-4 sm:p-8 pb-24 max-w-7xl mx-auto w-full relative">
             {isLoading ? (
               <div className="columns-1 sm:columns-2 lg:columns-3 gap-4 space-y-4">
                 {[1, 2, 3, 4, 5, 6].map(i => (
