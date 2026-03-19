@@ -10,14 +10,7 @@ export interface ShareData {
   checkClipboard?: boolean;
 }
 
-// Declare the Android bridge interface
-declare global {
-  interface Window {
-    AndroidBridge?: {
-      signalAppReady: () => void;
-    };
-  }
-}
+// AndroidBridge global type is declared in index.tsx
 
 interface NativeShareData {
   text?: string;

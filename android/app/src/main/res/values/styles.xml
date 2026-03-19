@@ -18,7 +18,7 @@
     <!-- SplashScreen theme with proper API configuration for Android 12+ -->
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
         <!-- Background color of the splash screen -->
-        <item name="windowSplashScreenBackground">#111827</item>
+        <item name="windowSplashScreenBackground">#000000</item>
         <!-- Icon shown in the center of the splash screen -->
         <item name="windowSplashScreenAnimatedIcon">@drawable/splash</item>
         <!-- Theme to apply to the activity after splash -->
