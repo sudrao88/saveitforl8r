@@ -33,5 +33,5 @@ root.render(
 requestAnimationFrame(() => {
   try {
     window.AndroidBridge?.signalAppReady();
-  } catch (_) { /* no-op on web or if bridge unavailable */ }
+  } catch (e) { console.warn('[Splash] Failed to signal app ready:', e); }
 });
