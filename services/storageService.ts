@@ -2,6 +2,7 @@
 import { Memory, Moment, MomentSynthesis, CalendarEvent, TodoItem } from '../types.ts';
 import { encryptData, decryptData, decryptBatch, EncryptedPayload } from './encryptionService';
 import { db } from './db';
+import { storage } from './platform';
 
 const DB_NAME = 'SaveItForL8rDB';
 const STORE_NAME = 'memories';
@@ -778,6 +779,19 @@ export const factoryReset = async () => {
         }
 
         localStorage.clear();
+
+        // Clear Capacitor Preferences (native) — localStorage.clear() only
+        // covers web storage, not Capacitor Preferences used on native
+        try {
+            await storage.remove('gdrive_linked');
+            await storage.remove('gdrive_email');
+            await storage.remove('access_token');
+            await storage.remove('expires_at');
+            await storage.remove('refresh_token');
+            await storage.remove('encryption_key');
+        } catch (e) {
+            console.warn('Failed to clear native preferences:', e);
+        }
 
         const dbsToReset = [
             { name: 'SaveItForL8rDB', stores: ['memories', 'moments', 'momentSyntheses', 'calendarEvents', 'todoItems'] },

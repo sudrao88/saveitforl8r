@@ -145,11 +145,15 @@ export const useNativeOTA = () => {
           // On success the page reloads with the new version (same origin).
           // On failure the native side dispatches an 'ota-error' CustomEvent.
           (window as any).AndroidBridge.enableRemoteMode();
+      } else if (Capacitor.getPlatform() === 'ios' && (window as any).webkit?.messageHandlers?.IOSBridge) {
+          // iOS native bridge downloads assets to local storage, then calls
+          // setServerBasePath() which keeps the capacitor://localhost origin —
+          // preserving IndexedDB, localStorage, and Capacitor plugins.
+          // On failure the native side dispatches an 'ota-error' CustomEvent.
+          (window as any).webkit.messageHandlers.IOSBridge.postMessage({ action: 'enableRemoteMode' });
       } else {
-          // iOS fallback — sets preferences for AppDelegate to read on next launch
-          await Preferences.set({ key: PREF_USE_REMOTE, value: 'true' });
-          await Preferences.set({ key: PREF_SERVER_URL, value: REMOTE_URL });
-          window.location.href = REMOTE_URL;
+          console.warn('[OTA] No native bridge available for OTA update');
+          setState(s => ({ ...s, isDownloading: false, downloadError: 'Native bridge not available' }));
       }
     } catch (e) {
       console.error('[OTA] Failed to enable remote mode:', e);
@@ -167,11 +171,11 @@ export const useNativeOTA = () => {
     try {
       if (Capacitor.getPlatform() === 'android' && (window as any).AndroidBridge) {
           (window as any).AndroidBridge.disableRemoteMode();
+      } else if (Capacitor.getPlatform() === 'ios' && (window as any).webkit?.messageHandlers?.IOSBridge) {
+          (window as any).webkit.messageHandlers.IOSBridge.postMessage({ action: 'disableRemoteMode' });
       } else {
           await Preferences.set({ key: PREF_USE_REMOTE, value: 'false' });
           await Preferences.remove({ key: PREF_SERVER_URL });
-          // Default Capacitor Android/iOS scheme
-          window.location.href = 'https://localhost';
       }
     } catch (e) {
       console.error('[OTA] Failed to disable remote mode:', e);

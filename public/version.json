@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v43",
-  "buildNumber": 43,
-  "buildDate": "2026-03-19T00:00:00.000Z",
+  "version": "saveitforl8r-v44",
+  "buildNumber": 44,
+  "buildDate": "2026-03-19T12:00:00.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Fix share extension, CORS for native OTA checks"
+  "changelog": "Fix iOS OTA to preserve data, fix factory reset Google Drive unlink"
 }
