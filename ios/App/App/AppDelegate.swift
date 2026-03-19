@@ -26,6 +26,15 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     // Whether bridge setup (IOSBridge + OTA) is complete
     private var bridgeSetUp = false
 
+    // Retry counter for bridge setup
+    private var bridgeSetupRetries = 0
+    private let maxBridgeSetupRetries = 30  // 30 * 0.3s = 9 seconds max
+
+    // Convenience accessor for the Capacitor bridge view controller
+    private var bridgeViewController: CAPBridgeViewController? {
+        window?.rootViewController as? CAPBridgeViewController
+    }
+
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         // Wait for the Capacitor bridge to initialize, then set up OTA + IOSBridge.
         // Both require the bridge to be ready, so we use a single retry loop.
@@ -43,10 +52,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     private func setupBridge() {
         guard !bridgeSetUp else { return }
 
-        guard let vc = window?.rootViewController as? CAPBridgeViewController,
+        guard let vc = bridgeViewController,
               let bridge = vc.bridge,
               let webView = bridge.webView else {
-            // Retry until bridge is ready
+            bridgeSetupRetries += 1
+            if bridgeSetupRetries >= maxBridgeSetupRetries {
+                print("[OTA] Bridge setup timed out after \(bridgeSetupRetries) retries")
+                return
+            }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
                 self?.setupBridge()
             }
@@ -103,7 +116,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                 let defaults = UserDefaults.standard
                 defaults.set("true", forKey: self.prefsPrefix + self.prefUseRemote)
 
-                guard let vc = self.window?.rootViewController as? CAPBridgeViewController else {
+                guard let vc = self.bridgeViewController else {
                     print("[OTA] Bridge view controller not available for setServerBasePath")
                     return
                 }
@@ -111,7 +124,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
             case .failure(let error):
                 print("[OTA] Download failed: \(error.localizedDescription)")
-                guard let bridge = (self.window?.rootViewController as? CAPBridgeViewController)?.bridge,
+                guard let bridge = self.bridgeViewController?.bridge,
                       let errorData = error.localizedDescription.data(using: .utf8) else { return }
 
                 let base64Error = errorData.base64EncodedString()
@@ -135,9 +148,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         defaults.removeObject(forKey: "serverUrl")
 
         // Reload with bundled assets
-        if let vc = window?.rootViewController as? CAPBridgeViewController {
-            vc.setServerBasePath(path: "")
-        }
+        bridgeViewController?.setServerBasePath(path: "")
     }
 
     // MARK: - Lifecycle
@@ -197,7 +208,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         print("[Share] Dispatching share data to JS: \(jsonString.prefix(100))...")
 
         // Dispatch to WebView via Capacitor bridge
-        guard let bridge = (window?.rootViewController as? CAPBridgeViewController)?.bridge else {
+        guard let bridge = bridgeViewController?.bridge else {
             print("[Share] Bridge not available")
             return
         }

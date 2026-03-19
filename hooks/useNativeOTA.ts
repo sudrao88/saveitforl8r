@@ -8,8 +8,11 @@ const REMOTE_VERSION_URL = `${REMOTE_URL}/version.json`;
 
 // Preference keys for native storage
 const PREF_USE_REMOTE = 'ota_use_remote';
-const PREF_SERVER_URL = 'ota_server_url';
 const PREF_LAST_VERSION = 'ota_last_version';
+
+// Native bridge availability checks
+const hasAndroidBridge = () => Capacitor.getPlatform() === 'android' && !!(window as any).AndroidBridge;
+const hasIOSBridge = () => Capacitor.getPlatform() === 'ios' && !!(window as any).webkit?.messageHandlers?.IOSBridge;
 
 // Time intervals
 const INITIAL_UPDATE_CHECK_DELAY_MS = 5 * 1000;          // 5 seconds
@@ -139,13 +142,13 @@ export const useNativeOTA = () => {
           } catch (ignore) {}
       }
 
-      if (Capacitor.getPlatform() === 'android' && (window as any).AndroidBridge) {
+      if (hasAndroidBridge()) {
           // Native bridge downloads assets to local storage, then calls
           // bridge.setServerBasePath() which reloads the WebView automatically.
           // On success the page reloads with the new version (same origin).
           // On failure the native side dispatches an 'ota-error' CustomEvent.
           (window as any).AndroidBridge.enableRemoteMode();
-      } else if (Capacitor.getPlatform() === 'ios' && (window as any).webkit?.messageHandlers?.IOSBridge) {
+      } else if (hasIOSBridge()) {
           // iOS native bridge downloads assets to local storage, then calls
           // setServerBasePath() which keeps the capacitor://localhost origin —
           // preserving IndexedDB, localStorage, and Capacitor plugins.
@@ -169,13 +172,12 @@ export const useNativeOTA = () => {
     }
 
     try {
-      if (Capacitor.getPlatform() === 'android' && (window as any).AndroidBridge) {
+      if (hasAndroidBridge()) {
           (window as any).AndroidBridge.disableRemoteMode();
-      } else if (Capacitor.getPlatform() === 'ios' && (window as any).webkit?.messageHandlers?.IOSBridge) {
+      } else if (hasIOSBridge()) {
           (window as any).webkit.messageHandlers.IOSBridge.postMessage({ action: 'disableRemoteMode' });
       } else {
           await Preferences.set({ key: PREF_USE_REMOTE, value: 'false' });
-          await Preferences.remove({ key: PREF_SERVER_URL });
       }
     } catch (e) {
       console.error('[OTA] Failed to disable remote mode:', e);

@@ -783,12 +783,12 @@ export const factoryReset = async () => {
         // Clear Capacitor Preferences (native) — localStorage.clear() only
         // covers web storage, not Capacitor Preferences used on native
         try {
-            await storage.remove('gdrive_linked');
-            await storage.remove('gdrive_email');
-            await storage.remove('access_token');
-            await storage.remove('expires_at');
-            await storage.remove('refresh_token');
-            await storage.remove('encryption_key');
+            const nativeKeysToClear = [
+                'gdrive_linked', 'gdrive_email',
+                'access_token', 'expires_at', 'refresh_token',
+                'encryption_key', 'ota_use_remote', 'ota_last_version',
+            ];
+            await Promise.all(nativeKeysToClear.map(key => storage.remove(key)));
         } catch (e) {
             console.warn('Failed to clear native preferences:', e);
         }

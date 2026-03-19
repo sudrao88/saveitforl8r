@@ -38,116 +38,125 @@ class OTADownloadManager {
             return
         }
 
+        Task {
+            do {
+                let path = try await performDownload(remoteUrl: remoteUrl)
+                DispatchQueue.main.async { completion(.success(path)) }
+            } catch {
+                DispatchQueue.main.async { completion(.failure(error)) }
+            }
+        }
+    }
+
+    private static func performDownload(remoteUrl: String) async throws -> String {
         let docsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         let updateDir = docsDir.appendingPathComponent(updateDirName)
         let tempDir = docsDir.appendingPathComponent(tempDirName)
 
-        DispatchQueue.global(qos: .userInitiated).async {
+        // Clean up any previous temp dir
+        try? FileManager.default.removeItem(at: tempDir)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        do {
+            // Try ota-manifest.json first
+            var filesToDownload: [String]?
             do {
-                // Clean up any previous temp dir
-                try? FileManager.default.removeItem(at: tempDir)
-                try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-
-                // Try ota-manifest.json first
-                var filesToDownload: [String]?
-                do {
-                    let manifestData = try downloadData(from: remoteUrl + "/ota-manifest.json")
-                    if let json = try JSONSerialization.jsonObject(with: manifestData) as? [String: Any],
-                       let files = json["files"] as? [String] {
-                        filesToDownload = files
-                        print("[OTA] Using ota-manifest.json: \(files.count) files to download")
-                    }
-                } catch {
-                    print("[OTA] ota-manifest.json not available, falling back to HTML parsing: \(error.localizedDescription)")
+                let manifestData = try await downloadData(from: remoteUrl + "/ota-manifest.json")
+                if let json = try JSONSerialization.jsonObject(with: manifestData) as? [String: Any],
+                   let files = json["files"] as? [String] {
+                    filesToDownload = files
+                    print("[OTA] Using ota-manifest.json: \(files.count) files to download")
                 }
-
-                var downloaded = 0
-                var failed = 0
-
-                if let files = filesToDownload, !files.isEmpty {
-                    // Primary path: download every file from the OTA manifest
-                    for relativePath in files {
-                        do {
-                            let target = tempDir.appendingPathComponent(relativePath)
-                            try validatePath(target, within: tempDir)
-                            try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
-                            try downloadToFile(from: remoteUrl + "/" + relativePath, to: target)
-                            downloaded += 1
-                        } catch {
-                            failed += 1
-                            print("[OTA] Failed to download: \(relativePath) — \(error.localizedDescription)")
-                        }
-                    }
-                } else {
-                    // Fallback: discover assets from HTML
-                    let htmlData = try downloadData(from: remoteUrl + "/index.html")
-                    let htmlStr = String(data: htmlData, encoding: .utf8) ?? ""
-                    try htmlData.write(to: tempDir.appendingPathComponent("index.html"))
-
-                    var assetPaths = parseAssetPathsFromHtml(htmlStr)
-
-                    // Try Vite manifest
-                    do {
-                        let manifestData = try downloadData(from: remoteUrl + "/.vite/manifest.json")
-                        let viteDir = tempDir.appendingPathComponent(".vite")
-                        try FileManager.default.createDirectory(at: viteDir, withIntermediateDirectories: true)
-                        try manifestData.write(to: viteDir.appendingPathComponent("manifest.json"))
-
-                        if let manifestStr = String(data: manifestData, encoding: .utf8) {
-                            assetPaths.formUnion(parseViteManifest(manifestStr))
-                        }
-                    } catch {
-                        print("[OTA] Vite manifest not available: \(error.localizedDescription)")
-                    }
-
-                    for path in assetPaths {
-                        do {
-                            let normalised = path.hasPrefix("/") ? String(path.dropFirst()) : path
-                            let target = tempDir.appendingPathComponent(normalised)
-                            try validatePath(target, within: tempDir)
-                            try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
-                            try downloadToFile(from: remoteUrl + "/" + normalised, to: target)
-                            downloaded += 1
-                        } catch {
-                            failed += 1
-                            print("[OTA] Failed to download asset: \(path) — \(error.localizedDescription)")
-                        }
-                    }
-
-                    // Download known static files
-                    for sf in ["version.json", "manifest.json", "icon.svg", "logo-full.svg", "sw.js"] {
-                        let target = tempDir.appendingPathComponent(sf)
-                        if !FileManager.default.fileExists(atPath: target.path) {
-                            try? downloadToFile(from: remoteUrl + "/" + sf, to: target)
-                        }
-                    }
-                }
-
-                print("[OTA] Download complete: \(downloaded) ok, \(failed) failed")
-
-                // Verify index.html exists
-                let indexFile = tempDir.appendingPathComponent("index.html")
-                guard FileManager.default.fileExists(atPath: indexFile.path),
-                      (try? Data(contentsOf: indexFile))?.isEmpty == false else {
-                    throw OTAError.missingIndex
-                }
-
-                // Atomically swap: delete old update dir and rename temp → update
-                try? FileManager.default.removeItem(at: updateDir)
-                do {
-                    try FileManager.default.moveItem(at: tempDir, to: updateDir)
-                } catch {
-                    throw OTAError.renameFailed
-                }
-
-                print("[OTA] OTA update downloaded to: \(updateDir.path)")
-                DispatchQueue.main.async { completion(.success(updateDir.path)) }
-
             } catch {
-                print("[OTA] Download failed: \(error.localizedDescription)")
-                try? FileManager.default.removeItem(at: tempDir)
-                DispatchQueue.main.async { completion(.failure(error)) }
+                print("[OTA] ota-manifest.json not available, falling back to HTML parsing: \(error.localizedDescription)")
             }
+
+            var downloaded = 0
+            var failed = 0
+
+            if let files = filesToDownload, !files.isEmpty {
+                // Primary path: download every file from the OTA manifest
+                for relativePath in files {
+                    do {
+                        let target = tempDir.appendingPathComponent(relativePath)
+                        try validatePath(target, within: tempDir)
+                        try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+                        try await downloadToFile(from: remoteUrl + "/" + relativePath, to: target)
+                        downloaded += 1
+                    } catch {
+                        failed += 1
+                        print("[OTA] Failed to download: \(relativePath) — \(error.localizedDescription)")
+                    }
+                }
+            } else {
+                // Fallback: discover assets from HTML
+                let htmlData = try await downloadData(from: remoteUrl + "/index.html")
+                let htmlStr = String(data: htmlData, encoding: .utf8) ?? ""
+                try htmlData.write(to: tempDir.appendingPathComponent("index.html"))
+
+                var assetPaths = parseAssetPathsFromHtml(htmlStr)
+
+                // Try Vite manifest
+                do {
+                    let manifestData = try await downloadData(from: remoteUrl + "/.vite/manifest.json")
+                    let viteDir = tempDir.appendingPathComponent(".vite")
+                    try FileManager.default.createDirectory(at: viteDir, withIntermediateDirectories: true)
+                    try manifestData.write(to: viteDir.appendingPathComponent("manifest.json"))
+
+                    if let manifestStr = String(data: manifestData, encoding: .utf8) {
+                        assetPaths.formUnion(parseViteManifest(manifestStr))
+                    }
+                } catch {
+                    print("[OTA] Vite manifest not available: \(error.localizedDescription)")
+                }
+
+                for path in assetPaths {
+                    do {
+                        let normalised = path.hasPrefix("/") ? String(path.dropFirst()) : path
+                        let target = tempDir.appendingPathComponent(normalised)
+                        try validatePath(target, within: tempDir)
+                        try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+                        try await downloadToFile(from: remoteUrl + "/" + normalised, to: target)
+                        downloaded += 1
+                    } catch {
+                        failed += 1
+                        print("[OTA] Failed to download asset: \(path) — \(error.localizedDescription)")
+                    }
+                }
+
+                // Download known static files
+                for sf in ["version.json", "manifest.json", "icon.svg", "logo-full.svg", "sw.js"] {
+                    let target = tempDir.appendingPathComponent(sf)
+                    if !FileManager.default.fileExists(atPath: target.path) {
+                        try? await downloadToFile(from: remoteUrl + "/" + sf, to: target)
+                    }
+                }
+            }
+
+            print("[OTA] Download complete: \(downloaded) ok, \(failed) failed")
+
+            // Verify index.html exists
+            let indexFile = tempDir.appendingPathComponent("index.html")
+            guard FileManager.default.fileExists(atPath: indexFile.path),
+                  (try? Data(contentsOf: indexFile))?.isEmpty == false else {
+                throw OTAError.missingIndex
+            }
+
+            // Atomically swap: delete old update dir and rename temp → update
+            try? FileManager.default.removeItem(at: updateDir)
+            do {
+                try FileManager.default.moveItem(at: tempDir, to: updateDir)
+            } catch {
+                throw OTAError.renameFailed
+            }
+
+            print("[OTA] OTA update downloaded to: \(updateDir.path)")
+            return updateDir.path
+
+        } catch {
+            print("[OTA] Download failed: \(error.localizedDescription)")
+            try? FileManager.default.removeItem(at: tempDir)
+            throw error
         }
     }
 
@@ -219,7 +228,8 @@ class OTADownloadManager {
 
     // MARK: - I/O helpers
 
-    private static func downloadData(from urlString: String) throws -> Data {
+    /// Downloads data with a size limit appropriate for manifests, HTML, and CSS.
+    private static func downloadData(from urlString: String) async throws -> Data {
         guard let url = URL(string: urlString) else {
             throw OTAError.invalidURL
         }
@@ -228,39 +238,39 @@ class OTADownloadManager {
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
 
-        var responseData: Data?
-        var responseError: Error?
+        let (data, response) = try await URLSession.shared.data(for: request)
 
-        let semaphore = DispatchSemaphore(value: 0)
-        let task = URLSession.shared.dataTask(with: request) { data, response, error in
-            if let error = error {
-                responseError = error
-            } else if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
-                responseError = OTAError.httpError(httpResponse.statusCode, urlString)
-            } else if let data = data {
-                if data.count > maxStringDownloadBytes {
-                    responseError = OTAError.downloadFailed("Response exceeds \(maxStringDownloadBytes) bytes")
-                } else {
-                    responseData = data
-                }
-            }
-            semaphore.signal()
+        if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
+            throw OTAError.httpError(httpResponse.statusCode, urlString)
         }
-        task.resume()
-        semaphore.wait()
 
-        if let error = responseError { throw error }
-        guard let data = responseData else {
-            throw OTAError.downloadFailed("No data received from \(urlString)")
+        if data.count > maxStringDownloadBytes {
+            throw OTAError.downloadFailed("Response exceeds \(maxStringDownloadBytes) bytes for \(urlString)")
         }
+
         return data
     }
 
-    private static func downloadToFile(from urlString: String, to target: URL) throws {
-        let data = try downloadData(from: urlString)
-        if data.count > maxFileDownloadBytes {
-            throw OTAError.downloadFailed("File exceeds \(maxFileDownloadBytes) bytes")
+    /// Downloads a file with the larger size limit for binary assets (JS bundles, WASM, images).
+    private static func downloadToFile(from urlString: String, to target: URL) async throws {
+        guard let url = URL(string: urlString) else {
+            throw OTAError.invalidURL
         }
+
+        var request = URLRequest(url: url, timeoutInterval: connectTimeoutSecs)
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
+            throw OTAError.httpError(httpResponse.statusCode, urlString)
+        }
+
+        if data.count > maxFileDownloadBytes {
+            throw OTAError.downloadFailed("File exceeds \(maxFileDownloadBytes) bytes for \(urlString)")
+        }
+
         try data.write(to: target)
     }
 }
