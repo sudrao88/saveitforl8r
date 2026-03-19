@@ -1,5 +1,6 @@
 import UIKit
 import Capacitor
+import WebKit
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -14,7 +15,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     // Preference keys (must match useNativeOTA.ts)
     private let prefUseRemote = "ota_use_remote"
-    private let prefServerUrl = "ota_server_url"
 
     // App Group for Share Extension
     private let appGroupId = "group.com.saveitforl8r.app"
@@ -23,42 +23,135 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     // Flag to dispatch share data once WebView is ready
     private var pendingShareDispatch = false
 
+    // Whether bridge setup (IOSBridge + OTA) is complete
+    private var bridgeSetUp = false
+
+    // Retry counter for bridge setup
+    private var bridgeSetupRetries = 0
+    private let maxBridgeSetupRetries = 30  // 30 * 0.3s = 9 seconds max
+
+    // Convenience accessor for the Capacitor bridge view controller
+    private var bridgeViewController: CAPBridgeViewController? {
+        window?.rootViewController as? CAPBridgeViewController
+    }
+
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Configure server URL for OTA updates
-        configureServerUrl()
+        // Wait for the Capacitor bridge to initialize, then set up OTA + IOSBridge.
+        // Both require the bridge to be ready, so we use a single retry loop.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            self?.setupBridge()
+        }
         return true
     }
 
-    /**
-     * Configures the WebView to load from either bundled assets or remote URL.
-     * Reads the OTA preference set by the React app via Capacitor Preferences.
-     */
-    private func configureServerUrl() {
-        let defaults = UserDefaults.standard
+    // MARK: - Bridge Setup (OTA + IOSBridge)
 
-        // Capacitor Preferences stores values with a prefix
+    /// Waits for the Capacitor bridge to be ready, then:
+    /// 1. Applies any previously downloaded OTA update via setServerBasePath
+    /// 2. Registers the IOSBridge WKScriptMessageHandler for JS → native calls
+    private func setupBridge() {
+        guard !bridgeSetUp else { return }
+
+        guard let vc = bridgeViewController,
+              let bridge = vc.bridge,
+              let webView = bridge.webView else {
+            bridgeSetupRetries += 1
+            if bridgeSetupRetries >= maxBridgeSetupRetries {
+                print("[OTA] Bridge setup timed out after \(bridgeSetupRetries) retries")
+                return
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                self?.setupBridge()
+            }
+            return
+        }
+
+        // Register IOSBridge message handler (mirrors Android's AndroidBridge)
+        webView.configuration.userContentController.add(
+            IOSBridgeHandler(appDelegate: self),
+            name: "IOSBridge"
+        )
+        bridgeSetUp = true
+        print("[OTA] IOSBridge registered")
+
+        // Apply downloaded OTA update if available
+        applyDownloadedUpdateIfExists(vc: vc)
+    }
+
+    // MARK: - OTA Update Management
+
+    /// If an OTA update was previously downloaded, tell Capacitor's local server
+    /// to serve files from the download directory instead of the bundled assets.
+    /// Uses setServerBasePath which keeps the capacitor://localhost origin —
+    /// preserving IndexedDB, localStorage, and Capacitor plugins.
+    private func applyDownloadedUpdateIfExists(vc: CAPBridgeViewController) {
+        let defaults = UserDefaults.standard
         let useRemote = defaults.string(forKey: prefsPrefix + prefUseRemote) ?? "false"
 
-        if useRemote == "true" {
-            let serverUrl = defaults.string(forKey: prefsPrefix + prefServerUrl) ?? remoteUrl
+        guard useRemote == "true" else {
+            print("[OTA] Using bundled assets (OTA not active)")
+            return
+        }
 
-            // Validate the URL starts with the expected production domain.
-            // An attacker who gains XSS could modify UserDefaults to point to a
-            // malicious server, so we enforce an allowlist here.
-            if serverUrl == remoteUrl || serverUrl.hasPrefix(remoteUrl + "/") {
-                defaults.set(serverUrl, forKey: "serverUrl")
-                print("[OTA] Loading from remote URL: \(serverUrl)")
-            } else {
-                print("[OTA] Blocked invalid OTA server URL: \(serverUrl)")
-                // Fall back to default remote URL
-                defaults.set(remoteUrl, forKey: "serverUrl")
-            }
+        if let updatePath = OTADownloadManager.getExistingUpdatePath() {
+            print("[OTA] Applying previously downloaded OTA update from: \(updatePath)")
+            vc.setServerBasePath(path: updatePath)
         } else {
-            // Remove any previously set server URL to use bundled assets
-            defaults.removeObject(forKey: "serverUrl")
-            print("[OTA] Loading from bundled assets")
+            print("[OTA] OTA preference is true but no downloaded update found — resetting")
+            defaults.set("false", forKey: prefsPrefix + prefUseRemote)
         }
     }
+
+    /// Called by IOSBridge when JS requests an OTA update download.
+    func handleEnableRemoteMode() {
+        print("[OTA] Starting OTA download from: \(remoteUrl)")
+
+        OTADownloadManager.downloadUpdate(remoteUrl: remoteUrl) { [weak self] result in
+            guard let self = self else { return }
+
+            switch result {
+            case .success(let updatePath):
+                print("[OTA] Download complete, applying update from: \(updatePath)")
+
+                let defaults = UserDefaults.standard
+                defaults.set("true", forKey: self.prefsPrefix + self.prefUseRemote)
+
+                guard let vc = self.bridgeViewController else {
+                    print("[OTA] Bridge view controller not available for setServerBasePath")
+                    return
+                }
+                vc.setServerBasePath(path: updatePath)
+
+            case .failure(let error):
+                print("[OTA] Download failed: \(error.localizedDescription)")
+                guard let bridge = self.bridgeViewController?.bridge,
+                      let errorData = error.localizedDescription.data(using: .utf8) else { return }
+
+                let base64Error = errorData.base64EncodedString()
+                let js = "window.dispatchEvent(new CustomEvent('ota-error', { detail: atob('\(base64Error)') }));"
+                bridge.webView?.evaluateJavaScript(js, completionHandler: nil)
+            }
+        }
+    }
+
+    /// Called by IOSBridge when JS requests switching back to bundled assets.
+    func handleDisableRemoteMode() {
+        print("[OTA] Disabling remote mode")
+
+        let defaults = UserDefaults.standard
+        defaults.set("false", forKey: prefsPrefix + prefUseRemote)
+
+        // Delete downloaded assets
+        OTADownloadManager.clearUpdate()
+
+        // Remove any legacy serverUrl
+        defaults.removeObject(forKey: "serverUrl")
+
+        // Reload with bundled assets
+        bridgeViewController?.setServerBasePath(path: "")
+    }
+
+    // MARK: - Lifecycle
 
     func applicationWillResignActive(_ application: UIApplication) {
     }
@@ -81,6 +174,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func applicationWillTerminate(_ application: UIApplication) {
     }
+
+    // MARK: - URL Handling
 
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
         // Handle share extension URL scheme
@@ -113,7 +208,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         print("[Share] Dispatching share data to JS: \(jsonString.prefix(100))...")
 
         // Dispatch to WebView via Capacitor bridge
-        guard let bridge = (window?.rootViewController as? CAPBridgeViewController)?.bridge else {
+        guard let bridge = bridgeViewController?.bridge else {
             print("[Share] Bridge not available")
             return
         }
@@ -132,6 +227,35 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             } else {
                 print("[Share] Share data dispatched to JS successfully")
             }
+        }
+    }
+}
+
+// MARK: - IOSBridge WKScriptMessageHandler
+
+/// Handles messages from JS via window.webkit.messageHandlers.IOSBridge.postMessage()
+/// Mirrors Android's AndroidBridge JavascriptInterface.
+class IOSBridgeHandler: NSObject, WKScriptMessageHandler {
+    private weak var appDelegate: AppDelegate?
+
+    init(appDelegate: AppDelegate) {
+        self.appDelegate = appDelegate
+    }
+
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard let body = message.body as? [String: Any],
+              let action = body["action"] as? String else {
+            print("[IOSBridge] Invalid message format")
+            return
+        }
+
+        switch action {
+        case "enableRemoteMode":
+            appDelegate?.handleEnableRemoteMode()
+        case "disableRemoteMode":
+            appDelegate?.handleDisableRemoteMode()
+        default:
+            print("[IOSBridge] Unknown action: \(action)")
         }
     }
 }
