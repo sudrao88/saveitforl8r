@@ -47,8 +47,15 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ dataUri, fileName }) => {
         setLoadingProgress(0);
         setPages([]);
 
-        const response = await fetch(dataUri);
-        const arrayBuffer = await response.arrayBuffer();
+        // Decode base64 data URI directly instead of fetch() — Chrome
+        // rejects fetch() on large data URIs, causing "Failed to load PDF".
+        const base64 = dataUri.substring(dataUri.indexOf(',') + 1);
+        const binaryStr = atob(base64);
+        const bytes = new Uint8Array(binaryStr.length);
+        for (let i = 0; i < binaryStr.length; i++) {
+          bytes[i] = binaryStr.charCodeAt(i);
+        }
+        const arrayBuffer = bytes.buffer;
         const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
 
         if (cancelled) return;
