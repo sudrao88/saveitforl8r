@@ -26,8 +26,10 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
-    // Splash screen timeout: dismiss even if JS never signals ready
-    private static final int SPLASH_TIMEOUT_MS = 5000;
+    // Splash screen timeout: dismiss even if JS never signals ready.
+    // Kept short — the React app calls signalAppReady() on first render,
+    // so this is only a safety net for unexpected failures.
+    private static final int SPLASH_TIMEOUT_MS = 800;
 
     // Remote URL for OTA live updates
     private static final String REMOTE_URL = "https://saveitforl8r.com";
