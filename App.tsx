@@ -759,7 +759,7 @@ const AppContent: React.FC = () => {
           />
 
           {availableTypes.length > 0 && (
-            <div className="sticky z-(--z-dropdown) bg-(--color-surface-base) border-b border-gray-800/50 will-change-transform" style={{ top: `${topNavHeight}px` }}>
+            <div className="sticky z-(--z-dropdown) bg-(--color-surface-base) backdrop-blur-md border-b border-gray-800/50" style={{ top: `${topNavHeight}px` }}>
               <FilterBar
                 availableTypes={availableTypes}
                 filterType={filterType}
