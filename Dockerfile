@@ -25,7 +25,7 @@ FROM nginx:alpine
 # application/octet-stream.  We inject it into the existing types {} block
 # rather than using a server-level `types {}` override (which would replace
 # ALL inherited MIME mappings).
-RUN sed -i 's|application/javascript\s*js;|application/javascript js mjs;|' /etc/nginx/mime.types
+RUN sed -i 's|application/javascript[[:space:]]*js;|application/javascript js mjs;|' /etc/nginx/mime.types
 # Copy build output to the root html folder
 COPY --from=build /app/dist /usr/share/nginx/html
 # Copy custom nginx config
