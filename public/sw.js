@@ -450,7 +450,7 @@ self.addEventListener('fetch', (event) => {
           const pathname = new URL(event.request.url).pathname;
           const contentType = pathname.endsWith('.css')
             ? 'text/css'
-            : pathname.endsWith('.js')
+            : (pathname.endsWith('.js') || pathname.endsWith('.mjs'))
               ? 'application/javascript'
               : 'text/plain';
           return new Response('/* offline — asset unavailable */', {
