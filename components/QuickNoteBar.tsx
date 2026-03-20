@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback, forwardRef, useImperat
 import { Paperclip, Hash, Type, Maximize2, Plus, X, FileText, Loader2, CheckSquare, Check } from 'lucide-react';
 import { marked } from 'marked';
 import { Attachment, QuickNoteState } from '../types';
-import { escapeHtml, looksLikeMarkdown, parseChecklistMarkdown, sanitizePastedHtml, hasRichFormatting, extractHashtags, mergeTagsWithHashtags, containsUrl, linkifyUrls } from '../utils/editorUtils';
+import { escapeHtml, looksLikeMarkdown, parseChecklistMarkdown, sanitizePastedHtml, hasRichFormatting, extractHashtags, mergeTagsWithHashtags, containsUrl, linkifyUrls, handleEditorKeyDown, checkActiveFormats, execFormatCommand } from '../utils/editorUtils';
 import { processFileInputs } from '../utils/attachmentUtils';
 import { triggerHaptic } from '../services/platform';
 import FormattingToolbar from './FormattingToolbar';
@@ -89,29 +89,13 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
   }, []);
 
   const checkFormats = useCallback(() => {
-    const formats: string[] = [];
-    if (document.queryCommandState('bold')) formats.push('bold');
-    if (document.queryCommandState('italic')) formats.push('italic');
-    if (document.queryCommandState('underline')) formats.push('underline');
-
-    const block = document.queryCommandValue('formatBlock');
-    if (block === 'h1') formats.push('H1');
-    if (block === 'h2') formats.push('H2');
-
-    setActiveFormats(formats);
+    if (editorRef.current) {
+      setActiveFormats(checkActiveFormats(editorRef.current));
+    }
   }, []);
 
   const execFormat = useCallback((command: string, value?: string) => {
-    if (command === 'formatBlock') {
-      const currentBlock = document.queryCommandValue('formatBlock');
-      if (currentBlock.toLowerCase() === value?.toLowerCase()) {
-        document.execCommand('formatBlock', false, 'p');
-      } else {
-        document.execCommand(command, false, value);
-      }
-    } else {
-      document.execCommand(command, false, value);
-    }
+    execFormatCommand(command, value);
     editorRef.current?.focus();
     checkFormats();
   }, [checkFormats]);
@@ -284,8 +268,13 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       handleSave();
+      return;
     }
-  }, [handleSave]);
+    // Rich text auto-formatting
+    if (editorRef.current) {
+      handleEditorKeyDown(e, editorRef.current, checkFormats);
+    }
+  }, [handleSave, checkFormats]);
 
   const toggleChecklistMode = useCallback(() => {
     if (isChecklistMode) {
@@ -438,7 +427,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
                 contentEditable
                 tabIndex={0}
                 role="textbox"
-                className="w-full min-h-[1.5em] max-h-[6em] overflow-y-auto bg-gray-800 text-base text-white rounded-xl px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-blue-500/40 border border-gray-700 focus:border-gray-600 transition-colors prose prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-li:my-0 [&_h1]:text-xl [&_h1]:font-bold [&_h1]:my-1 [&_h2]:text-lg [&_h2]:font-bold [&_h2]:my-1 text-left touch-manipulation"
+                className="w-full min-h-[1.5em] max-h-[6em] overflow-y-auto bg-gray-800 text-base text-white rounded-xl px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-blue-500/40 border border-gray-700 focus:border-gray-600 transition-colors prose prose-invert max-w-none rich-editor rich-editor--compact text-left touch-manipulation"
                 dir="ltr"
                 onClick={handleEditorTap}
                 onKeyUp={checkFormats}

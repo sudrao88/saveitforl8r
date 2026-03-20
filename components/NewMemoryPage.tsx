@@ -4,7 +4,7 @@ import { marked } from 'marked';
 import { Attachment, Memory } from '../types';
 import { isNative } from '../services/platform';
 import { Keyboard } from '@capacitor/keyboard';
-import { escapeHtml, looksLikeMarkdown, parseChecklistMarkdown, sanitizePastedHtml, hasRichFormatting, extractHashtags, mergeTagsWithHashtags, containsUrl, linkifyUrls } from '../utils/editorUtils';
+import { escapeHtml, looksLikeMarkdown, parseChecklistMarkdown, sanitizePastedHtml, hasRichFormatting, extractHashtags, mergeTagsWithHashtags, containsUrl, linkifyUrls, handleEditorKeyDown, checkActiveFormats, execFormatCommand } from '../utils/editorUtils';
 import { processFileInputs } from '../utils/attachmentUtils';
 import FormattingToolbar from './FormattingToolbar';
 import TagInput from './TagInput';
@@ -271,33 +271,14 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
 
   // Rich Text Formatting
   const execFormat = useCallback((command: string, value?: string) => {
-      if (command === 'formatBlock') {
-          const currentBlock = document.queryCommandValue('formatBlock');
-          if (currentBlock.toLowerCase() === value?.toLowerCase()) {
-              document.execCommand('formatBlock', false, 'p');
-          } else {
-              document.execCommand(command, false, value);
-          }
-      } else {
-          document.execCommand(command, false, value);
-      }
+      execFormatCommand(command, value);
       editorRef.current?.focus();
       checkFormats();
   }, []);
 
   const checkFormats = () => {
-      const formats: string[] = [];
-      if (document.queryCommandState('bold')) formats.push('bold');
-      if (document.queryCommandState('italic')) formats.push('italic');
-      if (document.queryCommandState('underline')) formats.push('underline');
-      
-      const block = document.queryCommandValue('formatBlock');
-      if (block === 'h1') formats.push('H1');
-      if (block === 'h2') formats.push('H2');
-      
-      setActiveFormats(formats);
-      
       if (editorRef.current) {
+          setActiveFormats(checkActiveFormats(editorRef.current));
           setIsEmpty(!editorRef.current.innerText.trim());
       }
   };
@@ -527,11 +508,14 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                             ref={editorRef}
                             contentEditable
                             className="w-full flex-1 min-h-[200px] bg-transparent text-lg text-white focus:outline-none prose prose-invert max-w-none
-                            prose-p:my-2 prose-ul:my-2 prose-li:my-0
-                            [&_h1]:text-3xl [&_h1]:font-bold [&_h1]:mt-4 [&_h1]:mb-2 [&_h1]:text-white
-                            [&_h2]:text-2xl [&_h2]:font-bold [&_h2]:mt-3 [&_h2]:mb-2 [&_h2]:text-gray-100
+                            rich-editor
                             text-left touch-manipulation"
                             dir="ltr"
+                            onKeyDown={(e) => {
+                                if (editorRef.current) {
+                                    handleEditorKeyDown(e, editorRef.current, checkFormats);
+                                }
+                            }}
                             onKeyUp={checkFormats}
                             onMouseUp={checkFormats}
                             onInput={() => setIsEmpty(!editorRef.current?.innerText.trim())}

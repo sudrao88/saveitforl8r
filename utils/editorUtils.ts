@@ -158,3 +158,467 @@ export const hasRichFormatting = (html: string): boolean => {
         'b, strong, i, em, u, h1, h2, h3, h4, h5, h6, ul, ol, li, a, blockquote, pre, code, table, s, strike, del'
     ).length > 0;
 };
+
+// ─── Rich Text Editor Utilities ───────────────────────────────────────────────
+
+/** Find the closest ancestor matching a tag name, stopping at the editor root. */
+const closestBlock = (node: Node | null, editorEl: HTMLElement): HTMLElement | null => {
+    let el = node?.nodeType === Node.TEXT_NODE ? node.parentElement : node as HTMLElement | null;
+    while (el && el !== editorEl) {
+        if (['P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'LI', 'BLOCKQUOTE', 'PRE', 'DIV'].includes(el.tagName)) {
+            return el;
+        }
+        el = el.parentElement;
+    }
+    return null;
+};
+
+/** Check if the cursor is inside a specific ancestor tag. */
+const isInsideTag = (node: Node | null, tagName: string, editorEl: HTMLElement): boolean => {
+    let el = node?.nodeType === Node.TEXT_NODE ? node.parentElement : node as HTMLElement | null;
+    while (el && el !== editorEl) {
+        if (el.tagName === tagName) return true;
+        el = el.parentElement;
+    }
+    return false;
+};
+
+/** Get the text content before the cursor in the current text node. */
+const getTextBeforeCursor = (selection: Selection): string => {
+    const node = selection.anchorNode;
+    if (node?.nodeType !== Node.TEXT_NODE) return '';
+    return node.textContent?.slice(0, selection.anchorOffset) || '';
+};
+
+/** Check if the cursor is at the start of a block element (only whitespace/markers before cursor). */
+const isAtBlockStart = (selection: Selection, editorEl: HTMLElement): boolean => {
+    const node = selection.anchorNode;
+    if (!node) return false;
+
+    const block = closestBlock(node, editorEl);
+    if (!block) return true; // Direct child of editor = start of block
+
+    // Check if there's only the current text node before cursor in this block
+    const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+    let textNode = walker.nextNode();
+    while (textNode && textNode !== node) {
+        if (textNode.textContent?.trim()) return false;
+        textNode = walker.nextNode();
+    }
+    return true;
+};
+
+/**
+ * Replace the text before the cursor (the markdown trigger chars) with empty string
+ * and execute the given formatting command.
+ */
+const replaceTextAndFormat = (
+    node: Node,
+    offset: number,
+    charsToRemove: number,
+    command: string,
+    value?: string
+) => {
+    const textNode = node as Text;
+    const before = textNode.textContent?.slice(0, offset - charsToRemove) || '';
+    const after = textNode.textContent?.slice(offset) || '';
+    textNode.textContent = before + after;
+
+    // Place cursor at the adjusted position
+    const sel = window.getSelection();
+    if (sel) {
+        const range = document.createRange();
+        range.setStart(textNode, before.length);
+        range.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(range);
+    }
+
+    document.execCommand(command, false, value);
+};
+
+/** Try to apply inline markdown formatting (e.g. **bold**, *italic*, `code`, ~~strike~~). */
+const tryInlineMarkdown = (e: KeyboardEvent): boolean => {
+    if (e.key !== ' ' && e.key !== 'Enter') return false;
+
+    const sel = window.getSelection();
+    if (!sel || !sel.anchorNode || sel.anchorNode.nodeType !== Node.TEXT_NODE) return false;
+
+    const text = sel.anchorNode.textContent || '';
+    const offset = sel.anchorOffset;
+    const before = text.slice(0, offset);
+
+    // Patterns: **text**, *text*, ~~text~~, `text`
+    const patterns: { regex: RegExp; tag: string; wrapTag: string }[] = [
+        { regex: /\*\*(.+?)\*\*$/, tag: 'bold', wrapTag: 'strong' },
+        { regex: /(?<!\*)\*(?!\*)(.+?)(?<!\*)\*$/, tag: 'italic', wrapTag: 'em' },
+        { regex: /~~(.+?)~~$/, tag: 'strikethrough', wrapTag: 's' },
+        { regex: /`(.+?)`$/, tag: 'code', wrapTag: 'code' },
+    ];
+
+    for (const { regex, wrapTag } of patterns) {
+        const match = before.match(regex);
+        if (match) {
+            e.preventDefault();
+            const fullMatch = match[0];
+            const innerText = match[1];
+            const textNode = sel.anchorNode as Text;
+
+            // Remove the markdown syntax and wrap content in the appropriate tag
+            const startIdx = offset - fullMatch.length;
+            const beforeText = text.slice(0, startIdx);
+            const afterText = text.slice(offset);
+
+            // Build replacement
+            const parent = textNode.parentNode!;
+            const frag = document.createDocumentFragment();
+
+            if (beforeText) frag.appendChild(document.createTextNode(beforeText));
+
+            const wrapper = document.createElement(wrapTag);
+            wrapper.textContent = innerText;
+            frag.appendChild(wrapper);
+
+            // Add a space after (since user pressed space) and position cursor there
+            const spaceNode = document.createTextNode(e.key === ' ' ? '\u00A0' : '');
+            if (afterText) spaceNode.textContent = (e.key === ' ' ? '\u00A0' : '') + afterText;
+            frag.appendChild(spaceNode);
+
+            parent.replaceChild(frag, textNode);
+
+            // Place cursor after the space
+            const range = document.createRange();
+            range.setStart(spaceNode, e.key === ' ' ? 1 : 0);
+            range.collapse(true);
+            sel.removeAllRanges();
+            sel.addRange(range);
+
+            return true;
+        }
+    }
+    return false;
+};
+
+/**
+ * Handle keydown events in the rich text editor for markdown auto-formatting,
+ * list behavior, and keyboard shortcuts.
+ *
+ * Returns true if the event was handled (and preventDefault was called).
+ */
+export const handleEditorKeyDown = (
+    e: KeyboardEvent | React.KeyboardEvent,
+    editorEl: HTMLElement,
+    checkFormats: () => void
+): boolean => {
+    const nativeEvent = 'nativeEvent' in e ? e.nativeEvent : e;
+    const sel = window.getSelection();
+    const mod = e.metaKey || e.ctrlKey;
+
+    // ── Keyboard shortcuts ──────────────────────────────────────────────────
+    if (mod && e.shiftKey) {
+        let handled = true;
+        switch (e.key.toLowerCase()) {
+            case 's':
+                document.execCommand('strikeThrough');
+                break;
+            case '7':
+                document.execCommand('insertOrderedList');
+                break;
+            case '8':
+                document.execCommand('insertUnorderedList');
+                break;
+            case '9':
+                document.execCommand('formatBlock', false, 'BLOCKQUOTE');
+                break;
+            default:
+                handled = false;
+        }
+        if (handled) {
+            e.preventDefault();
+            checkFormats();
+            return true;
+        }
+    }
+
+    if (mod && e.key.toLowerCase() === 'e') {
+        e.preventDefault();
+        // Toggle inline code: wrap selection in <code> or remove it
+        const selection = window.getSelection();
+        if (selection && selection.rangeCount > 0) {
+            const range = selection.getRangeAt(0);
+            const parentCode = (range.commonAncestorContainer.nodeType === Node.TEXT_NODE
+                ? range.commonAncestorContainer.parentElement
+                : range.commonAncestorContainer as HTMLElement)?.closest('code');
+
+            if (parentCode) {
+                // Unwrap code
+                const text = parentCode.textContent || '';
+                const textNode = document.createTextNode(text);
+                parentCode.parentNode?.replaceChild(textNode, parentCode);
+                range.selectNodeContents(textNode);
+                selection.removeAllRanges();
+                selection.addRange(range);
+            } else if (!range.collapsed) {
+                // Wrap selection in code
+                const code = document.createElement('code');
+                range.surroundContents(code);
+                range.selectNodeContents(code);
+                selection.removeAllRanges();
+                selection.addRange(range);
+            }
+        }
+        checkFormats();
+        return true;
+    }
+
+    // ── Tab for list indentation ────────────────────────────────────────────
+    if (e.key === 'Tab' && sel?.anchorNode) {
+        if (isInsideTag(sel.anchorNode, 'LI', editorEl)) {
+            e.preventDefault();
+            if (e.shiftKey) {
+                document.execCommand('outdent');
+            } else {
+                document.execCommand('indent');
+            }
+            checkFormats();
+            return true;
+        }
+    }
+
+    // ── Enter key handling ──────────────────────────────────────────────────
+    if (e.key === 'Enter' && !mod && !e.shiftKey) {
+        if (!sel?.anchorNode) return false;
+
+        // --- Horizontal rule: typing "---" then Enter ---
+        const textBefore = getTextBeforeCursor(sel);
+        if (textBefore === '---' && isAtBlockStart(sel, editorEl)) {
+            e.preventDefault();
+            const textNode = sel.anchorNode as Text;
+            const after = textNode.textContent?.slice(sel.anchorOffset) || '';
+            textNode.textContent = after || '';
+
+            // Insert HR
+            document.execCommand('insertHorizontalRule');
+            checkFormats();
+            return true;
+        }
+
+        // --- Empty list item: exit list ---
+        const li = (sel.anchorNode.nodeType === Node.TEXT_NODE
+            ? sel.anchorNode.parentElement
+            : sel.anchorNode as HTMLElement)?.closest?.('li');
+
+        if (li && !li.textContent?.trim()) {
+            e.preventDefault();
+            const list = li.parentElement;
+            if (list && (list.tagName === 'UL' || list.tagName === 'OL')) {
+                // If this is the only item, remove the whole list
+                if (list.children.length <= 1) {
+                    const p = document.createElement('p');
+                    p.appendChild(document.createElement('br'));
+                    list.parentNode?.replaceChild(p, list);
+
+                    const range = document.createRange();
+                    range.setStart(p, 0);
+                    range.collapse(true);
+                    sel.removeAllRanges();
+                    sel.addRange(range);
+                } else {
+                    // Remove the empty li and insert a paragraph after the list
+                    list.removeChild(li);
+                    const p = document.createElement('p');
+                    p.appendChild(document.createElement('br'));
+                    list.parentNode?.insertBefore(p, list.nextSibling);
+
+                    const range = document.createRange();
+                    range.setStart(p, 0);
+                    range.collapse(true);
+                    sel.removeAllRanges();
+                    sel.addRange(range);
+                }
+            }
+            checkFormats();
+            return true;
+        }
+
+        // --- Exit blockquote on double Enter (empty line in blockquote) ---
+        const bq = (sel.anchorNode.nodeType === Node.TEXT_NODE
+            ? sel.anchorNode.parentElement
+            : sel.anchorNode as HTMLElement)?.closest?.('blockquote');
+
+        if (bq) {
+            const block = closestBlock(sel.anchorNode, editorEl);
+            if (block && !block.textContent?.trim() && block.parentElement === bq) {
+                e.preventDefault();
+                bq.removeChild(block);
+                const p = document.createElement('p');
+                p.appendChild(document.createElement('br'));
+                bq.parentNode?.insertBefore(p, bq.nextSibling);
+                if (!bq.children.length) bq.remove();
+
+                const range = document.createRange();
+                range.setStart(p, 0);
+                range.collapse(true);
+                sel.removeAllRanges();
+                sel.addRange(range);
+                checkFormats();
+                return true;
+            }
+        }
+    }
+
+    // ── Space key: block-level markdown shortcuts ───────────────────────────
+    if (e.key === ' ' && sel?.anchorNode) {
+        const textBefore = getTextBeforeCursor(sel);
+
+        // Only trigger if at block start
+        if (isAtBlockStart(sel, editorEl)) {
+            let handled = false;
+
+            if (textBefore === '-' || textBefore === '*' || textBefore === '+') {
+                // Bullet list
+                e.preventDefault();
+                replaceTextAndFormat(sel.anchorNode, sel.anchorOffset, textBefore.length, 'insertUnorderedList');
+                handled = true;
+            } else if (/^\d+\.$/.test(textBefore)) {
+                // Numbered list
+                e.preventDefault();
+                replaceTextAndFormat(sel.anchorNode, sel.anchorOffset, textBefore.length, 'insertOrderedList');
+                handled = true;
+            } else if (textBefore === '#') {
+                e.preventDefault();
+                replaceTextAndFormat(sel.anchorNode, sel.anchorOffset, 1, 'formatBlock', 'H1');
+                handled = true;
+            } else if (textBefore === '##') {
+                e.preventDefault();
+                replaceTextAndFormat(sel.anchorNode, sel.anchorOffset, 2, 'formatBlock', 'H2');
+                handled = true;
+            } else if (textBefore === '>') {
+                e.preventDefault();
+                replaceTextAndFormat(sel.anchorNode, sel.anchorOffset, 1, 'formatBlock', 'BLOCKQUOTE');
+                handled = true;
+            }
+
+            if (handled) {
+                checkFormats();
+                return true;
+            }
+        }
+
+        // Inline markdown (works anywhere)
+        if (tryInlineMarkdown(nativeEvent)) {
+            checkFormats();
+            return true;
+        }
+    }
+
+    // ── Arrow key navigation: escape stuck positions in empty blocks ────────
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        if (!sel?.anchorNode) return false;
+        const block = closestBlock(sel.anchorNode, editorEl);
+        if (!block) return false;
+
+        if (e.key === 'ArrowDown') {
+            // If at last block and it's an empty block element, ensure we can move past it
+            const next = block.nextElementSibling || block.parentElement?.nextElementSibling;
+            if (!next && block.parentElement !== editorEl) {
+                // At end of a container (list, blockquote) — create a paragraph after
+                const container = block.closest('ul, ol, blockquote');
+                if (container && !container.nextElementSibling) {
+                    e.preventDefault();
+                    const p = document.createElement('p');
+                    p.appendChild(document.createElement('br'));
+                    container.parentNode?.insertBefore(p, container.nextSibling);
+
+                    const range = document.createRange();
+                    range.setStart(p, 0);
+                    range.collapse(true);
+                    sel.removeAllRanges();
+                    sel.addRange(range);
+                    return true;
+                }
+            }
+        }
+    }
+
+    return false;
+};
+
+/**
+ * Detect active formatting at the current cursor position.
+ * Returns an array of format identifiers matching FormattingToolbar expectations.
+ */
+export const checkActiveFormats = (editorEl: HTMLElement): string[] => {
+    const formats: string[] = [];
+
+    if (document.queryCommandState('bold')) formats.push('bold');
+    if (document.queryCommandState('italic')) formats.push('italic');
+    if (document.queryCommandState('underline')) formats.push('underline');
+    if (document.queryCommandState('strikeThrough')) formats.push('strikethrough');
+
+    const block = document.queryCommandValue('formatBlock');
+    if (block === 'h1') formats.push('H1');
+    if (block === 'h2') formats.push('H2');
+
+    // Walk up from cursor to detect list/blockquote/code context
+    const sel = window.getSelection();
+    if (sel?.anchorNode) {
+        let el = sel.anchorNode.nodeType === Node.TEXT_NODE
+            ? sel.anchorNode.parentElement
+            : sel.anchorNode as HTMLElement;
+        while (el && el !== editorEl) {
+            if (el.tagName === 'UL' && !el.classList.contains('checklist')) formats.push('UL');
+            if (el.tagName === 'OL') formats.push('OL');
+            if (el.tagName === 'BLOCKQUOTE') formats.push('blockquote');
+            if (el.tagName === 'CODE') formats.push('code');
+            el = el.parentElement!;
+        }
+    }
+
+    return formats;
+};
+
+/**
+ * Execute a formatting command, handling toggling for block formats.
+ */
+export const execFormatCommand = (command: string, value?: string) => {
+    if (command === 'formatBlock') {
+        const currentBlock = document.queryCommandValue('formatBlock');
+        if (currentBlock.toLowerCase() === value?.toLowerCase()) {
+            document.execCommand('formatBlock', false, 'p');
+        } else {
+            document.execCommand(command, false, value);
+        }
+    } else if (command === 'insertUnorderedList' || command === 'insertOrderedList') {
+        // execCommand toggles lists natively
+        document.execCommand(command);
+    } else if (command === 'insertHorizontalRule') {
+        document.execCommand('insertHorizontalRule');
+    } else if (command === 'code') {
+        // Toggle inline code
+        const sel = window.getSelection();
+        if (sel && sel.rangeCount > 0) {
+            const range = sel.getRangeAt(0);
+            const parentCode = (range.commonAncestorContainer.nodeType === Node.TEXT_NODE
+                ? range.commonAncestorContainer.parentElement
+                : range.commonAncestorContainer as HTMLElement)?.closest('code');
+
+            if (parentCode) {
+                const text = parentCode.textContent || '';
+                const textNode = document.createTextNode(text);
+                parentCode.parentNode?.replaceChild(textNode, parentCode);
+                range.selectNodeContents(textNode);
+                sel.removeAllRanges();
+                sel.addRange(range);
+            } else if (!range.collapsed) {
+                const code = document.createElement('code');
+                range.surroundContents(code);
+                range.selectNodeContents(code);
+                sel.removeAllRanges();
+                sel.addRange(range);
+            }
+        }
+    } else {
+        document.execCommand(command, false, value);
+    }
+};
