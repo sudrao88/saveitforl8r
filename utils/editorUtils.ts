@@ -238,9 +238,10 @@ const replaceTextAndFormat = (
     document.execCommand(command, false, value);
 };
 
-/** Try to apply inline markdown formatting (e.g. **bold**, *italic*, `code`, ~~strike~~). */
+/** Try to apply inline markdown formatting (e.g. **bold**, *italic*, `code`, ~~strike~~).
+ *  Only called on Space key — converts closing delimiters into formatted elements. */
 const tryInlineMarkdown = (e: KeyboardEvent): boolean => {
-    if (e.key !== ' ' && e.key !== 'Enter') return false;
+    if (e.key !== ' ') return false;
 
     const sel = window.getSelection();
     if (!sel || !sel.anchorNode || sel.anchorNode.nodeType !== Node.TEXT_NODE) return false;
@@ -250,11 +251,12 @@ const tryInlineMarkdown = (e: KeyboardEvent): boolean => {
     const before = text.slice(0, offset);
 
     // Patterns: **text**, *text*, ~~text~~, `text`
-    const patterns: { regex: RegExp; tag: string; wrapTag: string }[] = [
-        { regex: /\*\*(.+?)\*\*$/, tag: 'bold', wrapTag: 'strong' },
-        { regex: /(?<!\*)\*(?!\*)(.+?)(?<!\*)\*$/, tag: 'italic', wrapTag: 'em' },
-        { regex: /~~(.+?)~~$/, tag: 'strikethrough', wrapTag: 's' },
-        { regex: /`(.+?)`$/, tag: 'code', wrapTag: 'code' },
+    // Italic uses word-boundary-aware regex to avoid false positives like "5*5"
+    const patterns: { regex: RegExp; wrapTag: string }[] = [
+        { regex: /\*\*(.+?)\*\*$/, wrapTag: 'strong' },
+        { regex: /(?<![\\w*])\*([^*]+)\*$/, wrapTag: 'em' },
+        { regex: /~~(.+?)~~$/, wrapTag: 's' },
+        { regex: /`(.+?)`$/, wrapTag: 'code' },
     ];
 
     for (const { regex, wrapTag } of patterns) {
@@ -280,16 +282,15 @@ const tryInlineMarkdown = (e: KeyboardEvent): boolean => {
             wrapper.textContent = innerText;
             frag.appendChild(wrapper);
 
-            // Add a space after (since user pressed space) and position cursor there
-            const spaceNode = document.createTextNode(e.key === ' ' ? '\u00A0' : '');
-            if (afterText) spaceNode.textContent = (e.key === ' ' ? '\u00A0' : '') + afterText;
+            // Add a non-breaking space after (since user pressed space) and position cursor there
+            const spaceNode = document.createTextNode('\u00A0' + afterText);
             frag.appendChild(spaceNode);
 
             parent.replaceChild(frag, textNode);
 
             // Place cursor after the space
             const range = document.createRange();
-            range.setStart(spaceNode, e.key === ' ' ? 1 : 0);
+            range.setStart(spaceNode, 1);
             range.collapse(true);
             sel.removeAllRanges();
             sel.addRange(range);
@@ -343,31 +344,7 @@ export const handleEditorKeyDown = (
 
     if (mod && e.key.toLowerCase() === 'e') {
         e.preventDefault();
-        // Toggle inline code: wrap selection in <code> or remove it
-        const selection = window.getSelection();
-        if (selection && selection.rangeCount > 0) {
-            const range = selection.getRangeAt(0);
-            const parentCode = (range.commonAncestorContainer.nodeType === Node.TEXT_NODE
-                ? range.commonAncestorContainer.parentElement
-                : range.commonAncestorContainer as HTMLElement)?.closest('code');
-
-            if (parentCode) {
-                // Unwrap code
-                const text = parentCode.textContent || '';
-                const textNode = document.createTextNode(text);
-                parentCode.parentNode?.replaceChild(textNode, parentCode);
-                range.selectNodeContents(textNode);
-                selection.removeAllRanges();
-                selection.addRange(range);
-            } else if (!range.collapsed) {
-                // Wrap selection in code
-                const code = document.createElement('code');
-                range.surroundContents(code);
-                range.selectNodeContents(code);
-                selection.removeAllRanges();
-                selection.addRange(range);
-            }
-        }
+        toggleCodeFormat();
         checkFormats();
         return true;
     }
@@ -579,6 +556,34 @@ export const checkActiveFormats = (editorEl: HTMLElement): string[] => {
     return formats;
 };
 
+/** Toggle inline code: wrap selection in <code> or unwrap if already inside one. */
+const toggleCodeFormat = (): void => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+
+    const range = sel.getRangeAt(0);
+    const parentCode = (range.commonAncestorContainer.nodeType === Node.TEXT_NODE
+        ? range.commonAncestorContainer.parentElement
+        : range.commonAncestorContainer as HTMLElement)?.closest('code');
+
+    if (parentCode) {
+        // Unwrap code
+        const text = parentCode.textContent || '';
+        const textNode = document.createTextNode(text);
+        parentCode.parentNode?.replaceChild(textNode, parentCode);
+        range.selectNodeContents(textNode);
+        sel.removeAllRanges();
+        sel.addRange(range);
+    } else if (!range.collapsed) {
+        // Wrap selection in code
+        const code = document.createElement('code');
+        range.surroundContents(code);
+        range.selectNodeContents(code);
+        sel.removeAllRanges();
+        sel.addRange(range);
+    }
+};
+
 /** Shallow-compare two format arrays (both are sorted by construction). */
 export const formatsEqual = (a: string[], b: string[]): boolean => {
     if (a.length !== b.length) return false;
@@ -605,29 +610,7 @@ export const execFormatCommand = (command: string, value?: string) => {
     } else if (command === 'insertHorizontalRule') {
         document.execCommand('insertHorizontalRule');
     } else if (command === 'code') {
-        // Toggle inline code
-        const sel = window.getSelection();
-        if (sel && sel.rangeCount > 0) {
-            const range = sel.getRangeAt(0);
-            const parentCode = (range.commonAncestorContainer.nodeType === Node.TEXT_NODE
-                ? range.commonAncestorContainer.parentElement
-                : range.commonAncestorContainer as HTMLElement)?.closest('code');
-
-            if (parentCode) {
-                const text = parentCode.textContent || '';
-                const textNode = document.createTextNode(text);
-                parentCode.parentNode?.replaceChild(textNode, parentCode);
-                range.selectNodeContents(textNode);
-                sel.removeAllRanges();
-                sel.addRange(range);
-            } else if (!range.collapsed) {
-                const code = document.createElement('code');
-                range.surroundContents(code);
-                range.selectNodeContents(code);
-                sel.removeAllRanges();
-                sel.addRange(range);
-            }
-        }
+        toggleCodeFormat();
     } else {
         document.execCommand(command, false, value);
     }
