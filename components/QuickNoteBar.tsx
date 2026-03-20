@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback, forwardRef, useImperat
 import { Paperclip, Hash, Type, Maximize2, Plus, X, FileText, Loader2, CheckSquare, Check } from 'lucide-react';
 import { marked } from 'marked';
 import { Attachment, QuickNoteState } from '../types';
-import { escapeHtml, looksLikeMarkdown, parseChecklistMarkdown, sanitizePastedHtml, hasRichFormatting, extractHashtags, mergeTagsWithHashtags, containsUrl, linkifyUrls, handleEditorKeyDown, checkActiveFormats, execFormatCommand } from '../utils/editorUtils';
+import { escapeHtml, looksLikeMarkdown, parseChecklistMarkdown, sanitizePastedHtml, hasRichFormatting, extractHashtags, mergeTagsWithHashtags, containsUrl, linkifyUrls, handleEditorKeyDown, checkActiveFormats, execFormatCommand, formatsEqual } from '../utils/editorUtils';
 import { processFileInputs } from '../utils/attachmentUtils';
 import { triggerHaptic } from '../services/platform';
 import FormattingToolbar from './FormattingToolbar';
@@ -47,10 +47,13 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
   const focusItemIdRef = useRef<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const saveSuccessTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const formatRafRef = useRef<number>(0);
+  const prevFormatsRef = useRef<string[]>([]);
 
   useEffect(() => {
     return () => {
       if (saveSuccessTimeoutRef.current) clearTimeout(saveSuccessTimeoutRef.current);
+      cancelAnimationFrame(formatRafRef.current);
     };
   }, []);
 
@@ -59,13 +62,18 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
   // We skip the initial measurement and only react to resize/scroll events to
   // avoid a false-positive keyboard height during app startup in standalone mode
   // (where visualViewport.height may momentarily differ from innerHeight).
+  // Debounced with rAF to avoid layout jitter during text selection on iOS.
   useEffect(() => {
     const vv = window.visualViewport;
     if (!vv) return;
 
+    let rafId = 0;
     const update = () => {
-      const kbHeight = window.innerHeight - vv.height - vv.offsetTop;
-      setKeyboardHeight(kbHeight > 0 ? kbHeight : 0);
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        const kbHeight = window.innerHeight - vv.height - vv.offsetTop;
+        setKeyboardHeight(kbHeight > 0 ? kbHeight : 0);
+      });
     };
 
     vv.addEventListener('resize', update);
@@ -73,6 +81,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
     return () => {
       vv.removeEventListener('resize', update);
       vv.removeEventListener('scroll', update);
+      cancelAnimationFrame(rafId);
     };
   }, []);
 
@@ -88,10 +97,19 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
     }
   }, []);
 
+  // rAF-debounced format checking — coalesces multiple calls per frame and
+  // skips re-renders when the active formats haven't actually changed.
   const checkFormats = useCallback(() => {
-    if (editorRef.current) {
-      setActiveFormats(checkActiveFormats(editorRef.current));
-    }
+    cancelAnimationFrame(formatRafRef.current);
+    formatRafRef.current = requestAnimationFrame(() => {
+      if (!editorRef.current) return;
+      const formats = checkActiveFormats(editorRef.current);
+      if (!formatsEqual(formats, prevFormatsRef.current)) {
+        prevFormatsRef.current = formats;
+        setActiveFormats(formats);
+      }
+      setIsEmpty(!editorRef.current.innerText.trim());
+    });
   }, []);
 
   const execFormat = useCallback((command: string, value?: string) => {
@@ -256,8 +274,11 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
 
   // Explicitly focus the editor on touch/click to work around iOS standalone
   // mode where the first tap on a contentEditable after a cold launch may not
-  // trigger the virtual keyboard.
+  // trigger the virtual keyboard. Skip if user has an active text selection
+  // to avoid disrupting drag-select on mobile.
   const handleEditorTap = useCallback(() => {
+    const sel = window.getSelection();
+    if (sel && sel.toString()) return; // Don't disrupt active selection
     if (editorRef.current && document.activeElement !== editorRef.current) {
       editorRef.current.focus();
     }
@@ -432,7 +453,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
                 onClick={handleEditorTap}
                 onKeyUp={checkFormats}
                 onMouseUp={checkFormats}
-                onInput={() => setIsEmpty(!editorRef.current?.innerText.trim())}
+                onInput={checkFormats}
                 onPaste={handlePaste}
                 onKeyDown={handleKeyDown}
                 suppressContentEditableWarning

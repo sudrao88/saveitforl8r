@@ -4,7 +4,7 @@ import { marked } from 'marked';
 import { Attachment, Memory } from '../types';
 import { isNative } from '../services/platform';
 import { Keyboard } from '@capacitor/keyboard';
-import { escapeHtml, looksLikeMarkdown, parseChecklistMarkdown, sanitizePastedHtml, hasRichFormatting, extractHashtags, mergeTagsWithHashtags, containsUrl, linkifyUrls, handleEditorKeyDown, checkActiveFormats, execFormatCommand } from '../utils/editorUtils';
+import { escapeHtml, looksLikeMarkdown, parseChecklistMarkdown, sanitizePastedHtml, hasRichFormatting, extractHashtags, mergeTagsWithHashtags, containsUrl, linkifyUrls, handleEditorKeyDown, checkActiveFormats, execFormatCommand, formatsEqual } from '../utils/editorUtils';
 import { processFileInputs } from '../utils/attachmentUtils';
 import FormattingToolbar from './FormattingToolbar';
 import TagInput from './TagInput';
@@ -88,6 +88,8 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
   const editorRef = useRef<HTMLDivElement>(null);
   const isInitialized = useRef(false);
   const pendingEditorContent = useRef<string | null>(null);
+  const formatRafRef = useRef<number>(0);
+  const prevFormatsRef = useRef<string[]>([]);
 
   // For Checklist Mode
   interface ChecklistItem {
@@ -121,19 +123,25 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
     }
   }, []);
 
-  // Track virtual keyboard via visualViewport API so toolbar stays above it
+  // Track virtual keyboard via visualViewport API so toolbar stays above it.
+  // Debounced with rAF to avoid layout jitter during text selection on iOS.
   useEffect(() => {
     const vv = window.visualViewport;
     if (!vv) return;
 
+    let rafId = 0;
     const updateKeyboardHeight = () => {
-      const kbHeight = window.innerHeight - vv.height;
-      setKeyboardHeight(Math.max(0, kbHeight));
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        const kbHeight = window.innerHeight - vv.height;
+        setKeyboardHeight(Math.max(0, kbHeight));
+      });
     };
 
     vv.addEventListener('resize', updateKeyboardHeight);
     return () => {
       vv.removeEventListener('resize', updateKeyboardHeight);
+      cancelAnimationFrame(rafId);
     };
   }, []);
 
@@ -269,21 +277,28 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
   };
 
 
-  // Rich Text Formatting
+  // Rich Text Formatting — rAF-debounced to coalesce multiple calls per frame
+  const checkFormats = useCallback(() => {
+      cancelAnimationFrame(formatRafRef.current);
+      formatRafRef.current = requestAnimationFrame(() => {
+          if (!editorRef.current) return;
+          const formats = checkActiveFormats(editorRef.current);
+          if (!formatsEqual(formats, prevFormatsRef.current)) {
+              prevFormatsRef.current = formats;
+              setActiveFormats(formats);
+          }
+          setIsEmpty(!editorRef.current.innerText.trim());
+      });
+  }, []);
+
+  // Cleanup rAF on unmount
+  useEffect(() => () => cancelAnimationFrame(formatRafRef.current), []);
+
   const execFormat = useCallback((command: string, value?: string) => {
       execFormatCommand(command, value);
       editorRef.current?.focus();
       checkFormats();
-  }, []);
-
-  const checkFormats = () => {
-      if (editorRef.current) {
-          setActiveFormats(checkActiveFormats(editorRef.current));
-          setIsEmpty(!editorRef.current.innerText.trim());
-      }
-  };
-
-  const isFormatActive = (format: string) => activeFormats.includes(format);
+  }, [checkFormats]);
 
   const handleFormat = useCallback((command: string, value?: string) => {
     execFormat(command, value);
@@ -518,7 +533,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                             }}
                             onKeyUp={checkFormats}
                             onMouseUp={checkFormats}
-                            onInput={() => setIsEmpty(!editorRef.current?.innerText.trim())}
+                            onInput={checkFormats}
                             onPaste={handlePaste}
                             suppressContentEditableWarning={true}
                         />

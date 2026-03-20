@@ -579,6 +579,15 @@ export const checkActiveFormats = (editorEl: HTMLElement): string[] => {
     return formats;
 };
 
+/** Shallow-compare two format arrays (both are sorted by construction). */
+export const formatsEqual = (a: string[], b: string[]): boolean => {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+        if (a[i] !== b[i]) return false;
+    }
+    return true;
+};
+
 /**
  * Execute a formatting command, handling toggling for block formats.
  */
