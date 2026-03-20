@@ -20,6 +20,12 @@ RUN npm run build
 
 # Stage 2: Serve
 FROM nginx:alpine
+# Add .mjs MIME type to nginx's default mime.types so that ES module files
+# (like the PDF.js worker) are served as application/javascript instead of
+# application/octet-stream.  We inject it into the existing types {} block
+# rather than using a server-level `types {}` override (which would replace
+# ALL inherited MIME mappings).
+RUN sed -i 's|application/javascript\s*js;|application/javascript js mjs;|' /etc/nginx/mime.types
 # Copy build output to the root html folder
 COPY --from=build /app/dist /usr/share/nginx/html
 # Copy custom nginx config
