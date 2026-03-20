@@ -62,6 +62,7 @@ const ALLOWED_TAGS = new Set([
     'P', 'BR', 'B', 'STRONG', 'I', 'EM', 'U', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
     'UL', 'OL', 'LI', 'A', 'BLOCKQUOTE', 'PRE', 'CODE', 'DIV', 'SPAN',
     'S', 'STRIKE', 'DEL', 'SUB', 'SUP', 'TABLE', 'THEAD', 'TBODY', 'TR', 'TH', 'TD',
+    'HR',
 ]);
 
 const SAFE_URL_PROTOCOLS = /^(https?:|mailto:|tel:)/i;
