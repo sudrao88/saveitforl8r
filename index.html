@@ -85,7 +85,20 @@
     <div id="root">
        <!-- App Shell / Loading Screen -->
        <div class="splash-container">
-          <img src="/logo-full.svg" alt="SaveItForL8R logo" class="splash-logo" />
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" class="splash-logo" role="img" aria-label="SaveItForL8R logo">
+            <defs>
+              <style type="text/css">
+                @font-face {
+                  font-family: 'Shantell Sans Icon';
+                  font-style: normal;
+                  font-weight: 800;
+                  src: url(data:font/woff2;base64,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) format('woff2');
+                }
+              </style>
+            </defs>
+            <path d="M80 48H400L464 112V432C464 449.673 449.673 464 432 464H80C62.327 464 48 449.673 48 432V80C48 62.327 62.327 48 80 48Z" stroke="white" stroke-width="24" fill="#2563eb" />
+            <text x="256" y="286" dominant-baseline="middle" text-anchor="middle" fill="#ffffff" font-family="'Shantell Sans Icon', cursive, sans-serif" font-size="160" font-weight="800">L8R</text>
+          </svg>
        </div>
     </div>
     <noscript>
