@@ -464,15 +464,15 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
   return (
     <div className="fixed inset-0 bg-black flex flex-col z-(--z-overlay)" dir="ltr">
         {/* Header */}
-        <div className="shrink-0 bg-black/90 backdrop-blur-md border-b border-gray-800 px-4 py-3 flex items-center justify-between pt-[calc(env(safe-area-inset-top)+12px)]">
+        <div className="shrink-0 bg-(--color-surface-base)/90 backdrop-blur-md border-b border-(--color-border-default) px-4 py-3 flex items-center justify-between pt-[calc(env(safe-area-inset-top)+12px)]">
             <div className="flex items-center gap-3">
                 <button
                     onClick={handleClose}
-                    className="p-3 -ml-3 rounded-full hover:bg-gray-800 text-gray-400 hover:text-white transition-colors active:bg-gray-700"
+                    className={overlay.closeBtn}
                 >
                     <ArrowLeft size={24} />
                 </button>
-                <h1 className="text-xl font-bold text-gray-100">{isEditMode ? 'Edit Memory' : 'New Memory'}</h1>
+                <h1 className="text-xl font-bold text-(--color-text-primary)">{isEditMode ? 'Edit Memory' : 'New Memory'}</h1>
             </div>
         </div>
 
@@ -507,7 +507,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                         <div
                             ref={editorRef}
                             contentEditable
-                            className="w-full flex-1 min-h-[200px] bg-transparent text-lg text-white focus:outline-none prose prose-invert max-w-none
+                            className="w-full flex-1 min-h-[200px] bg-transparent text-lg text-(--color-text-primary) focus:outline-none prose prose-invert max-w-none
                             rich-editor
                             text-left touch-manipulation"
                             dir="ltr"
@@ -523,7 +523,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                             suppressContentEditableWarning={true}
                         />
                         {isEmpty && (
-                            <div className="absolute top-0 left-0 pointer-events-none text-gray-500 text-lg">
+                            <div className="absolute top-0 left-0 pointer-events-none text-(--color-text-tertiary) text-lg">
                                 Capture a thought, idea, or observation...
                             </div>
                         )}
@@ -537,7 +537,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
           className="shrink-0 px-3 pt-1 max-w-3xl mx-auto w-full transition-[padding-bottom] duration-100"
           style={{ paddingBottom: keyboardHeight > 0 ? `${keyboardHeight}px` : 'max(0.75rem, env(safe-area-inset-bottom))' }}
         >
-          <div className="bg-gray-900/95 backdrop-blur-xl border border-gray-700/50 rounded-2xl shadow-2xl shadow-black/40">
+          <div className="bg-(--color-surface-overlay)/95 backdrop-blur-xl border border-(--color-border-default)/50 rounded-(--radius-xl) shadow-2xl shadow-black/40">
             {/* Attachment previews */}
             {attachments.length > 0 && (
                 <div className="px-4 pt-3 pb-1">
@@ -545,18 +545,18 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                         {attachments.map((att) => (
                             <div key={att.id} className="relative shrink-0 animate-in zoom-in-90 duration-(--duration-fast)">
                                 {att.type === 'image' ? (
-                                    <div className="w-14 h-14 rounded-xl overflow-hidden border border-gray-700 bg-black/50">
+                                    <div className="w-14 h-14 rounded-(--radius-xl) overflow-hidden border border-(--color-border-default) bg-black/50">
                                         <img src={att.data} alt="preview" className="w-full h-full object-cover" />
                                     </div>
                                 ) : (
-                                    <div className="w-14 h-14 rounded-xl border border-gray-700 bg-gray-800/50 flex flex-col items-center justify-center">
-                                        <FileText size={18} className="text-gray-400" />
-                                        <span className="text-xs text-gray-500 w-full truncate px-1 text-center">{att.name}</span>
+                                    <div className="w-14 h-14 rounded-(--radius-xl) border border-(--color-border-default) bg-(--color-surface-raised)/50 flex flex-col items-center justify-center">
+                                        <FileText size={18} className="text-(--color-text-secondary)" />
+                                        <span className="text-xs text-(--color-text-tertiary) w-full truncate px-1 text-center">{att.name}</span>
                                     </div>
                                 )}
                                 <button
                                     onClick={() => removeAttachment(att.id)}
-                                    className="absolute -top-1.5 -right-1.5 bg-gray-800 text-gray-400 hover:text-red-400 border border-gray-600 rounded-full p-0.5 shadow-lg transition-colors active:scale-95"
+                                    className="absolute -top-1.5 -right-1.5 bg-(--color-surface-raised) text-(--color-text-secondary) hover:text-(--color-danger) border border-(--color-border-default) rounded-(--radius-full) p-0.5 shadow-lg transition-colors duration-(--duration-fast) active:scale-95"
                                 >
                                     <X size={10} />
                                 </button>
@@ -595,7 +595,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                 <button
                     onClick={() => fileInputRef.current?.click()}
                     onMouseDown={(e) => e.preventDefault()}
-                    className="p-2.5 rounded-xl text-gray-400 hover:text-white hover:bg-gray-800 transition-colors active:scale-95"
+                    className={btn.iconLg}
                     title="Add attachment"
                 >
                     <Paperclip size={20} />
@@ -605,7 +605,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                 <button
                     onClick={() => setShowTags(prev => !prev)}
                     onMouseDown={(e) => e.preventDefault()}
-                    className={`p-2.5 rounded-xl transition-colors active:scale-95 ${showTags ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
+                    className={`${btn.iconLg} ${showTags ? 'bg-(--color-accent) text-white' : ''}`}
                     title="Tags"
                 >
                     <Hash size={20} />
@@ -616,7 +616,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                     <button
                         onClick={() => setShowFormatting(prev => !prev)}
                         onMouseDown={(e) => e.preventDefault()}
-                        className={`p-2.5 rounded-xl transition-colors active:scale-95 ${showFormatting ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
+                        className={`${btn.iconLg} ${showFormatting ? 'bg-(--color-accent) text-white' : ''}`}
                         title="Formatting"
                     >
                         <Type size={20} />
@@ -627,7 +627,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                 <button
                     onClick={toggleChecklistMode}
                     onMouseDown={(e) => e.preventDefault()}
-                    className={`p-2.5 rounded-xl transition-colors active:scale-95 ${isChecklistMode ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
+                    className={`${btn.iconLg} ${isChecklistMode ? 'bg-(--color-accent) text-white' : ''}`}
                     title="Checklist Mode"
                 >
                     <CheckSquare size={20} />
@@ -640,11 +640,11 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                 <button
                     onClick={handleSubmit}
                     disabled={!hasContent || isProcessing}
-                    className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold transition-all active:scale-95 ${
+                    className={`${btn.base} ${
                         hasContent && !isProcessing
-                            ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-900/30'
-                            : 'bg-gray-800 text-gray-600 cursor-not-allowed'
-                    }`}
+                            ? `${btn.primary} shadow-lg`
+                            : 'bg-(--color-surface-raised) text-(--color-text-tertiary) rounded-(--radius-lg) px-4 py-2.5 cursor-not-allowed'
+                    } gap-2 px-5`}
                     title={isEditMode ? "Update (⌘+Enter)" : "Add (⌘+Enter)"}
                 >
                     {isProcessing ? (
@@ -665,26 +665,26 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
 
         {/* Discard Changes Confirmation Dialog */}
         {showDiscardConfirm && (
-            <div className="fixed inset-0 z-(--z-sheet) bg-gray-950/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-(--duration-fast)">
-                <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 max-w-sm w-full shadow-2xl animate-in zoom-in-95 duration-(--duration-fast)">
+            <div className={`${overlay.dialogBackdrop} bg-(--color-surface-overlay)/90 backdrop-blur-md animate-in fade-in duration-(--duration-fast)`}>
+                <div className={`${overlay.modal} p-6 max-w-sm w-full mx-4 animate-in zoom-in-95 duration-(--duration-fast)`}>
                     <div className="flex flex-col items-center text-center">
-                        <div className="w-16 h-16 bg-amber-900/30 rounded-full flex items-center justify-center mb-4">
-                            <AlertTriangle size={32} className="text-amber-500" />
+                        <div className="w-16 h-16 bg-amber-900/30 rounded-(--radius-full) flex items-center justify-center mb-4">
+                            <AlertTriangle size={32} className="text-(--color-warning)" />
                         </div>
-                        <h3 className="text-xl font-bold text-gray-100 mb-2">Discard Changes?</h3>
-                        <p className="text-base text-gray-400 mb-6">
+                        <h3 className="text-xl font-bold text-(--color-text-primary) mb-2">Discard Changes?</h3>
+                        <p className="text-base text-(--color-text-secondary) mb-6">
                             You have unsaved changes. Are you sure you want to discard them?
                         </p>
                         <div className="flex gap-4 w-full">
                             <button
                                 onClick={() => setShowDiscardConfirm(false)}
-                                className="flex-1 py-3 text-sm font-medium text-gray-300 bg-gray-800 rounded-xl hover:bg-gray-700 transition-colors active:scale-95"
+                                className={`${btn.base} ${btn.secondary} flex-1 py-3`}
                             >
                                 Keep Editing
                             </button>
                             <button
                                 onClick={handleCloseConfirmed}
-                                className="flex-1 py-3 text-sm font-bold text-white bg-red-500 rounded-xl hover:bg-red-600 transition-colors shadow-lg shadow-red-500/20 active:scale-95"
+                                className={`${btn.base} ${btn.danger} flex-1 py-3 shadow-lg`}
                             >
                                 Discard
                             </button>

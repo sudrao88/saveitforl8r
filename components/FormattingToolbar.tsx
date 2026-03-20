@@ -18,7 +18,7 @@ const ToolbarButton: React.FC<{
   <button
     onClick={onClick}
     onMouseDown={(e) => e.preventDefault()}
-    className={`${compact ? btn.icon : btn.iconLg} shrink-0 ${isActive ? 'bg-blue-600 text-white hover:bg-blue-600 hover:text-white' : ''}`}
+    className={`${compact ? btn.icon : btn.iconLg} shrink-0 ${isActive ? 'bg-(--color-accent) text-white hover:bg-(--color-accent) hover:text-white' : ''}`}
     title={title}
   >
     {children}
@@ -26,7 +26,7 @@ const ToolbarButton: React.FC<{
 );
 
 const Divider: React.FC = () => (
-  <div className="w-px h-5 bg-gray-700/50 mx-0.5 shrink-0"></div>
+  <div className="w-px h-5 bg-(--color-border-default)/50 mx-0.5 shrink-0"></div>
 );
 
 const FormattingToolbar: React.FC<FormattingToolbarProps> = ({ activeFormats, onFormat, compact = false }) => {
@@ -34,7 +34,7 @@ const FormattingToolbar: React.FC<FormattingToolbarProps> = ({ activeFormats, on
   const isActive = (format: string) => activeFormats.includes(format);
 
   return (
-    <div className={`flex flex-nowrap items-center gap-2 ${compact ? 'bg-gray-800/80 p-1.5 rounded-xl border border-gray-700/50' : 'bg-gray-800/90 backdrop-blur-md p-2 rounded-2xl border border-gray-700/50 shadow-xl'} overflow-x-auto no-scrollbar`}>
+    <div className={`flex flex-nowrap items-center gap-2 ${compact ? 'bg-(--color-surface-raised)/80 p-1.5 rounded-(--radius-xl) border border-(--color-border-default)/50' : 'bg-(--color-surface-raised)/90 backdrop-blur-md p-2 rounded-(--radius-xl) border border-(--color-border-default)/50 shadow-xl'} overflow-x-auto no-scrollbar`}>
       {/* Inline formatting */}
       <ToolbarButton onClick={() => onFormat('bold')} title="Bold (⌘B)" isActive={isActive('bold')} compact={compact}>
         <Bold size={iconSize} />

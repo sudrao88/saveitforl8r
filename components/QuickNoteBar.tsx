@@ -363,7 +363,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
         bottom: keyboardHeight > 0 ? `${keyboardHeight}px` : undefined,
       }}
     >
-      <div className="bg-gray-900/95 backdrop-blur-xl border-2 border-blue-500 rounded-2xl shadow-[0_0_16px_rgba(156,163,175,0.3)]">
+      <div className="bg-(--color-surface-overlay)/95 backdrop-blur-xl border-2 border-(--color-accent) rounded-(--radius-xl) shadow-[0_0_16px_rgba(156,163,175,0.3)]">
         {/* Attachment previews */}
         {attachments.length > 0 && (
           <div className="px-4 pt-3 pb-1">
@@ -371,18 +371,18 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
               {attachments.map((att) => (
                 <div key={att.id} className="relative shrink-0 animate-in zoom-in-90 duration-(--duration-fast)">
                   {att.type === 'image' ? (
-                    <div className="w-12 h-12 rounded-xl overflow-hidden border border-gray-700 bg-black/50">
+                    <div className="w-12 h-12 rounded-(--radius-xl) overflow-hidden border border-(--color-border-default) bg-black/50">
                       <img src={att.data} alt="preview" className="w-full h-full object-cover" />
                     </div>
                   ) : (
-                    <div className="w-12 h-12 rounded-xl border border-gray-700 bg-gray-800/50 flex flex-col items-center justify-center">
-                      <FileText size={16} className="text-gray-400" />
-                      <span className="text-xs text-gray-500 w-full truncate px-1 text-center">{att.name}</span>
+                    <div className="w-12 h-12 rounded-(--radius-xl) border border-(--color-border-default) bg-(--color-surface-raised)/50 flex flex-col items-center justify-center">
+                      <FileText size={16} className="text-(--color-text-secondary)" />
+                      <span className="text-xs text-(--color-text-tertiary) w-full truncate px-1 text-center">{att.name}</span>
                     </div>
                   )}
                   <button
                     onClick={() => removeAttachment(att.id)}
-                    className="absolute -top-1.5 -right-1.5 bg-gray-800 text-gray-400 hover:text-red-400 border border-gray-600 rounded-full p-0.5 shadow-lg transition-colors active:scale-95"
+                    className="absolute -top-1.5 -right-1.5 bg-(--color-surface-raised) text-(--color-text-secondary) hover:text-(--color-danger) border border-(--color-border-default) rounded-(--radius-full) p-0.5 shadow-lg transition-colors duration-(--duration-fast) active:scale-95"
                   >
                     <X size={10} />
                   </button>
@@ -409,7 +409,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
         {/* Text area */}
         <div className="px-4 pt-3 relative">
           {isChecklistMode ? (
-            <div className="w-full max-h-[10em] overflow-y-auto bg-gray-800 rounded-xl px-3 py-2.5 border border-gray-700">
+            <div className="w-full max-h-[10em] overflow-y-auto bg-(--color-surface-raised) rounded-(--radius-xl) px-3 py-2.5 border border-(--color-border-default)">
               <ChecklistEditor
                 items={checklistItems}
                 onToggle={toggleChecklistItemChecked}
@@ -427,7 +427,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
                 contentEditable
                 tabIndex={0}
                 role="textbox"
-                className="w-full min-h-[1.5em] max-h-[6em] overflow-y-auto bg-gray-800 text-base text-white rounded-xl px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-blue-500/40 border border-gray-700 focus:border-gray-600 transition-colors prose prose-invert max-w-none rich-editor rich-editor--compact text-left touch-manipulation"
+                className="w-full min-h-[1.5em] max-h-[6em] overflow-y-auto bg-(--color-surface-raised) text-base text-(--color-text-primary) rounded-(--radius-xl) px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-(--color-accent)/40 border border-(--color-border-default) focus:border-(--color-accent)/50 transition-colors prose prose-invert max-w-none rich-editor rich-editor--compact text-left touch-manipulation"
                 dir="ltr"
                 onClick={handleEditorTap}
                 onKeyUp={checkFormats}
@@ -438,7 +438,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
                 suppressContentEditableWarning
               />
               {isEmpty && (
-                <div className="absolute top-3 left-7 pointer-events-none text-gray-500 text-base py-2.5">
+                <div className="absolute top-3 left-7 pointer-events-none text-(--color-text-tertiary) text-base py-2.5">
                   Type a note...
                 </div>
               )}
@@ -452,7 +452,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
           <button
             onClick={() => fileInputRef.current?.click()}
             onMouseDown={(e) => e.preventDefault()}
-            className={`${btn.iconLg} hover:bg-gray-800`}
+            className={btn.iconLg}
             title="Add attachment"
           >
             <Paperclip size={20} />
@@ -469,7 +469,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
           <button
             onClick={() => setShowTags(prev => !prev)}
             onMouseDown={(e) => e.preventDefault()}
-            className={`${btn.iconLg} ${showTags ? 'bg-blue-600 text-white' : 'hover:bg-gray-800'}`}
+            className={`${btn.iconLg} ${showTags ? 'bg-(--color-accent) text-white' : ''}`}
             title="Tags"
           >
             <Hash size={20} />
@@ -479,7 +479,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
             <button
               onClick={() => setShowFormatting(prev => !prev)}
               onMouseDown={(e) => e.preventDefault()}
-              className={`${btn.iconLg} ${showFormatting ? 'bg-blue-600 text-white' : 'hover:bg-gray-800'}`}
+              className={`${btn.iconLg} ${showFormatting ? 'bg-(--color-accent) text-white' : ''}`}
               title="Formatting"
             >
               <Type size={20} />
@@ -489,7 +489,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
           <button
             onClick={toggleChecklistMode}
             onMouseDown={(e) => e.preventDefault()}
-            className={`${btn.iconLg} ${isChecklistMode ? 'bg-blue-600 text-white' : 'hover:bg-gray-800'}`}
+            className={`${btn.iconLg} ${isChecklistMode ? 'bg-(--color-accent) text-white' : ''}`}
             title="Checklist Mode"
           >
             <CheckSquare size={20} />
@@ -498,7 +498,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
           <button
             onClick={handleExpand}
             onMouseDown={(e) => e.preventDefault()}
-            className={`${btn.iconLg} hover:bg-gray-800`}
+            className={btn.iconLg}
             title="Expand to full editor"
           >
             <Maximize2 size={20} />
@@ -511,12 +511,12 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
           <button
             onClick={handleSave}
             disabled={!hasContent || isSaving}
-            className={`p-2.5 rounded-xl transition-all active:scale-95 ${
+            className={`p-2.5 rounded-(--radius-xl) transition-all duration-(--duration-fast) active:scale-95 ${
               saveSuccess
-                ? 'bg-green-600 text-white animate-save-success'
+                ? 'bg-(--color-success) text-white animate-save-success'
                 : hasContent && !isSaving
-                  ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-900/30'
-                  : 'bg-gray-800 text-gray-600 cursor-not-allowed'
+                  ? 'bg-(--color-accent) text-white hover:bg-(--color-accent-hover) shadow-lg'
+                  : 'bg-(--color-surface-raised) text-(--color-text-tertiary) cursor-not-allowed'
             }`}
             title="Save note (⌘+Enter)"
           >
