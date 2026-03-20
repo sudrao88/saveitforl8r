@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback, forwardRef, useImperat
 import { Paperclip, Hash, Type, Maximize2, Plus, X, FileText, Loader2, CheckSquare, Check } from 'lucide-react';
 import { marked } from 'marked';
 import { Attachment, QuickNoteState } from '../types';
-import { escapeHtml, looksLikeMarkdown, parseChecklistMarkdown, sanitizePastedHtml, hasRichFormatting, extractHashtags, mergeTagsWithHashtags, containsUrl, linkifyUrls } from '../utils/editorUtils';
+import { escapeHtml, looksLikeMarkdown, parseChecklistMarkdown, sanitizePastedHtml, hasRichFormatting, extractHashtags, mergeTagsWithHashtags, containsUrl, linkifyUrls, handleEditorKeyDown, checkActiveFormats, execFormatCommand, formatsEqual } from '../utils/editorUtils';
 import { processFileInputs } from '../utils/attachmentUtils';
 import { triggerHaptic } from '../services/platform';
 import FormattingToolbar from './FormattingToolbar';
@@ -47,10 +47,13 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
   const focusItemIdRef = useRef<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const saveSuccessTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const formatRafRef = useRef<number>(0);
+  const prevFormatsRef = useRef<string[]>([]);
 
   useEffect(() => {
     return () => {
       if (saveSuccessTimeoutRef.current) clearTimeout(saveSuccessTimeoutRef.current);
+      cancelAnimationFrame(formatRafRef.current);
     };
   }, []);
 
@@ -59,13 +62,18 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
   // We skip the initial measurement and only react to resize/scroll events to
   // avoid a false-positive keyboard height during app startup in standalone mode
   // (where visualViewport.height may momentarily differ from innerHeight).
+  // Debounced with rAF to avoid layout jitter during text selection on iOS.
   useEffect(() => {
     const vv = window.visualViewport;
     if (!vv) return;
 
+    let rafId = 0;
     const update = () => {
-      const kbHeight = window.innerHeight - vv.height - vv.offsetTop;
-      setKeyboardHeight(kbHeight > 0 ? kbHeight : 0);
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        const kbHeight = window.innerHeight - vv.height - vv.offsetTop;
+        setKeyboardHeight(kbHeight > 0 ? kbHeight : 0);
+      });
     };
 
     vv.addEventListener('resize', update);
@@ -73,6 +81,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
     return () => {
       vv.removeEventListener('resize', update);
       vv.removeEventListener('scroll', update);
+      cancelAnimationFrame(rafId);
     };
   }, []);
 
@@ -88,30 +97,23 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
     }
   }, []);
 
+  // rAF-debounced format checking — coalesces multiple calls per frame and
+  // skips re-renders when the active formats haven't actually changed.
   const checkFormats = useCallback(() => {
-    const formats: string[] = [];
-    if (document.queryCommandState('bold')) formats.push('bold');
-    if (document.queryCommandState('italic')) formats.push('italic');
-    if (document.queryCommandState('underline')) formats.push('underline');
-
-    const block = document.queryCommandValue('formatBlock');
-    if (block === 'h1') formats.push('H1');
-    if (block === 'h2') formats.push('H2');
-
-    setActiveFormats(formats);
+    cancelAnimationFrame(formatRafRef.current);
+    formatRafRef.current = requestAnimationFrame(() => {
+      if (!editorRef.current) return;
+      const formats = checkActiveFormats(editorRef.current);
+      if (!formatsEqual(formats, prevFormatsRef.current)) {
+        prevFormatsRef.current = formats;
+        setActiveFormats(formats);
+      }
+      setIsEmpty(!editorRef.current.innerText.trim());
+    });
   }, []);
 
   const execFormat = useCallback((command: string, value?: string) => {
-    if (command === 'formatBlock') {
-      const currentBlock = document.queryCommandValue('formatBlock');
-      if (currentBlock.toLowerCase() === value?.toLowerCase()) {
-        document.execCommand('formatBlock', false, 'p');
-      } else {
-        document.execCommand(command, false, value);
-      }
-    } else {
-      document.execCommand(command, false, value);
-    }
+    execFormatCommand(command, value);
     editorRef.current?.focus();
     checkFormats();
   }, [checkFormats]);
@@ -272,8 +274,11 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
 
   // Explicitly focus the editor on touch/click to work around iOS standalone
   // mode where the first tap on a contentEditable after a cold launch may not
-  // trigger the virtual keyboard.
+  // trigger the virtual keyboard. Skip if user has an active text selection
+  // to avoid disrupting drag-select on mobile.
   const handleEditorTap = useCallback(() => {
+    const sel = window.getSelection();
+    if (sel && sel.toString()) return; // Don't disrupt active selection
     if (editorRef.current && document.activeElement !== editorRef.current) {
       editorRef.current.focus();
     }
@@ -284,8 +289,13 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       handleSave();
+      return;
     }
-  }, [handleSave]);
+    // Rich text auto-formatting
+    if (editorRef.current) {
+      handleEditorKeyDown(e, editorRef.current, checkFormats);
+    }
+  }, [handleSave, checkFormats]);
 
   const toggleChecklistMode = useCallback(() => {
     if (isChecklistMode) {
@@ -374,7 +384,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
         bottom: keyboardHeight > 0 ? `${keyboardHeight}px` : undefined,
       }}
     >
-      <div className="bg-gray-900/95 backdrop-blur-xl border-2 border-blue-500 rounded-2xl shadow-[0_0_16px_rgba(156,163,175,0.3)]">
+      <div className="bg-(--color-surface-overlay)/95 backdrop-blur-xl border-2 border-(--color-accent) rounded-(--radius-xl) shadow-[0_0_16px_rgba(156,163,175,0.3)]">
         {/* Attachment previews */}
         {attachments.length > 0 && (
           <div className="px-4 pt-3 pb-1">
@@ -382,18 +392,18 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
               {attachments.map((att) => (
                 <div key={att.id} className="relative shrink-0 animate-in zoom-in-90 duration-(--duration-fast)">
                   {att.type === 'image' ? (
-                    <div className="w-12 h-12 rounded-xl overflow-hidden border border-gray-700 bg-black/50">
+                    <div className="w-12 h-12 rounded-(--radius-xl) overflow-hidden border border-(--color-border-default) bg-black/50">
                       <img src={att.data} alt="preview" className="w-full h-full object-cover" />
                     </div>
                   ) : (
-                    <div className="w-12 h-12 rounded-xl border border-gray-700 bg-gray-800/50 flex flex-col items-center justify-center">
-                      <FileText size={16} className="text-gray-400" />
-                      <span className="text-xs text-gray-500 w-full truncate px-1 text-center">{att.name}</span>
+                    <div className="w-12 h-12 rounded-(--radius-xl) border border-(--color-border-default) bg-(--color-surface-raised)/50 flex flex-col items-center justify-center">
+                      <FileText size={16} className="text-(--color-text-secondary)" />
+                      <span className="text-xs text-(--color-text-tertiary) w-full truncate px-1 text-center">{att.name}</span>
                     </div>
                   )}
                   <button
                     onClick={() => removeAttachment(att.id)}
-                    className="absolute -top-1.5 -right-1.5 bg-gray-800 text-gray-400 hover:text-red-400 border border-gray-600 rounded-full p-0.5 shadow-lg transition-colors active:scale-95"
+                    className="absolute -top-1.5 -right-1.5 bg-(--color-surface-raised) text-(--color-text-secondary) hover:text-(--color-danger) border border-(--color-border-default) rounded-(--radius-full) p-0.5 shadow-lg transition-colors duration-(--duration-fast) active:scale-95"
                   >
                     <X size={10} />
                   </button>
@@ -420,7 +430,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
         {/* Text area */}
         <div className="px-4 pt-3 relative">
           {isChecklistMode ? (
-            <div className="w-full max-h-[10em] overflow-y-auto bg-gray-800 rounded-xl px-3 py-2.5 border border-gray-700">
+            <div className="w-full max-h-[10em] overflow-y-auto bg-(--color-surface-raised) rounded-(--radius-xl) px-3 py-2.5 border border-(--color-border-default)">
               <ChecklistEditor
                 items={checklistItems}
                 onToggle={toggleChecklistItemChecked}
@@ -438,18 +448,18 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
                 contentEditable
                 tabIndex={0}
                 role="textbox"
-                className="w-full min-h-[1.5em] max-h-[6em] overflow-y-auto bg-gray-800 text-base text-white rounded-xl px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-blue-500/40 border border-gray-700 focus:border-gray-600 transition-colors prose prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-li:my-0 [&_h1]:text-xl [&_h1]:font-bold [&_h1]:my-1 [&_h2]:text-lg [&_h2]:font-bold [&_h2]:my-1 text-left touch-manipulation"
+                className="w-full min-h-[1.5em] max-h-[6em] overflow-y-auto bg-(--color-surface-raised) text-base text-(--color-text-primary) rounded-(--radius-xl) px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-(--color-accent)/40 border border-(--color-border-default) focus:border-(--color-accent)/50 transition-colors prose prose-invert max-w-none rich-editor rich-editor--compact text-left touch-manipulation"
                 dir="ltr"
                 onClick={handleEditorTap}
                 onKeyUp={checkFormats}
                 onMouseUp={checkFormats}
-                onInput={() => setIsEmpty(!editorRef.current?.innerText.trim())}
+                onInput={checkFormats}
                 onPaste={handlePaste}
                 onKeyDown={handleKeyDown}
                 suppressContentEditableWarning
               />
               {isEmpty && (
-                <div className="absolute top-3 left-7 pointer-events-none text-gray-500 text-base py-2.5">
+                <div className="absolute top-3 left-7 pointer-events-none text-(--color-text-tertiary) text-base py-2.5">
                   Type a note...
                 </div>
               )}
@@ -463,7 +473,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
           <button
             onClick={() => fileInputRef.current?.click()}
             onMouseDown={(e) => e.preventDefault()}
-            className={`${btn.iconLg} hover:bg-gray-800`}
+            className={btn.iconLg}
             title="Add attachment"
           >
             <Paperclip size={20} />
@@ -480,7 +490,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
           <button
             onClick={() => setShowTags(prev => !prev)}
             onMouseDown={(e) => e.preventDefault()}
-            className={`${btn.iconLg} ${showTags ? 'bg-blue-600 text-white' : 'hover:bg-gray-800'}`}
+            className={`${btn.iconLg} ${showTags ? 'bg-(--color-accent) text-white' : ''}`}
             title="Tags"
           >
             <Hash size={20} />
@@ -490,7 +500,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
             <button
               onClick={() => setShowFormatting(prev => !prev)}
               onMouseDown={(e) => e.preventDefault()}
-              className={`${btn.iconLg} ${showFormatting ? 'bg-blue-600 text-white' : 'hover:bg-gray-800'}`}
+              className={`${btn.iconLg} ${showFormatting ? 'bg-(--color-accent) text-white' : ''}`}
               title="Formatting"
             >
               <Type size={20} />
@@ -500,7 +510,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
           <button
             onClick={toggleChecklistMode}
             onMouseDown={(e) => e.preventDefault()}
-            className={`${btn.iconLg} ${isChecklistMode ? 'bg-blue-600 text-white' : 'hover:bg-gray-800'}`}
+            className={`${btn.iconLg} ${isChecklistMode ? 'bg-(--color-accent) text-white' : ''}`}
             title="Checklist Mode"
           >
             <CheckSquare size={20} />
@@ -509,7 +519,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
           <button
             onClick={handleExpand}
             onMouseDown={(e) => e.preventDefault()}
-            className={`${btn.iconLg} hover:bg-gray-800`}
+            className={btn.iconLg}
             title="Expand to full editor"
           >
             <Maximize2 size={20} />
@@ -522,12 +532,12 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
           <button
             onClick={handleSave}
             disabled={!hasContent || isSaving}
-            className={`p-2.5 rounded-xl transition-all active:scale-95 ${
+            className={`p-2.5 rounded-(--radius-xl) transition-all duration-(--duration-fast) active:scale-95 ${
               saveSuccess
-                ? 'bg-green-600 text-white animate-save-success'
+                ? 'bg-(--color-success) text-white animate-save-success'
                 : hasContent && !isSaving
-                  ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-900/30'
-                  : 'bg-gray-800 text-gray-600 cursor-not-allowed'
+                  ? 'bg-(--color-accent) text-white hover:bg-(--color-accent-hover) shadow-lg'
+                  : 'bg-(--color-surface-raised) text-(--color-text-tertiary) cursor-not-allowed'
             }`}
             title="Save note (⌘+Enter)"
           >
