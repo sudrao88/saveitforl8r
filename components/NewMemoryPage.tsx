@@ -451,8 +451,8 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
   };
 
   const handleClose = () => {
-    // In edit mode, check for unsaved changes
-    if (isEditMode && hasChanges()) {
+    // Check for unsaved changes in edit mode, or any content in create mode
+    if (isEditMode ? hasChanges() : hasContent) {
       setShowDiscardConfirm(true);
       return;
     }
@@ -686,9 +686,11 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                         <div className="w-16 h-16 bg-amber-900/30 rounded-(--radius-full) flex items-center justify-center mb-4">
                             <AlertTriangle size={32} className="text-(--color-warning)" />
                         </div>
-                        <h3 className="text-xl font-bold text-(--color-text-primary) mb-2">Discard Changes?</h3>
+                        <h3 className="text-xl font-bold text-(--color-text-primary) mb-2">{isEditMode ? 'Discard Changes?' : 'Discard Memory?'}</h3>
                         <p className="text-base text-(--color-text-secondary) mb-6">
-                            You have unsaved changes. Are you sure you want to discard them?
+                            {isEditMode
+                              ? 'You have unsaved changes. Are you sure you want to discard them?'
+                              : 'You have unsaved content. If you leave now, this memory will be lost.'}
                         </p>
                         <div className="flex gap-4 w-full">
                             <button
