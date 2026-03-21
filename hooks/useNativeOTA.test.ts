@@ -26,6 +26,28 @@ import { Preferences } from '@capacitor/preferences';
 const mockCapacitor = vi.mocked(Capacitor);
 const mockPreferences = vi.mocked(Preferences);
 
+// --- Native bridge type augmentation ---
+
+interface AndroidBridge {
+  enableRemoteMode: ReturnType<typeof vi.fn>;
+  disableRemoteMode: ReturnType<typeof vi.fn>;
+}
+
+interface IOSBridgeHandler {
+  postMessage: ReturnType<typeof vi.fn>;
+}
+
+declare global {
+  interface Window {
+    AndroidBridge?: AndroidBridge;
+    webkit?: {
+      messageHandlers: {
+        IOSBridge: IOSBridgeHandler;
+      };
+    };
+  }
+}
+
 // --- Helpers ---
 
 const REMOTE_URL = 'https://saveitforl8r.com';
@@ -66,7 +88,7 @@ function mockFetchVersions(
 }
 
 function setupAndroidBridge() {
-  (window as any).AndroidBridge = {
+  window.AndroidBridge = {
     enableRemoteMode: vi.fn(),
     disableRemoteMode: vi.fn(),
   };
@@ -74,7 +96,7 @@ function setupAndroidBridge() {
 
 function setupIOSBridge() {
   mockCapacitor.getPlatform.mockReturnValue('ios');
-  (window as any).webkit = {
+  window.webkit = {
     messageHandlers: {
       IOSBridge: {
         postMessage: vi.fn(),
@@ -84,15 +106,15 @@ function setupIOSBridge() {
 }
 
 function cleanupBridges() {
-  delete (window as any).AndroidBridge;
-  delete (window as any).webkit;
+  delete window.AndroidBridge;
+  delete window.webkit;
 }
 
 // --- Tests ---
 
 describe('useNativeOTA', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.restoreAllMocks();
     vi.useFakeTimers({ shouldAdvanceTime: true });
     mockCapacitor.isNativePlatform.mockReturnValue(true);
     mockCapacitor.getPlatform.mockReturnValue('android');
@@ -510,7 +532,7 @@ describe('useNativeOTA', () => {
         await result.current.enableRemoteMode();
       });
 
-      expect((window as any).AndroidBridge.enableRemoteMode).toHaveBeenCalled();
+      expect(window.AndroidBridge!.enableRemoteMode).toHaveBeenCalled();
       expect(result.current.isDownloading).toBe(true);
     });
 
@@ -537,7 +559,7 @@ describe('useNativeOTA', () => {
         await result.current.enableRemoteMode();
       });
 
-      expect((window as any).AndroidBridge.enableRemoteMode).toHaveBeenCalledTimes(1);
+      expect(window.AndroidBridge!.enableRemoteMode).toHaveBeenCalledTimes(1);
     });
 
     it('should save current version before downloading', async () => {
@@ -577,7 +599,7 @@ describe('useNativeOTA', () => {
 
     it('should handle exception in bridge call', async () => {
       vi.spyOn(console, 'error').mockImplementation(() => {});
-      (window as any).AndroidBridge.enableRemoteMode = vi.fn(() => {
+      window.AndroidBridge!.enableRemoteMode = vi.fn(() => {
         throw new Error('Bridge crashed');
       });
 
@@ -607,7 +629,7 @@ describe('useNativeOTA', () => {
       });
 
       expect(
-        (window as any).webkit.messageHandlers.IOSBridge.postMessage,
+        window.webkit!.messageHandlers.IOSBridge.postMessage,
       ).toHaveBeenCalledWith({ action: 'enableRemoteMode' });
       expect(result.current.isDownloading).toBe(true);
     });
@@ -630,7 +652,7 @@ describe('useNativeOTA', () => {
 
     it('should handle exception in iOS bridge call', async () => {
       vi.spyOn(console, 'error').mockImplementation(() => {});
-      (window as any).webkit.messageHandlers.IOSBridge.postMessage = vi.fn(() => {
+      window.webkit!.messageHandlers.IOSBridge.postMessage = vi.fn(() => {
         throw new Error('iOS bridge crashed');
       });
 
@@ -688,7 +710,7 @@ describe('useNativeOTA', () => {
         await result.current.disableRemoteMode();
       });
 
-      expect((window as any).AndroidBridge.disableRemoteMode).toHaveBeenCalled();
+      expect(window.AndroidBridge!.disableRemoteMode).toHaveBeenCalled();
     });
 
     it('should call IOSBridge.postMessage with disableRemoteMode on iOS', async () => {
@@ -700,7 +722,7 @@ describe('useNativeOTA', () => {
       });
 
       expect(
-        (window as any).webkit.messageHandlers.IOSBridge.postMessage,
+        window.webkit!.messageHandlers.IOSBridge.postMessage,
       ).toHaveBeenCalledWith({ action: 'disableRemoteMode' });
     });
 
@@ -734,7 +756,7 @@ describe('useNativeOTA', () => {
 
     it('should handle bridge errors gracefully', async () => {
       setupAndroidBridge();
-      (window as any).AndroidBridge.disableRemoteMode = vi.fn(() => {
+      window.AndroidBridge!.disableRemoteMode = vi.fn(() => {
         throw new Error('Bridge error');
       });
       const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -854,6 +876,11 @@ describe('useNativeOTA', () => {
       expect(result.current.isPrecaching).toBe(false);
     });
 
+    // Note: These error tests use try/catch inside act() rather than
+    // expect(act(...)).rejects.toThrow() because the latter causes React 19
+    // to unmount the component, making result.current null and preventing
+    // post-error state assertions (e.g. isPrecaching).
+
     it('should error when no active service worker', async () => {
       vi.spyOn(console, 'error').mockImplementation(() => {});
       mockRegistration.active = null;
@@ -881,16 +908,9 @@ describe('useNativeOTA', () => {
 
       const { result } = renderHook(() => useNativeOTA());
 
-      let caughtError: Error | undefined;
-      await act(async () => {
-        try {
-          await result.current.precacheForOffline();
-        } catch (e) {
-          caughtError = e as Error;
-        }
-      });
-
-      expect(caughtError?.message).toBe('Service worker not supported');
+      await expect(
+        act(() => result.current.precacheForOffline()),
+      ).rejects.toThrow('Service worker not supported');
 
       // Restore
       if (descriptor) {
@@ -908,16 +928,9 @@ describe('useNativeOTA', () => {
 
       const { result } = renderHook(() => useNativeOTA());
 
-      let caughtError: Error | undefined;
-      await act(async () => {
-        try {
-          await result.current.precacheForOffline();
-        } catch (e) {
-          caughtError = e as Error;
-        }
-      });
-
-      expect(caughtError?.message).toContain('Precache failed with message');
+      await expect(
+        act(() => result.current.precacheForOffline()),
+      ).rejects.toThrow('Precache failed with message');
     });
   });
 
@@ -1078,7 +1091,7 @@ describe('useNativeOTA', () => {
         await result.current.enableRemoteMode();
       });
 
-      expect((window as any).AndroidBridge.enableRemoteMode).toHaveBeenCalled();
+      expect(window.AndroidBridge!.enableRemoteMode).toHaveBeenCalled();
       expect(result.current.isDownloading).toBe(true);
     });
 
@@ -1104,7 +1117,7 @@ describe('useNativeOTA', () => {
       });
 
       expect(
-        (window as any).webkit.messageHandlers.IOSBridge.postMessage,
+        window.webkit!.messageHandlers.IOSBridge.postMessage,
       ).toHaveBeenCalledWith({ action: 'enableRemoteMode' });
     });
 
@@ -1145,7 +1158,7 @@ describe('useNativeOTA', () => {
       await act(async () => {
         await result.current.enableRemoteMode();
       });
-      expect((window as any).AndroidBridge.enableRemoteMode).toHaveBeenCalled();
+      expect(window.AndroidBridge!.enableRemoteMode).toHaveBeenCalled();
 
       // Simulate the download completing (reset isDownloading via ota success)
       // In real usage the page would reload. For test, simulate ota-error to reset state.
@@ -1156,7 +1169,7 @@ describe('useNativeOTA', () => {
       await act(async () => {
         await result.current.disableRemoteMode();
       });
-      expect((window as any).AndroidBridge.disableRemoteMode).toHaveBeenCalled();
+      expect(window.AndroidBridge!.disableRemoteMode).toHaveBeenCalled();
     });
   });
 });
