@@ -105,16 +105,21 @@ const saveSchedule = async (records: ScheduledNotificationRecord[]): Promise<voi
   await storage.set(PREF_SCHEDULED_IDS, JSON.stringify(records));
 };
 
-/** Register notification action types on iOS so tapping opens the app directly */
-const registerActionTypes = async (): Promise<void> => {
-  try {
-    await LocalNotifications.registerActionTypes({
-      types: [{ id: ACTION_TYPE_OPEN, actions: [] }],
-    });
-  } catch (err) {
-    console.debug('[Notifications] Action type registration error:', err);
-  }
-};
+/** Register notification action types on iOS so tapping opens the app directly (once per session) */
+const registerActionTypes = (() => {
+  let registered = false;
+  return async (): Promise<void> => {
+    if (registered) return;
+    try {
+      await LocalNotifications.registerActionTypes({
+        types: [{ id: ACTION_TYPE_OPEN, actions: [] }],
+      });
+      registered = true;
+    } catch (err) {
+      console.debug('[Notifications] Action type registration error:', err);
+    }
+  };
+})();
 
 const synchronizeNative = async (): Promise<void> => {
   // Register action types so iOS handles taps directly
