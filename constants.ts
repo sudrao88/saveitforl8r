@@ -80,4 +80,10 @@ export const ANALYTICS_EVENTS = {
     ACTION_DISMISSED: 'Dismissed',
     ACTION_RESTORED: 'Restored',
   },
+  NOTIFICATION: {
+    CATEGORY: 'Notification',
+    ACTION_SCHEDULED: 'Scheduled',
+    ACTION_PERMISSION_GRANTED: 'Permission Granted',
+    ACTION_SETTING_CHANGED: 'Setting Changed',
+  },
 } as const;

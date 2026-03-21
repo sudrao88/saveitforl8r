@@ -24,6 +24,10 @@ const config: CapacitorConfig = {
           androidSplashResourceName: "splash",
           iosSplashResourceName: "Splash",
           showSpinner: false,
+      },
+      LocalNotifications: {
+          smallIcon: "ic_notification",
+          iconColor: "#2563eb",
       }
   }
 };

@@ -509,3 +509,111 @@ self.addEventListener('fetch', (event) => {
     })
   );
 });
+
+// ─── Periodic Sync: Morning Briefing (PWA, Chrome only) ─────────────
+// Best-effort daily notification check. Chrome controls actual timing.
+// Falls back to on-open check in notificationService.ts for other browsers.
+self.addEventListener('periodicsync', (event) => {
+  if (event.tag === 'morning-briefing-check') {
+    event.waitUntil(handleMorningBriefingCheck());
+  }
+});
+
+async function handleMorningBriefingCheck() {
+  try {
+    // Check if any client (tab) is currently open — if so, let the app handle it
+    const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: false });
+    if (clients.length > 0) return;
+
+    // Open IndexedDB to check for today's events and todos
+    const db = await openNotificationDB();
+    if (!db) return;
+
+    const now = new Date();
+    const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+    // Check calendar events
+    const events = await getAllFromStore(db, 'calendarEvents');
+    const todayEvents = events.filter(e => {
+      if (e.isDeleted || e.status === 'cancelled') return false;
+      const dateKey = (e.occurrenceDate || e.startDate || '').slice(0, 10);
+      return dateKey === todayKey;
+    });
+
+    // Check todo items
+    const todos = await getAllFromStore(db, 'todoItems');
+    const todayTodos = todos.filter(item => {
+      if (item.isDeleted || item.isCompleted || item.isDismissed) return false;
+      if (item.deadline) return item.deadline.slice(0, 10) === todayKey;
+      return true; // No deadline counts for today
+    });
+
+    db.close();
+
+    if (todayEvents.length === 0 && todayTodos.length === 0) return;
+
+    const parts = [];
+    if (todayEvents.length > 0) parts.push(`${todayEvents.length} event${todayEvents.length !== 1 ? 's' : ''}`);
+    if (todayTodos.length > 0) parts.push(`${todayTodos.length} task${todayTodos.length !== 1 ? 's' : ''}`);
+    const body = `You have ${parts.join(' and ')} today`;
+
+    await self.registration.showNotification("Good morning! Here's your day", {
+      body,
+      icon: '/icon.svg',
+      badge: '/icon.svg',
+      tag: 'morning-briefing', // Replaces existing notification with same tag
+    });
+  } catch (err) {
+    console.error('[SW] Morning briefing check error:', err);
+  }
+}
+
+function openNotificationDB() {
+  return new Promise((resolve) => {
+    try {
+      const request = indexedDB.open('SaveItForL8rDB');
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+function getAllFromStore(db, storeName) {
+  return new Promise((resolve) => {
+    try {
+      if (!db.objectStoreNames.contains(storeName)) {
+        resolve([]);
+        return;
+      }
+      const tx = db.transaction(storeName, 'readonly');
+      const store = tx.objectStore(storeName);
+      const request = store.getAll();
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => resolve([]);
+    } catch {
+      resolve([]);
+    }
+  });
+}
+
+// Handle notification click in SW context (PWA)
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const route = event.notification.data?.route;
+  const targetUrl = route ? `/?route=${encodeURIComponent(route)}` : '/';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      // Focus existing window and navigate if available
+      for (const client of clientList) {
+        if ('focus' in client) {
+          if (route && 'navigate' in client) client.navigate(targetUrl);
+          return client.focus();
+        }
+      }
+      // Otherwise open new window with route
+      if (self.clients.openWindow) return self.clients.openWindow(targetUrl);
+    })
+  );
+});
