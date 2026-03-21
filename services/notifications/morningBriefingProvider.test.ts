@@ -100,16 +100,31 @@ describe('morningBriefingProvider', () => {
     expect(notifications[0].extra?.route).toBe('home');
   });
 
-  it('includes no-deadline todos only for today', async () => {
+  it('excludes no-deadline todos from notifications', async () => {
     (storageService.getTodoItems as any).mockResolvedValue([
-      makeTodo({ deadline: undefined }), // No deadline
+      makeTodo({ deadline: undefined }), // No deadline — should not trigger notification
     ]);
 
     const notifications = await morningBriefingProvider.getNotifications();
-    // Should generate notification for today (no-deadline todos count for today)
-    expect(notifications).toHaveLength(1);
-    expect(notifications[0].id).toBe(1000); // today
-    expect(notifications[0].body).toBe('You have 1 task today');
+    expect(notifications).toEqual([]);
+  });
+
+  it('includes todos only when they have a deadline matching the day', async () => {
+    (storageService.getTodoItems as any).mockResolvedValue([
+      makeTodo({ deadline: '2026-03-21' }),           // Due today — included
+      makeTodo({ id: 'todo-2', deadline: undefined }), // No deadline — excluded
+      makeTodo({ id: 'todo-3', deadline: '2026-03-25' }), // Due later — excluded for today
+    ]);
+
+    const notifications = await morningBriefingProvider.getNotifications();
+    // Today's notification should only count the 1 todo due today
+    const todayNotif = notifications.find(n => n.id === 1000);
+    expect(todayNotif).toBeDefined();
+    expect(todayNotif!.body).toBe('You have 1 task today');
+    // Future day should have 1 todo
+    const futureNotif = notifications.find(n => n.id === 1004);
+    expect(futureNotif).toBeDefined();
+    expect(futureNotif!.body).toBe('You have 1 task on Wednesday');
   });
 
   it('schedules notifications for multiple upcoming days', async () => {

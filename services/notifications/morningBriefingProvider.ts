@@ -87,19 +87,15 @@ export const getEventsForDate = (events: CalendarEvent[], dateKey: string): Cale
   });
 };
 
-/** Filter pending todo items for a specific date key (or no-deadline todos for today) */
+/** Filter pending todo items that are due on a specific date */
 export const getTodosForDate = (
   items: TodoItem[],
   dateKey: string,
-  isToday: boolean,
 ): TodoItem[] => {
   return items.filter(item => {
     if (item.isCompleted || item.isDismissed) return false;
-    if (item.deadline) {
-      return isoToDateKey(item.deadline) === dateKey;
-    }
-    // No-deadline todos only count for today
-    return isToday;
+    // Only include todos with a deadline matching this date
+    return item.deadline ? isoToDateKey(item.deadline) === dateKey : false;
   });
 };
 
@@ -138,9 +134,8 @@ export const morningBriefingProvider: NotificationProvider = {
       if (scheduledAt.getTime() <= now.getTime()) continue;
 
       const dateKey = toLocalDateKey(targetDate);
-      const isToday = dateKey === todayKey;
       const dayEvents = getEventsForDate(events, dateKey);
-      const dayTodos = getTodosForDate(items, dateKey, isToday);
+      const dayTodos = getTodosForDate(items, dateKey);
 
       if (dayEvents.length === 0 && dayTodos.length === 0) continue;
 

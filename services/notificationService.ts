@@ -28,6 +28,10 @@ const PREF_SCHEDULED_IDS = 'notification_scheduled_ids';
 const PREF_NOTIFICATION_ENABLED = 'notification_enabled';
 const PREF_WEB_LAST_SHOWN_DATE = 'notification_web_last_shown';
 
+// Action type ID for notifications — registering a category with no custom actions
+// makes iOS open the app directly on tap instead of showing an intermediate "Open" CTA.
+const ACTION_TYPE_OPEN = 'OPEN_APP';
+
 // Provider registry — add new providers here (OTA-updatable)
 const providers: NotificationProvider[] = [morningBriefingProvider];
 
@@ -101,7 +105,21 @@ const saveSchedule = async (records: ScheduledNotificationRecord[]): Promise<voi
   await storage.set(PREF_SCHEDULED_IDS, JSON.stringify(records));
 };
 
+/** Register notification action types on iOS so tapping opens the app directly */
+const registerActionTypes = async (): Promise<void> => {
+  try {
+    await LocalNotifications.registerActionTypes({
+      types: [{ id: ACTION_TYPE_OPEN, actions: [] }],
+    });
+  } catch (err) {
+    console.debug('[Notifications] Action type registration error:', err);
+  }
+};
+
 const synchronizeNative = async (): Promise<void> => {
+  // Register action types so iOS handles taps directly
+  await registerActionTypes();
+
   // Collect desired notifications from all providers
   const desired: (PendingNotification & { providerKey: string })[] = [];
   for (const provider of providers) {
@@ -164,6 +182,7 @@ const synchronizeNative = async (): Promise<void> => {
           body: n.body,
           schedule: { at: n.scheduledAt },
           extra: n.extra,
+          actionTypeId: ACTION_TYPE_OPEN,
         })),
       });
     } catch (err) {
@@ -212,7 +231,7 @@ const synchronizeWeb = async (): Promise<void> => {
   const [events, items] = await Promise.all([getCalendarEvents(), getTodoItems()]);
 
   const todayEvents = getEventsForDate(events, todayKey);
-  const todayTodos = getTodosForDate(items, todayKey, true);
+  const todayTodos = getTodosForDate(items, todayKey);
 
   if (todayEvents.length === 0 && todayTodos.length === 0) return;
 
