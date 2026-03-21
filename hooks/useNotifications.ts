@@ -92,7 +92,7 @@ export const useNotifications = (
     );
 
     return () => {
-      listener.then(h => h.remove()).catch(() => {});
+      listener.then(h => h.remove()).catch(err => console.debug('[Notifications] Listener cleanup error:', err));
     };
   }, []);
 
@@ -107,7 +107,7 @@ export const useNotifications = (
     });
 
     return () => {
-      listener.then(h => h.remove()).catch(() => {});
+      listener.then(h => h.remove()).catch(err => console.debug('[Notifications] Listener cleanup error:', err));
     };
   }, []);
 

@@ -25,7 +25,7 @@ const getNotificationTime = async (): Promise<{ hours: number; minutes: number }
 };
 
 /** Get the YYYY-MM-DD date string for a Date in local time */
-const toLocalDateKey = (date: Date): string => {
+export const toLocalDateKey = (date: Date): string => {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
   const d = String(date.getDate()).padStart(2, '0');
@@ -50,7 +50,7 @@ const getDayLabel = (target: Date, today: Date): string => {
 };
 
 /** Build notification body text */
-const buildBody = (eventCount: number, todoCount: number, dayLabel: string): string => {
+export const buildBody = (eventCount: number, todoCount: number, dayLabel: string): string => {
   const parts: string[] = [];
 
   if (eventCount > 0) {
@@ -77,7 +77,7 @@ const getRoute = (hasEvents: boolean, hasTodos: boolean): string => {
 };
 
 /** Filter calendar events for a specific date key */
-const getEventsForDate = (events: CalendarEvent[], dateKey: string): CalendarEvent[] => {
+export const getEventsForDate = (events: CalendarEvent[], dateKey: string): CalendarEvent[] => {
   return events.filter(e => {
     // Use occurrenceDate for recurring event instances, startDate otherwise
     const eventDateKey = e.occurrenceDate
@@ -88,7 +88,7 @@ const getEventsForDate = (events: CalendarEvent[], dateKey: string): CalendarEve
 };
 
 /** Filter pending todo items for a specific date key (or no-deadline todos for today) */
-const getTodosForDate = (
+export const getTodosForDate = (
   items: TodoItem[],
   dateKey: string,
   isToday: boolean,

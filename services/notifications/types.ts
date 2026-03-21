@@ -36,4 +36,6 @@ export interface ScheduledNotificationRecord {
   id: number;
   scheduledAtISO: string;
   providerKey: string;
+  title: string;
+  body: string;
 }

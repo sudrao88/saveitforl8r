@@ -601,14 +601,19 @@ function getAllFromStore(db, storeName) {
 // Handle notification click in SW context (PWA)
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
+  const route = event.notification.data?.route;
+  const targetUrl = route ? `/?route=${encodeURIComponent(route)}` : '/';
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      // Focus existing window if available
+      // Focus existing window and navigate if available
       for (const client of clientList) {
-        if ('focus' in client) return client.focus();
+        if ('focus' in client) {
+          if (route && 'navigate' in client) client.navigate(targetUrl);
+          return client.focus();
+        }
       }
-      // Otherwise open new window
-      if (self.clients.openWindow) return self.clients.openWindow('/');
+      // Otherwise open new window with route
+      if (self.clients.openWindow) return self.clients.openWindow(targetUrl);
     })
   );
 });

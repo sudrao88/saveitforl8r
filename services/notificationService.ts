@@ -11,7 +11,13 @@
 
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { isNative, storage } from './platform';
-import { morningBriefingProvider } from './notifications/morningBriefingProvider';
+import {
+  morningBriefingProvider,
+  toLocalDateKey,
+  getEventsForDate,
+  getTodosForDate,
+  buildBody,
+} from './notifications/morningBriefingProvider';
 import type {
   NotificationProvider,
   PendingNotification,
@@ -119,12 +125,15 @@ const synchronizeNative = async (): Promise<void> => {
     const d = desiredMap.get(id);
     if (!d) {
       toCancel.push(id);
-    } else if (d.scheduledAt.toISOString() !== record.scheduledAtISO) {
-      // Time changed — cancel old, schedule new
+    } else if (
+      d.scheduledAt.toISOString() !== record.scheduledAtISO ||
+      d.title !== record.title ||
+      d.body !== record.body
+    ) {
+      // Time or content changed — cancel old, schedule new
       toCancel.push(id);
       toSchedule.push(d);
     }
-    // If same time, leave it alone
   }
 
   // Find additions
@@ -167,6 +176,8 @@ const synchronizeNative = async (): Promise<void> => {
     id: n.id,
     scheduledAtISO: n.scheduledAt.toISOString(),
     providerKey: n.providerKey,
+    title: n.title,
+    body: n.body,
   }));
   await saveSchedule(newRecords);
 
@@ -184,7 +195,7 @@ const synchronizeWeb = async (): Promise<void> => {
 
   // On-open check: if it's past the configured notification time today
   // and we haven't shown a notification yet today, show one now.
-  const lastShown = localStorage.getItem(PREF_WEB_LAST_SHOWN_DATE);
+  const lastShown = await storage.get(PREF_WEB_LAST_SHOWN_DATE);
   const now = new Date();
   const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
@@ -196,44 +207,27 @@ const synchronizeWeb = async (): Promise<void> => {
 
   if (now.getTime() < notifTime.getTime()) return; // Not yet time
 
-  // Get today's notifications from providers
-  for (const provider of providers) {
-    const notifications = await provider.getNotifications();
-    // Find one for today (dayOffset 0 = today, but it may have been skipped if past time)
-    // Since it's past time, the provider may not return today. We query directly.
-    const { getCalendarEvents, getTodoItems } = await import('./storageService');
-    const [events, items] = await Promise.all([getCalendarEvents(), getTodoItems()]);
+  // Reuse morningBriefingProvider's filtering logic to build today's notification
+  const { getCalendarEvents, getTodoItems } = await import('./storageService');
+  const [events, items] = await Promise.all([getCalendarEvents(), getTodoItems()]);
 
-    const todayEvents = events.filter(e => {
-      const dateKey = (e.occurrenceDate || e.startDate).slice(0, 10);
-      return dateKey === todayKey && e.status !== 'cancelled';
+  const todayEvents = getEventsForDate(events, todayKey);
+  const todayTodos = getTodosForDate(items, todayKey, true);
+
+  if (todayEvents.length === 0 && todayTodos.length === 0) return;
+
+  const body = buildBody(todayEvents.length, todayTodos.length, 'today');
+
+  // Show web notification
+  try {
+    new Notification("Good morning! Here's your day", {
+      body,
+      icon: '/icon.svg',
+      data: { route: todayEvents.length > 0 ? 'calendar' : 'todo' },
     });
-
-    const todayTodos = items.filter(item => {
-      if (item.isCompleted || item.isDismissed) return false;
-      if (item.deadline) return item.deadline.slice(0, 10) === todayKey;
-      return true; // No deadline counts for today
-    });
-
-    if (todayEvents.length === 0 && todayTodos.length === 0) return;
-
-    const parts: string[] = [];
-    if (todayEvents.length > 0) parts.push(`${todayEvents.length} event${todayEvents.length !== 1 ? 's' : ''}`);
-    if (todayTodos.length > 0) parts.push(`${todayTodos.length} task${todayTodos.length !== 1 ? 's' : ''}`);
-    const body = `You have ${parts.join(' and ')} today`;
-
-    // Show web notification
-    try {
-      new Notification("Good morning! Here's your day", {
-        body,
-        icon: '/icon.svg',
-      });
-      localStorage.setItem(PREF_WEB_LAST_SHOWN_DATE, todayKey);
-    } catch (err) {
-      console.error('[Notifications] Web notification error:', err);
-    }
-
-    break; // Only one provider for now
+    await storage.set(PREF_WEB_LAST_SHOWN_DATE, todayKey);
+  } catch (err) {
+    console.error('[Notifications] Web notification error:', err);
   }
 };
 
