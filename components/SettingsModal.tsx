@@ -1,7 +1,7 @@
 
 import React, { useState, useRef } from 'react';
 
-import { X, Download, Upload, Info, RefreshCw, Cloud, AlertTriangle, AlertCircle, ShieldCheck, LogOut, Settings, Cpu, CheckCircle2, Loader2, Database, ChevronDown, Trash2 } from 'lucide-react';
+import { X, Download, Upload, Info, RefreshCw, Cloud, AlertTriangle, AlertCircle, ShieldCheck, LogOut, Settings, Cpu, CheckCircle2, Loader2, Database, ChevronDown, Trash2, Bell, BellOff } from 'lucide-react';
 
 import { useExportImport } from '../hooks/useExportImport';
 import { useEncryptionSettings } from '../hooks/useEncryptionSettings';
@@ -29,6 +29,13 @@ interface SettingsModalProps {
   closeWorkerDB?: () => void;
   reconcileReport?: ReconcileReport | null;
   onUpdateReport?: (report: ReconcileReport) => void;
+  notificationsSupported?: boolean;
+  notificationsEnabled?: boolean;
+  notificationPermission?: 'granted' | 'denied' | 'prompt';
+  notificationTime?: string;
+  onNotificationsEnabledChange?: (enabled: boolean) => Promise<void>;
+  onNotificationTimeChange?: (time: string) => Promise<void>;
+  onRequestNotificationPermission?: () => Promise<void>;
 }
 
 // Helper components for the new UI structure
@@ -120,7 +127,10 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
     onClose, onImportSuccess, appVersion,
     syncError, onSyncComplete, modelStatus, downloadProgress, retryDownload,
     embeddingStats, retryFailedEmbeddings, totalMemories, lastError, closeWorkerDB,
-    onUpdateReport
+    onUpdateReport,
+    notificationsSupported, notificationsEnabled, notificationPermission,
+    notificationTime, onNotificationsEnabledChange, onNotificationTimeChange,
+    onRequestNotificationPermission,
   } = props;
   
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
@@ -247,6 +257,47 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
                 )}
             </ExpandableSection>
           </SettingsCard>
+
+          {notificationsSupported && (
+            <SettingsCard title="Notifications" icon={Bell}>
+              <SettingsRow>
+                <SettingsInfo label="Morning Briefing" description="Get a daily summary of your events and tasks." />
+                <button
+                  onClick={() => onNotificationsEnabledChange?.(!notificationsEnabled)}
+                  className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${notificationsEnabled ? 'bg-blue-600' : 'bg-gray-600'}`}
+                >
+                  <span className={`inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${notificationsEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                </button>
+              </SettingsRow>
+              {notificationsEnabled && (
+                <>
+                  <SettingsRow>
+                    <SettingsInfo label="Notification Time" description="When to receive your daily briefing." />
+                    <input
+                      type="time"
+                      value={notificationTime || '07:00'}
+                      onChange={(e) => onNotificationTimeChange?.(e.target.value)}
+                      className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors"
+                    />
+                  </SettingsRow>
+                  {notificationPermission === 'denied' && (
+                    <div className="flex items-start gap-2 p-3 bg-amber-900/30 border border-amber-800/60 rounded-xl">
+                      <BellOff size={16} className="text-amber-400 shrink-0 mt-0.5" />
+                      <p className="text-xs text-amber-300">Notifications are blocked in your system settings. Please enable them in your device settings to receive morning briefings.</p>
+                    </div>
+                  )}
+                  {notificationPermission === 'prompt' && (
+                    <button
+                      onClick={onRequestNotificationPermission}
+                      className="w-full text-xs py-2 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-800/50 rounded-lg transition-colors active:scale-95"
+                    >
+                      Grant Notification Permission
+                    </button>
+                  )}
+                </>
+              )}
+            </SettingsCard>
+          )}
 
           <SettingsCard title="Data & Sync" icon={Database}>
             <SettingsRow>

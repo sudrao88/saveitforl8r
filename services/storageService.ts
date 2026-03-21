@@ -787,6 +787,7 @@ export const factoryReset = async () => {
                 'gdrive_linked', 'gdrive_email',
                 'access_token', 'expires_at', 'refresh_token',
                 'encryption_key', 'ota_use_remote', 'ota_last_version',
+                'notification_scheduled_ids', 'notification_enabled', 'notification_time',
             ];
             await Promise.all(nativeKeysToClear.map(key => storage.remove(key)));
         } catch (e) {

@@ -38,6 +38,7 @@ import { useHotkeys } from './hooks/useHotkeys';
 import { useMoments } from './hooks/useMoments';
 import { useCalendarEvents } from './hooks/useCalendarEvents';
 import { useTodoItems } from './hooks/useTodoItems';
+import { useNotifications } from './hooks/useNotifications';
 import useNativeOTA from './hooks/useNativeOTA';
 import { SyncProvider } from './context/SyncContext';
 import { reconcileEmbeddings, ReconcileReport, getMemories as getStoredMemories } from './services/storageService';
@@ -132,6 +133,31 @@ const AppContent: React.FC = () => {
 
   const [showCalendarAgenda, setShowCalendarAgenda] = useState(false);
   const [showTodoList, setShowTodoList] = useState(false);
+
+  // Notification scheduling — syncs on mount, resume, and data changes
+  const {
+    permissionStatus: notificationPermission,
+    isEnabled: notificationsEnabled,
+    notificationTime,
+    requestPermission: requestNotificationPermission,
+    setEnabled: setNotificationsEnabled,
+    setNotificationTime: setNotifTime,
+    isSupported: notificationsSupported,
+    pendingRoute: notificationPendingRoute,
+    clearPendingRoute: clearNotificationRoute,
+  } = useNotifications(calendarEvents, todoItems);
+
+  // Handle notification tap deep-link
+  useEffect(() => {
+    if (!notificationPendingRoute) return;
+    if (notificationPendingRoute === 'calendar') {
+      setShowCalendarAgenda(true);
+    } else if (notificationPendingRoute === 'todo') {
+      setShowTodoList(true);
+    }
+    // 'home' — just open the app, which is the default
+    clearNotificationRoute();
+  }, [notificationPendingRoute, clearNotificationRoute]);
 
   const { syncMoment, syncCalendarEvents, syncTodoItems } = useSync();
 
@@ -885,6 +911,13 @@ const AppContent: React.FC = () => {
                 lastError={lastError}
                 closeWorkerDB={closeWorkerDB}
                 reconcileReport={reconcileReport}
+                notificationsSupported={notificationsSupported}
+                notificationsEnabled={notificationsEnabled}
+                notificationPermission={notificationPermission}
+                notificationTime={notificationTime}
+                onNotificationsEnabledChange={setNotificationsEnabled}
+                onNotificationTimeChange={setNotifTime}
+                onRequestNotificationPermission={requestNotificationPermission}
             />
           </Suspense>
       )}
