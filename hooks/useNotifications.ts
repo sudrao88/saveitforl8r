@@ -141,21 +141,29 @@ export const useNotifications = (
   }, []);
 
   const setEnabled = useCallback(async (enabled: boolean) => {
-    setIsEnabled(enabled);
-    await setEnabledPref(enabled);
     if (enabled) {
-      // Request permission if needed
+      // Request permission before enabling
       const perm = await checkNotificationPermission();
+      let resolvedPerm = perm;
       if (perm === 'prompt') {
-        const result = await requestNotificationPermission();
-        setPermissionStatus(result);
-        if (result !== 'granted') return;
-      } else if (perm !== 'granted') {
+        resolvedPerm = await requestNotificationPermission();
+        setPermissionStatus(resolvedPerm);
+      }
+      if (resolvedPerm !== 'granted') {
+        // Permission denied or dismissed — keep setting off
+        setPermissionStatus(resolvedPerm);
+        setIsEnabled(false);
+        await setEnabledPref(false);
         return;
       }
+      setIsEnabled(true);
+      await setEnabledPref(true);
       await synchronizeNotifications();
+    } else {
+      setIsEnabled(false);
+      await setEnabledPref(false);
+      // cancelAllNotifications is called inside setEnabledPref when disabled
     }
-    // cancelAllNotifications is called inside setEnabledPref when disabled
   }, []);
 
   const setTime = useCallback(async (time: string) => {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, Suspense } from 'react';
-import { RefreshCw, X } from 'lucide-react';
+import { Bell, RefreshCw, X } from 'lucide-react';
 import { App as CapacitorApp, URLOpenListenerEvent } from '@capacitor/app';
 import { isNative } from './services/platform';
 import MemoryCard from './components/MemoryCard';
@@ -133,6 +133,7 @@ const AppContent: React.FC = () => {
 
   const [showCalendarAgenda, setShowCalendarAgenda] = useState(false);
   const [showTodoList, setShowTodoList] = useState(false);
+  const [notifBannerDismissed, setNotifBannerDismissed] = useState(false);
 
   // Notification scheduling — syncs on mount, resume, and data changes
   const {
@@ -783,6 +784,30 @@ const AppContent: React.FC = () => {
             todoPendingCount={todoPendingCount}
             synthesisLoading={synthesisLoading}
           />
+
+          {notificationsSupported && notificationPermission === 'prompt' && !notifBannerDismissed && (
+            <div className="mx-4 sm:mx-8 mt-3 flex items-center gap-3 p-3 bg-(--color-accent-muted) border border-(--color-accent)/30 rounded-(--radius-xl)">
+              <Bell size={18} className="text-(--color-accent) shrink-0" />
+              <p className="flex-1 text-sm text-(--color-text-secondary)">
+                Enable notifications to get a daily briefing of your events and tasks.
+              </p>
+              <button
+                onClick={async () => {
+                  await setNotificationsEnabled(true);
+                }}
+                className="shrink-0 px-3 py-1.5 text-xs font-medium bg-(--color-accent) hover:bg-(--color-accent-hover) text-white rounded-(--radius-lg) transition-colors duration-(--duration-fast) active:scale-95"
+              >
+                Enable
+              </button>
+              <button
+                onClick={() => setNotifBannerDismissed(true)}
+                className="shrink-0 p-1 text-(--color-text-tertiary) hover:text-(--color-text-secondary) transition-colors duration-(--duration-fast)"
+                aria-label="Dismiss"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          )}
 
           {availableTypes.length > 0 && (
             <div className="sticky z-(--z-dropdown) bg-(--color-surface-base) backdrop-blur-md border-b border-gray-800/50" style={{ top: `${topNavHeight}px` }}>

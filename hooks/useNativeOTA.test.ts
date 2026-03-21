@@ -28,18 +28,12 @@ const mockPreferences = vi.mocked(Preferences);
 
 // --- Native bridge type augmentation ---
 
-interface AndroidBridge {
-  enableRemoteMode: ReturnType<typeof vi.fn>;
-  disableRemoteMode: ReturnType<typeof vi.fn>;
-}
-
 interface IOSBridgeHandler {
   postMessage: ReturnType<typeof vi.fn>;
 }
 
 declare global {
   interface Window {
-    AndroidBridge?: AndroidBridge;
     webkit?: {
       messageHandlers: {
         IOSBridge: IOSBridgeHandler;
@@ -89,6 +83,7 @@ function mockFetchVersions(
 
 function setupAndroidBridge() {
   window.AndroidBridge = {
+    signalAppReady: vi.fn(),
     enableRemoteMode: vi.fn(),
     disableRemoteMode: vi.fn(),
   };

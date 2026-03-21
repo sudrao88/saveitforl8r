@@ -269,32 +269,16 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
                   <span className={`inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${notificationsEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
                 </button>
               </SettingsRow>
-              {notificationsEnabled && (
-                <>
-                  <SettingsRow>
-                    <SettingsInfo label="Notification Time" description="When to receive your daily briefing." />
-                    <input
-                      type="time"
-                      value={notificationTime || '07:00'}
-                      onChange={(e) => onNotificationTimeChange?.(e.target.value)}
-                      className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors"
-                    />
-                  </SettingsRow>
-                  {notificationPermission === 'denied' && (
-                    <div className="flex items-start gap-2 p-3 bg-amber-900/30 border border-amber-800/60 rounded-xl">
-                      <BellOff size={16} className="text-amber-400 shrink-0 mt-0.5" />
-                      <p className="text-xs text-amber-300">Notifications are blocked in your system settings. Please enable them in your device settings to receive morning briefings.</p>
-                    </div>
-                  )}
-                  {notificationPermission === 'prompt' && (
-                    <button
-                      onClick={onRequestNotificationPermission}
-                      className="w-full text-xs py-2 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-800/50 rounded-lg transition-colors active:scale-95"
-                    >
-                      Grant Notification Permission
-                    </button>
-                  )}
-                </>
+              {notificationsEnabled && notificationPermission === 'granted' && (
+                <SettingsRow>
+                  <SettingsInfo label="Notification Time" description="When to receive your daily briefing." />
+                  <input
+                    type="time"
+                    value={notificationTime || '07:00'}
+                    onChange={(e) => onNotificationTimeChange?.(e.target.value)}
+                    className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors"
+                  />
+                </SettingsRow>
               )}
             </SettingsCard>
           )}
