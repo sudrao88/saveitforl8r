@@ -11,8 +11,8 @@ const PREF_USE_REMOTE = 'ota_use_remote';
 const PREF_LAST_VERSION = 'ota_last_version';
 
 // Native bridge availability checks
-const hasAndroidBridge = () => Capacitor.getPlatform() === 'android' && !!(window as any).AndroidBridge;
-const hasIOSBridge = () => Capacitor.getPlatform() === 'ios' && !!(window as any).webkit?.messageHandlers?.IOSBridge;
+const hasAndroidBridge = () => Capacitor.getPlatform() === 'android' && !!window.AndroidBridge;
+const hasIOSBridge = () => Capacitor.getPlatform() === 'ios' && !!window.webkit?.messageHandlers?.IOSBridge;
 
 // Time intervals
 const INITIAL_UPDATE_CHECK_DELAY_MS = 5 * 1000;          // 5 seconds
@@ -147,13 +147,13 @@ export const useNativeOTA = () => {
           // bridge.setServerBasePath() which reloads the WebView automatically.
           // On success the page reloads with the new version (same origin).
           // On failure the native side dispatches an 'ota-error' CustomEvent.
-          (window as any).AndroidBridge.enableRemoteMode();
+          window.AndroidBridge!.enableRemoteMode();
       } else if (hasIOSBridge()) {
           // iOS native bridge downloads assets to local storage, then calls
           // setServerBasePath() which keeps the capacitor://localhost origin —
           // preserving IndexedDB, localStorage, and Capacitor plugins.
           // On failure the native side dispatches an 'ota-error' CustomEvent.
-          (window as any).webkit.messageHandlers.IOSBridge.postMessage({ action: 'enableRemoteMode' });
+          window.webkit!.messageHandlers.IOSBridge.postMessage({ action: 'enableRemoteMode' });
       } else {
           console.warn('[OTA] No native bridge available for OTA update');
           setState(s => ({ ...s, isDownloading: false, downloadError: 'Native bridge not available' }));
@@ -173,9 +173,9 @@ export const useNativeOTA = () => {
 
     try {
       if (hasAndroidBridge()) {
-          (window as any).AndroidBridge.disableRemoteMode();
+          window.AndroidBridge!.disableRemoteMode();
       } else if (hasIOSBridge()) {
-          (window as any).webkit.messageHandlers.IOSBridge.postMessage({ action: 'disableRemoteMode' });
+          window.webkit!.messageHandlers.IOSBridge.postMessage({ action: 'disableRemoteMode' });
       } else {
           await Preferences.set({ key: PREF_USE_REMOTE, value: 'false' });
       }

@@ -12,6 +12,14 @@ declare global {
       signalAppReady: () => void;
       enableRemoteMode: () => void;
       disableRemoteMode: () => void;
+      openNotificationSettings: () => void;
+    };
+    webkit?: {
+      messageHandlers: {
+        IOSBridge: {
+          postMessage: (message: { action: string }) => void;
+        };
+      };
     };
   }
 }

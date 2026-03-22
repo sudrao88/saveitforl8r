@@ -15,6 +15,7 @@ import {
   synchronizeNotifications,
   checkNotificationPermission,
   requestNotificationPermission,
+  openNotificationSettings,
   isNotificationEnabled,
   setNotificationEnabled as setEnabledPref,
   getNotificationTime as getTimePref,
@@ -34,6 +35,8 @@ export interface UseNotificationsReturn {
   /** Route to navigate to when a notification is tapped */
   pendingRoute: string | null;
   clearPendingRoute: () => void;
+  /** Opens device notification settings (native only) */
+  openSettings: () => void;
 }
 
 const DEBOUNCE_MS = 2000;
@@ -96,13 +99,18 @@ export const useNotifications = (
     };
   }, []);
 
-  // Re-sync on app resume (native only)
+  // Re-check permission and re-sync on app resume (native only).
+  // The user may have just returned from device settings after enabling permission.
   useEffect(() => {
     if (!isNative()) return;
 
-    const listener = CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+    const listener = CapacitorApp.addListener('appStateChange', async ({ isActive }) => {
       if (isActive) {
-        synchronizeNotifications();
+        const perm = await checkNotificationPermission();
+        setPermissionStatus(perm);
+        if (perm === 'granted') {
+          synchronizeNotifications();
+        }
       }
     });
 
@@ -142,15 +150,22 @@ export const useNotifications = (
 
   const setEnabled = useCallback(async (enabled: boolean) => {
     if (enabled) {
-      // Request permission before enabling
-      const initialPerm = await checkNotificationPermission();
-      const perm = initialPerm === 'prompt' ? await requestNotificationPermission() : initialPerm;
+      // Always attempt the system permission request first.
+      // The OS decides whether to show a popup:
+      //   - iOS: popup shown only on the very first call, silently 'denied' after.
+      //   - Android 13+: popup shown up to twice, silently 'denied' once "Don't ask again" is set.
+      //   - Web: popup shown while Notification.permission === 'default'; silently 'denied' after explicit block.
+      const perm = await requestNotificationPermission();
       setPermissionStatus(perm);
 
       if (perm !== 'granted') {
         // Permission denied or dismissed — keep setting off
         setIsEnabled(false);
         await setEnabledPref(false);
+        // If the OS could not show a popup (permanent denial), redirect to settings
+        if (perm === 'denied') {
+          openNotificationSettings();
+        }
         return;
       }
 
@@ -186,5 +201,6 @@ export const useNotifications = (
     isSupported,
     pendingRoute,
     clearPendingRoute,
+    openSettings: openNotificationSettings,
   };
 };

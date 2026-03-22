@@ -36,6 +36,7 @@ interface SettingsModalProps {
   onNotificationsEnabledChange?: (enabled: boolean) => Promise<void>;
   onNotificationTimeChange?: (time: string) => Promise<void>;
   onRequestNotificationPermission?: () => Promise<void>;
+  onOpenNotificationSettings?: () => void;
 }
 
 // Helper components for the new UI structure
@@ -131,6 +132,7 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
     notificationsSupported, notificationsEnabled, notificationPermission,
     notificationTime, onNotificationsEnabledChange, onNotificationTimeChange,
     onRequestNotificationPermission,
+    onOpenNotificationSettings,
   } = props;
   
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
@@ -279,6 +281,22 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
                     className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors"
                   />
                 </SettingsRow>
+              )}
+              {notificationPermission === 'denied' && (
+                <div className="flex items-start gap-2 p-3 bg-amber-900/30 border border-amber-800/60 rounded-xl">
+                  <BellOff size={16} className="text-amber-400 shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-xs text-amber-300">Notifications are blocked. Enable them in your device settings to receive morning briefings.</p>
+                    {onOpenNotificationSettings && (
+                      <button
+                        onClick={onOpenNotificationSettings}
+                        className="mt-1.5 text-xs font-medium text-(--color-accent) hover:text-(--color-accent-hover) transition-colors duration-(--duration-fast)"
+                      >
+                        Open Notification Settings
+                      </button>
+                    )}
+                  </div>
+                </div>
               )}
             </SettingsCard>
           )}

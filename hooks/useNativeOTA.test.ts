@@ -26,22 +26,6 @@ import { Preferences } from '@capacitor/preferences';
 const mockCapacitor = vi.mocked(Capacitor);
 const mockPreferences = vi.mocked(Preferences);
 
-// --- Native bridge type augmentation ---
-
-interface IOSBridgeHandler {
-  postMessage: ReturnType<typeof vi.fn>;
-}
-
-declare global {
-  interface Window {
-    webkit?: {
-      messageHandlers: {
-        IOSBridge: IOSBridgeHandler;
-      };
-    };
-  }
-}
-
 // --- Helpers ---
 
 const REMOTE_URL = 'https://saveitforl8r.com';
@@ -86,6 +70,7 @@ function setupAndroidBridge() {
     signalAppReady: vi.fn(),
     enableRemoteMode: vi.fn(),
     disableRemoteMode: vi.fn(),
+    openNotificationSettings: vi.fn(),
   };
 }
 

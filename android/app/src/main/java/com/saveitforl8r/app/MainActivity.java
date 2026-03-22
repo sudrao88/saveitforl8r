@@ -2,9 +2,11 @@ package com.saveitforl8r.app;
 
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.provider.Settings;
 import android.util.Log;
 import android.view.View;
 import android.webkit.JavascriptInterface;
@@ -245,6 +247,25 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
                     activity.dispatchShareData();
                 });
             }
+        }
+
+        /**
+         * Opens the app's notification settings page so the user can
+         * re-enable notifications after previously denying permission.
+         */
+        @JavascriptInterface
+        public void openNotificationSettings() {
+            Log.d(TAG, "Opening notification settings");
+            if (activity == null) return;
+            activity.mainHandler.post(() -> {
+                try {
+                    Intent intent = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+                    intent.putExtra(Settings.EXTRA_APP_PACKAGE, activity.getPackageName());
+                    activity.startActivity(intent);
+                } catch (Exception e) {
+                    Log.e(TAG, "Failed to open notification settings", e);
+                }
+            });
         }
 
         /**
