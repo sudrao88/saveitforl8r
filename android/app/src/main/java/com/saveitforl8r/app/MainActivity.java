@@ -10,6 +10,8 @@ import android.view.View;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 
+import java.util.Locale;
+
 import org.json.JSONObject;
 
 import androidx.core.graphics.Insets;
@@ -29,6 +31,7 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
     private boolean webViewReady = false;
     private ShareIntentHandler shareHandler;
     private JSObject pendingShareData = null;
+    private String pendingInsetsJs = null;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
@@ -200,22 +203,28 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
             final float bottom = systemBars.bottom / density;
             final float left = systemBars.left / density;
 
-            // Inject as CSS custom properties that override env(safe-area-inset-*)
-            mainHandler.postDelayed(() -> {
-                if (bridge != null && bridge.getWebView() != null) {
-                    String js = String.format(
-                        "document.documentElement.style.setProperty('--sat','%fpx');" +
-                        "document.documentElement.style.setProperty('--sar','%fpx');" +
-                        "document.documentElement.style.setProperty('--sab','%fpx');" +
-                        "document.documentElement.style.setProperty('--sal','%fpx');",
-                        top, right, bottom, left
-                    );
-                    bridge.getWebView().evaluateJavascript(js, null);
-                }
-            }, 300);
+            // Build the JS injection string with explicit US locale to ensure
+            // decimal points (not commas) in CSS values
+            pendingInsetsJs = String.format(Locale.US,
+                "document.documentElement.style.setProperty('--sat','%fpx');" +
+                "document.documentElement.style.setProperty('--sar','%fpx');" +
+                "document.documentElement.style.setProperty('--sab','%fpx');" +
+                "document.documentElement.style.setProperty('--sal','%fpx');",
+                top, right, bottom, left
+            );
+
+            // Dispatch immediately if the app is already ready, otherwise
+            // it will be dispatched when signalAppReady() is called
+            mainHandler.post(this::dispatchPendingInsets);
 
             return windowInsets;
         });
+    }
+
+    private void dispatchPendingInsets() {
+        if (pendingInsetsJs != null && jsAppReady && bridge != null && bridge.getWebView() != null) {
+            bridge.getWebView().evaluateJavascript(pendingInsetsJs, null);
+        }
     }
 
     public class AppReadyInterface {
@@ -232,6 +241,7 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
                 activity.mainHandler.post(() -> {
                     activity.jsAppReady = true;
                     activity.webViewReady = true; // Dismiss splash screen
+                    activity.dispatchPendingInsets();
                     activity.dispatchShareData();
                 });
             }
