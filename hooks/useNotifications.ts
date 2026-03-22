@@ -43,7 +43,7 @@ export const useNotifications = (
   todoItems: TodoItem[],
 ): UseNotificationsReturn => {
   const [permissionStatus, setPermissionStatus] = useState<'granted' | 'denied' | 'prompt'>('prompt');
-  const [isEnabled, setIsEnabled] = useState(true);
+  const [isEnabled, setIsEnabled] = useState(false);
   const [notificationTime, setNotificationTime] = useState('07:00');
   const [pendingRoute, setPendingRoute] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);

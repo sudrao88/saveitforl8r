@@ -70,8 +70,8 @@ export const requestNotificationPermission = async (): Promise<'granted' | 'deni
 
 export const isNotificationEnabled = async (): Promise<boolean> => {
   const value = await storage.get(PREF_NOTIFICATION_ENABLED);
-  // Default: enabled
-  return value !== 'false';
+  // Default: disabled (user must explicitly enable via permission grant)
+  return value === 'true';
 };
 
 export const setNotificationEnabled = async (enabled: boolean): Promise<void> => {
