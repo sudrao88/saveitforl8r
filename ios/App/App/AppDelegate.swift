@@ -134,6 +134,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         }
     }
 
+    /// Opens the app's notification settings so the user can re-enable
+    /// notifications after previously denying permission.
+    func handleOpenNotificationSettings() {
+        print("[Notifications] Opening app notification settings")
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+        UIApplication.shared.open(url, options: [:], completionHandler: nil)
+    }
+
     /// Called by IOSBridge when JS requests switching back to bundled assets.
     func handleDisableRemoteMode() {
         print("[OTA] Disabling remote mode")
@@ -254,6 +262,8 @@ class IOSBridgeHandler: NSObject, WKScriptMessageHandler {
             appDelegate?.handleEnableRemoteMode()
         case "disableRemoteMode":
             appDelegate?.handleDisableRemoteMode()
+        case "openNotificationSettings":
+            appDelegate?.handleOpenNotificationSettings()
         default:
             print("[IOSBridge] Unknown action: \(action)")
         }

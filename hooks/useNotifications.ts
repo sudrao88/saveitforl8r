@@ -15,6 +15,7 @@ import {
   synchronizeNotifications,
   checkNotificationPermission,
   requestNotificationPermission,
+  openNotificationSettings,
   isNotificationEnabled,
   setNotificationEnabled as setEnabledPref,
   getNotificationTime as getTimePref,
@@ -34,6 +35,8 @@ export interface UseNotificationsReturn {
   /** Route to navigate to when a notification is tapped */
   pendingRoute: string | null;
   clearPendingRoute: () => void;
+  /** Opens device notification settings (native only) */
+  openSettings: () => void;
 }
 
 const DEBOUNCE_MS = 2000;
@@ -96,12 +99,15 @@ export const useNotifications = (
     };
   }, []);
 
-  // Re-sync on app resume (native only)
+  // Re-check permission and re-sync on app resume (native only).
+  // The user may have just returned from device settings after enabling permission.
   useEffect(() => {
     if (!isNative()) return;
 
-    const listener = CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+    const listener = CapacitorApp.addListener('appStateChange', async ({ isActive }) => {
       if (isActive) {
+        const perm = await checkNotificationPermission();
+        setPermissionStatus(perm);
         synchronizeNotifications();
       }
     });
@@ -151,6 +157,10 @@ export const useNotifications = (
         // Permission denied or dismissed — keep setting off
         setIsEnabled(false);
         await setEnabledPref(false);
+        // If denied on native, open device settings so user can re-enable
+        if (perm === 'denied' && isNative()) {
+          openNotificationSettings();
+        }
         return;
       }
 
@@ -186,5 +196,6 @@ export const useNotifications = (
     isSupported,
     pendingRoute,
     clearPendingRoute,
+    openSettings: openNotificationSettings,
   };
 };

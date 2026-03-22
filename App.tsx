@@ -146,6 +146,7 @@ const AppContent: React.FC = () => {
     isSupported: notificationsSupported,
     pendingRoute: notificationPendingRoute,
     clearPendingRoute: clearNotificationRoute,
+    openSettings: openNotificationSettings,
   } = useNotifications(calendarEvents, todoItems);
 
   // Handle notification tap deep-link
@@ -943,6 +944,7 @@ const AppContent: React.FC = () => {
                 onNotificationsEnabledChange={setNotificationsEnabled}
                 onNotificationTimeChange={setNotifTime}
                 onRequestNotificationPermission={requestNotificationPermission}
+                onOpenNotificationSettings={openNotificationSettings}
             />
           </Suspense>
       )}

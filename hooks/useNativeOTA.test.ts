@@ -86,6 +86,7 @@ function setupAndroidBridge() {
     signalAppReady: vi.fn(),
     enableRemoteMode: vi.fn(),
     disableRemoteMode: vi.fn(),
+    openNotificationSettings: vi.fn(),
   };
 }
 

@@ -9,6 +9,7 @@
  * Web: Uses the browser Notification API with on-open checks.
  */
 
+import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { isNative, storage } from './platform';
 import {
@@ -64,6 +65,20 @@ export const requestNotificationPermission = async (): Promise<'granted' | 'deni
   if (result === 'granted') return 'granted';
   if (result === 'denied') return 'denied';
   return 'prompt';
+};
+
+/**
+ * Opens the device's notification settings for this app.
+ * Used when permission was previously denied and cannot be re-prompted.
+ */
+export const openNotificationSettings = (): void => {
+  if (!isNative()) return;
+  const platform = Capacitor.getPlatform();
+  if (platform === 'android') {
+    window.AndroidBridge?.openNotificationSettings();
+  } else if (platform === 'ios') {
+    (window as any).webkit?.messageHandlers?.IOSBridge?.postMessage({ action: 'openNotificationSettings' });
+  }
 };
 
 // ─── Settings helpers ───────────────────────────────────────────────
