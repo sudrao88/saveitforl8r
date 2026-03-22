@@ -180,7 +180,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
         style={{ height: viewport.height, top: viewport.top }}
     >
       {/* Header */}
-      <div className="flex-none border-b border-gray-800 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] flex items-center justify-between bg-black z-(--z-sticky) shadow-sm shrink-0">
+      <div className="flex-none border-b border-gray-800 px-4 pb-3 pt-[calc(0.75rem+var(--sat))] flex items-center justify-between bg-black z-(--z-sticky) shadow-sm shrink-0">
         <div className="flex items-center gap-2">
             <BrainCircuit size={24} className="text-blue-500" />
             <h2 className="text-lg font-bold text-gray-100">Brain Search</h2>
@@ -275,7 +275,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
       <div 
         className="flex-none w-full bg-black border-t border-gray-800 shrink-0 z-(--z-dropdown)"
         style={{ 
-            paddingBottom: 'max(1rem, env(safe-area-inset-bottom))',
+            paddingBottom: 'max(1rem, var(--sab))',
             paddingTop: '1rem',
             paddingLeft: '1rem',
             paddingRight: '1rem'

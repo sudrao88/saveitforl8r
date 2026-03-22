@@ -380,7 +380,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
       ref={containerRef}
       className={`${keyboardHeight > 0 ? 'fixed left-0 right-0' : 'sticky'} bottom-0 z-(--z-modal) px-3 pb-3 pt-1 lg:w-[34%] lg:mx-auto transition-[bottom] duration-(--duration-fast) ease-out`}
       style={{
-        paddingBottom: keyboardHeight > 0 ? '0.75rem' : 'max(0.75rem, env(safe-area-inset-bottom))',
+        paddingBottom: keyboardHeight > 0 ? '0.75rem' : 'max(0.75rem, var(--sab))',
         bottom: keyboardHeight > 0 ? `${keyboardHeight}px` : undefined,
       }}
     >

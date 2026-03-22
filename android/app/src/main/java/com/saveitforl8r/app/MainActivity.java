@@ -6,12 +6,20 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
+import android.view.View;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 
+import java.util.Locale;
+
 import org.json.JSONObject;
 
+import androidx.core.graphics.Insets;
 import androidx.core.splashscreen.SplashScreen;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.JSObject;
@@ -23,6 +31,7 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
     private boolean webViewReady = false;
     private ShareIntentHandler shareHandler;
     private JSObject pendingShareData = null;
+    private String pendingInsetsJs = null;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
@@ -51,6 +60,15 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
             // Setup WebView JS interface and apply OTA update if previously downloaded.
             // This must happen after super.onCreate() so the bridge is initialized.
             setupWebView();
+
+            // Inject safe area insets as CSS variables so env(safe-area-inset-*)
+            // works correctly on Android 15+ where edge-to-edge is enforced.
+            setupEdgeToEdgeInsets();
+
+            // Set light status bar icons (white text/icons) for dark theme
+            WindowInsetsControllerCompat insetsController =
+                WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
+            insetsController.setAppearanceLightStatusBars(false);
 
             // Timeout fallback: dismiss splash even if JS never signals ready
             mainHandler.postDelayed(() -> {
@@ -165,6 +183,50 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
         }
     }
 
+    /**
+     * Listen for window insets and inject them as CSS custom properties into the WebView.
+     * On Android 15+ (API 35+), edge-to-edge is enforced and the app draws behind the
+     * status bar. The WebView doesn't map Android insets to CSS env(safe-area-inset-*),
+     * so we bridge them manually.
+     */
+    private void setupEdgeToEdgeInsets() {
+        View rootView = findViewById(android.R.id.content);
+        if (rootView == null) return;
+
+        ViewCompat.setOnApplyWindowInsetsListener(rootView, (view, windowInsets) -> {
+            Insets systemBars = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars());
+            float density = getResources().getDisplayMetrics().density;
+
+            // Convert px to CSS px (dp)
+            final float top = systemBars.top / density;
+            final float right = systemBars.right / density;
+            final float bottom = systemBars.bottom / density;
+            final float left = systemBars.left / density;
+
+            // Build the JS injection string with explicit US locale to ensure
+            // decimal points (not commas) in CSS values
+            pendingInsetsJs = String.format(Locale.US,
+                "document.documentElement.style.setProperty('--sat','%fpx');" +
+                "document.documentElement.style.setProperty('--sar','%fpx');" +
+                "document.documentElement.style.setProperty('--sab','%fpx');" +
+                "document.documentElement.style.setProperty('--sal','%fpx');",
+                top, right, bottom, left
+            );
+
+            // Dispatch immediately if the app is already ready, otherwise
+            // it will be dispatched when signalAppReady() is called
+            mainHandler.post(this::dispatchPendingInsets);
+
+            return windowInsets;
+        });
+    }
+
+    private void dispatchPendingInsets() {
+        if (pendingInsetsJs != null && jsAppReady && bridge != null && bridge.getWebView() != null) {
+            bridge.getWebView().evaluateJavascript(pendingInsetsJs, null);
+        }
+    }
+
     public class AppReadyInterface {
         private final MainActivity activity;
 
@@ -179,6 +241,7 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
                 activity.mainHandler.post(() -> {
                     activity.jsAppReady = true;
                     activity.webViewReady = true; // Dismiss splash screen
+                    activity.dispatchPendingInsets();
                     activity.dispatchShareData();
                 });
             }

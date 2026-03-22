@@ -195,7 +195,7 @@ const GalleryViewer: React.FC<GalleryViewerProps> = ({ attachments, initialIndex
   return (
     <div className={`fixed inset-0 ${zIndex.tooltip} bg-black/95 backdrop-blur-md flex flex-col animate-in fade-in zoom-in-95 duration-(--duration-fast)`}>
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 bg-black/50 border-b border-white/10 pt-[env(safe-area-inset-top)]">
+      <div className="flex items-center justify-between px-4 py-3 bg-black/50 border-b border-white/10 pt-[var(--sat)]">
         <div className="flex items-center gap-3 flex-1 min-w-0 overflow-hidden">
           <button
             onClick={onClose}
@@ -275,7 +275,7 @@ const GalleryViewer: React.FC<GalleryViewerProps> = ({ attachments, initialIndex
 
       {/* Dot indicators (not shown for PDFs) */}
       {!isPdf && attachments.length > 1 && attachments.length <= MAX_DOT_INDICATORS && (
-        <div className="flex items-center justify-center gap-1.5 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+        <div className="flex items-center justify-center gap-1.5 py-3 pb-[calc(0.75rem+var(--sab))]">
           {attachments.map((_, idx) => (
             <button
               key={idx}
@@ -292,7 +292,7 @@ const GalleryViewer: React.FC<GalleryViewerProps> = ({ attachments, initialIndex
 
       {/* Counter for many items (no dots, not shown for PDFs) */}
       {!isPdf && attachments.length > MAX_DOT_INDICATORS && (
-        <div className="flex items-center justify-center py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+        <div className="flex items-center justify-center py-3 pb-[calc(0.75rem+var(--sab))]">
           <span className="text-xs text-gray-500">{currentIndex + 1} / {attachments.length}</span>
         </div>
       )}
