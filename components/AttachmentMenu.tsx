@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useCallback } from 'react';
 import { Camera, Image, FileText } from 'lucide-react';
 import { menu } from '../styles/design-system';
 
@@ -16,14 +16,24 @@ const AttachmentMenu: React.FC<AttachmentMenuProps> = ({ open, onClose, onFileSe
 
   useEffect(() => {
     if (!open) return;
-    const handleClickOutside = (e: MouseEvent) => {
+    const handleClickOutside = (e: MouseEvent | TouchEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         onClose();
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
   }, [open, onClose]);
+
+  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    onFileSelect(e);
+    // Reset so the same file can be selected again
+    e.target.value = '';
+  }, [onFileSelect]);
 
   if (!open) return null;
 
@@ -61,7 +71,7 @@ const AttachmentMenu: React.FC<AttachmentMenuProps> = ({ open, onClose, onFileSe
       <input
         type="file"
         ref={cameraInputRef}
-        onChange={onFileSelect}
+        onChange={handleFileChange}
         className="hidden"
         accept="image/*"
         capture="environment"
@@ -69,7 +79,7 @@ const AttachmentMenu: React.FC<AttachmentMenuProps> = ({ open, onClose, onFileSe
       <input
         type="file"
         ref={imageInputRef}
-        onChange={onFileSelect}
+        onChange={handleFileChange}
         className="hidden"
         multiple
         accept="image/*"
@@ -77,7 +87,7 @@ const AttachmentMenu: React.FC<AttachmentMenuProps> = ({ open, onClose, onFileSe
       <input
         type="file"
         ref={docInputRef}
-        onChange={onFileSelect}
+        onChange={handleFileChange}
         className="hidden"
         multiple
         accept=".pdf,.txt,.md"
