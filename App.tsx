@@ -758,7 +758,7 @@ const AppContent: React.FC = () => {
       {/* Main UI — hidden when MomentCreationDialog is open */}
       {!showCreateMoment ? (
         <>
-          <div ref={topNavRef} className="sticky top-0 z-(--z-overlay) bg-black/90 backdrop-blur-md border-b border-gray-800/50 pt-[env(safe-area-inset-top)]">
+          <div ref={topNavRef} className="sticky top-0 z-(--z-overlay) bg-black/90 backdrop-blur-md border-b border-gray-800/50 pt-[var(--sat)]">
               <TopNavigation
                 setView={handleSetView}
                 resetFilters={handleResetFilters}
@@ -850,7 +850,7 @@ const AppContent: React.FC = () => {
 
       {liveExpandedMemory && (
         <div className="fixed inset-0 z-(--z-sheet) bg-black/90 backdrop-blur-md flex flex-col animate-in fade-in duration-(--duration-normal)">
-          <div className="sticky top-0 z-10 px-4 py-3 border-b border-gray-800 flex items-center justify-between bg-black/50 backdrop-blur-xl pt-[env(safe-area-inset-top)]">
+          <div className="sticky top-0 z-10 px-4 py-3 border-b border-gray-800 flex items-center justify-between bg-black/50 backdrop-blur-xl pt-[var(--sat)]">
              <div className="flex items-center gap-3">
                 <button onClick={() => setExpandedMemory(null)} className="p-3 -ml-3 rounded-full hover:bg-gray-800 text-gray-400 hover:text-white transition-colors active:scale-95">
                     <X size={24} />

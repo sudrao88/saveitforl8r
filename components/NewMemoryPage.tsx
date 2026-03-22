@@ -479,7 +479,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
   return (
     <div className="fixed inset-0 bg-black flex flex-col z-(--z-overlay)" dir="ltr">
         {/* Header */}
-        <div className="shrink-0 bg-(--color-surface-base)/90 backdrop-blur-md border-b border-(--color-border-default) px-4 py-3 flex items-center justify-between pt-[calc(env(safe-area-inset-top)+12px)]">
+        <div className="shrink-0 bg-(--color-surface-base)/90 backdrop-blur-md border-b border-(--color-border-default) px-4 py-3 flex items-center justify-between pt-[calc(var(--sat)+12px)]">
             <div className="flex items-center gap-3">
                 <button
                     onClick={handleClose}
@@ -550,7 +550,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
         {/* Sticky bottom card */}
         <div
           className="shrink-0 px-3 pt-1 max-w-3xl mx-auto w-full transition-[padding-bottom] duration-100"
-          style={{ paddingBottom: keyboardHeight > 0 ? `${keyboardHeight}px` : 'max(0.75rem, env(safe-area-inset-bottom))' }}
+          style={{ paddingBottom: keyboardHeight > 0 ? `${keyboardHeight}px` : 'max(0.75rem, var(--sab))' }}
         >
           <div className="bg-(--color-surface-overlay)/95 backdrop-blur-xl border border-(--color-border-default)/50 rounded-(--radius-xl) shadow-2xl shadow-black/40">
             {/* Attachment previews */}

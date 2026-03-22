@@ -17,6 +17,11 @@ const config: CapacitorConfig = {
           style: KeyboardStyle.Dark,
           resizeOnFullScreen: true
       },
+      StatusBar: {
+          style: 'DARK',
+          backgroundColor: '#000000',
+          overlaysWebView: true,
+      },
       SplashScreen: {
           launchShowDuration: 0,
           launchAutoHide: true,

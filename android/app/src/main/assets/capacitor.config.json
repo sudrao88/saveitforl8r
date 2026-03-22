@@ -14,6 +14,11 @@
 			"style": "DARK",
 			"resizeOnFullScreen": true
 		},
+		"StatusBar": {
+			"style": "DARK",
+			"backgroundColor": "#000000",
+			"overlaysWebView": true
+		},
 		"SplashScreen": {
 			"launchShowDuration": 0,
 			"launchAutoHide": true,
@@ -21,6 +26,10 @@
 			"androidSplashResourceName": "splash",
 			"iosSplashResourceName": "Splash",
 			"showSpinner": false
+		},
+		"LocalNotifications": {
+			"smallIcon": "ic_notification",
+			"iconColor": "#2563eb"
 		}
 	}
 }

@@ -54,7 +54,7 @@ export const overlay = {
   sheet:
     'fixed inset-0 z-(--z-sheet) bg-(--color-surface-overlay)/95 backdrop-blur-md flex flex-col animate-in fade-in duration-300',
   sheetHeader:
-    'sticky top-0 z-(--z-sticky) px-4 py-3 border-b border-gray-800 flex items-center justify-between bg-(--color-surface-overlay)/80 backdrop-blur-xl pt-[env(safe-area-inset-top)]',
+    'sticky top-0 z-(--z-sticky) px-4 py-3 border-b border-gray-800 flex items-center justify-between bg-(--color-surface-overlay)/80 backdrop-blur-xl pt-[var(--sat)]',
   modal:
     'bg-(--color-surface-overlay) border border-(--color-border-default)/50 rounded-2xl shadow-2xl',
   dialogBackdrop:

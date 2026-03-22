@@ -179,8 +179,8 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
     <div className="fixed inset-0 z-(--z-sheet) flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in duration-(--duration-fast)">
       {/* Modal container: Use calc with safe-area for Safari incognito compatibility */}
       <div className="bg-black border border-gray-700 rounded-t-3xl sm:rounded-3xl max-w-2xl w-full shadow-2xl relative flex flex-col overflow-hidden animate-in slide-in-from-bottom-10 sm:zoom-in-95 duration-(--duration-fast)"
-           style={{ maxHeight: 'calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 16px)' }}>
-        <div className="p-4 sm:p-6 border-b border-gray-700 flex items-center justify-between shrink-0 bg-black z-10 pt-[max(16px,env(safe-area-inset-top))] sm:pt-6">
+           style={{ maxHeight: 'calc(100dvh - var(--sat) - var(--sab) - 16px)' }}>
+        <div className="p-4 sm:p-6 border-b border-gray-700 flex items-center justify-between shrink-0 bg-black z-10 pt-[max(16px,var(--sat))] sm:pt-6">
           <div className="flex items-center gap-3">
              <div className="w-10 h-10 bg-gray-800 rounded-xl flex items-center justify-center text-gray-300 shrink-0"><Settings size={20} /></div>
              <div>
@@ -193,7 +193,7 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
           </button>
         </div>
 
-        <div className="overflow-y-auto p-4 sm:p-6 flex-1 space-y-6 overscroll-contain" style={{ paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }}>
+        <div className="overflow-y-auto p-4 sm:p-6 flex-1 space-y-6 overscroll-contain" style={{ paddingBottom: 'max(24px, var(--sab))' }}>
 
 
           {(syncError || modelStatus === 'error') && (

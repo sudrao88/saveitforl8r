@@ -218,11 +218,11 @@ body {
 
 /* Safe Area Utility for Mobile */
 .pb-safe {
-    padding-bottom: env(safe-area-inset-bottom);
+    padding-bottom: var(--sab);
 }
 
 .pt-safe {
-    padding-top: env(safe-area-inset-top);
+    padding-top: var(--sat);
 }
 
 /* Animations */
