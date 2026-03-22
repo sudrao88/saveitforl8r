@@ -148,17 +148,20 @@ export const useNotifications = (
 
   const setEnabled = useCallback(async (enabled: boolean) => {
     if (enabled) {
-      // Request permission before enabling
-      const initialPerm = await checkNotificationPermission();
-      const perm = initialPerm === 'prompt' ? await requestNotificationPermission() : initialPerm;
+      // Always attempt the system permission request first.
+      // The OS decides whether to show a popup:
+      //   - iOS: popup shown only on the very first call, silently 'denied' after.
+      //   - Android 13+: popup shown up to twice, silently 'denied' once "Don't ask again" is set.
+      //   - Web: popup shown while Notification.permission === 'default'; silently 'denied' after explicit block.
+      const perm = await requestNotificationPermission();
       setPermissionStatus(perm);
 
       if (perm !== 'granted') {
         // Permission denied or dismissed — keep setting off
         setIsEnabled(false);
         await setEnabledPref(false);
-        // If denied on native, open device settings so user can re-enable
-        if (perm === 'denied' && isNative()) {
+        // If the OS could not show a popup (permanent denial), redirect to settings
+        if (perm === 'denied') {
           openNotificationSettings();
         }
         return;
