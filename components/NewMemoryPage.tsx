@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Send, Paperclip, Hash, Type, FileText, X, Loader2, ArrowLeft, CheckSquare, Plus, AlertTriangle } from 'lucide-react';
+import AttachmentMenu from './AttachmentMenu';
 import { marked } from 'marked';
 import { Attachment, Memory } from '../types';
 import { isNative } from '../services/platform';
@@ -83,6 +84,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
   // Bottom card panel toggles
   const [showTags, setShowTags] = useState(false);
   const [showFormatting, setShowFormatting] = useState(false);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
 
   // For Rich Text Mode
   const editorRef = useRef<HTMLDivElement>(null);
@@ -112,7 +114,6 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
     return [];
   });
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
 
   useEffect(() => {
@@ -268,7 +269,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
     if (e.target.files && e.target.files.length > 0) {
       const newAttachments = await processFileInputs(e.target.files);
       setAttachments(prev => [...prev, ...newAttachments]);
-      if (fileInputRef.current) fileInputRef.current.value = '';
+      e.target.value = '';
     }
   };
 
@@ -602,24 +603,22 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
 
             {/* Button row */}
             <div className="flex items-center gap-1 px-3 py-2">
-                <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleFileSelect}
-                    className="hidden"
-                    multiple
-                    accept="image/*,.pdf,.txt,.md"
-                />
-
                 {/* Attachment */}
-                <button
-                    onClick={() => fileInputRef.current?.click()}
-                    onMouseDown={(e) => e.preventDefault()}
-                    className={btn.iconLg}
-                    title="Add attachment"
-                >
-                    <Paperclip size={20} />
-                </button>
+                <div className="relative">
+                    <button
+                        onClick={() => setShowAttachMenu(prev => !prev)}
+                        onMouseDown={(e) => e.preventDefault()}
+                        className={btn.iconLg}
+                        title="Add attachment"
+                    >
+                        <Paperclip size={20} />
+                    </button>
+                    <AttachmentMenu
+                        open={showAttachMenu}
+                        onClose={() => setShowAttachMenu(false)}
+                        onFileSelect={handleFileSelect}
+                    />
+                </div>
 
                 {/* Tags toggle */}
                 <button

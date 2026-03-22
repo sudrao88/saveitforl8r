@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { Paperclip, Hash, Type, Maximize2, Plus, X, FileText, Loader2, CheckSquare, Check } from 'lucide-react';
+import AttachmentMenu from './AttachmentMenu';
 import { marked } from 'marked';
 import { Attachment, QuickNoteState } from '../types';
 import { escapeHtml, looksLikeMarkdown, parseChecklistMarkdown, sanitizePastedHtml, hasRichFormatting, extractHashtags, mergeTagsWithHashtags, containsUrl, linkifyUrls, handleEditorKeyDown, checkActiveFormats, execFormatCommand, formatsEqual } from '../utils/editorUtils';
@@ -33,6 +34,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
   const [tags, setTags] = useState<string[]>([]);
   const [showTags, setShowTags] = useState(false);
   const [showFormatting, setShowFormatting] = useState(false);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isEmpty, setIsEmpty] = useState(true);
   const [activeFormats, setActiveFormats] = useState<string[]>([]);
@@ -43,7 +45,6 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
   const [keyboardHeight, setKeyboardHeight] = useState(0);
 
   const editorRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const focusItemIdRef = useRef<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const saveSuccessTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -203,7 +204,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
     if (e.target.files && e.target.files.length > 0) {
       const newAttachments = await processFileInputs(e.target.files);
       setAttachments(prev => [...prev, ...newAttachments]);
-      if (fileInputRef.current) fileInputRef.current.value = '';
+      e.target.value = '';
     }
   }, []);
 
@@ -217,6 +218,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
     setTags([]);
     setShowTags(false);
     setShowFormatting(false);
+    setShowAttachMenu(false);
     setIsEmpty(true);
     setActiveFormats([]);
     setIsChecklistMode(false);
@@ -470,22 +472,21 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
         {/* Button row */}
         <div className="flex items-center gap-1 px-3 py-2">
           {/* Left group */}
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            onMouseDown={(e) => e.preventDefault()}
-            className={btn.iconLg}
-            title="Add attachment"
-          >
-            <Paperclip size={20} />
-          </button>
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileSelect}
-            className="hidden"
-            multiple
-            accept="image/*,.pdf,.txt,.md"
-          />
+          <div className="relative">
+            <button
+              onClick={() => setShowAttachMenu(prev => !prev)}
+              onMouseDown={(e) => e.preventDefault()}
+              className={btn.iconLg}
+              title="Add attachment"
+            >
+              <Paperclip size={20} />
+            </button>
+            <AttachmentMenu
+              open={showAttachMenu}
+              onClose={() => setShowAttachMenu(false)}
+              onFileSelect={handleFileSelect}
+            />
+          </div>
 
           <button
             onClick={() => setShowTags(prev => !prev)}
