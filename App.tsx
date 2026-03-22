@@ -40,6 +40,7 @@ import { useCalendarEvents } from './hooks/useCalendarEvents';
 import { useTodoItems } from './hooks/useTodoItems';
 import { useNotifications } from './hooks/useNotifications';
 import useNativeOTA from './hooks/useNativeOTA';
+import { useWidgetDeepLink } from './hooks/useWidgetDeepLink';
 import { SyncProvider } from './context/SyncContext';
 import { reconcileEmbeddings, ReconcileReport, getMemories as getStoredMemories } from './services/storageService';
 import { ViewMode, Memory, Attachment, Moment, QuickNoteState, CalendarEvent } from './types';
@@ -648,6 +649,15 @@ const AppContent: React.FC = () => {
     'Mod+f': () => setView(ViewMode.RECALL),
     'Mod+,': () => setIsSettingsOpen(true),
   });
+
+  // Handle home screen widget deep links
+  useWidgetDeepLink(
+    useCallback(() => quickNoteBarRef.current?.focus(), []),
+    useCallback(() => {
+      setIsCaptureOpen(true);
+      logEvent(ANALYTICS_EVENTS.NAVIGATION.CATEGORY, ANALYTICS_EVENTS.NAVIGATION.ACTION_CAPTURE_OPENED, 'Widget');
+    }, [])
+  );
 
   const displayMemories = useMemo(() => {
     const active = filteredMemories.filter(m => !m.isDeleting);
