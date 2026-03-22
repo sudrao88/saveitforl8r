@@ -152,7 +152,7 @@ const EventCard: React.FC<{
     <div
       className={`rounded-(--radius-xl) border p-4 transition-all duration-(--duration-fast) ${
         isPast
-          ? 'border-(--color-border-subtle) bg-gray-900/30 opacity-60'
+          ? 'border-(--color-border-subtle) bg-gray-900/30'
           : event.status === 'cancelled'
             ? 'border-red-900/30 bg-red-950/20'
             : 'border-(--color-border-subtle) bg-(--color-surface-raised)/30 hover:bg-(--color-surface-raised)/50'
@@ -175,7 +175,7 @@ const EventCard: React.FC<{
 
           {/* Time */}
           {!event.allDay && time && (
-            <div className="flex items-center gap-1.5 mt-1.5 text-sm text-(--color-text-secondary)">
+            <div className={`flex items-center gap-1.5 mt-1.5 text-sm ${isPast ? 'text-(--color-text-tertiary)' : 'text-(--color-text-secondary)'}`}>
               <Clock size={14} className="shrink-0" />
               <span>
                 {time}
@@ -184,7 +184,7 @@ const EventCard: React.FC<{
             </div>
           )}
           {event.allDay && (
-            <div className="flex items-center gap-1.5 mt-1.5 text-sm text-(--color-text-secondary)">
+            <div className={`flex items-center gap-1.5 mt-1.5 text-sm ${isPast ? 'text-(--color-text-tertiary)' : 'text-(--color-text-secondary)'}`}>
               <CalendarDays size={14} className="shrink-0" />
               <span>All day</span>
             </div>
@@ -192,7 +192,7 @@ const EventCard: React.FC<{
 
           {/* Location */}
           {event.location && (
-            <div className="flex items-center gap-1.5 mt-1 text-sm text-(--color-text-secondary)">
+            <div className={`flex items-center gap-1.5 mt-1 text-sm ${isPast ? 'text-(--color-text-tertiary)' : 'text-(--color-text-secondary)'}`}>
               <MapPin size={14} className="shrink-0" />
               <span className="truncate">{event.location}</span>
             </div>
@@ -200,7 +200,7 @@ const EventCard: React.FC<{
 
           {/* People */}
           {event.people && event.people.length > 0 && (
-            <div className="flex items-center gap-1.5 mt-1 text-sm text-(--color-text-secondary)">
+            <div className={`flex items-center gap-1.5 mt-1 text-sm ${isPast ? 'text-(--color-text-tertiary)' : 'text-(--color-text-secondary)'}`}>
               <Users size={14} className="shrink-0" />
               <span className="truncate">{event.people.join(', ')}</span>
             </div>
