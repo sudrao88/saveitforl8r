@@ -77,7 +77,7 @@ export const openNotificationSettings = (): void => {
   if (platform === 'android') {
     window.AndroidBridge?.openNotificationSettings();
   } else if (platform === 'ios') {
-    (window as any).webkit?.messageHandlers?.IOSBridge?.postMessage({ action: 'openNotificationSettings' });
+    window.webkit?.messageHandlers?.IOSBridge?.postMessage({ action: 'openNotificationSettings' });
   }
 };
 

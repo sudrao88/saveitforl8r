@@ -14,6 +14,13 @@ declare global {
       disableRemoteMode: () => void;
       openNotificationSettings: () => void;
     };
+    webkit?: {
+      messageHandlers: {
+        IOSBridge: {
+          postMessage: (message: { action: string }) => void;
+        };
+      };
+    };
   }
 }
 

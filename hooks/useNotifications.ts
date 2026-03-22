@@ -108,7 +108,9 @@ export const useNotifications = (
       if (isActive) {
         const perm = await checkNotificationPermission();
         setPermissionStatus(perm);
-        synchronizeNotifications();
+        if (perm === 'granted') {
+          synchronizeNotifications();
+        }
       }
     });
 
