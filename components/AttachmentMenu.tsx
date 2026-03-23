@@ -50,7 +50,7 @@ const AttachmentMenu: React.FC<AttachmentMenuProps> = ({ open, onClose, onFileSe
 
   return (
     <div ref={menuRef}>
-      <div className={menu.panel}>
+      <div className={`${menu.panel} !right-auto left-0`}>
         {showCamera && (
           <button
             className={menu.item}
