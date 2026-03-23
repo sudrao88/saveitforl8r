@@ -508,10 +508,12 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
   }, []);
 
-  const saveSnapshot = useCallback(async (remoteFiles: DriveFile[]) => {
+  const saveSnapshot = useCallback(async (remoteFiles: DriveFile[], updateLastSyncTime = true) => {
       const snapshot = Object.fromEntries(remoteFiles.map(f => [f.name.replace('.json', ''), f.modifiedTime]));
       await storage.set(SNAPSHOT_KEY, JSON.stringify(snapshot));
-      await storage.set(LAST_SYNC_KEY, Date.now().toString());
+      if (updateLastSyncTime) {
+          await storage.set(LAST_SYNC_KEY, Date.now().toString());
+      }
   }, []);
 
   const doDeltaSync = useCallback(async (previousSnapshot: Record<string, string>, onProgress?: () => void, forceFullSync?: boolean) => {
@@ -770,11 +772,14 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     // of being permanently skipped due to a matching modifiedTime in the snapshot.
     const updatedRemoteFiles = await listAllFiles();
     if (errors.length > 0) {
+        // Save snapshot excluding failed items so they're retried, but do NOT
+        // advance lastSyncTime — keeps it at the previous value so failed
+        // uploads remain eligible (timestamp > lastSyncTime) on the next delta sync.
         const errorSet = new Set(errors);
         const successfulFiles = updatedRemoteFiles.filter(
             f => !errorSet.has(f.name.replace('.json', ''))
         );
-        await saveSnapshot(successfulFiles);
+        await saveSnapshot(successfulFiles, false);
     } else {
         await saveSnapshot(updatedRemoteFiles);
     }
