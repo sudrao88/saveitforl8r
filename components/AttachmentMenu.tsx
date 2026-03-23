@@ -8,6 +8,10 @@ interface AttachmentMenuProps {
   onFileSelect: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }
 
+/** Show the camera option on devices with a camera (mobile/tablet). */
+const hasCameraSupport = () =>
+  'ontouchstart' in window || window.matchMedia('(pointer: coarse)').matches;
+
 const AttachmentMenu: React.FC<AttachmentMenuProps> = ({ open, onClose, onFileSelect }) => {
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -42,16 +46,20 @@ const AttachmentMenu: React.FC<AttachmentMenuProps> = ({ open, onClose, onFileSe
     onClose();
   };
 
+  const showCamera = hasCameraSupport();
+
   return (
     <div ref={menuRef} className="relative">
       <div className={menu.panel}>
-        <button
-          className={menu.item}
-          onClick={() => handleSelect(cameraInputRef)}
-        >
-          <Camera size={18} />
-          Take photo
-        </button>
+        {showCamera && (
+          <button
+            className={menu.item}
+            onClick={() => handleSelect(cameraInputRef)}
+          >
+            <Camera size={18} />
+            Take photo
+          </button>
+        )}
         <button
           className={menu.item}
           onClick={() => handleSelect(imageInputRef)}
@@ -68,14 +76,16 @@ const AttachmentMenu: React.FC<AttachmentMenuProps> = ({ open, onClose, onFileSe
         </button>
       </div>
 
-      <input
-        type="file"
-        ref={cameraInputRef}
-        onChange={handleFileChange}
-        className="hidden"
-        accept="image/*"
-        capture="environment"
-      />
+      {showCamera && (
+        <input
+          type="file"
+          ref={cameraInputRef}
+          onChange={handleFileChange}
+          className="hidden"
+          accept="image/*"
+          capture="environment"
+        />
+      )}
       <input
         type="file"
         ref={imageInputRef}
