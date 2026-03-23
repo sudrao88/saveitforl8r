@@ -147,7 +147,7 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
   const handleLinkDrive = () => { login(); };
   const handleSyncNow = async () => {
       try {
-          await sync();
+          await sync(true);
           if (onSyncComplete) onSyncComplete();
       } catch (e: any) { console.error("Sync failed:", e); }
   };

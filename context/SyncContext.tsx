@@ -21,7 +21,7 @@ interface SyncContextType {
   isSyncing: boolean;
   isSyncingDownload: boolean;
   syncError: string | null;
-  sync: () => Promise<void>;
+  sync: (forceFullSync?: boolean) => Promise<void>;
   syncFile: (memory: Memory) => Promise<void>;
   syncMoment: (moment: Moment) => Promise<void>;
   syncCalendarEvents: (events: CalendarEvent[]) => Promise<void>;
@@ -763,11 +763,19 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const errors = await executeSyncPlan(plan, onProgress);
 
-    // ALWAYS rebuild snapshot from Drive's actual state, even on partial failure.
-    // This ensures successfully synced files keep their snapshot entry even when
-    // other uploads fail.
+    // Rebuild snapshot from Drive's actual state, but EXCLUDE items that failed
+    // to sync. This ensures failed downloads are retried on the next sync instead
+    // of being permanently skipped due to a matching modifiedTime in the snapshot.
     const updatedRemoteFiles = await listAllFiles();
-    await saveSnapshot(updatedRemoteFiles);
+    if (errors.length > 0) {
+        const errorSet = new Set(errors);
+        const successfulFiles = updatedRemoteFiles.filter(
+            (f: any) => !errorSet.has(f.name.replace('.json', ''))
+        );
+        await saveSnapshot(successfulFiles);
+    } else {
+        await saveSnapshot(updatedRemoteFiles);
+    }
 
     // Wrap reconciliation in try/catch so it can't prevent snapshot save
     try {
@@ -797,7 +805,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     console.log('--- [Sync] Delta Sync Complete ---');
   }, [saveSnapshot]);
 
-  const performSync = useCallback(async () => {
+  const performSync = useCallback(async (forceFullSync = false) => {
     // CRITICAL FIX: checkIsLinked is async, must await it!
     const linked = await checkIsLinked();
     if (isSyncingRef.current || !linked) {
@@ -819,14 +827,18 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             try {
                 await getAccessToken();
                 let previousSnapshot: Record<string, string> = {};
-                try {
-                    const snapshotJSON = await storage.get(SNAPSHOT_KEY);
-                    previousSnapshot = JSON.parse(snapshotJSON || '{}');
-                } catch (e) {
-                    console.warn("[Sync] Snapshot corrupted, starting fresh");
+                if (forceFullSync) {
+                    console.log("[Sync] Force full sync: clearing snapshot for full re-comparison");
+                } else {
+                    try {
+                        const snapshotJSON = await storage.get(SNAPSHOT_KEY);
+                        previousSnapshot = JSON.parse(snapshotJSON || '{}');
+                    } catch (e) {
+                        console.warn("[Sync] Snapshot corrupted, starting fresh");
+                    }
                 }
 
-                console.log(`--- [Sync] Starting DELTA Sync ---`);
+                console.log(`--- [Sync] Starting ${forceFullSync ? 'FULL' : 'DELTA'} Sync ---`);
                 await doDeltaSync(previousSnapshot, onSyncProgressRef.current);
                 reconcileEmbeddings().catch(e => console.error("[Sync] RAG Reconciliation failed:", e));
                 resolve();
