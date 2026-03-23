@@ -9,7 +9,8 @@ import {
     findFileByName,
     deleteFileById,
     isLinked as checkIsLinked,
-    deleteRemoteNote
+    deleteRemoteNote,
+    type DriveFile,
 } from '../services/googleDriveService';
 import { Memory, Moment, MomentSynthesis, CalendarEvent, TodoItem } from '../types';
 import { useAuth } from '../hooks/useAuth';
@@ -21,7 +22,7 @@ interface SyncContextType {
   isSyncing: boolean;
   isSyncingDownload: boolean;
   syncError: string | null;
-  sync: () => Promise<void>;
+  sync: (forceFullSync?: boolean) => Promise<void>;
   syncFile: (memory: Memory) => Promise<void>;
   syncMoment: (moment: Moment) => Promise<void>;
   syncCalendarEvents: (events: CalendarEvent[]) => Promise<void>;
@@ -507,8 +508,8 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
   }, []);
 
-  const saveSnapshot = useCallback(async (remoteFiles: any[]) => {
-      const snapshot = Object.fromEntries(remoteFiles.map((f: any) => [f.name.replace('.json', ''), f.modifiedTime]));
+  const saveSnapshot = useCallback(async (remoteFiles: DriveFile[]) => {
+      const snapshot = Object.fromEntries(remoteFiles.map(f => [f.name.replace('.json', ''), f.modifiedTime]));
       await storage.set(SNAPSHOT_KEY, JSON.stringify(snapshot));
       await storage.set(LAST_SYNC_KEY, Date.now().toString());
   }, []);
@@ -530,7 +531,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const localTodoMap = new Map(localTodoItems.map(t => [`todo-${t.id}`, t]));
 
     const remoteFiles = await listAllFiles();
-    const remoteMap = new Map(remoteFiles.map((f: any) => [f.name.replace('.json', ''), f]));
+    const remoteMap = new Map(remoteFiles.map(f => [f.name.replace('.json', ''), f]));
 
     const lastSyncTimeStr = await storage.get(LAST_SYNC_KEY);
     const lastSyncTime = parseInt(lastSyncTimeStr || '0');
@@ -763,11 +764,19 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const errors = await executeSyncPlan(plan, onProgress);
 
-    // ALWAYS rebuild snapshot from Drive's actual state, even on partial failure.
-    // This ensures successfully synced files keep their snapshot entry even when
-    // other uploads fail.
+    // Rebuild snapshot from Drive's actual state, but EXCLUDE items that failed
+    // to sync. This ensures failed downloads are retried on the next sync instead
+    // of being permanently skipped due to a matching modifiedTime in the snapshot.
     const updatedRemoteFiles = await listAllFiles();
-    await saveSnapshot(updatedRemoteFiles);
+    if (errors.length > 0) {
+        const errorSet = new Set(errors);
+        const successfulFiles = updatedRemoteFiles.filter(
+            f => !errorSet.has(f.name.replace('.json', ''))
+        );
+        await saveSnapshot(successfulFiles);
+    } else {
+        await saveSnapshot(updatedRemoteFiles);
+    }
 
     // Wrap reconciliation in try/catch so it can't prevent snapshot save
     try {
@@ -797,7 +806,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     console.log('--- [Sync] Delta Sync Complete ---');
   }, [saveSnapshot]);
 
-  const performSync = useCallback(async () => {
+  const performSync = useCallback(async (forceFullSync = false) => {
     // CRITICAL FIX: checkIsLinked is async, must await it!
     const linked = await checkIsLinked();
     if (isSyncingRef.current || !linked) {
@@ -826,7 +835,37 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                     console.warn("[Sync] Snapshot corrupted, starting fresh");
                 }
 
-                console.log(`--- [Sync] Starting DELTA Sync ---`);
+                if (forceFullSync && Object.keys(previousSnapshot).length > 0) {
+                    // Rebuild snapshot from local data: only keep entries for items
+                    // that exist locally. Items missing locally (e.g. a note that
+                    // failed to download previously) will be removed from the
+                    // snapshot, causing them to be re-downloaded.
+                    const localMemories = await getMemories();
+                    const localMoments = await getAllMomentsIncludingDeleted();
+                    const localEvents = await getAllCalendarEventsIncludingDeleted();
+                    const localTodos = await getAllTodoItemsIncludingDeleted();
+
+                    const localIds = new Set<string>([
+                        ...localMemories.map(m => m.id),
+                        ...localMoments.map(m => `moment-${m.id}`),
+                        ...localEvents.map(e => `event-${e.id}`),
+                        ...localTodos.map(t => `todo-${t.id}`),
+                    ]);
+
+                    const fullSnapshot = previousSnapshot;
+                    previousSnapshot = Object.fromEntries(
+                        Object.entries(fullSnapshot).filter(([noteId]) =>
+                            localIds.has(noteId) ||
+                            // Keep synthesis entries if the parent moment exists locally —
+                            // avoids N+1 individual synthesis lookups at scale.
+                            (noteId.startsWith('moment-synthesis-') &&
+                                localIds.has(`moment-${noteId.replace('moment-synthesis-', '')}`))
+                        )
+                    );
+                    console.log(`[Sync] Force full sync: rebuilt snapshot from local data (${Object.keys(previousSnapshot).length}/${Object.keys(fullSnapshot).length} items matched)`);
+                }
+
+                console.log(`--- [Sync] Starting ${forceFullSync ? 'FULL' : 'DELTA'} Sync ---`);
                 await doDeltaSync(previousSnapshot, onSyncProgressRef.current);
                 reconcileEmbeddings().catch(e => console.error("[Sync] RAG Reconciliation failed:", e));
                 resolve();

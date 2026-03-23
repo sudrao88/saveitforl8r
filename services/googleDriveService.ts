@@ -3,7 +3,7 @@ import { getAuthorizedFetch, getValidToken, initiateLogin, handleAuthCallback } 
 import { clearTokens } from './tokenService';
 import { storage } from './platform';
 
-interface DriveFile {
+export interface DriveFile {
   id: string;
   name: string;
   modifiedTime: string;
