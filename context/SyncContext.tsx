@@ -843,18 +843,12 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                     const localMoments = await getAllMomentsIncludingDeleted();
                     const localEvents = await getAllCalendarEventsIncludingDeleted();
                     const localTodos = await getAllTodoItemsIncludingDeleted();
-                    const localSyntheses = new Set<string>();
-                    for (const m of localMoments) {
-                        const synthesis = await getMomentSynthesis(m.id);
-                        if (synthesis) localSyntheses.add(`moment-synthesis-${m.id}`);
-                    }
 
                     const localIds = new Set<string>([
                         ...localMemories.map(m => m.id),
                         ...localMoments.map(m => `moment-${m.id}`),
                         ...localEvents.map(e => `event-${e.id}`),
                         ...localTodos.map(t => `todo-${t.id}`),
-                        ...localSyntheses,
                     ]);
 
                     const fullSnapshot = previousSnapshot;
@@ -862,6 +856,13 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                     for (const [noteId, modifiedTime] of Object.entries(fullSnapshot)) {
                         if (localIds.has(noteId)) {
                             previousSnapshot[noteId] = modifiedTime;
+                        } else if (noteId.startsWith('moment-synthesis-')) {
+                            // Keep synthesis entries if the parent moment exists locally —
+                            // avoids N+1 individual synthesis lookups at scale.
+                            const momentId = noteId.replace('moment-synthesis-', '');
+                            if (localIds.has(`moment-${momentId}`)) {
+                                previousSnapshot[noteId] = modifiedTime;
+                            }
                         }
                     }
                     console.log(`[Sync] Force full sync: rebuilt snapshot from local data (${Object.keys(previousSnapshot).length}/${Object.keys(fullSnapshot).length} items matched)`);
