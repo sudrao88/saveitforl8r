@@ -188,12 +188,12 @@ export const useNativeOTA = () => {
      // Placeholder for cache status refresh if needed
   }, []);
 
-  // Check for remote updates.
-  // When already in remote mode, the user is loading from the live server and
-  // always gets the latest code (nginx serves no-store for HTML), so no OTA
-  // update detection is needed.
+  // Check for remote updates by comparing local version.json against the
+  // remote one. This runs in both bundled and OTA mode — on Android, OTA mode
+  // downloads assets locally (via OTADownloadManager + setServerBasePath), so
+  // the user does NOT get live updates and still needs update detection.
   const checkForUpdate = useCallback(async (): Promise<boolean> => {
-    if (!state.isOnline || !Capacitor.isNativePlatform() || state.isUsingRemote) return false;
+    if (!state.isOnline || !Capacitor.isNativePlatform()) return false;
 
     setState(s => ({ ...s, isCheckingUpdate: true }));
 
@@ -239,7 +239,7 @@ export const useNativeOTA = () => {
       setState(s => ({ ...s, isCheckingUpdate: false }));
       return false;
     }
-  }, [state.isOnline, state.currentVersion, state.isUsingRemote]);
+  }, [state.isOnline, state.currentVersion]);
 
   // Periodic check
   useEffect(() => {
