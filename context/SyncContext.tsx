@@ -177,11 +177,13 @@ const executeSyncPlan = async (plan: SyncPlan, onProgress?: () => void): Promise
                 continue;
             }
 
-            // Validate timestamp before saving — invalid timestamps cause "Invalid Date" in UI
+            // Self-heal invalid timestamps — use local copy's timestamp or fall back to now
             if (typeof content.timestamp !== 'number' || !isFinite(content.timestamp) || content.timestamp <= 0) {
-                console.warn(`[Sync] Skipping memory ${item.noteId}: invalid timestamp`, content.timestamp);
-                errors.push(item.noteId);
-                continue;
+                const healed = item.local?.timestamp ?? Date.now();
+                console.warn(`[Sync] Healing memory ${item.noteId}: invalid timestamp ${content.timestamp} → ${healed}`);
+                content.timestamp = healed;
+                // Re-upload the healed version to fix remote
+                plan.toUpload.push({ noteId: item.noteId, memory: content, remoteFileId: item.fileId });
             }
 
             if (item.local) {
