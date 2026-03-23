@@ -548,6 +548,9 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     for (const [noteId, remoteFile] of remoteMap.entries()) {
         if (previousSnapshot[noteId] && previousSnapshot[noteId] === remoteFile.modifiedTime) {
+            // On force sync, mark as handled so Phase 3 doesn't re-upload items
+            // that already exist on Drive and haven't changed.
+            if (forceFullSync) handled.add(noteId);
             continue;
         }
 
@@ -627,7 +630,11 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             if (localEvent?.isDeleted) {
                 plan.toHardDeleteLocal.push(noteId);
             } else if (localEvent) {
-                plan.toDeleteLocal.push(noteId);
+                if (forceFullSync) {
+                    plan.toUpload.push({ noteId, memory: localEvent });
+                } else {
+                    plan.toDeleteLocal.push(noteId);
+                }
             }
             continue;
         }
@@ -638,15 +645,29 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             if (localTodo?.isDeleted) {
                 plan.toHardDeleteLocal.push(noteId);
             } else if (localTodo) {
-                plan.toDeleteLocal.push(noteId);
+                if (forceFullSync) {
+                    plan.toUpload.push({ noteId, memory: localTodo });
+                } else {
+                    plan.toDeleteLocal.push(noteId);
+                }
             }
             continue;
         }
 
         // Handle synthesis files that were removed from remote
         if (noteId.startsWith('moment-synthesis-')) {
-            // Remote synthesis was deleted — clean up local cache
-            plan.toHardDeleteLocal.push(noteId);
+            if (forceFullSync) {
+                // Keep synthesis — parent moment will re-upload it if needed
+                const momentId = noteId.replace('moment-synthesis-', '');
+                const localMoment = localMomentMap.get(`moment-${momentId}`);
+                if (!localMoment || localMoment.isDeleted) {
+                    plan.toHardDeleteLocal.push(noteId);
+                }
+                // Otherwise: synthesis upload is handled alongside its parent moment
+            } else {
+                // Remote synthesis was deleted — clean up local cache
+                plan.toHardDeleteLocal.push(noteId);
+            }
             continue;
         }
 
@@ -656,7 +677,11 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             if (localMoment?.isDeleted) {
                 plan.toHardDeleteLocal.push(noteId);
             } else if (localMoment) {
-                plan.toDeleteLocal.push(noteId);
+                if (forceFullSync) {
+                    plan.toUpload.push({ noteId, memory: localMoment });
+                } else {
+                    plan.toDeleteLocal.push(noteId);
+                }
             }
             continue;
         }
@@ -666,7 +691,11 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (local?.isDeleted) {
             plan.toHardDeleteLocal.push(noteId);
         } else if (local) {
-            plan.toDeleteLocal.push(noteId);
+            if (forceFullSync) {
+                plan.toUpload.push({ noteId, memory: local });
+            } else {
+                plan.toDeleteLocal.push(noteId);
+            }
         }
     }
 
