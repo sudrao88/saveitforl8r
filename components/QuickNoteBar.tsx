@@ -200,6 +200,8 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
     checkFormats();
   }, [checkFormats]);
 
+  const closeAttachMenu = useCallback(() => setShowAttachMenu(false), []);
+
   const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const newAttachments = await processFileInputs(e.target.files);
@@ -483,7 +485,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
             </button>
             <AttachmentMenu
               open={showAttachMenu}
-              onClose={() => setShowAttachMenu(false)}
+              onClose={closeAttachMenu}
               onFileSelect={handleFileSelect}
             />
           </div>

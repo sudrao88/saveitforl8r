@@ -49,7 +49,7 @@ const AttachmentMenu: React.FC<AttachmentMenuProps> = ({ open, onClose, onFileSe
   const showCamera = hasCameraSupport();
 
   return (
-    <div ref={menuRef} className="relative">
+    <div ref={menuRef}>
       <div className={menu.panel}>
         {showCamera && (
           <button
