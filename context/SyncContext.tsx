@@ -516,7 +516,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
   }, []);
 
-  const doDeltaSync = useCallback(async (previousSnapshot: Record<string, string>, onProgress?: () => void, forceFullSync?: boolean) => {
+  const doDeltaSync = useCallback(async (previousSnapshot: Record<string, string>, onProgress?: () => void) => {
     const localMemories = await getMemories();
     const localMap = new Map(localMemories.map(m => [m.id, m]));
 
@@ -683,8 +683,8 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
             plan.toHardDeleteLocal.push(local.id);
             handled.add(local.id);
-        } else if (local.timestamp > lastSyncTime || (forceFullSync && !previousSnapshot[local.id])) {
-            // Upload if modified since last sync, or on force sync if never synced
+        } else if (local.timestamp > lastSyncTime || !previousSnapshot[local.id]) {
+            // Upload if modified since last sync, or if never successfully synced (no snapshot entry)
             const remote = remoteMap.get(local.id);
             plan.toUpload.push({ noteId: local.id, memory: local, remoteFileId: remote?.id });
             handled.add(local.id);
@@ -703,7 +703,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
             plan.toHardDeleteLocal.push(key);
             handled.add(key);
-        } else if (moment.updatedAt > lastSyncTime || (forceFullSync && !previousSnapshot[key])) {
+        } else if (moment.updatedAt > lastSyncTime || !previousSnapshot[key]) {
             const remote = remoteMap.get(key);
             plan.toUpload.push({ noteId: key, memory: moment, remoteFileId: remote?.id });
             handled.add(key);
@@ -722,7 +722,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
             plan.toHardDeleteLocal.push(key);
             handled.add(key);
-        } else if (event.updatedAt > lastSyncTime || (forceFullSync && !previousSnapshot[key])) {
+        } else if (event.updatedAt > lastSyncTime || !previousSnapshot[key]) {
             const remote = remoteMap.get(key);
             plan.toUpload.push({ noteId: key, memory: event, remoteFileId: remote?.id });
             handled.add(key);
@@ -741,7 +741,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
             plan.toHardDeleteLocal.push(key);
             handled.add(key);
-        } else if (item.updatedAt > lastSyncTime || (forceFullSync && !previousSnapshot[key])) {
+        } else if (item.updatedAt > lastSyncTime || !previousSnapshot[key]) {
             const remote = remoteMap.get(key);
             plan.toUpload.push({ noteId: key, memory: item, remoteFileId: remote?.id });
             handled.add(key);
@@ -826,6 +826,13 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     return new Promise<void>((resolve, reject) => {
         debounceTimerRef.current = setTimeout(async () => {
+            // Re-check after debounce: a single-file sync may have started
+            // during the debounce window, which would cause concurrent syncs.
+            if (isSyncingRef.current) {
+                console.log('[Sync] Skip sync: another sync started during debounce');
+                resolve();
+                return;
+            }
             setIsSyncing(true);
             setIsSyncingDownload(true);
             isSyncingRef.current = true;
@@ -872,7 +879,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 }
 
                 console.log(`--- [Sync] Starting ${forceFullSync ? 'FULL' : 'DELTA'} Sync ---`);
-                await doDeltaSync(previousSnapshot, onSyncProgressRef.current, forceFullSync);
+                await doDeltaSync(previousSnapshot, onSyncProgressRef.current);
                 reconcileEmbeddings().catch(e => console.error("[Sync] RAG Reconciliation failed:", e));
                 resolve();
             } catch (e: any) {
