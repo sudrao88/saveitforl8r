@@ -198,7 +198,7 @@ export const useNativeOTA = () => {
     setState(s => ({ ...s, isCheckingUpdate: true }));
 
     try {
-      // Fetch the local version (bundled in APK) and the remote version in parallel
+      // Fetch the local version (bundled in APK, or from OTA download dir) and the remote version in parallel
       const [localRes, remoteRes] = await Promise.all([
         fetch(`/version.json?t=${Date.now()}`, { cache: 'no-store' }),
         fetch(`${REMOTE_VERSION_URL}?t=${Date.now()}`, {
