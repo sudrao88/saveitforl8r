@@ -9,7 +9,8 @@ import {
     findFileByName,
     deleteFileById,
     isLinked as checkIsLinked,
-    deleteRemoteNote
+    deleteRemoteNote,
+    type DriveFile,
 } from '../services/googleDriveService';
 import { Memory, Moment, MomentSynthesis, CalendarEvent, TodoItem } from '../types';
 import { useAuth } from '../hooks/useAuth';
@@ -507,8 +508,8 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
   }, []);
 
-  const saveSnapshot = useCallback(async (remoteFiles: any[]) => {
-      const snapshot = Object.fromEntries(remoteFiles.map((f: any) => [f.name.replace('.json', ''), f.modifiedTime]));
+  const saveSnapshot = useCallback(async (remoteFiles: DriveFile[]) => {
+      const snapshot = Object.fromEntries(remoteFiles.map(f => [f.name.replace('.json', ''), f.modifiedTime]));
       await storage.set(SNAPSHOT_KEY, JSON.stringify(snapshot));
       await storage.set(LAST_SYNC_KEY, Date.now().toString());
   }, []);
@@ -530,7 +531,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const localTodoMap = new Map(localTodoItems.map(t => [`todo-${t.id}`, t]));
 
     const remoteFiles = await listAllFiles();
-    const remoteMap = new Map(remoteFiles.map((f: any) => [f.name.replace('.json', ''), f]));
+    const remoteMap = new Map(remoteFiles.map(f => [f.name.replace('.json', ''), f]));
 
     const lastSyncTimeStr = await storage.get(LAST_SYNC_KEY);
     const lastSyncTime = parseInt(lastSyncTimeStr || '0');
@@ -770,7 +771,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     if (errors.length > 0) {
         const errorSet = new Set(errors);
         const successfulFiles = updatedRemoteFiles.filter(
-            (f: any) => !errorSet.has(f.name.replace('.json', ''))
+            f => !errorSet.has(f.name.replace('.json', ''))
         );
         await saveSnapshot(successfulFiles);
     } else {
@@ -852,19 +853,15 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                     ]);
 
                     const fullSnapshot = previousSnapshot;
-                    previousSnapshot = {};
-                    for (const [noteId, modifiedTime] of Object.entries(fullSnapshot)) {
-                        if (localIds.has(noteId)) {
-                            previousSnapshot[noteId] = modifiedTime;
-                        } else if (noteId.startsWith('moment-synthesis-')) {
+                    previousSnapshot = Object.fromEntries(
+                        Object.entries(fullSnapshot).filter(([noteId]) =>
+                            localIds.has(noteId) ||
                             // Keep synthesis entries if the parent moment exists locally —
                             // avoids N+1 individual synthesis lookups at scale.
-                            const momentId = noteId.replace('moment-synthesis-', '');
-                            if (localIds.has(`moment-${momentId}`)) {
-                                previousSnapshot[noteId] = modifiedTime;
-                            }
-                        }
-                    }
+                            (noteId.startsWith('moment-synthesis-') &&
+                                localIds.has(`moment-${noteId.replace('moment-synthesis-', '')}`))
+                        )
+                    );
                     console.log(`[Sync] Force full sync: rebuilt snapshot from local data (${Object.keys(previousSnapshot).length}/${Object.keys(fullSnapshot).length} items matched)`);
                 }
 
