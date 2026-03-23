@@ -1,6 +1,6 @@
 {
-  "version": "saveitforl8r-v46",
-  "buildNumber": 46,
+  "version": "saveitforl8r-v47",
+  "buildNumber": 47,
   "buildDate": "2026-03-23T00:00:00.000Z",
   "minNativeVersion": "1.0.0",
   "changelog": "Harden sync reliability: self-heal never-synced items, fix race condition"
