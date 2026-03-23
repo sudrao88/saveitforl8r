@@ -508,10 +508,12 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
   }, []);
 
-  const saveSnapshot = useCallback(async (remoteFiles: DriveFile[]) => {
+  const saveSnapshot = useCallback(async (remoteFiles: DriveFile[], updateLastSyncTime = true) => {
       const snapshot = Object.fromEntries(remoteFiles.map(f => [f.name.replace('.json', ''), f.modifiedTime]));
       await storage.set(SNAPSHOT_KEY, JSON.stringify(snapshot));
-      await storage.set(LAST_SYNC_KEY, Date.now().toString());
+      if (updateLastSyncTime) {
+          await storage.set(LAST_SYNC_KEY, Date.now().toString());
+      }
   }, []);
 
   const doDeltaSync = useCallback(async (previousSnapshot: Record<string, string>, onProgress?: () => void) => {
@@ -681,7 +683,8 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
             plan.toHardDeleteLocal.push(local.id);
             handled.add(local.id);
-        } else if (local.timestamp > lastSyncTime) {
+        } else if (local.timestamp > lastSyncTime || !previousSnapshot[local.id]) {
+            // Upload if modified since last sync, or if never successfully synced (no snapshot entry)
             const remote = remoteMap.get(local.id);
             plan.toUpload.push({ noteId: local.id, memory: local, remoteFileId: remote?.id });
             handled.add(local.id);
@@ -700,7 +703,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
             plan.toHardDeleteLocal.push(key);
             handled.add(key);
-        } else if (moment.updatedAt > lastSyncTime) {
+        } else if (moment.updatedAt > lastSyncTime || !previousSnapshot[key]) {
             const remote = remoteMap.get(key);
             plan.toUpload.push({ noteId: key, memory: moment, remoteFileId: remote?.id });
             handled.add(key);
@@ -719,7 +722,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
             plan.toHardDeleteLocal.push(key);
             handled.add(key);
-        } else if (event.updatedAt > lastSyncTime) {
+        } else if (event.updatedAt > lastSyncTime || !previousSnapshot[key]) {
             const remote = remoteMap.get(key);
             plan.toUpload.push({ noteId: key, memory: event, remoteFileId: remote?.id });
             handled.add(key);
@@ -738,7 +741,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
             plan.toHardDeleteLocal.push(key);
             handled.add(key);
-        } else if (item.updatedAt > lastSyncTime) {
+        } else if (item.updatedAt > lastSyncTime || !previousSnapshot[key]) {
             const remote = remoteMap.get(key);
             plan.toUpload.push({ noteId: key, memory: item, remoteFileId: remote?.id });
             handled.add(key);
@@ -769,11 +772,14 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     // of being permanently skipped due to a matching modifiedTime in the snapshot.
     const updatedRemoteFiles = await listAllFiles();
     if (errors.length > 0) {
+        // Save snapshot excluding failed items so they're retried, but do NOT
+        // advance lastSyncTime — keeps it at the previous value so failed
+        // uploads remain eligible (timestamp > lastSyncTime) on the next delta sync.
         const errorSet = new Set(errors);
         const successfulFiles = updatedRemoteFiles.filter(
             f => !errorSet.has(f.name.replace('.json', ''))
         );
-        await saveSnapshot(successfulFiles);
+        await saveSnapshot(successfulFiles, false);
     } else {
         await saveSnapshot(updatedRemoteFiles);
     }
@@ -820,6 +826,13 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     return new Promise<void>((resolve, reject) => {
         debounceTimerRef.current = setTimeout(async () => {
+            // Re-check after debounce: a single-file sync may have started
+            // during the debounce window, which would cause concurrent syncs.
+            if (isSyncingRef.current) {
+                console.log('[Sync] Skip sync: another sync started during debounce');
+                resolve();
+                return;
+            }
             setIsSyncing(true);
             setIsSyncingDownload(true);
             isSyncingRef.current = true;
