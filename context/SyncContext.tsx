@@ -179,7 +179,10 @@ const executeSyncPlan = async (plan: SyncPlan, onProgress?: () => void): Promise
 
             // Self-heal invalid timestamps — use local copy's timestamp or fall back to now
             if (typeof content.timestamp !== 'number' || !isFinite(content.timestamp) || content.timestamp <= 0) {
-                const healed = item.local?.timestamp ?? Date.now();
+                let healed = item.local?.timestamp;
+                if (typeof healed !== 'number' || !isFinite(healed) || healed <= 0) {
+                    healed = Date.now();
+                }
                 console.warn(`[Sync] Healing memory ${item.noteId}: invalid timestamp ${content.timestamp} → ${healed}`);
                 content.timestamp = healed;
                 // Re-upload the healed version to fix remote
