@@ -5,7 +5,7 @@ import { marked } from 'marked';
 import { Attachment, QuickNoteState } from '../types';
 import { escapeHtml, looksLikeMarkdown, parseChecklistMarkdown, sanitizePastedHtml, hasRichFormatting, extractHashtags, mergeTagsWithHashtags, containsUrl, linkifyUrls, handleEditorKeyDown, checkActiveFormats, execFormatCommand, formatsEqual } from '../utils/editorUtils';
 import { processFileInputs } from '../utils/attachmentUtils';
-import { triggerHaptic } from '../services/platform';
+import { triggerHaptic, isNative } from '../services/platform';
 import FormattingToolbar from './FormattingToolbar';
 import TagInput from './TagInput';
 import { btn, zIndex } from '../styles/design-system';
@@ -45,6 +45,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
   const [keyboardHeight, setKeyboardHeight] = useState(0);
 
   const editorRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const focusItemIdRef = useRef<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const saveSuccessTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -472,21 +473,42 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
         {/* Button row */}
         <div className="flex items-center gap-1 px-3 py-2">
           {/* Left group */}
-          <div className="relative">
-            <button
-              onClick={() => setShowAttachMenu(prev => !prev)}
-              onMouseDown={(e) => e.preventDefault()}
-              className={btn.iconLg}
-              title="Add attachment"
-            >
-              <Paperclip size={20} />
-            </button>
-            <AttachmentMenu
-              open={showAttachMenu}
-              onClose={() => setShowAttachMenu(false)}
-              onFileSelect={handleFileSelect}
-            />
-          </div>
+          {isNative() ? (
+            <div className="relative">
+              <button
+                onClick={() => setShowAttachMenu(prev => !prev)}
+                onMouseDown={(e) => e.preventDefault()}
+                className={btn.iconLg}
+                title="Add attachment"
+              >
+                <Paperclip size={20} />
+              </button>
+              <AttachmentMenu
+                open={showAttachMenu}
+                onClose={() => setShowAttachMenu(false)}
+                onFileSelect={handleFileSelect}
+              />
+            </div>
+          ) : (
+            <>
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileSelect}
+                className="hidden"
+                multiple
+                accept="image/*,.pdf,.txt,.md"
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                onMouseDown={(e) => e.preventDefault()}
+                className={btn.iconLg}
+                title="Add attachment"
+              >
+                <Paperclip size={20} />
+              </button>
+            </>
+          )}
 
           <button
             onClick={() => setShowTags(prev => !prev)}

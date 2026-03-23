@@ -114,6 +114,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
     return [];
   });
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
 
   useEffect(() => {
@@ -604,21 +605,42 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
             {/* Button row */}
             <div className="flex items-center gap-1 px-3 py-2">
                 {/* Attachment */}
-                <div className="relative">
-                    <button
-                        onClick={() => setShowAttachMenu(prev => !prev)}
-                        onMouseDown={(e) => e.preventDefault()}
-                        className={btn.iconLg}
-                        title="Add attachment"
-                    >
-                        <Paperclip size={20} />
-                    </button>
-                    <AttachmentMenu
-                        open={showAttachMenu}
-                        onClose={() => setShowAttachMenu(false)}
-                        onFileSelect={handleFileSelect}
-                    />
-                </div>
+                {isNative() ? (
+                    <div className="relative">
+                        <button
+                            onClick={() => setShowAttachMenu(prev => !prev)}
+                            onMouseDown={(e) => e.preventDefault()}
+                            className={btn.iconLg}
+                            title="Add attachment"
+                        >
+                            <Paperclip size={20} />
+                        </button>
+                        <AttachmentMenu
+                            open={showAttachMenu}
+                            onClose={() => setShowAttachMenu(false)}
+                            onFileSelect={handleFileSelect}
+                        />
+                    </div>
+                ) : (
+                    <>
+                        <input
+                            type="file"
+                            ref={fileInputRef}
+                            onChange={handleFileSelect}
+                            className="hidden"
+                            multiple
+                            accept="image/*,.pdf,.txt,.md"
+                        />
+                        <button
+                            onClick={() => fileInputRef.current?.click()}
+                            onMouseDown={(e) => e.preventDefault()}
+                            className={btn.iconLg}
+                            title="Add attachment"
+                        >
+                            <Paperclip size={20} />
+                        </button>
+                    </>
+                )}
 
                 {/* Tags toggle */}
                 <button
