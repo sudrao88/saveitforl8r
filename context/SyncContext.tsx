@@ -514,7 +514,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       await storage.set(LAST_SYNC_KEY, Date.now().toString());
   }, []);
 
-  const doDeltaSync = useCallback(async (previousSnapshot: Record<string, string>, onProgress?: () => void) => {
+  const doDeltaSync = useCallback(async (previousSnapshot: Record<string, string>, onProgress?: () => void, forceFullSync?: boolean) => {
     const localMemories = await getMemories();
     const localMap = new Map(localMemories.map(m => [m.id, m]));
 
@@ -534,7 +534,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const remoteMap = new Map(remoteFiles.map(f => [f.name.replace('.json', ''), f]));
 
     const lastSyncTimeStr = await storage.get(LAST_SYNC_KEY);
-    const lastSyncTime = parseInt(lastSyncTimeStr || '0');
+    const lastSyncTime = forceFullSync ? 0 : parseInt(lastSyncTimeStr || '0');
 
     const plan: SyncPlan = {
         toDownload: [],
@@ -866,7 +866,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 }
 
                 console.log(`--- [Sync] Starting ${forceFullSync ? 'FULL' : 'DELTA'} Sync ---`);
-                await doDeltaSync(previousSnapshot, onSyncProgressRef.current);
+                await doDeltaSync(previousSnapshot, onSyncProgressRef.current, forceFullSync);
                 reconcileEmbeddings().catch(e => console.error("[Sync] RAG Reconciliation failed:", e));
                 resolve();
             } catch (e: any) {
