@@ -827,15 +827,44 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             try {
                 await getAccessToken();
                 let previousSnapshot: Record<string, string> = {};
-                if (forceFullSync) {
-                    console.log("[Sync] Force full sync: clearing snapshot for full re-comparison");
-                } else {
-                    try {
-                        const snapshotJSON = await storage.get(SNAPSHOT_KEY);
-                        previousSnapshot = JSON.parse(snapshotJSON || '{}');
-                    } catch (e) {
-                        console.warn("[Sync] Snapshot corrupted, starting fresh");
+                try {
+                    const snapshotJSON = await storage.get(SNAPSHOT_KEY);
+                    previousSnapshot = JSON.parse(snapshotJSON || '{}');
+                } catch (e) {
+                    console.warn("[Sync] Snapshot corrupted, starting fresh");
+                }
+
+                if (forceFullSync && Object.keys(previousSnapshot).length > 0) {
+                    // Rebuild snapshot from local data: only keep entries for items
+                    // that exist locally. Items missing locally (e.g. a note that
+                    // failed to download previously) will be removed from the
+                    // snapshot, causing them to be re-downloaded.
+                    const localMemories = await getMemories();
+                    const localMoments = await getAllMomentsIncludingDeleted();
+                    const localEvents = await getAllCalendarEventsIncludingDeleted();
+                    const localTodos = await getAllTodoItemsIncludingDeleted();
+                    const localSyntheses = new Set<string>();
+                    for (const m of localMoments) {
+                        const synthesis = await getMomentSynthesis(m.id);
+                        if (synthesis) localSyntheses.add(`moment-synthesis-${m.id}`);
                     }
+
+                    const localIds = new Set<string>([
+                        ...localMemories.map(m => m.id),
+                        ...localMoments.map(m => `moment-${m.id}`),
+                        ...localEvents.map(e => `event-${e.id}`),
+                        ...localTodos.map(t => `todo-${t.id}`),
+                        ...localSyntheses,
+                    ]);
+
+                    const fullSnapshot = previousSnapshot;
+                    previousSnapshot = {};
+                    for (const [noteId, modifiedTime] of Object.entries(fullSnapshot)) {
+                        if (localIds.has(noteId)) {
+                            previousSnapshot[noteId] = modifiedTime;
+                        }
+                    }
+                    console.log(`[Sync] Force full sync: rebuilt snapshot from local data (${Object.keys(previousSnapshot).length}/${Object.keys(fullSnapshot).length} items matched)`);
                 }
 
                 console.log(`--- [Sync] Starting ${forceFullSync ? 'FULL' : 'DELTA'} Sync ---`);
