@@ -45,6 +45,10 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+    <key>NSCameraUsageDescription</key>
+    <string>SaveItForL8r needs camera access to take photos for your memories.</string>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>SaveItForL8r needs photo library access to attach images to your memories.</string>
     <key>CFBundleURLTypes</key>
     <array>
         <dict>
