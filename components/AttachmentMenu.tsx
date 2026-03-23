@@ -39,8 +39,6 @@ const AttachmentMenu: React.FC<AttachmentMenuProps> = ({ open, onClose, onFileSe
     e.target.value = '';
   }, [onFileSelect]);
 
-  if (!open) return null;
-
   const handleSelect = (ref: React.RefObject<HTMLInputElement | null>) => {
     ref.current?.click();
     onClose();
@@ -50,31 +48,33 @@ const AttachmentMenu: React.FC<AttachmentMenuProps> = ({ open, onClose, onFileSe
 
   return (
     <div ref={menuRef}>
-      <div className={`${menu.panel} !right-auto left-0`}>
-        {showCamera && (
+      {open && (
+        <div className={`${menu.panel} !right-auto left-0`}>
+          {showCamera && (
+            <button
+              className={menu.item}
+              onClick={() => handleSelect(cameraInputRef)}
+            >
+              <Camera size={18} />
+              Take photo
+            </button>
+          )}
           <button
             className={menu.item}
-            onClick={() => handleSelect(cameraInputRef)}
+            onClick={() => handleSelect(imageInputRef)}
           >
-            <Camera size={18} />
-            Take photo
+            <Image size={18} />
+            Upload image
           </button>
-        )}
-        <button
-          className={menu.item}
-          onClick={() => handleSelect(imageInputRef)}
-        >
-          <Image size={18} />
-          Upload image
-        </button>
-        <button
-          className={menu.item}
-          onClick={() => handleSelect(docInputRef)}
-        >
-          <FileText size={18} />
-          Upload document
-        </button>
-      </div>
+          <button
+            className={menu.item}
+            onClick={() => handleSelect(docInputRef)}
+          >
+            <FileText size={18} />
+            Upload document
+          </button>
+        </div>
+      )}
 
       {showCamera && (
         <input
