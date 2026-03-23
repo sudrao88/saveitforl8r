@@ -651,13 +651,17 @@ const AppContent: React.FC = () => {
   });
 
   // Handle home screen widget deep links
-  useWidgetDeepLink(
-    useCallback(() => quickNoteBarRef.current?.focus(), []),
-    useCallback(() => {
-      setIsCaptureOpen(true);
-      logEvent(ANALYTICS_EVENTS.NAVIGATION.CATEGORY, ANALYTICS_EVENTS.NAVIGATION.ACTION_CAPTURE_OPENED, 'Widget');
-    }, [])
-  );
+  useWidgetDeepLink({
+    onFocus: useCallback(() => quickNoteBarRef.current?.focus(), []),
+    onCamera: useCallback(() => {
+      quickNoteBarRef.current?.triggerCamera();
+      logEvent(ANALYTICS_EVENTS.NAVIGATION.CATEGORY, ANALYTICS_EVENTS.NAVIGATION.ACTION_CAPTURE_OPENED, 'Widget-Camera');
+    }, []),
+    onDocument: useCallback(() => {
+      quickNoteBarRef.current?.triggerDocument();
+      logEvent(ANALYTICS_EVENTS.NAVIGATION.CATEGORY, ANALYTICS_EVENTS.NAVIGATION.ACTION_CAPTURE_OPENED, 'Widget-Document');
+    }, []),
+  });
 
   const displayMemories = useMemo(() => {
     const active = filteredMemories.filter(m => !m.isDeleting);

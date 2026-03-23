@@ -11,9 +11,10 @@ import android.widget.RemoteViews;
 /**
  * Home screen widget that provides quick access to note creation.
  *
- * The widget shows a search-bar-style input hint and a camera button.
- * Tapping the input area opens the app with the QuickNoteBar focused.
- * Tapping the camera button opens the app in photo capture mode.
+ * The widget shows a search-bar-style input hint, a camera button, and a
+ * document upload button. Tapping the input area opens the app with the
+ * QuickNoteBar focused. Tapping camera/document buttons opens the app with
+ * the corresponding file picker pre-triggered.
  *
  * Note: Android RemoteViews don't support EditText, so the widget uses
  * a TextView hint that deep-links into the app when tapped.
@@ -59,6 +60,16 @@ public class QuickNoteWidgetProvider extends AppWidgetProvider {
                 context, 2, cameraIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         views.setOnClickPendingIntent(R.id.widget_camera_btn, cameraPendingIntent);
+
+        // Tap on document → open app in document upload mode
+        Intent docIntent = new Intent(context, MainActivity.class);
+        docIntent.setAction(Intent.ACTION_VIEW);
+        docIntent.setData(Uri.parse(DEEP_LINK_SCHEME + "://quick-note?mode=document"));
+        docIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        PendingIntent docPendingIntent = PendingIntent.getActivity(
+                context, 3, docIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        views.setOnClickPendingIntent(R.id.widget_document_btn, docPendingIntent);
 
         appWidgetManager.updateAppWidget(appWidgetId, views);
     }

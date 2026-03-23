@@ -44,4 +44,15 @@
         android:padding="6dp"
         android:background="?android:attr/selectableItemBackgroundBorderless" />
 
+    <!-- Document upload quick action -->
+    <ImageView
+        android:id="@+id/widget_document_btn"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:layout_marginStart="2dp"
+        android:src="@drawable/ic_widget_document"
+        android:contentDescription="@string/widget_document"
+        android:padding="6dp"
+        android:background="?android:attr/selectableItemBackgroundBorderless" />
+
 </LinearLayout>

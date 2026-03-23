@@ -21,6 +21,8 @@ interface QuickNoteBarProps {
 
 export interface QuickNoteBarHandle {
   focus: () => void;
+  triggerCamera: () => void;
+  triggerDocument: () => void;
 }
 
 interface ChecklistItem {
@@ -50,6 +52,8 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
   const saveSuccessTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const formatRafRef = useRef<number>(0);
   const prevFormatsRef = useRef<string[]>([]);
+  const widgetCameraRef = useRef<HTMLInputElement>(null);
+  const widgetDocRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     return () => {
@@ -88,6 +92,8 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
 
   useImperativeHandle(ref, () => ({
     focus: () => editorRef.current?.focus(),
+    triggerCamera: () => widgetCameraRef.current?.click(),
+    triggerDocument: () => widgetDocRef.current?.click(),
   }));
 
   // Autofocus the editor on mount for devices with a fine pointer (keyboard-attached)
@@ -548,6 +554,24 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
           </button>
         </div>
       </div>
+
+      {/* Hidden file inputs for widget-triggered captures (camera/document) */}
+      <input
+        type="file"
+        ref={widgetCameraRef}
+        onChange={handleFileSelect}
+        className="hidden"
+        accept="image/*"
+        capture="environment"
+      />
+      <input
+        type="file"
+        ref={widgetDocRef}
+        onChange={handleFileSelect}
+        className="hidden"
+        multiple
+        accept=".pdf,.txt,.md"
+      />
     </div>
   );
 });

@@ -1,35 +1,46 @@
 import { useEffect, useCallback, useRef } from 'react';
 import { isNative } from '../services/platform';
 
+export type WidgetCaptureMode = 'camera' | 'document';
+
 interface WidgetQuickNoteEvent {
-  mode?: 'camera';
+  mode?: WidgetCaptureMode;
+}
+
+interface WidgetDeepLinkHandlers {
+  /** Default: focus the QuickNoteBar text editor */
+  onFocus: () => void;
+  /** Camera button: open camera capture */
+  onCamera?: () => void;
+  /** Document button: open document file picker */
+  onDocument?: () => void;
 }
 
 /**
  * Listens for the `onWidgetQuickNote` custom event dispatched by native code
- * when the user taps the home screen widget. Focuses the QuickNoteBar or
- * opens a specific capture mode.
+ * when the user taps the home screen widget. Routes to the appropriate handler
+ * based on the capture mode.
  */
-export const useWidgetDeepLink = (
-  onQuickNoteFocus: () => void,
-  onCameraCapture?: () => void
-) => {
-  const onQuickNoteFocusRef = useRef(onQuickNoteFocus);
-  const onCameraCaptureRef = useRef(onCameraCapture);
+export const useWidgetDeepLink = (handlers: WidgetDeepLinkHandlers) => {
+  const handlersRef = useRef(handlers);
 
   useEffect(() => {
-    onQuickNoteFocusRef.current = onQuickNoteFocus;
-    onCameraCaptureRef.current = onCameraCapture;
-  }, [onQuickNoteFocus, onCameraCapture]);
+    handlersRef.current = handlers;
+  }, [handlers]);
 
   const handleWidgetEvent = useCallback((event: Event) => {
     const detail = (event as CustomEvent<WidgetQuickNoteEvent>).detail || {};
     console.log('[Widget] Quick note deep link received:', detail);
 
-    if (detail.mode === 'camera' && onCameraCaptureRef.current) {
-      onCameraCaptureRef.current();
-    } else {
-      onQuickNoteFocusRef.current();
+    switch (detail.mode) {
+      case 'camera':
+        handlersRef.current.onCamera?.() ?? handlersRef.current.onFocus();
+        break;
+      case 'document':
+        handlersRef.current.onDocument?.() ?? handlersRef.current.onFocus();
+        break;
+      default:
+        handlersRef.current.onFocus();
     }
   }, []);
 
