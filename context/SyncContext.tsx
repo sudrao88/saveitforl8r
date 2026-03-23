@@ -534,7 +534,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const remoteMap = new Map(remoteFiles.map(f => [f.name.replace('.json', ''), f]));
 
     const lastSyncTimeStr = await storage.get(LAST_SYNC_KEY);
-    const lastSyncTime = forceFullSync ? 0 : parseInt(lastSyncTimeStr || '0');
+    const lastSyncTime = parseInt(lastSyncTimeStr || '0');
 
     const plan: SyncPlan = {
         toDownload: [],
@@ -548,9 +548,6 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     for (const [noteId, remoteFile] of remoteMap.entries()) {
         if (previousSnapshot[noteId] && previousSnapshot[noteId] === remoteFile.modifiedTime) {
-            // On force sync, mark as handled so Phase 3 doesn't re-upload items
-            // that already exist on Drive and haven't changed.
-            if (forceFullSync) handled.add(noteId);
             continue;
         }
 
@@ -630,11 +627,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             if (localEvent?.isDeleted) {
                 plan.toHardDeleteLocal.push(noteId);
             } else if (localEvent) {
-                if (forceFullSync) {
-                    plan.toUpload.push({ noteId, memory: localEvent });
-                } else {
-                    plan.toDeleteLocal.push(noteId);
-                }
+                plan.toDeleteLocal.push(noteId);
             }
             continue;
         }
@@ -645,29 +638,15 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             if (localTodo?.isDeleted) {
                 plan.toHardDeleteLocal.push(noteId);
             } else if (localTodo) {
-                if (forceFullSync) {
-                    plan.toUpload.push({ noteId, memory: localTodo });
-                } else {
-                    plan.toDeleteLocal.push(noteId);
-                }
+                plan.toDeleteLocal.push(noteId);
             }
             continue;
         }
 
         // Handle synthesis files that were removed from remote
         if (noteId.startsWith('moment-synthesis-')) {
-            if (forceFullSync) {
-                // Keep synthesis — parent moment will re-upload it if needed
-                const momentId = noteId.replace('moment-synthesis-', '');
-                const localMoment = localMomentMap.get(`moment-${momentId}`);
-                if (!localMoment || localMoment.isDeleted) {
-                    plan.toHardDeleteLocal.push(noteId);
-                }
-                // Otherwise: synthesis upload is handled alongside its parent moment
-            } else {
-                // Remote synthesis was deleted — clean up local cache
-                plan.toHardDeleteLocal.push(noteId);
-            }
+            // Remote synthesis was deleted — clean up local cache
+            plan.toHardDeleteLocal.push(noteId);
             continue;
         }
 
@@ -677,11 +656,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             if (localMoment?.isDeleted) {
                 plan.toHardDeleteLocal.push(noteId);
             } else if (localMoment) {
-                if (forceFullSync) {
-                    plan.toUpload.push({ noteId, memory: localMoment });
-                } else {
-                    plan.toDeleteLocal.push(noteId);
-                }
+                plan.toDeleteLocal.push(noteId);
             }
             continue;
         }
@@ -691,11 +666,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (local?.isDeleted) {
             plan.toHardDeleteLocal.push(noteId);
         } else if (local) {
-            if (forceFullSync) {
-                plan.toUpload.push({ noteId, memory: local });
-            } else {
-                plan.toDeleteLocal.push(noteId);
-            }
+            plan.toDeleteLocal.push(noteId);
         }
     }
 
@@ -710,7 +681,8 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
             plan.toHardDeleteLocal.push(local.id);
             handled.add(local.id);
-        } else if (local.timestamp > lastSyncTime) {
+        } else if (local.timestamp > lastSyncTime || (forceFullSync && !previousSnapshot[local.id])) {
+            // Upload if modified since last sync, or on force sync if never synced
             const remote = remoteMap.get(local.id);
             plan.toUpload.push({ noteId: local.id, memory: local, remoteFileId: remote?.id });
             handled.add(local.id);
@@ -729,7 +701,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
             plan.toHardDeleteLocal.push(key);
             handled.add(key);
-        } else if (moment.updatedAt > lastSyncTime) {
+        } else if (moment.updatedAt > lastSyncTime || (forceFullSync && !previousSnapshot[key])) {
             const remote = remoteMap.get(key);
             plan.toUpload.push({ noteId: key, memory: moment, remoteFileId: remote?.id });
             handled.add(key);
@@ -748,7 +720,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
             plan.toHardDeleteLocal.push(key);
             handled.add(key);
-        } else if (event.updatedAt > lastSyncTime) {
+        } else if (event.updatedAt > lastSyncTime || (forceFullSync && !previousSnapshot[key])) {
             const remote = remoteMap.get(key);
             plan.toUpload.push({ noteId: key, memory: event, remoteFileId: remote?.id });
             handled.add(key);
@@ -767,7 +739,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
             plan.toHardDeleteLocal.push(key);
             handled.add(key);
-        } else if (item.updatedAt > lastSyncTime) {
+        } else if (item.updatedAt > lastSyncTime || (forceFullSync && !previousSnapshot[key])) {
             const remote = remoteMap.get(key);
             plan.toUpload.push({ noteId: key, memory: item, remoteFileId: remote?.id });
             handled.add(key);
