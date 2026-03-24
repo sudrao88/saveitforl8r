@@ -436,8 +436,10 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const syncStatusMapRef = useRef<Map<string, SyncStatus>>(new Map());
   const syncStatusTimersRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
   const onSyncProgressRef = useRef<(() => void) | undefined>(undefined);
-  // Queue for single-file syncs that were blocked by an in-progress sync
-  const pendingSyncQueueRef = useRef<Map<string, Memory>>(new Map());
+  // Queue of memory IDs whose single-file sync was blocked by an in-progress sync.
+  // Only IDs are stored — the memory is re-read from IndexedDB when drained so we
+  // always sync the latest version (e.g. after a delta sync resolves a conflict).
+  const pendingSyncQueueRef = useRef<Set<string>>(new Set());
   // Ref to drain function — set after performSingleSync is defined
   const drainPendingSyncQueueRef = useRef<() => void>(() => {});
 
@@ -1008,10 +1010,10 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const linked = await checkIsLinked();
       if (!linked) return;
 
-      // If another sync is in progress, queue this memory for retry after it completes
+      // If another sync is in progress, queue this memory's ID for retry after it completes
       if (isSyncingRef.current) {
           console.log(`[Sync] Queuing ${memory.id} — another sync is in progress`);
-          pendingSyncQueueRef.current.set(memory.id, memory);
+          pendingSyncQueueRef.current.add(memory.id);
           return;
       }
 
@@ -1057,12 +1059,17 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           isSyncingRef.current = false;
           // Drain the pending sync queue — use setTimeout to avoid
           // calling performSingleSync while still inside its finally block.
+          // Re-reads the memory from IndexedDB so we always sync the latest version.
           if (pendingSyncQueueRef.current.size > 0) {
-              const nextEntry = pendingSyncQueueRef.current.entries().next().value;
-              if (nextEntry) {
-                  const [nextId, nextMemory] = nextEntry;
+              const nextId = pendingSyncQueueRef.current.values().next().value;
+              if (nextId) {
                   pendingSyncQueueRef.current.delete(nextId);
-                  setTimeout(() => performSingleSync(nextMemory), 0);
+                  setTimeout(async () => {
+                      const freshMemory = await getMemory(nextId);
+                      if (freshMemory && !freshMemory.isDeleted) {
+                          performSingleSync(freshMemory);
+                      }
+                  }, 0);
               }
           }
       }
@@ -1071,11 +1078,15 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // Wire up the drain ref now that performSingleSync is defined
   drainPendingSyncQueueRef.current = () => {
       if (pendingSyncQueueRef.current.size > 0) {
-          const nextEntry = pendingSyncQueueRef.current.entries().next().value;
-          if (nextEntry) {
-              const [nextId, nextMemory] = nextEntry;
+          const nextId = pendingSyncQueueRef.current.values().next().value;
+          if (nextId) {
               pendingSyncQueueRef.current.delete(nextId);
-              setTimeout(() => performSingleSync(nextMemory), 0);
+              setTimeout(async () => {
+                  const freshMemory = await getMemory(nextId);
+                  if (freshMemory && !freshMemory.isDeleted) {
+                      performSingleSync(freshMemory);
+                  }
+              }, 0);
           }
       }
   };
