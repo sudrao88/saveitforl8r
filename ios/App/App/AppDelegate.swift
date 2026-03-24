@@ -94,12 +94,45 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         }
 
         if let updatePath = OTADownloadManager.getExistingUpdatePath() {
-            print("[OTA] Applying previously downloaded OTA update from: \(updatePath)")
+            // Compare OTA version against bundled version. If the APK/IPA was updated
+            // with newer assets, discard the stale OTA download and use bundled.
+            let otaBuild = readBuildNumber(from: URL(fileURLWithPath: updatePath).appendingPathComponent("version.json"))
+            let bundledBuild = readBundledBuildNumber()
+
+            if otaBuild == -1 || bundledBuild > otaBuild {
+                print("[OTA] Bundled assets (build \(bundledBuild)) are newer than OTA (build \(otaBuild)) — discarding OTA")
+                defaults.set("false", forKey: prefsPrefix + prefUseRemote)
+                OTADownloadManager.clearUpdate()
+                return
+            }
+
+            print("[OTA] Applying previously downloaded OTA update from: \(updatePath) (OTA build \(otaBuild), bundled build \(bundledBuild))")
             vc.setServerBasePath(path: updatePath)
         } else {
             print("[OTA] OTA preference is true but no downloaded update found — resetting")
             defaults.set("false", forKey: prefsPrefix + prefUseRemote)
         }
+    }
+
+    /// Reads the buildNumber from a version.json file. Returns -1 on failure.
+    private func readBuildNumber(from url: URL) -> Int {
+        guard let data = try? Data(contentsOf: url),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let buildNumber = json["buildNumber"] as? Int else {
+            print("[OTA] Failed to read buildNumber from \(url.path)")
+            return -1
+        }
+        return buildNumber
+    }
+
+    /// Reads the buildNumber from the bundled public/version.json.
+    /// Returns -1 on failure (preserving OTA assets in that case).
+    private func readBundledBuildNumber() -> Int {
+        guard let url = Bundle.main.url(forResource: "version", withExtension: "json", subdirectory: "public") else {
+            print("[OTA] Bundled public/version.json not found")
+            return -1
+        }
+        return readBuildNumber(from: url)
     }
 
     /// Called by IOSBridge when JS requests an OTA update download.

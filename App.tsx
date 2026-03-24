@@ -760,7 +760,7 @@ const AppContent: React.FC = () => {
       {/* Main UI — hidden when MomentCreationDialog is open */}
       {!showCreateMoment ? (
         <>
-          <div ref={topNavRef} className="sticky top-0 z-(--z-overlay) bg-black/90 backdrop-blur-md border-b border-gray-800/50 pt-[var(--sat)]">
+          <div ref={topNavRef} className="sticky top-0 z-(--z-overlay) bg-black/90 backdrop-blur-md pt-[var(--sat)]">
               <TopNavigation
                 setView={handleSetView}
                 resetFilters={handleResetFilters}
