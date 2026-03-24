@@ -436,6 +436,10 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const syncStatusMapRef = useRef<Map<string, SyncStatus>>(new Map());
   const syncStatusTimersRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
   const onSyncProgressRef = useRef<(() => void) | undefined>(undefined);
+  // Queue for single-file syncs that were blocked by an in-progress sync
+  const pendingSyncQueueRef = useRef<Map<string, Memory>>(new Map());
+  // Ref to drain function — set after performSingleSync is defined
+  const drainPendingSyncQueueRef = useRef<() => void>(() => {});
 
   const setOnSyncProgress = useCallback((cb: (() => void) | undefined) => {
     onSyncProgressRef.current = cb;
@@ -461,8 +465,9 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const getSyncStatusMap = useCallback(() => syncStatusMapRef.current, []);
 
-  const syncFileInternal = useCallback(async (memory: Memory) => {
-      if (memory.isPending || memory.processingError) return;
+  /** Returns true if the file was actually uploaded, false if skipped. */
+  const syncFileInternal = useCallback(async (memory: Memory): Promise<boolean> => {
+      if (memory.isPending || memory.processingError) return false;
 
       try {
           const filename = `${memory.id}.json`;
@@ -475,6 +480,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               snapshot[memory.id] = uploaded.modifiedTime;
               await storage.set(SNAPSHOT_KEY, JSON.stringify(snapshot));
           }
+          return true;
       } catch (e) {
           console.error(`[Sync] Internal sync failed for ${memory.id}:`, e);
           throw e;
@@ -901,6 +907,8 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 setIsSyncing(false);
                 setIsSyncingDownload(false);
                 isSyncingRef.current = false;
+                // Drain any single-file syncs that were queued during the delta sync
+                drainPendingSyncQueueRef.current();
             }
         }, SYNC_DEBOUNCE_MS);
     });
@@ -992,7 +1000,14 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const performSingleSync = useCallback(async (memory: Memory) => {
       const linked = await checkIsLinked();
-      if (isSyncingRef.current || !linked) return;
+      if (!linked) return;
+
+      // If another sync is in progress, queue this memory for retry after it completes
+      if (isSyncingRef.current) {
+          console.log(`[Sync] Queuing ${memory.id} — another sync is in progress`);
+          pendingSyncQueueRef.current.set(memory.id, memory);
+          return;
+      }
 
       updateSyncStatus(memory.id, 'syncing');
       setIsSyncing(true);
@@ -1016,8 +1031,15 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               syncStatusMapRef.current.delete(memory.id);
               setSyncStatusVersion(v => v + 1);
           } else {
-              await syncFileInternal(memory);
-              updateSyncStatus(memory.id, 'synced');
+              const didUpload = await syncFileInternal(memory);
+              if (didUpload) {
+                  updateSyncStatus(memory.id, 'synced');
+              } else {
+                  // syncFileInternal skipped (memory is pending/errored) — clear
+                  // the transient 'syncing' indicator without claiming it synced.
+                  syncStatusMapRef.current.delete(memory.id);
+                  setSyncStatusVersion(v => v + 1);
+              }
           }
       } catch (e: any) {
           console.error(`[Sync] Single sync failed for ${memory.id}:`, e);
@@ -1027,8 +1049,30 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       } finally {
           setIsSyncing(false);
           isSyncingRef.current = false;
+          // Drain the pending sync queue — use setTimeout to avoid
+          // calling performSingleSync while still inside its finally block.
+          if (pendingSyncQueueRef.current.size > 0) {
+              const nextEntry = pendingSyncQueueRef.current.entries().next().value;
+              if (nextEntry) {
+                  const [nextId, nextMemory] = nextEntry;
+                  pendingSyncQueueRef.current.delete(nextId);
+                  setTimeout(() => performSingleSync(nextMemory), 0);
+              }
+          }
       }
   }, [syncFileInternal, getAccessToken, updateSyncStatus]);
+
+  // Wire up the drain ref now that performSingleSync is defined
+  drainPendingSyncQueueRef.current = () => {
+      if (pendingSyncQueueRef.current.size > 0) {
+          const nextEntry = pendingSyncQueueRef.current.entries().next().value;
+          if (nextEntry) {
+              const [nextId, nextMemory] = nextEntry;
+              pendingSyncQueueRef.current.delete(nextId);
+              setTimeout(() => performSingleSync(nextMemory), 0);
+          }
+      }
+  };
 
   const retrySyncFile = useCallback(async (memoryId: string) => {
       const memory = await getMemory(memoryId);
@@ -1040,8 +1084,13 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       updateSyncStatus(memoryId, 'syncing');
       try {
           await getAccessToken();
-          await syncFileInternal(memory);
-          updateSyncStatus(memoryId, 'synced');
+          const didUpload = await syncFileInternal(memory);
+          if (didUpload) {
+              updateSyncStatus(memoryId, 'synced');
+          } else {
+              syncStatusMapRef.current.delete(memoryId);
+              setSyncStatusVersion(v => v + 1);
+          }
       } catch (e: any) {
           console.error(`[Sync] Retry sync failed for ${memoryId}:`, e);
           updateSyncStatus(memoryId, 'error');
