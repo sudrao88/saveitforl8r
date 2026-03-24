@@ -99,7 +99,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             let otaBuild = readBuildNumber(from: URL(fileURLWithPath: updatePath).appendingPathComponent("version.json"))
             let bundledBuild = readBundledBuildNumber()
 
-            if bundledBuild > otaBuild {
+            if otaBuild == -1 || bundledBuild > otaBuild {
                 print("[OTA] Bundled assets (build \(bundledBuild)) are newer than OTA (build \(otaBuild)) — discarding OTA")
                 defaults.set("false", forKey: prefsPrefix + prefUseRemote)
                 OTADownloadManager.clearUpdate()
