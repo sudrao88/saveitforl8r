@@ -1,5 +1,11 @@
 apply plugin: 'com.android.application'
 
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file('local.properties')
+if (localPropertiesFile.exists()) {
+    localProperties.load(new FileInputStream(localPropertiesFile))
+}
+
 android {
     namespace "com.saveitforl8r.app"
     compileSdk rootProject.ext.compileSdkVersion
@@ -7,9 +13,9 @@ android {
     signingConfigs {
         release {
             storeFile file('saveitforl8r-release.keystore')
-            storePassword System.getenv('KEYSTORE_PASSWORD')
+            storePassword localProperties['KEYSTORE_PASSWORD']
             keyAlias 'saveitforl8r'
-            keyPassword System.getenv('KEY_PASSWORD')
+            keyPassword localProperties['KEY_PASSWORD']
         }
     }
 
