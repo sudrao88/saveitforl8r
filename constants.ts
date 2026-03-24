@@ -41,9 +41,7 @@ export const ANALYTICS_EVENTS = {
   },
   SETTINGS: {
     CATEGORY: 'Settings',
-    ACTION_API_KEY_SET: 'API Key Set',
     ACTION_CLOSED: 'Closed',
-    ACTION_API_KEY_CLEARED: 'API Key Cleared',
   },
   DATA: {
     CATEGORY: 'Data',
@@ -53,5 +51,39 @@ export const ANALYTICS_EVENTS = {
     CATEGORY: 'Auth',
     ACTION_LOGIN_SUCCESS: 'Login successful',
     ACTION_CALLBACK_FAILED: 'Callback processing failed',
-  }
+    ACTION_LOGOUT: 'Logout',
+  },
+  QUICK_NOTE: {
+    CATEGORY: 'QuickNote',
+    ACTION_SAVED: 'Saved',
+    ACTION_EXPANDED: 'Expanded',
+  },
+  ENRICHMENT: {
+    CATEGORY: 'Enrichment',
+    ACTION_COMPLETED: 'Completed',
+    ACTION_FAILED: 'Failed',
+  },
+  MOMENT: {
+    CATEGORY: 'Moment',
+    ACTION_CREATED: 'Created',
+    ACTION_DELETED: 'Deleted',
+  },
+  CALENDAR_EVENT: {
+    CATEGORY: 'CalendarEvent',
+    ACTION_CREATED: 'Created',
+  },
+  TODO_ITEM: {
+    CATEGORY: 'TodoItem',
+    ACTION_CREATED: 'Created',
+    ACTION_COMPLETED: 'Completed',
+    ACTION_UNCOMPLETED: 'Uncompleted',
+    ACTION_DISMISSED: 'Dismissed',
+    ACTION_RESTORED: 'Restored',
+  },
+  NOTIFICATION: {
+    CATEGORY: 'Notification',
+    ACTION_SCHEDULED: 'Scheduled',
+    ACTION_PERMISSION_GRANTED: 'Permission Granted',
+    ACTION_SETTING_CHANGED: 'Setting Changed',
+  },
 } as const;

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { queryBrain } from '../services/geminiService';
-import { Memory } from '../types';
+import { Memory, ChatMessage } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
 export interface SearchResultItem {
@@ -124,21 +124,21 @@ export const useAdaptiveSearch = () => {
       }
   };
 
-  const search = useCallback(async (query: string, memories: Memory[] = []) => {
-    if (!query.trim()) return;
+  const search = useCallback(async (query: string, memories: Memory[] = [], history: ChatMessage[] = []): Promise<{ mode: string; result: any; error?: any }> => {
+    if (!query.trim()) {
+      return { mode: 'empty', result: [] };
+    }
 
     setIsSearching(true);
 
-    const apiKey = localStorage.getItem('gemini_api_key');
-    const hasKey = !!apiKey;
-
     try {
-      if (isOnline && hasKey) {
-        const result = await queryBrain(query, memories);
+      if (isOnline) {
+        // Online: use server proxy for AI-powered search
+        const result = await queryBrain(query, memories, history);
         setIsSearching(false);
         return { mode: 'online', result };
       } else {
-        // Check if model is available for offline search
+        // Offline: fall back to local embedding model
         if (modelStatus === 'error') {
              setIsSearching(false);
              return {
@@ -175,14 +175,14 @@ export const useAdaptiveSearch = () => {
         setIsSearching(false);
 
         return {
-            mode: (isOnline && !hasKey) ? 'offline_no_key' : 'offline',
+            mode: 'offline',
             result: results
         };
       }
     } catch (e) {
       console.error("Search failed", e);
       setIsSearching(false);
-      return { mode: 'error', error: e };
+      return { mode: 'error', result: [], error: e };
     }
   }, [isOnline, modelStatus, lastError]);
 

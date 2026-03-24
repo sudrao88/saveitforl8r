@@ -5,9 +5,9 @@ export const memoriesToCSV = (memories: Memory[]): string => {
   // Define columns
   const headers = ['id', 'timestamp', 'date_iso', 'content', 'type', 'tags', 'summary', 'location_json', 'attachments_json', 'enrichment_json'];
   
-  const escape = (str: string | undefined | null) => {
-    if (str === undefined || str === null) return '';
-    const stringified = String(str);
+  const escape = (val: string | number | undefined | null) => {
+    if (val === undefined || val === null) return '';
+    const stringified = String(val);
     if (stringified.includes('"') || stringified.includes(',') || stringified.includes('\n') || stringified.includes('\r')) {
       return `"${stringified.replace(/"/g, '""')}"`;
     }
@@ -19,9 +19,9 @@ export const memoriesToCSV = (memories: Memory[]): string => {
     const summary = m.enrichment?.summary || '';
     const date = new Date(m.timestamp).toISOString();
     
-    // Clean enrichment data (remove audit)
-    const cleanEnrichment = m.enrichment ? { ...m.enrichment } : null;
-    if (cleanEnrichment && cleanEnrichment.audit) {
+    // Clean enrichment data (remove legacy audit field from pre-proxy data)
+    const cleanEnrichment = m.enrichment ? { ...m.enrichment } as Record<string, unknown> : null;
+    if (cleanEnrichment) {
         delete cleanEnrichment.audit;
     }
 
@@ -31,7 +31,7 @@ export const memoriesToCSV = (memories: Memory[]): string => {
       date,
       m.content,
       type,
-      m.tags.join('|'),
+      (m.tags || []).join('|'),
       summary,
       JSON.stringify(m.location || null),
       JSON.stringify(m.attachments || []),
@@ -113,12 +113,12 @@ export const csvToMemories = (csv: string): Memory[] => {
         const attachments = cols[8] && cols[8] !== 'null' ? JSON.parse(cols[8]) : undefined;
         let enrichment = cols[9] && cols[9] !== 'null' ? JSON.parse(cols[9]) : undefined;
 
-        // Clean imported enrichment too
-        if (enrichment && enrichment.audit) {
-             delete enrichment.audit;
+        // Clean imported enrichment (remove legacy audit field from pre-proxy data)
+        if (enrichment && (enrichment as Record<string, unknown>).audit) {
+             delete (enrichment as Record<string, unknown>).audit;
         }
 
-        if (id && !isNaN(timestamp)) {
+        if (id && isFinite(timestamp) && timestamp > 0) {
             memories.push({
                 id,
                 timestamp,

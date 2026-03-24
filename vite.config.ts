@@ -1,10 +1,12 @@
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
+import path from 'path';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   return {
+    base: '/',
     plugins: [
       react(),
       tailwindcss(),
@@ -12,18 +14,43 @@ export default defineConfig(({ mode }) => {
     define: {
       'import.meta.env.VITE_GOOGLE_CLIENT_ID': JSON.stringify(env.VITE_GOOGLE_CLIENT_ID),
       'import.meta.env.VITE_GOOGLE_CLIENT_SECRET': JSON.stringify(env.VITE_GOOGLE_CLIENT_SECRET),
-      'GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+      'import.meta.env.VITE_PROXY_URL': JSON.stringify(env.VITE_PROXY_URL),
     },
     server: {
       port: 9000,
+      host: '0.0.0.0',
+      allowedHosts: true, // Allow all hosts for cloud environments
       headers: {
         'Cross-Origin-Opener-Policy': 'same-origin',
         'Cross-Origin-Embedder-Policy': 'require-corp'
       }
     },
+    resolve: {
+      alias: {
+        '@': path.resolve(__dirname, '.'),
+      }
+    },
+    test: {
+      globals: true,
+      environment: 'jsdom',
+      setupFiles: './setupTests.ts',
+    },
     build: {
+      outDir: 'dist', // Ensure this matches capacitor webDir
       target: 'esnext',
-      sourcemap: true
+      sourcemap: false,
+      rollupOptions: {
+        output: {
+          // Split large vendor dependencies into separate chunks so they
+          // can be cached independently. Keeps the main bundle lean.
+          manualChunks: {
+            'vendor-react': ['react', 'react-dom'],
+            'vendor-marked': ['marked'],
+            'vendor-dexie': ['dexie'],
+            'vendor-pdf': ['pdfjs-dist'],
+          },
+        },
+      },
     },
     worker: {
       format: 'es',

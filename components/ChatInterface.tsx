@@ -1,28 +1,37 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Send, BrainCircuit, ExternalLink, Bot, Sparkles, WifiOff, Key, Download, FileText } from 'lucide-react';
-import { Memory, Attachment } from '../types';
+import { X, Send, BrainCircuit, ExternalLink, Bot, Sparkles, WifiOff, Download, FileText } from 'lucide-react';
+import { Memory, Attachment, ChatMessage } from '../types';
 import MemoryCard from './MemoryCard';
+import { overlay } from '../styles/design-system';
 
 interface ChatInterfaceProps {
   memories: Memory[];
   onClose: () => void;
-  searchFunction: (query: string, memories: Memory[]) => Promise<{ mode: string; result: any; error?: any }>;
+  searchFunction: (query: string, memories: Memory[], history?: ChatMessage[]) => Promise<{ mode: string; result: any; error?: any }>;
+  onViewAttachment: (attachment: Attachment, allAttachments: Attachment[]) => void;
+  onDelete?: (id: string) => void;
+  onEdit?: (memory: Memory) => void;
+  onTogglePin?: (id: string, isPinned: boolean) => void;
+}
+
+interface Source {
+  id: string;
+  preview: string;
 }
 
 interface Message {
+  id: string;
   role: 'user' | 'model';
   text: string;
-  sources?: string[]; // IDs of memories used
+  sources?: Source[]; // Structured sources
   isOffline?: boolean;
-  missingKey?: boolean;
 }
 
-const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, searchFunction }) => {
+const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, searchFunction, onViewAttachment, onDelete, onEdit, onTogglePin }) => {
   const [query, setQuery] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const [previewMemoryId, setPreviewMemoryId] = useState<string | null>(null);
-  const [viewingAttachment, setViewingAttachment] = useState<Attachment | null>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -78,14 +87,25 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
       }
   }, [query]);
 
+  const MAX_HISTORY_TURNS = 10;
+  const MAX_TURN_TEXT_LENGTH = 4000;
+
   const handleSend = async () => {
     if (!query.trim() || loading) return;
 
-    const userMsg: Message = { role: 'user', text: query };
+    const userMsg: Message = { id: crypto.randomUUID(), role: 'user', text: query };
+
+    // Build conversation history from current messages (before adding the new user message).
+    // Strip sources and isOffline — server only needs role + text.
+    // Cap to most recent MAX_HISTORY_TURNS messages, truncate text to match server limit.
+    const history: ChatMessage[] = messages
+      .slice(-MAX_HISTORY_TURNS)
+      .map(m => ({ role: m.role, text: m.text.substring(0, MAX_TURN_TEXT_LENGTH) }));
+
     setMessages(prev => [...prev, userMsg]);
     setQuery('');
     setLoading(true);
-    
+
     // Reset textarea height
     if (textareaRef.current) {
         textareaRef.current.style.height = 'auto';
@@ -93,49 +113,49 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
     }
 
     try {
-      const response = await searchFunction(userMsg.text, memories);
+      const response = await searchFunction(userMsg.text, memories, history);
       
       if (response.mode === 'online') {
-          const { answer, sourceIds } = response.result;
-          setMessages(prev => [...prev, { role: 'model', text: answer, sources: sourceIds }]);
-      } else if (response.mode === 'offline' || response.mode === 'offline_no_key') {
+          const { answer, sources } = response.result;
+          setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'model', text: answer, sources: sources }]);
+      } else if (response.mode === 'offline') {
           const items = response.result;
-          let text = items.length > 0 
-              ? "I found these relevant notes in your offline database:" 
+          const text = items.length > 0
+              ? "I found these relevant notes in your offline database:"
               : "I couldn't find any relevant notes in your offline database.";
-          
-          if (response.mode === 'offline_no_key') {
-              text = items.length > 0
-                  ? "I found these notes using local search. For smarter AI answers, please add your Gemini API Key in Settings."
-                  : "I couldn't find any notes. Add your Gemini API Key in Settings for smarter search.";
-          }
-          
-          const sourceIds = Array.from(new Set(items.map((item: any) => 
+
+          const uniqueSourceIds = Array.from(new Set(items.map((item: any) =>
             item.metadata?.originalId || item.id
           ))) as string[];
 
+          const sources: Source[] = uniqueSourceIds.map(id => ({
+            id,
+            preview: memories.find(m => m.id === id)?.content?.substring(0, 100) || ""
+          }));
+
           setMessages(prev => [...prev, {
+              id: crypto.randomUUID(),
               role: 'model',
               text,
-              sources: sourceIds,
-              isOffline: true,
-              missingKey: response.mode === 'offline_no_key'
+              sources,
+              isOffline: true
           }]);
       } else if (response.mode === 'offline_model_error') {
           // Model failed to load - likely offline without cached model
           const errorText = response.error || 'The search model is not available.';
           setMessages(prev => [...prev, {
+              id: crypto.randomUUID(),
               role: 'model',
               text: `⚠️ ${errorText}\n\nTo use offline search, please connect to the internet once to download the search model. It will then be cached for future offline use.`,
               isOffline: true
           }]);
       } else {
-           setMessages(prev => [...prev, { role: 'model', text: "Sorry, I encountered an error searching your memories." }]);
+           setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'model', text: "Sorry, I encountered an error searching your memories." }]);
       }
 
     } catch (error) {
       console.error('Search error:', error);
-      setMessages(prev => [...prev, { role: 'model', text: "Sorry, I encountered an error searching your memories." }]);
+      setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'model', text: "Sorry, I encountered an error searching your memories." }]);
     } finally {
       setLoading(false);
       setTimeout(scrollToBottom, 50);
@@ -153,19 +173,19 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
 
   return (
     <>
-    <div className="fixed inset-0 z-[60] bg-gray-900" aria-hidden="true" style={{ height: '100vh', touchAction: 'none' }} />
-    
-    <div 
-        className="fixed left-0 right-0 z-[61] flex flex-col overflow-hidden bg-gray-900"
+    <div className="fixed inset-0 z-(--z-modal) bg-black" aria-hidden="true" style={{ height: '100vh', touchAction: 'none' }} />
+
+    <div
+        className="fixed left-0 right-0 z-(--z-modal) flex flex-col overflow-hidden bg-black"
         style={{ height: viewport.height, top: viewport.top }}
     >
       {/* Header */}
-      <div className="flex-none border-b border-gray-800 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] flex items-center justify-between bg-gray-900 z-10 shadow-sm shrink-0">
+      <div className="flex-none border-b border-gray-800 px-4 pb-3 pt-[calc(0.75rem+var(--sat))] flex items-center justify-between bg-black z-(--z-sticky) shadow-sm shrink-0">
         <div className="flex items-center gap-2">
             <BrainCircuit size={24} className="text-blue-500" />
             <h2 className="text-lg font-bold text-gray-100">Brain Search</h2>
         </div>
-        <button onClick={onClose} className="p-2 hover:bg-gray-800 rounded-full transition text-gray-400">
+        <button onClick={onClose} className="p-3 -m-3 hover:bg-gray-800 rounded-full transition text-gray-400 active:scale-95">
           <X size={24} />
         </button>
       </div>
@@ -173,7 +193,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
       {/* Messages Area */}
       <div 
         ref={messagesEndRef} 
-        className="flex-1 overflow-y-auto p-4 md:px-20 lg:px-64 space-y-6 bg-gray-900 overscroll-contain"
+        className="flex-1 overflow-y-auto p-4 md:px-20 lg:px-64 space-y-6 bg-black overscroll-contain"
         style={{ overscrollBehaviorY: 'contain' }}
       >
         {messages.length === 0 && (
@@ -186,25 +206,20 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
           </div>
         )}
 
-        {messages.map((msg, idx) => (
-          <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in`}>
+        {messages.map((msg) => (
+          <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in`}>
             <div className={`max-w-[90%] sm:max-w-[80%] rounded-2xl px-5 py-3 ${
               msg.role === 'user' 
                 ? 'bg-blue-600 text-white shadow-md' 
                 : 'bg-gray-800 border border-gray-700 text-gray-100 shadow-sm'
             }`}>
-              <div className="flex items-center justify-between mb-1">
-                 {msg.isOffline && !msg.missingKey && (
-                     <span className="flex items-center gap-1 text-[10px] uppercase font-bold text-yellow-500/80 mb-1">
-                        <WifiOff size={10} /> Offline Mode
-                     </span>
-                 )}
-                 {msg.missingKey && (
-                     <span className="flex items-center gap-1 text-[10px] uppercase font-bold text-blue-400/80 mb-1">
-                        <Key size={10} /> Setup Required
-                     </span>
-                 )}
-              </div>
+              {msg.isOffline && (
+                <div className="flex items-center mb-1">
+                   <span className="flex items-center gap-1 text-xs uppercase font-bold text-yellow-500/80 mb-1">
+                      <WifiOff size={10} /> Offline Mode
+                   </span>
+                </div>
+              )}
               <div className="whitespace-pre-wrap leading-relaxed font-medium text-sm md:text-base break-words">
                   {msg.text}
               </div>
@@ -212,27 +227,27 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
               {/* Citations */}
               {msg.sources && msg.sources.length > 0 && (
                 <div className="mt-4 pt-3 border-t border-gray-700/50">
-                    <p className="text-[10px] font-black uppercase text-gray-500 mb-2 tracking-widest">
+                    <p className="text-xs font-black uppercase text-gray-500 mb-2 tracking-widest">
                         {msg.isOffline ? 'Relevant Notes' : 'Sources'}
                     </p>
                     <div className="grid grid-cols-1 gap-2">
-                        {msg.sources.map(id => {
-                            const mem = memories.find(m => m.id === id);
+                        {msg.sources.map(source => {
+                            const mem = memories.find(m => m.id === source.id);
                             if (!mem) return null;
                             return (
                                 <button 
-                                    key={id}
-                                    onClick={() => setPreviewMemoryId(id)}
-                                    className="flex items-center gap-2 p-1.5 bg-gray-900 rounded-lg border border-gray-700 hover:border-blue-500 transition-all text-left shadow-sm group"
+                                    key={source.id}
+                                    onClick={() => setPreviewMemoryId(source.id)}
+                                    className="flex items-center gap-2 p-1.5 bg-gray-900 rounded-lg border border-gray-700 hover:border-blue-500 transition-all text-left shadow-sm group active:scale-[0.98]"
                                 >
                                     {mem.image && (
                                         <img src={mem.image} className="w-8 h-8 rounded-md object-cover bg-gray-800 border border-gray-800" alt="" />
                                     )}
                                     <div className="flex-1 overflow-hidden min-w-0">
-                                        <p className="text-[10px] font-bold text-gray-200 truncate">
-                                            {mem.enrichment?.summary || mem.content || "Memory Entry"}
+                                        <p className="text-xs font-bold text-gray-200 truncate">
+                                            {source.preview || mem.enrichment?.summary || mem.content || "Memory Entry"}
                                         </p>
-                                        <p className="text-[9px] text-gray-500">{new Date(mem.timestamp).toLocaleDateString()}</p>
+                                        <p className="text-xs text-gray-500">{(() => { const d = new Date(mem.timestamp); return isNaN(d.getTime()) ? 'Unknown date' : d.toLocaleDateString(); })()}</p>
                                     </div>
                                     <ExternalLink size={12} className="text-gray-600 group-hover:text-blue-400 shrink-0 mx-1" />
                                 </button>
@@ -246,18 +261,21 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
         ))}
 
         {loading && (
-          <div className="flex gap-3 items-center text-blue-500 font-bold animate-pulse px-4">
-            <Sparkles size={16} className="animate-spin" />
-            <span className="text-sm">Synthesizing...</span>
+          <div className="flex justify-start animate-in fade-in">
+            <div className="bg-gray-800 border border-gray-700 rounded-2xl px-5 py-4 flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-blue-400 typing-dot" />
+              <span className="w-2 h-2 rounded-full bg-blue-400 typing-dot" style={{ animationDelay: '0.15s' }} />
+              <span className="w-2 h-2 rounded-full bg-blue-400 typing-dot" style={{ animationDelay: '0.3s' }} />
+            </div>
           </div>
         )}
       </div>
 
       {/* Input Area */}
       <div 
-        className="flex-none w-full bg-gray-900 border-t border-gray-800 shrink-0 z-20"
+        className="flex-none w-full bg-black border-t border-gray-800 shrink-0 z-(--z-dropdown)"
         style={{ 
-            paddingBottom: 'max(1rem, env(safe-area-inset-bottom))',
+            paddingBottom: 'max(1rem, var(--sab))',
             paddingTop: '1rem',
             paddingLeft: '1rem',
             paddingRight: '1rem'
@@ -280,7 +298,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
             <button 
                 onClick={handleSend}
                 disabled={!query.trim() || loading}
-                className="mb-1 p-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                className="mb-1 p-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0 active:scale-95"
             >
                 <Send size={18} />
             </button>
@@ -289,78 +307,29 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
 
       {/* Memory Preview Modal */}
       {previewMemory && (
-          <div 
-            className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
+          <div
+            className={`${overlay.previewBackdrop}`}
             onClick={() => setPreviewMemoryId(null)}
           >
-              <div className="relative w-full max-w-lg animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
-                  <MemoryCard 
-                    memory={previewMemory} 
-                    isDialog={true} 
-                    onViewAttachment={setViewingAttachment} 
-                  />
-                  <button 
+              <div className="relative w-full max-w-lg max-h-[80vh] flex flex-col animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+                  <div className="overflow-y-auto flex-1 min-h-0">
+                      <MemoryCard
+                        memory={previewMemory}
+                        isDialog={true}
+                        onViewAttachment={onViewAttachment}
+                        onDelete={onDelete}
+                        onEdit={onEdit}
+                        onTogglePin={onTogglePin}
+                      />
+                  </div>
+                  <button
                     onClick={() => setPreviewMemoryId(null)}
-                    className="mt-4 w-full py-3 bg-gray-800 text-white rounded-xl font-bold shadow-xl border border-gray-700 text-sm"
+                    className={overlay.previewCloseBtn}
                   >
                       Close Preview
                   </button>
               </div>
           </div>
-      )}
-
-      {/* Attachment Viewer */}
-      {viewingAttachment && (
-        <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-md flex flex-col animate-in fade-in zoom-in-95 duration-200">
-           <div className="flex items-center justify-between px-4 py-3 bg-black/50 border-b border-white/10 pt-[env(safe-area-inset-top)]">
-              <div className="flex items-center gap-3">
-                 <button onClick={() => setViewingAttachment(null)} className="p-2 -ml-2 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition-colors">
-                    <X size={24} />
-                 </button>
-                 <span className="text-sm font-medium text-gray-200 truncate max-w-[200px] sm:max-w-md">{viewingAttachment.name}</span>
-              </div>
-              <a 
-                href={viewingAttachment.data} 
-                download={viewingAttachment.name}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all"
-              >
-                 <Download size={14} /> Download
-              </a>
-           </div>
-           
-           <div className="flex-1 flex items-center justify-center p-4 overflow-hidden">
-              {viewingAttachment.type === 'image' ? (
-                 <img 
-                    src={viewingAttachment.data} 
-                    alt={viewingAttachment.name} 
-                    className="max-w-full max-h-full object-contain shadow-2xl rounded-lg animate-in zoom-in-90 duration-300"
-                 />
-              ) : viewingAttachment.mimeType === 'application/pdf' ? (
-                 <iframe 
-                    src={viewingAttachment.data} 
-                    className="w-full h-full rounded-lg bg-white shadow-2xl border-none"
-                    title={viewingAttachment.name}
-                 />
-              ) : (
-                 <div className="bg-gray-900 border border-gray-800 p-8 rounded-2xl flex flex-col items-center gap-4 text-center max-w-sm">
-                    <div className="w-16 h-16 bg-gray-800 rounded-2xl flex items-center justify-center">
-                       <FileText size={32} className="text-blue-400" />
-                    </div>
-                    <div>
-                       <h3 className="text-gray-100 font-bold mb-1">{viewingAttachment.name}</h3>
-                       <p className="text-gray-400 text-xs">Preview not available for this file type.</p>
-                    </div>
-                    <a 
-                        href={viewingAttachment.data} 
-                        download={viewingAttachment.name}
-                        className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold transition-all shadow-lg"
-                    >
-                        Download to View
-                    </a>
-                 </div>
-              )}
-           </div>
-        </div>
       )}
     </div>
     </>

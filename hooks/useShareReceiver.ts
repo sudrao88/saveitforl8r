@@ -1,5 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Attachment } from '../types';
+import { isNative } from '../services/platform';
+import { Capacitor } from '@capacitor/core';
+import { Filesystem, Directory } from '@capacitor/filesystem';
 
 export interface ShareData {
   text: string;
@@ -7,78 +10,139 @@ export interface ShareData {
   checkClipboard?: boolean;
 }
 
+// AndroidBridge global type is declared in index.tsx
+
+interface NativeShareData {
+  text?: string;
+  attachments?: Array<{
+    name: string;
+    mimeType: string;
+    path: string;
+  }>;
+}
+
+// Maximum blob size for shared images (50MB)
+const MAX_BLOB_SIZE = 50 * 1024 * 1024;
+
+/**
+ * Signal to Android native code that the React app is ready to receive share intents.
+ */
+const signalAppReady = () => {
+  try {
+    if (isNative() && window.AndroidBridge?.signalAppReady) {
+      console.log('[ShareReceiver] Signaling app ready to Android');
+      window.AndroidBridge.signalAppReady();
+    }
+  } catch (e) {
+    console.warn('[ShareReceiver] Failed to signal app ready:', e);
+  }
+};
+
 export const useShareReceiver = () => {
   const [shareData, setShareData] = useState<ShareData | null>(null);
+  const hasSignaledReady = useRef(false);
 
-  // Core logic to check URL and process shares
-  const checkForShare = useCallback(async () => {
-    // 1. Clean up URL immediately if it matches our params to avoid loops
-    // We capture the values first, then clear.
+  // Native Share Handler
+  const handleNativeShare = useCallback(async (event: any) => {
+    console.log('[ShareReceiver] Received native share event:', event);
+    
+    // The data might be in event.detail (if CustomEvent) or just the event object itself depending on how Capacitor triggers it
+    const data: NativeShareData = event.detail || event;
+    
+    if (!data) {
+        console.warn('[ShareReceiver] Received empty share event');
+        return;
+    }
+
+    const text = data.text || '';
+    const rawAttachments = data.attachments || [];
+    const processedAttachments: Attachment[] = [];
+
+    console.log(`[ShareReceiver] Processing ${rawAttachments.length} attachments`);
+
+    for (const att of rawAttachments) {
+        try {
+            // Convert the file path to a web-accessible URL
+            // Android: file:///... paths, iOS: absolute paths from app group container
+            const filePath = att.path.startsWith('file://') ? att.path : `file://${att.path}`;
+            const webPath = Capacitor.convertFileSrc(filePath);
+            console.log('[ShareReceiver] Reading attachment from:', webPath);
+
+            const response = await fetch(webPath);
+            const blob = await response.blob();
+            
+            if (blob.size > MAX_BLOB_SIZE) {
+                console.warn('[ShareReceiver] File too large, skipping:', blob.size);
+                continue;
+            }
+
+            const reader = new FileReader();
+            const base64 = await new Promise<string>((resolve, reject) => {
+                reader.onload = e => resolve(e.target?.result as string);
+                reader.onerror = () => reject(new Error('FileReader error'));
+                reader.readAsDataURL(blob);
+            });
+
+            processedAttachments.push({
+                id: crypto.randomUUID(),
+                type: att.mimeType.startsWith('image/') ? 'image' : 'file',
+                mimeType: att.mimeType,
+                data: base64,
+                name: att.name || 'Shared File'
+            });
+
+        } catch (e) {
+            console.error('[ShareReceiver] Failed to process attachment:', att.path, e);
+        }
+    }
+
+    if (text || processedAttachments.length > 0) {
+        console.log('[ShareReceiver] Setting share data');
+        setShareData({ text: text.trim(), attachments: processedAttachments });
+    }
+  }, []);
+
+
+  // Web Logic
+  const checkForWebShare = useCallback(async () => {
+    if (isNative()) return; 
+
     const searchParams = new URLSearchParams(window.location.search);
     const hasText = searchParams.has('share_text');
     const hasClipboard = searchParams.has('share_image_clipboard');
     const hasShareTarget = searchParams.has('share-target');
 
-    console.log('[ShareReceiver] Checking URL:', window.location.href);
-
-    // --- 1. iOS / Direct URL Text Share ---
     if (hasText) {
         let text = searchParams.get('share_text') || '';
-        
-        // ROBUST DECODING FALLBACK
-        // Sometimes URLSearchParams fails on specific encodings or partials on iOS.
-        // We manually extract the string from the raw search string.
         try {
             const rawSearch = window.location.search;
-            // Regex looks for ?share_text=VALUE or &share_text=VALUE, stops at & or end of string
             const match = rawSearch.match(/[?&]share_text=([^&]*)/);
             if (match && match[1]) {
                 const rawValue = match[1];
-                // Decode manually. replace + with space first.
                 text = decodeURIComponent(rawValue.replace(/\+/g, ' '));
-                console.log('[ShareReceiver] Manual decode result:', text);
             }
-        } catch (e) {
-            console.warn('[ShareReceiver] Manual decode failed, using standard param:', e);
-        }
+        } catch (e) { console.warn(e); }
 
-        console.log('[ShareReceiver] Final text detected:', text);
         setShareData({ text, attachments: [] });
-        
         window.history.replaceState({}, '', '/');
         return;
     }
 
-    // --- 2. iOS / Direct URL Clipboard Share ---
     if (hasClipboard) {
-        console.log('[ShareReceiver] Detected clipboard share');
         setShareData({ text: '', attachments: [], checkClipboard: true });
-        
         window.history.replaceState({}, '', '/');
         return;
     }
 
-    // --- 3. Android Web Share Target (IndexedDB) ---
     if (hasShareTarget) {
-        console.log('[ShareReceiver] Detected Android share target');
-        
         try {
             const db = await new Promise<IDBDatabase>((resolve, reject) => {
                 const request = indexedDB.open('saveitforl8r-share', 1);
                 request.onsuccess = () => resolve(request.result);
                 request.onerror = () => reject(request.error);
-                request.onupgradeneeded = (e: any) => {
-                     const db = e.target.result;
-                     if (!db.objectStoreNames.contains('shares')) {
-                        db.createObjectStore('shares', { autoIncrement: true });
-                     }
-                };
             });
 
-            if (!db.objectStoreNames.contains('shares')) {
-                 window.history.replaceState({}, '', '/');
-                 return;
-            }
+            if (!db.objectStoreNames.contains('shares')) return;
 
             const tx = db.transaction('shares', 'readwrite');
             const store = tx.objectStore('shares');
@@ -88,26 +152,20 @@ export const useShareReceiver = () => {
                 const shares = getAllReq.result;
                 if (shares && shares.length > 0) {
                     const latestShare = shares[shares.length - 1];
-                    
                     let text = latestShare.text || '';
-                    const title = latestShare.title || '';
-                    const url = latestShare.url || '';
-                    
-                    if (title) text = `${title}\n${text}`;
-                    if (url) text = `${text}\n${url}`;
+                    if (latestShare.title) text = `${latestShare.title}\n${text}`;
+                    if (latestShare.url) text = `${text}\n${latestShare.url}`;
 
                     const attachments: Attachment[] = [];
-                    if (latestShare.files && latestShare.files.length > 0) {
+                    if (latestShare.files) {
                         for (const f of latestShare.files) {
                              const blob = f.blob || f;
                              if (!(blob instanceof Blob)) continue;
-
                              const reader = new FileReader();
                              const base64 = await new Promise<string>((resolve) => {
                                 reader.onload = (e) => resolve(e.target?.result as string);
                                 reader.readAsDataURL(blob);
                              });
-                             
                              attachments.push({
                                  id: crypto.randomUUID(),
                                  type: blob.type.startsWith('image/') ? 'image' : 'file',
@@ -117,47 +175,41 @@ export const useShareReceiver = () => {
                              });
                         }
                     }
-                    
                     setShareData({ text: text.trim(), attachments });
-                    
                     const clearTx = db.transaction('shares', 'readwrite');
                     clearTx.objectStore('shares').clear();
                 }
                 window.history.replaceState({}, '', '/');
             };
-            
-            getAllReq.onerror = () => {
-                 window.history.replaceState({}, '', '/');
-            };
-
         } catch (e) {
             console.error("[ShareReceiver] IDB Error:", e);
-            window.history.replaceState({}, '', '/');
         }
     }
   }, []);
 
+  const clearShareData = useCallback(() => {
+      setShareData(null);
+  }, []);
+
   useEffect(() => {
-    checkForShare();
+    if (isNative()) {
+        console.log('[ShareReceiver] Setting up native listener');
+        
+        // Listen for the custom event dispatched by MainActivity
+        window.addEventListener('onShareReceived', handleNativeShare);
 
-    const handleVisibilityChange = () => {
-        if (document.visibilityState === 'visible') {
-            setTimeout(checkForShare, 100);
+        if (!hasSignaledReady.current) {
+            hasSignaledReady.current = true;
+            signalAppReady();
         }
-    };
 
-    const handleFocus = () => {
-        setTimeout(checkForShare, 100);
-    };
+        return () => {
+            window.removeEventListener('onShareReceived', handleNativeShare);
+        };
+    } else {
+        checkForWebShare();
+    }
+  }, [handleNativeShare, checkForWebShare]);
 
-    window.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('focus', handleFocus);
-
-    return () => {
-        window.removeEventListener('visibilitychange', handleVisibilityChange);
-        window.removeEventListener('focus', handleFocus);
-    };
-  }, [checkForShare]);
-
-  return { shareData, clearShareData: () => setShareData(null) };
+  return { shareData, clearShareData };
 };

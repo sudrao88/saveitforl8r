@@ -3,12 +3,46 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 import React from 'react';
 import { SyncProvider, useSync } from './SyncContext';
 
+// Mock storage values
+const mockStorageValues: Record<string, string | null> = {};
+
 // Mock all dependencies
+vi.mock('../services/platform', () => ({
+  storage: {
+    get: vi.fn((key: string) => Promise.resolve(mockStorageValues[key] || null)),
+    set: vi.fn((key: string, value: string) => {
+      mockStorageValues[key] = value;
+      return Promise.resolve();
+    }),
+    remove: vi.fn((key: string) => {
+      delete mockStorageValues[key];
+      return Promise.resolve();
+    }),
+    clear: vi.fn(() => {
+      Object.keys(mockStorageValues).forEach(key => delete mockStorageValues[key]);
+      return Promise.resolve();
+    }),
+  },
+  isNative: vi.fn().mockReturnValue(false),
+}));
+
 vi.mock('../services/storageService', () => ({
   getMemories: vi.fn().mockResolvedValue([]),
   saveMemory: vi.fn().mockResolvedValue(undefined),
   deleteMemory: vi.fn().mockResolvedValue(undefined),
   reconcileEmbeddings: vi.fn().mockResolvedValue({ total: 0, enriched: 0, toQueue: 0, alreadyIndexed: 0, pendingInQueue: 0, error: null, timestamp: Date.now() }),
+  getAllMomentsIncludingDeleted: vi.fn().mockResolvedValue([]),
+  saveMoment: vi.fn().mockResolvedValue(undefined),
+  deleteMomentHard: vi.fn().mockResolvedValue(undefined),
+  getMomentSynthesis: vi.fn().mockResolvedValue(null),
+  saveMomentSynthesis: vi.fn().mockResolvedValue(undefined),
+  deleteMomentSynthesis: vi.fn().mockResolvedValue(undefined),
+  getAllCalendarEventsIncludingDeleted: vi.fn().mockResolvedValue([]),
+  saveCalendarEvent: vi.fn().mockResolvedValue(undefined),
+  deleteCalendarEventHard: vi.fn().mockResolvedValue(undefined),
+  getAllTodoItemsIncludingDeleted: vi.fn().mockResolvedValue([]),
+  updateTodoItem: vi.fn().mockResolvedValue(undefined),
+  deleteTodoItemHard: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../services/googleDriveService', () => ({
@@ -19,7 +53,7 @@ vi.mock('../services/googleDriveService', () => ({
   uploadMultipleFiles: vi.fn().mockResolvedValue({ failures: [] }),
   findFileByName: vi.fn().mockResolvedValue(null),
   deleteFileById: vi.fn().mockResolvedValue(undefined),
-  isLinked: vi.fn().mockReturnValue(true),
+  isLinked: vi.fn().mockResolvedValue(true), // Now async
   deleteRemoteNote: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -34,6 +68,7 @@ vi.mock('../hooks/useAuth', () => ({
 
 import * as storageService from '../services/storageService';
 import * as driveService from '../services/googleDriveService';
+import { storage } from '../services/platform';
 
 const wrapper = ({ children }: { children: React.ReactNode }) => (
   <SyncProvider>{children}</SyncProvider>
@@ -42,8 +77,9 @@ const wrapper = ({ children }: { children: React.ReactNode }) => (
 describe('SyncContext', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.useFakeTimers();
-    localStorage.clear();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] });
+    // Clear mock storage values
+    Object.keys(mockStorageValues).forEach(key => delete mockStorageValues[key]);
   });
 
   afterEach(() => {
@@ -81,15 +117,10 @@ describe('SyncContext', () => {
 
       const { result } = renderHook(() => useSync(), { wrapper });
 
-      let syncPromise: Promise<void>;
       await act(async () => {
-        syncPromise = result.current.sync();
-        // Advance past debounce
-        vi.advanceTimersByTime(2500);
-      });
-
-      await act(async () => {
-        await syncPromise!;
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
       });
 
       // Local-only note should be batch-uploaded via uploadMultipleFiles
@@ -122,14 +153,10 @@ describe('SyncContext', () => {
 
       const { result } = renderHook(() => useSync(), { wrapper });
 
-      let syncPromise: Promise<void>;
       await act(async () => {
-        syncPromise = result.current.sync();
-        vi.advanceTimersByTime(2500);
-      });
-
-      await act(async () => {
-        await syncPromise!;
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
       });
 
       expect(driveService.downloadMultipleFiles).toHaveBeenCalledWith(['drive-file-1']);
@@ -154,14 +181,10 @@ describe('SyncContext', () => {
 
       const { result } = renderHook(() => useSync(), { wrapper });
 
-      let syncPromise: Promise<void>;
       await act(async () => {
-        syncPromise = result.current.sync();
-        vi.advanceTimersByTime(2500);
-      });
-
-      await act(async () => {
-        await syncPromise!;
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
       });
 
       expect(storageService.saveMemory).toHaveBeenCalledWith(remoteMem);
@@ -183,14 +206,10 @@ describe('SyncContext', () => {
 
       const { result } = renderHook(() => useSync(), { wrapper });
 
-      let syncPromise: Promise<void>;
       await act(async () => {
-        syncPromise = result.current.sync();
-        vi.advanceTimersByTime(2500);
-      });
-
-      await act(async () => {
-        await syncPromise!;
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
       });
 
       // Local is newer → should be batch-uploaded with the Drive file ID for PATCH
@@ -221,14 +240,10 @@ describe('SyncContext', () => {
 
       const { result } = renderHook(() => useSync(), { wrapper });
 
-      let syncPromise: Promise<void>;
       await act(async () => {
-        syncPromise = result.current.sync();
-        vi.advanceTimersByTime(2500);
-      });
-
-      await act(async () => {
-        await syncPromise!;
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
       });
 
       expect(storageService.deleteMemory).toHaveBeenCalledWith('mem-1');
@@ -237,8 +252,8 @@ describe('SyncContext', () => {
     it('should skip unchanged files when snapshot matches remote modifiedTime', async () => {
       // Set up a snapshot where mem-1 has same modifiedTime as remote
       const snapshot = { 'mem-1': '2024-01-01T00:00:00Z' };
-      localStorage.setItem('gdrive_remote_snapshot', JSON.stringify(snapshot));
-      localStorage.setItem('gdrive_last_sync_time', '5000'); // Last sync at t=5000
+      mockStorageValues['gdrive_remote_snapshot'] = JSON.stringify(snapshot);
+      mockStorageValues['gdrive_last_sync_time'] = '5000'; // Last sync at t=5000
 
       const localMem = { id: 'mem-1', content: 'Unchanged', timestamp: 1000, tags: [] };
       (storageService.getMemories as any).mockResolvedValue([localMem]);
@@ -248,14 +263,10 @@ describe('SyncContext', () => {
 
       const { result } = renderHook(() => useSync(), { wrapper });
 
-      let syncPromise: Promise<void>;
       await act(async () => {
-        syncPromise = result.current.sync();
-        vi.advanceTimersByTime(2500);
-      });
-
-      await act(async () => {
-        await syncPromise!;
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
       });
 
       // Should NOT download since snapshot matches → no network call for content
@@ -267,8 +278,8 @@ describe('SyncContext', () => {
     it('should delete local note when remote was deleted by another device', async () => {
       // Snapshot says mem-1 existed remotely
       const snapshot = { 'mem-1': '2024-01-01T00:00:00Z' };
-      localStorage.setItem('gdrive_remote_snapshot', JSON.stringify(snapshot));
-      localStorage.setItem('gdrive_last_sync_time', '5000');
+      mockStorageValues['gdrive_remote_snapshot'] = JSON.stringify(snapshot);
+      mockStorageValues['gdrive_last_sync_time'] = '5000';
 
       const localMem = { id: 'mem-1', content: 'Still here locally', timestamp: 1000, tags: [] };
       (storageService.getMemories as any).mockResolvedValue([localMem]);
@@ -277,14 +288,10 @@ describe('SyncContext', () => {
 
       const { result } = renderHook(() => useSync(), { wrapper });
 
-      let syncPromise: Promise<void>;
       await act(async () => {
-        syncPromise = result.current.sync();
-        vi.advanceTimersByTime(2500);
-      });
-
-      await act(async () => {
-        await syncPromise!;
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
       });
 
       // Local copy should be deleted because another device removed it from Drive
@@ -300,14 +307,10 @@ describe('SyncContext', () => {
 
       const { result } = renderHook(() => useSync(), { wrapper });
 
-      let syncPromise: Promise<void>;
       await act(async () => {
-        syncPromise = result.current.sync();
-        vi.advanceTimersByTime(2500);
-      });
-
-      await act(async () => {
-        await syncPromise!;
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
       });
 
       // Should delete the remote file by Drive file ID
@@ -333,18 +336,6 @@ describe('SyncContext', () => {
         memory,
         undefined
       );
-    });
-
-    it('should skip sample memories', async () => {
-      const sampleMem = { id: 'sample-1', content: 'Sample', timestamp: 1000, tags: [], isSample: true };
-
-      const { result } = renderHook(() => useSync(), { wrapper });
-
-      await act(async () => {
-        await result.current.syncFile(sampleMem as any);
-      });
-
-      expect(driveService.uploadFile).not.toHaveBeenCalled();
     });
 
     it('should skip pending memories', async () => {
@@ -375,6 +366,347 @@ describe('SyncContext', () => {
     });
   });
 
+  describe('moment delta sync', () => {
+    const makeMoment = (id: string, updatedAt: number, overrides?: any) => ({
+      id,
+      objective: 'Test',
+      title: 'Test Moment',
+      type: 'general',
+      noteIds: [],
+      createdAt: 1000,
+      updatedAt,
+      ...overrides,
+    });
+
+    it('should download remote-only moments to local', async () => {
+      const remoteMoment = makeMoment('mom-1', 2000);
+
+      (storageService.getMemories as any).mockResolvedValue([]);
+      (storageService.getAllMomentsIncludingDeleted as any).mockResolvedValue([]);
+      (driveService.listAllFiles as any).mockResolvedValue([
+        { id: 'drive-mom-1', name: 'moment-mom-1.json', modifiedTime: '2024-01-01T00:00:00Z' },
+      ]);
+      const contentsMap = new Map([['drive-mom-1', remoteMoment]]);
+      (driveService.downloadMultipleFiles as any).mockResolvedValue({
+        contents: contentsMap,
+        failures: [],
+      });
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      await act(async () => {
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
+      });
+
+      expect(storageService.saveMoment).toHaveBeenCalledWith(remoteMoment);
+    });
+
+    it('should prefer remote moment when remote updatedAt is newer', async () => {
+      const localMoment = makeMoment('mom-1', 1000);
+      const remoteMoment = makeMoment('mom-1', 2000, { title: 'Updated Title' });
+
+      (storageService.getMemories as any).mockResolvedValue([]);
+      (storageService.getAllMomentsIncludingDeleted as any).mockResolvedValue([localMoment]);
+      (driveService.listAllFiles as any).mockResolvedValue([
+        { id: 'drive-mom-1', name: 'moment-mom-1.json', modifiedTime: '2024-01-02T00:00:00Z' },
+      ]);
+      const contentsMap = new Map([['drive-mom-1', remoteMoment]]);
+      (driveService.downloadMultipleFiles as any).mockResolvedValue({
+        contents: contentsMap,
+        failures: [],
+      });
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      await act(async () => {
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
+      });
+
+      expect(storageService.saveMoment).toHaveBeenCalledWith(remoteMoment);
+    });
+
+    it('should upload local moment when local updatedAt is newer', async () => {
+      const localMoment = makeMoment('mom-1', 3000);
+      const remoteMoment = makeMoment('mom-1', 1000);
+
+      (storageService.getMemories as any).mockResolvedValue([]);
+      (storageService.getAllMomentsIncludingDeleted as any).mockResolvedValue([localMoment]);
+      (driveService.listAllFiles as any).mockResolvedValue([
+        { id: 'drive-mom-1', name: 'moment-mom-1.json', modifiedTime: '2024-01-01T00:00:00Z' },
+      ]);
+      const contentsMap = new Map([['drive-mom-1', remoteMoment]]);
+      (driveService.downloadMultipleFiles as any).mockResolvedValue({
+        contents: contentsMap,
+        failures: [],
+      });
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      await act(async () => {
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
+      });
+
+      // Local is newer — should be uploaded with the Drive file ID for PATCH
+      expect(storageService.saveMoment).not.toHaveBeenCalled();
+      expect(driveService.uploadMultipleFiles).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            filename: 'moment-mom-1.json',
+            content: localMoment,
+            existingFileId: 'drive-mom-1',
+          }),
+        ])
+      );
+    });
+
+    it('should upload local-only moments to Drive', async () => {
+      const localMoment = makeMoment('mom-local', 2000);
+
+      (storageService.getMemories as any).mockResolvedValue([]);
+      (storageService.getAllMomentsIncludingDeleted as any).mockResolvedValue([localMoment]);
+      (driveService.listAllFiles as any).mockResolvedValue([]);
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      await act(async () => {
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
+      });
+
+      expect(driveService.uploadMultipleFiles).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            filename: 'moment-mom-local.json',
+            content: localMoment,
+          }),
+        ])
+      );
+    });
+
+    it('should handle local deleted moment tombstone by deleting remote and hard-deleting local', async () => {
+      const deletedMoment = makeMoment('mom-del', 2000, { isDeleted: true });
+
+      (storageService.getMemories as any).mockResolvedValue([]);
+      (storageService.getAllMomentsIncludingDeleted as any).mockResolvedValue([deletedMoment]);
+      (driveService.listAllFiles as any).mockResolvedValue([
+        { id: 'drive-mom-del', name: 'moment-mom-del.json', modifiedTime: '2024-01-01T00:00:00Z' },
+      ]);
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      await act(async () => {
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
+      });
+
+      expect(driveService.deleteFileById).toHaveBeenCalledWith('drive-mom-del');
+      expect(storageService.deleteMomentHard).toHaveBeenCalledWith('mom-del');
+    });
+
+    it('should handle remote deleted moment by deleting local', async () => {
+      const remoteMoment = makeMoment('mom-1', 2000, { isDeleted: true });
+
+      (storageService.getMemories as any).mockResolvedValue([]);
+      (storageService.getAllMomentsIncludingDeleted as any).mockResolvedValue([]);
+      (driveService.listAllFiles as any).mockResolvedValue([
+        { id: 'drive-mom-1', name: 'moment-mom-1.json', modifiedTime: '2024-01-02T00:00:00Z' },
+      ]);
+      const contentsMap = new Map([['drive-mom-1', remoteMoment]]);
+      (driveService.downloadMultipleFiles as any).mockResolvedValue({
+        contents: contentsMap,
+        failures: [],
+      });
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      await act(async () => {
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
+      });
+
+      expect(storageService.deleteMomentHard).toHaveBeenCalledWith('mom-1');
+    });
+
+    it('should delete local moment when remote was deleted by another device', async () => {
+      const snapshot = { 'moment-mom-1': '2024-01-01T00:00:00Z' };
+      mockStorageValues['gdrive_remote_snapshot'] = JSON.stringify(snapshot);
+      mockStorageValues['gdrive_last_sync_time'] = '5000';
+
+      const localMoment = makeMoment('mom-1', 1000);
+
+      (storageService.getMemories as any).mockResolvedValue([]);
+      (storageService.getAllMomentsIncludingDeleted as any).mockResolvedValue([localMoment]);
+      (driveService.listAllFiles as any).mockResolvedValue([]);
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      await act(async () => {
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
+      });
+
+      // Local moment should be deleted because another device removed it from Drive
+      expect(storageService.deleteMomentHard).toHaveBeenCalledWith('mom-1');
+    });
+
+    it('should skip unchanged moment files when snapshot matches remote modifiedTime', async () => {
+      const snapshot = { 'moment-mom-1': '2024-01-01T00:00:00Z' };
+      mockStorageValues['gdrive_remote_snapshot'] = JSON.stringify(snapshot);
+      mockStorageValues['gdrive_last_sync_time'] = '5000';
+
+      const localMoment = makeMoment('mom-1', 1000);
+
+      (storageService.getMemories as any).mockResolvedValue([]);
+      (storageService.getAllMomentsIncludingDeleted as any).mockResolvedValue([localMoment]);
+      (driveService.listAllFiles as any).mockResolvedValue([
+        { id: 'drive-mom-1', name: 'moment-mom-1.json', modifiedTime: '2024-01-01T00:00:00Z' },
+      ]);
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      await act(async () => {
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
+      });
+
+      // Should NOT download since snapshot matches
+      expect(driveService.downloadMultipleFiles).toHaveBeenCalledWith([]);
+      // Should NOT upload since moment updatedAt (1000) < lastSyncTime (5000)
+      expect(driveService.uploadMultipleFiles).toHaveBeenCalledWith([]);
+    });
+  });
+
+  describe('periodic sync', () => {
+    it('should trigger sync at 5-minute intervals when tab is visible', async () => {
+      // Ensure tab is visible
+      Object.defineProperty(document, 'visibilityState', {
+        value: 'visible',
+        writable: true,
+        configurable: true,
+      });
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      // listAllFiles is called during sync — use it as a proxy for sync invocation
+      (driveService.listAllFiles as any).mockResolvedValue([]);
+      (driveService.isLinked as any).mockResolvedValue(true);
+
+      // Initial call count after mount
+      const initialCalls = (driveService.listAllFiles as any).mock.calls.length;
+
+      // Advance 5 minutes (periodic interval)
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+      });
+
+      // Advance past debounce
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2500);
+      });
+
+      expect((driveService.listAllFiles as any).mock.calls.length).toBeGreaterThan(initialCalls);
+    });
+
+    it('should NOT trigger sync at interval when tab is hidden', async () => {
+      Object.defineProperty(document, 'visibilityState', {
+        value: 'hidden',
+        writable: true,
+        configurable: true,
+      });
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      (driveService.listAllFiles as any).mockResolvedValue([]);
+      (driveService.isLinked as any).mockResolvedValue(true);
+
+      const initialCalls = (driveService.listAllFiles as any).mock.calls.length;
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5 * 60 * 1000 + 2500);
+      });
+
+      // Should NOT have synced because tab is hidden
+      expect((driveService.listAllFiles as any).mock.calls.length).toBe(initialCalls);
+    });
+
+    it('should sync on tab re-focus when last sync is stale', async () => {
+      // Set last sync time to 3 minutes ago (stale — beyond 2-minute threshold)
+      mockStorageValues['gdrive_last_sync_time'] = (Date.now() - 3 * 60 * 1000).toString();
+
+      Object.defineProperty(document, 'visibilityState', {
+        value: 'hidden',
+        writable: true,
+        configurable: true,
+      });
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      (driveService.listAllFiles as any).mockResolvedValue([]);
+      (driveService.isLinked as any).mockResolvedValue(true);
+
+      const initialCalls = (driveService.listAllFiles as any).mock.calls.length;
+
+      // Simulate tab becoming visible
+      Object.defineProperty(document, 'visibilityState', {
+        value: 'visible',
+        writable: true,
+        configurable: true,
+      });
+      document.dispatchEvent(new Event('visibilitychange'));
+
+      // Wait for async isStale check and debounce
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2500);
+      });
+
+      expect((driveService.listAllFiles as any).mock.calls.length).toBeGreaterThan(initialCalls);
+    });
+
+    it('should NOT sync on tab re-focus when last sync is recent', async () => {
+      // Set last sync time to 30 seconds ago (fresh — within 2-minute threshold)
+      mockStorageValues['gdrive_last_sync_time'] = (Date.now() - 30 * 1000).toString();
+
+      Object.defineProperty(document, 'visibilityState', {
+        value: 'hidden',
+        writable: true,
+        configurable: true,
+      });
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      (driveService.listAllFiles as any).mockResolvedValue([]);
+      (driveService.isLinked as any).mockResolvedValue(true);
+
+      const initialCalls = (driveService.listAllFiles as any).mock.calls.length;
+
+      // Simulate tab becoming visible
+      Object.defineProperty(document, 'visibilityState', {
+        value: 'visible',
+        writable: true,
+        configurable: true,
+      });
+      document.dispatchEvent(new Event('visibilitychange'));
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2500);
+      });
+
+      // Should NOT have synced because last sync was recent
+      expect((driveService.listAllFiles as any).mock.calls.length).toBe(initialCalls);
+    });
+  });
+
   describe('sync error handling', () => {
     it('should set syncError on auth failure', async () => {
       (storageService.getMemories as any).mockRejectedValue(new Error('Unauthorized 401'));
@@ -386,8 +718,8 @@ describe('SyncContext', () => {
         const syncPromise = result.current.sync().catch(() => {
           // Expected rejection — error state is set internally by SyncContext
         });
-        // Advance past debounce timer
-        vi.advanceTimersByTime(2500);
+        // Advance past debounce timer (async version flushes microtasks properly)
+        await vi.advanceTimersByTimeAsync(2500);
         await syncPromise;
       });
 
@@ -396,12 +728,13 @@ describe('SyncContext', () => {
     });
 
     it('should not sync when not linked', async () => {
-      (driveService.isLinked as any).mockReturnValue(false);
+      (driveService.isLinked as any).mockResolvedValue(false);
 
       const { result } = renderHook(() => useSync(), { wrapper });
 
       await act(async () => {
         await result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
       });
 
       // No Drive operations should have been called

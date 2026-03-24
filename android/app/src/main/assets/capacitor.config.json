@@ -2,22 +2,34 @@
 	"appId": "com.saveitforl8r.app",
 	"appName": "SaveItForL8r",
 	"webDir": "dist",
+	"server": {
+		"allowNavigation": [
+			"saveitforl8r.com",
+			"*.saveitforl8r.com"
+		]
+	},
 	"plugins": {
 		"Keyboard": {
 			"resize": "body",
-			"style": "dark",
+			"style": "DARK",
 			"resizeOnFullScreen": true
 		},
+		"StatusBar": {
+			"style": "DARK",
+			"backgroundColor": "#000000",
+			"overlaysWebView": true
+		},
 		"SplashScreen": {
-			"launchShowDuration": 2000,
+			"launchShowDuration": 0,
 			"launchAutoHide": true,
-			"backgroundColor": "#111827",
+			"backgroundColor": "#000000",
 			"androidSplashResourceName": "splash",
 			"iosSplashResourceName": "Splash",
-			"showSpinner": true,
-			"androidSpinnerStyle": "large",
-			"iosSpinnerStyle": "small",
-			"spinnerColor": "#3b82f6"
+			"showSpinner": false
+		},
+		"LocalNotifications": {
+			"smallIcon": "ic_notification",
+			"iconColor": "#2563eb"
 		}
 	}
 }

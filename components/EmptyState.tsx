@@ -1,4 +1,5 @@
 import React from 'react';
+import { btn, card, text } from '../styles/design-system';
 
 interface EmptyStateProps {
   hasMemories: boolean;
@@ -14,30 +15,49 @@ const EmptyState: React.FC<EmptyStateProps> = ({ hasMemories, clearFilters }) =>
              <span className="text-3xl">🔍</span>
           </div>
           <h3 className="text-xl font-bold text-gray-200">No matching memories</h3>
-          <p className="text-gray-500 mt-2">Try adjusting your filters.</p>
-          <button 
+          <p className={`${text.body} mt-2`}>Try adjusting your filters.</p>
+          <button
             onClick={clearFilters}
-            className="mt-6 px-4 py-2 bg-gray-800 text-blue-400 text-sm font-bold rounded-xl border border-gray-700 hover:bg-gray-700 transition-colors"
+            className={`${btn.base} ${btn.secondary} mt-6 text-blue-400`}
           >
             Clear Filters
           </button>
         </div>
       ) : (
         <>
-            <h2 className="text-3xl font-black text-white mb-4 tracking-tight">Build your knowledge base</h2>
-            <p className="text-gray-400 max-w-md text-lg leading-relaxed mb-8">
-              Capture thoughts, links, and images.<br className="hidden sm:block" />
-              SaveItForL8R organizes them for you.
+            <h2 className="text-3xl font-black text-white mb-2 tracking-tight">
+              🧠 Your AI-Powered Second Brain
+            </h2>
+            <p className="text-gray-400 text-base mb-6 max-w-sm">
+              Drop anything in. We'll handle the rest.
             </p>
 
-            {/* Fun decorative element pointing to FAB */}
-            <div className="fixed bottom-28 right-8 sm:bottom-32 sm:right-24 z-10 animate-bounce pointer-events-none opacity-50 sm:opacity-100">
-                <svg width="100" height="100" viewBox="0 0 100 100" fill="none" className="text-gray-600 rotate-12 drop-shadow-sm">
-                    <path d="M20 20 C 50 20, 80 40, 90 90" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
-                    <path d="M90 90 L 65 80" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
-                    <path d="M90 90 L 100 65" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
-                </svg>
+            <div className="grid grid-cols-2 gap-3 max-w-md mb-8 text-left">
+              <div className={`${card.base} px-3 py-3`}>
+                <div className="text-lg mb-1">✨</div>
+                <h3 className={text.subheading}>AI Enrichment</h3>
+                <p className={`${text.caption} leading-snug`}>Auto-summarized, tagged &amp; classified</p>
+              </div>
+              <div className={`${card.base} px-3 py-3`}>
+                <div className="text-lg mb-1">🔮</div>
+                <h3 className={text.subheading}>Brain Search</h3>
+                <p className={`${text.caption} leading-snug`}>Ask questions, get answers from your notes</p>
+              </div>
+              <div className={`${card.base} px-3 py-3`}>
+                <div className="text-lg mb-1">🧩</div>
+                <h3 className={text.subheading}>Synthesize</h3>
+                <p className={`${text.caption} leading-snug`}>Turn notes into itineraries, briefs &amp; more</p>
+              </div>
+              <div className={`${card.base} px-3 py-3`}>
+                <div className="text-lg mb-1">🔒</div>
+                <h3 className={text.subheading}>Private &amp; Secure</h3>
+                <p className={`${text.caption} leading-snug`}>256-bit encrypted, your eyes only</p>
+              </div>
             </div>
+
+            <p className={text.body}>
+              Start by dropping a thought below 👇
+            </p>
         </>
       )}
     </div>

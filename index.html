@@ -3,58 +3,154 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <title>SaveItForL8R - Personal Second Brain</title>
-    
+    <title>SaveItForL8R — AI Note Taking App | Personal Second Brain Powered by Gemini</title>
+    <meta name="description" content="SaveItForL8R is a free AI-powered note taking app that uses Google Gemini to automatically enrich, organize, and recall your notes, images, and files. Your encrypted personal second brain." />
+    <meta name="keywords" content="AI note taking, AI notes app, Gemini note taking, Google Gemini AI tool, personal second brain, AI-powered notes, smart note taking app, encrypted notes, AI memory app, personal knowledge base, save it for later, note taking with AI, AI organization tool, digital second brain, PWA note app" />
+    <link rel="canonical" href="https://saveitforl8r.com/" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="SaveItForL8R" />
+    <meta property="og:title" content="SaveItForL8R — AI Note Taking App | Personal Second Brain Powered by Gemini" />
+    <meta property="og:description" content="Capture notes, images, and files — then let Google Gemini AI automatically enrich, tag, and organize everything. Free, encrypted, and installable as a PWA." />
+    <meta property="og:url" content="https://saveitforl8r.com/" />
+    <meta property="og:image" content="https://saveitforl8r.com/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="SaveItForL8R — AI-powered note taking and personal second brain app" />
+    <meta property="og:locale" content="en_US" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="SaveItForL8R — AI Note Taking App Powered by Gemini" />
+    <meta name="twitter:description" content="Your personal second brain. Capture anything, let AI organize everything. Powered by Google Gemini, encrypted, and free." />
+    <meta name="twitter:image" content="https://saveitforl8r.com/og-image.png" />
+    <meta name="twitter:image:alt" content="SaveItForL8R — AI-powered note taking and personal second brain app" />
+
+    <!-- Additional SEO -->
+    <meta name="robots" content="index, follow" />
+    <meta name="author" content="SaveItForL8R" />
+    <meta name="application-name" content="SaveItForL8R" />
+
+    <!-- JSON-LD Structured Data -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "SaveItForL8R",
+      "alternateName": "Save It For Later",
+      "url": "https://saveitforl8r.com/",
+      "description": "AI-powered note taking app that uses Google Gemini to automatically enrich, organize, and recall your notes, images, and files. Your encrypted personal second brain.",
+      "applicationCategory": "ProductivityApplication",
+      "operatingSystem": "Web, Android, iOS",
+      "browserRequirements": "Requires a modern web browser with JavaScript enabled",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "featureList": [
+        "AI-powered note enrichment with Google Gemini",
+        "Automatic tagging and organization",
+        "Encrypted local storage with AES-256",
+        "Google Drive cloud sync",
+        "Natural language search powered by AI",
+        "Image and file attachment support",
+        "Installable Progressive Web App",
+        "Offline support"
+      ],
+      "screenshot": "https://saveitforl8r.com/og-image.png",
+      "softwareHelp": {
+        "@type": "CreativeWork",
+        "url": "https://saveitforl8r.com/"
+      }
+    }
+    </script>
+
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" type="image/svg+xml" href="/logo-full.svg" />
     <link rel="apple-touch-icon" href="/icon.svg" />
-    <meta name="theme-color" content="#111827" />
-    
+    <meta name="theme-color" content="#000000" />
+
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="SaveItForL8R" />
-    
-    <!-- Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Shantell+Sans:ital,wght@0,300..800;1,300..800&display=swap" rel="stylesheet">
 
-    <style>
-      body { background-color: #111827; margin: 0; }
-      .splash-container {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        height: 100vh;
-        width: 100vw;
-        color: white;
-        font-family: 'Shantell Sans', sans-serif;
-      }
-      .splash-logo {
-        width: 80px;
-        height: 80px;
-        margin-bottom: 20px;
-        animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-      }
-      @keyframes pulse {
-        0%, 100% { opacity: 1; transform: scale(1); }
-        50% { opacity: .8; transform: scale(0.95); }
-      }
-    </style>
+    <!-- Fonts (self-hosted for offline-first, instant launch) -->
+    <link rel="preload" href="/fonts/ShantellSans-Variable.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="/splash.css">
   </head>
-  <body style="background-color: #111827;">
+  <body>
     <div id="root">
        <!-- App Shell / Loading Screen -->
        <div class="splash-container">
-          <img src="/logo-full.svg" alt="Logo" class="splash-logo" />
+          <img src="/logo-full.svg" alt="SaveItForL8R logo" class="splash-logo" />
        </div>
     </div>
+    <noscript>
+      <div class="noscript-content">
+        <h1>SaveItForL8R — AI Note Taking &amp; Personal Second Brain</h1>
+        <p>SaveItForL8R is a free, AI-powered note taking app that uses <strong>Google Gemini</strong> to automatically enrich, tag, and organize your notes, images, and files.</p>
+        <h2>Features</h2>
+        <ul>
+          <li><strong>AI-Powered Enrichment</strong> — Google Gemini analyzes your notes and adds context, tags, and summaries automatically.</li>
+          <li><strong>Smart Search</strong> — Ask questions in natural language and find exactly what you saved.</li>
+          <li><strong>Encrypted Storage</strong> — All your memories are encrypted with AES-256 before being stored.</li>
+          <li><strong>Google Drive Sync</strong> — Optionally back up your encrypted data to Google Drive.</li>
+          <li><strong>Installable PWA</strong> — Install as a native-like app on any device with offline support.</li>
+          <li><strong>Image &amp; File Support</strong> — Save photos, PDFs, text files, and more alongside your notes.</li>
+        </ul>
+        <p>Please enable JavaScript to use SaveItForL8R.</p>
+      </div>
+    </noscript>
     <script type="module" src="/index.tsx"></script>
+    <script>
+       // Stuck-state detection: if React hasn't mounted within 5s, the JS bundles
+       // likely failed to load (offline/lie-fi). Show an offline message so the
+       // user knows the app is alive and can retry or wait for network recovery.
+       // Skipped on native platforms where assets load from local filesystem.
+       (function() {
+         if (window.Capacitor && window.Capacitor.isNativePlatform()) return;
+         var STUCK_TIMEOUT = 5000;
+         var timer = setTimeout(function() {
+           var root = document.getElementById('root');
+           // React replaces the splash-container children on mount.
+           // If splash-logo still exists, React hasn't mounted yet.
+           if (root && root.querySelector('.splash-logo')) {
+             var msg = document.createElement('div');
+             msg.className = 'splash-offline-msg';
+             msg.innerHTML = '<p>Waiting for network\u2026</p>'
+               + '<p class="splash-offline-subtext">The app will load automatically when connection improves</p>'
+               + '<button onclick="location.reload()" class="splash-retry-btn">Retry Now</button>';
+             root.appendChild(msg);
+           }
+         }, STUCK_TIMEOUT);
+         // Cancel timer once React mounts (it removes .splash-logo)
+         var obs = new MutationObserver(function() {
+           if (!document.querySelector('.splash-logo')) {
+             clearTimeout(timer);
+             obs.disconnect();
+           }
+         });
+         obs.observe(document.getElementById('root'), { childList: true, subtree: true });
+       })();
+    </script>
     <script>
        if ('serviceWorker' in navigator) {
          window.addEventListener('load', () => {
+           // Skip service worker on native platforms (Capacitor).
+           // Capacitor serves assets locally via its own WebViewClient;
+           // the SW's network-first navigation strategy conflicts with this
+           // and causes "Web page not available" or broken asset loading on first launch.
+           if (window.Capacitor && window.Capacitor.isNativePlatform()) {
+             // Unregister any previously registered service workers
+             navigator.serviceWorker.getRegistrations().then(registrations => {
+               registrations.forEach(reg => reg.unregister());
+             });
+             console.log('SW skipped: running on native platform');
+             return;
+           }
            navigator.serviceWorker.register('/sw.js').then(registration => {
              console.log('SW registered: ', registration);
            }).catch(registrationError => {

@@ -1,6 +1,194 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Trash2, MapPin, Loader2, Clock, ExternalLink, X, Check, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, WifiOff, FileText, Paperclip, ChevronDown, ChevronUp, FileCode, MoreVertical, Search, AlertTriangle, Key, Square, CheckSquare, Maximize2, Eye, Pin } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
+import { Trash2, Loader2, Clock, ExternalLink, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, RefreshCw, WifiOff, FileText, Paperclip, MoreVertical, AlertTriangle, AlertCircle, LogIn, Maximize2, Eye, Pin, Pencil, Lightbulb, CircleCheck, UtensilsCrossed, ListOrdered, ThumbsUp, ThumbsDown, DollarSign, MapPin, CalendarDays, ClipboardList, MessageSquare, Users, Mic, Code, Heart, Scale, GraduationCap, Briefcase, Music, Film, BookOpenCheck, Bookmark, Phone, Mail, ScrollText, Tag, Clock3, Flame, Quote } from 'lucide-react';
 import { Memory, Attachment } from '../types.ts';
+import { useOnlineStatus } from '../hooks/useOnlineStatus';
+import { card, menu, overlay, text } from '../styles/design-system';
+import { ChecklistDisplay } from './ChecklistItems';
+
+interface EnrichmentSectionProps {
+  icon: React.ReactNode;
+  label: string;
+  items: string[];
+  textClass?: string;
+  bulletClass?: string;
+}
+
+const EnrichmentSection: React.FC<EnrichmentSectionProps> = ({ icon, label, items, textClass = 'text-gray-400', bulletClass = 'text-gray-600' }) => (
+  <div className="pt-1 space-y-1.5">
+    <span className={`flex items-center gap-1.5 ${text.label}`}>
+      {icon}
+      {label}
+    </span>
+    <ul className="space-y-1">
+      {items.map((item, idx) => (
+        <li key={`${label}-${idx}-${item.slice(0, 30)}`} className={`flex items-start gap-2 text-sm ${textClass} font-light leading-relaxed`}>
+          <span className={`${bulletClass} mt-1.5 shrink-0`}>&#8226;</span>
+          <span>{item}</span>
+        </li>
+      ))}
+    </ul>
+  </div>
+);
+
+interface EnrichmentDetailProps {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  textClass?: string;
+}
+
+const EnrichmentDetail: React.FC<EnrichmentDetailProps> = ({ icon, label, value, textClass = 'text-gray-400' }) => (
+  <div className="pt-1 space-y-1">
+    <span className={`flex items-center gap-1.5 ${text.label}`}>
+      {icon}
+      {label}
+    </span>
+    <p className={`text-sm ${textClass} font-light leading-relaxed`}>{value}</p>
+  </div>
+);
+
+interface SectionDef {
+  key: string;
+  label: string;
+  icon: React.ReactNode;
+  type: 'list' | 'detail';
+  textClass?: string;
+  bulletClass?: string;
+}
+
+type EnrichmentFields = Record<string, string | string[] | undefined>;
+
+// Data-driven config map: contentType → section definitions
+const SECTION_CONFIG_MAP: Record<string, SectionDef[]> = {
+  recipe: [
+    { key: 'ingredients', label: 'Ingredients', icon: <UtensilsCrossed size={12} className="text-orange-400" />, type: 'list', textClass: 'text-orange-300/80', bulletClass: 'text-orange-500/50' },
+    { key: 'instructions', label: 'Instructions', icon: <ListOrdered size={12} className="text-green-400" />, type: 'list', textClass: 'text-green-300/80', bulletClass: 'text-green-500/50' },
+  ],
+  article_blog: [
+    { key: 'keyPoints', label: 'Key Points', icon: <Lightbulb size={12} className="text-amber-500" />, type: 'list' },
+  ],
+  product: [
+    { key: 'pros', label: 'Pros', icon: <ThumbsUp size={12} className="text-green-400" />, type: 'list', textClass: 'text-green-300/80', bulletClass: 'text-green-500/50' },
+    { key: 'cons', label: 'Cons', icon: <ThumbsDown size={12} className="text-red-400" />, type: 'list', textClass: 'text-red-300/80', bulletClass: 'text-red-500/50' },
+    { key: 'price', label: 'Price', icon: <DollarSign size={12} className="text-emerald-400" />, type: 'detail' },
+    { key: 'whereToBuy', label: 'Where to Buy', icon: <ShoppingBag size={12} className="text-blue-400" />, type: 'detail' },
+  ],
+  event: [
+    { key: 'date', label: 'Date', icon: <CalendarDays size={12} className="text-blue-400" />, type: 'detail' },
+    { key: 'rsvpStatus', label: 'RSVP Status', icon: <ClipboardList size={12} className="text-purple-400" />, type: 'detail' },
+  ],
+  place_restaurant: [
+    { key: 'menuHighlights', label: 'Menu Highlights', icon: <UtensilsCrossed size={12} className="text-orange-400" />, type: 'list', textClass: 'text-orange-300/80', bulletClass: 'text-orange-500/50' },
+    { key: 'ratings', label: 'Ratings', icon: <Star size={12} className="text-yellow-500" />, type: 'detail' },
+  ],
+  video: [
+    { key: 'keyMoments', label: 'Key Moments', icon: <Film size={12} className="text-purple-400" />, type: 'list', textClass: 'text-purple-300/80', bulletClass: 'text-purple-500/50' },
+    { key: 'transcriptSummary', label: 'Transcript Summary', icon: <FileText size={12} className="text-gray-400" />, type: 'detail' },
+  ],
+  social_media_post: [
+    { key: 'author', label: 'Author', icon: <Users size={12} className="text-blue-400" />, type: 'detail' },
+    { key: 'engagement', label: 'Engagement', icon: <MessageSquare size={12} className="text-pink-400" />, type: 'detail' },
+    { key: 'relatedPosts', label: 'Related Posts', icon: <Bookmark size={12} className="text-gray-400" />, type: 'list' },
+  ],
+  research_academic: [
+    { key: 'methodology', label: 'Methodology', icon: <ClipboardList size={12} className="text-indigo-400" />, type: 'detail' },
+    { key: 'keyFindings', label: 'Key Findings', icon: <Lightbulb size={12} className="text-amber-500" />, type: 'list' },
+    { key: 'citations', label: 'Citations', icon: <BookOpenCheck size={12} className="text-gray-400" />, type: 'list' },
+  ],
+  job_listing: [
+    { key: 'company', label: 'Company', icon: <Briefcase size={12} className="text-blue-400" />, type: 'detail' },
+    { key: 'role', label: 'Role', icon: <Users size={12} className="text-purple-400" />, type: 'detail' },
+    { key: 'requirements', label: 'Requirements', icon: <ClipboardList size={12} className="text-amber-400" />, type: 'list' },
+    { key: 'salary', label: 'Salary', icon: <DollarSign size={12} className="text-emerald-400" />, type: 'detail' },
+  ],
+  travel: [
+    { key: 'itinerary', label: 'Itinerary', icon: <MapPin size={12} className="text-blue-400" />, type: 'list', textClass: 'text-blue-300/80', bulletClass: 'text-blue-500/50' },
+    { key: 'costEstimate', label: 'Cost Estimate', icon: <DollarSign size={12} className="text-emerald-400" />, type: 'detail' },
+    { key: 'packingList', label: 'Packing List', icon: <ClipboardList size={12} className="text-orange-400" />, type: 'list' },
+  ],
+  music: [
+    { key: 'artist', label: 'Artist', icon: <Music size={12} className="text-pink-400" />, type: 'detail' },
+    { key: 'album', label: 'Album', icon: <Music size={12} className="text-purple-400" />, type: 'detail' },
+    { key: 'genre', label: 'Genre', icon: <Tag size={12} className="text-blue-400" />, type: 'detail' },
+    { key: 'mood', label: 'Mood', icon: <Flame size={12} className="text-orange-400" />, type: 'detail' },
+  ],
+  book: [
+    { key: 'author', label: 'Author', icon: <Users size={12} className="text-amber-500" />, type: 'detail' },
+    { key: 'genre', label: 'Genre', icon: <Tag size={12} className="text-blue-400" />, type: 'detail' },
+    { key: 'themes', label: 'Themes', icon: <Lightbulb size={12} className="text-purple-400" />, type: 'list' },
+    { key: 'ratings', label: 'Rating', icon: <Star size={12} className="text-yellow-500" />, type: 'detail' },
+  ],
+  movie_tv: [
+    { key: 'cast', label: 'Cast', icon: <Users size={12} className="text-purple-400" />, type: 'list' },
+    { key: 'genre', label: 'Genre', icon: <Tag size={12} className="text-blue-400" />, type: 'detail' },
+    { key: 'ratings', label: 'Rating', icon: <Star size={12} className="text-yellow-500" />, type: 'detail' },
+    { key: 'whereToWatch', label: 'Where to Watch', icon: <Tv size={12} className="text-green-400" />, type: 'detail' },
+  ],
+  podcast: [
+    { key: 'host', label: 'Host', icon: <Mic size={12} className="text-red-400" />, type: 'detail' },
+    { key: 'keyTopics', label: 'Key Topics', icon: <Lightbulb size={12} className="text-amber-500" />, type: 'list' },
+    { key: 'episodeLength', label: 'Episode Length', icon: <Clock3 size={12} className="text-gray-400" />, type: 'detail' },
+  ],
+  personal_note: [
+    { key: 'actionItems', label: 'Action Items', icon: <CircleCheck size={12} className="text-blue-400" />, type: 'list', textClass: 'text-blue-300/80', bulletClass: 'text-blue-500/50' },
+    { key: 'keyPoints', label: 'Key Points', icon: <Lightbulb size={12} className="text-amber-500" />, type: 'list' },
+  ],
+  quote: [
+    { key: 'author', label: 'Author', icon: <Quote size={12} className="text-amber-500" />, type: 'detail' },
+    { key: 'source', label: 'Source', icon: <BookOpen size={12} className="text-blue-400" />, type: 'detail' },
+    { key: 'context', label: 'Context', icon: <FileText size={12} className="text-gray-400" />, type: 'detail' },
+  ],
+  snippet: [
+    { key: 'language', label: 'Language', icon: <Code size={12} className="text-green-400" />, type: 'detail' },
+    { key: 'purpose', label: 'Purpose', icon: <FileText size={12} className="text-blue-400" />, type: 'detail' },
+    { key: 'dependencies', label: 'Dependencies', icon: <ClipboardList size={12} className="text-orange-400" />, type: 'list' },
+  ],
+  contact: [
+    { key: 'contactName', label: 'Name', icon: <Users size={12} className="text-blue-400" />, type: 'detail' },
+    { key: 'phone', label: 'Phone', icon: <Phone size={12} className="text-green-400" />, type: 'detail' },
+    { key: 'email', label: 'Email', icon: <Mail size={12} className="text-purple-400" />, type: 'detail' },
+    { key: 'contactNotes', label: 'Notes', icon: <FileText size={12} className="text-gray-400" />, type: 'detail' },
+  ],
+  health: [
+    { key: 'condition', label: 'Condition', icon: <Heart size={12} className="text-red-400" />, type: 'detail' },
+    { key: 'recommendations', label: 'Recommendations', icon: <ClipboardList size={12} className="text-green-400" />, type: 'list' },
+    { key: 'followUp', label: 'Follow-up', icon: <CalendarDays size={12} className="text-blue-400" />, type: 'detail' },
+  ],
+  financial: [
+    { key: 'amount', label: 'Amount', icon: <DollarSign size={12} className="text-emerald-400" />, type: 'detail' },
+    { key: 'category', label: 'Category', icon: <Tag size={12} className="text-blue-400" />, type: 'detail' },
+    { key: 'dueDate', label: 'Due Date', icon: <CalendarDays size={12} className="text-red-400" />, type: 'detail' },
+  ],
+  legal: [
+    { key: 'documentType', label: 'Document Type', icon: <ScrollText size={12} className="text-amber-500" />, type: 'detail' },
+    { key: 'keyClauses', label: 'Key Clauses', icon: <ClipboardList size={12} className="text-blue-400" />, type: 'list' },
+    { key: 'deadlines', label: 'Deadlines', icon: <CalendarDays size={12} className="text-red-400" />, type: 'list' },
+  ],
+  educational: [
+    { key: 'subject', label: 'Subject', icon: <GraduationCap size={12} className="text-blue-400" />, type: 'detail' },
+    { key: 'keyConcepts', label: 'Key Concepts', icon: <Lightbulb size={12} className="text-amber-500" />, type: 'list' },
+    { key: 'studyNotes', label: 'Study Notes', icon: <BookOpen size={12} className="text-green-400" />, type: 'list' },
+  ],
+  comparison: [
+    { key: 'pros', label: 'Pros', icon: <ThumbsUp size={12} className="text-green-400" />, type: 'list', textClass: 'text-green-300/80', bulletClass: 'text-green-500/50' },
+    { key: 'cons', label: 'Cons', icon: <ThumbsDown size={12} className="text-red-400" />, type: 'list', textClass: 'text-red-300/80', bulletClass: 'text-red-500/50' },
+  ],
+};
+
+// Default sections for content types without a specific config
+const DEFAULT_SECTIONS: SectionDef[] = [
+  { key: 'keyPoints', label: 'Key Points', icon: <Lightbulb size={12} className="text-amber-500" />, type: 'list' },
+  { key: 'actionItems', label: 'Action Items', icon: <CircleCheck size={12} className="text-blue-400" />, type: 'list', textClass: 'text-blue-300/80', bulletClass: 'text-blue-500/50' },
+];
+
+const getContentTypeSections = (contentType: string | undefined, enrichment: EnrichmentFields): SectionDef[] => {
+  const defs = (contentType && SECTION_CONFIG_MAP[contentType]) || DEFAULT_SECTIONS;
+  return defs.filter((def) => {
+    const v = enrichment[def.key];
+    if (Array.isArray(v)) return v.length > 0;
+    return typeof v === 'string' && v.length > 0;
+  });
+};
 
 interface MemoryCardProps {
   memory: Memory;
@@ -8,11 +196,16 @@ interface MemoryCardProps {
   onRetry?: (id: string) => void;
   onUpdate?: (id: string, content: string) => void;
   onExpand?: (memory: Memory) => void;
-  onViewAttachment?: (attachment: Attachment) => void;
+  onViewAttachment?: (attachment: Attachment, allAttachments: Attachment[]) => void;
   onTogglePin?: (id: string, isPinned: boolean) => void;
+  onEdit?: (memory: Memory) => void;
   isDialog?: boolean;
-  hasApiKey?: boolean;
-  onAddApiKey?: () => void;
+  isAuthenticated?: boolean;
+  onSignIn?: () => void;
+  syncStatus?: 'syncing' | 'synced' | 'error';
+  onSyncRetry?: (id: string) => void;
+  /** Index in the feed grid for staggered entrance animation */
+  index?: number;
 }
 
 
@@ -35,15 +228,27 @@ const linkifyHtml = (html: string): string => {
     }).join('');
 };
 
-const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUpdate, onExpand, onViewAttachment, onTogglePin, isDialog, hasApiKey = true, onAddApiKey }) => {
+const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUpdate, onExpand, onViewAttachment, onTogglePin, onEdit, isDialog, isAuthenticated = true, onSignIn, syncStatus, onSyncRetry, index }) => {
   const [isConfirming, setIsConfirming] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [isOffline, setIsOffline] = useState(!navigator.onLine);
-  const [dismissedError, setDismissedError] = useState(false);
-  
+  const [showSummary, setShowSummary] = useState(false);
+  const [expandedSection, setExpandedSection] = useState<string | null>(null);
+  const [isShaking, setIsShaking] = useState(false);
+
   const [isTruncated, setIsTruncated] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
+  const shakeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (shakeTimeoutRef.current) clearTimeout(shakeTimeoutRef.current);
+    };
+  }, []);
+
+  // Shared online/offline state — single global listener instead of per-card
+  const isOnline = useOnlineStatus();
+  const isOffline = !isOnline;
 
   useEffect(() => {
     if (!isDialog && contentRef.current) {
@@ -52,24 +257,15 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
     }
   }, [memory.content, isDialog]);
 
-  useEffect(() => {
-    const handleOnline = () => setIsOffline(false);
-    const handleOffline = () => setIsOffline(true);
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    return () => {
-        window.removeEventListener('online', handleOnline);
-        window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
+  const dateObj = new Date(memory.timestamp);
+  const dateStr = isNaN(dateObj.getTime())
+    ? 'Unknown date'
+    : dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 
-  const dateStr = new Date(memory.timestamp).toLocaleDateString(undefined, {
-    month: 'short', day: 'numeric', year: 'numeric'
-  });
-
-  const locationContext = memory.enrichment?.locationContext;
+  const enrichment = memory.enrichment;
+  const locationContext = enrichment?.locationContext;
   let targetUri = locationContext?.mapsUri;
-  
+
   if (!targetUri && locationContext?.name) {
      const lat = memory.location?.latitude;
      const lng = memory.location?.longitude;
@@ -81,19 +277,31 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
     }
   }
 
-  const entity = memory.enrichment?.entityContext;
+  const entity = enrichment?.entityContext;
 
-  if (!targetUri) {
-      const query = entity?.title || memory.enrichment?.summary;
-      if (query) {
+  // If user provided a URL, use it as the link CTA
+  if (!targetUri && enrichment?.sourceUrl) {
+      targetUri = enrichment.sourceUrl;
+  }
+
+  // Only show a Google search link when Gemini actually performed a search
+  if (!targetUri && enrichment?.enrichmentStrategy === 'search') {
+      const query = entity?.title || enrichment?.summary;
+      if (query && typeof query === 'string' && !query.includes('{')) {
            targetUri = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
       }
   }
 
-  const startDelete = (e: React.MouseEvent) => { 
-      e.stopPropagation(); 
-      setIsConfirming(true); 
+  const startDelete = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      setIsShaking(true);
       setIsMenuOpen(false);
+      if (shakeTimeoutRef.current) clearTimeout(shakeTimeoutRef.current);
+      shakeTimeoutRef.current = setTimeout(() => {
+        shakeTimeoutRef.current = null;
+        setIsShaking(false);
+        setIsConfirming(true);
+      }, 400);
   };
   
   const cancelDelete = (e: React.MouseEvent) => { e.stopPropagation(); setIsConfirming(false); };
@@ -102,6 +310,12 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
   const handlePin = (e: React.MouseEvent) => {
     e.stopPropagation();
     onTogglePin?.(memory.id, !memory.isPinned);
+    setIsMenuOpen(false);
+  };
+
+  const handleEdit = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onEdit?.(memory);
     setIsMenuOpen(false);
   };
 
@@ -122,13 +336,24 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
   
   const documents = memory.attachments?.filter(a => a.type === 'file') || [];
   
-  const aiText = entity?.description || memory.enrichment?.summary;
-  const shouldTruncateAI = aiText && aiText.length > 120;
+  // Robust AI text extraction
+  let aiText = entity?.description || enrichment?.summary;
+  if (typeof aiText === 'string' && aiText.startsWith('{')) {
+      // Sometimes AI returns stringified JSON as summary
+      try {
+          const parsed = JSON.parse(aiText);
+          aiText = parsed.description || parsed.summary || aiText;
+      } catch {
+          // Keep as is if not valid JSON
+      }
+  }
+  
+  const shouldTruncateAI = typeof aiText === 'string' && aiText.length > 120;
 
-  const showErrorOverlay = memory.processingError && onRetry && !dismissedError;
-  const showAddKeyOverlay = !hasApiKey && (memory.isPending || !!memory.processingError) && !dismissedError;
+  const showSignInOverlay = !isAuthenticated && (memory.isPending || !!memory.processingError);
+  const showErrorOverlay = memory.processingError && onRetry && !showSignInOverlay;
 
-  const isChecklist = memory.content.startsWith('<ul class="checklist">');
+  const isChecklist = memory.content?.startsWith('<ul class="checklist">') ?? false;
   
   const handleToggleCheck = (index: number) => {
       if (!onUpdate) return;
@@ -154,38 +379,20 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
       if (isChecklist) {
           const parser = new DOMParser();
           const doc = parser.parseFromString(memory.content, 'text/html');
-          const items = Array.from(doc.querySelectorAll('li'));
-          
-          return (
-              <div className="space-y-2 mt-2">
-                  {items.map((item, idx) => {
-                      const checked = item.getAttribute('data-checked') === 'true';
-                      const text = item.textContent || '';
-                      
-                      return (
-                        <div 
-                            key={idx} 
-                            className="flex items-start gap-3 group/item cursor-pointer"
-                            onClick={(e) => { e.stopPropagation(); handleToggleCheck(idx); }}
-                        >
-                            <div className={`mt-0.5 transition-colors ${checked ? 'text-blue-500' : 'text-gray-500 group-hover/item:text-gray-400'}`}>
-                                {checked ? <CheckSquare size={18} /> : <Square size={18} />}
-                            </div>
-                            <span className={`text-sm leading-relaxed transition-all ${checked ? 'text-gray-500 line-through decoration-gray-600' : 'text-gray-200'}`}>
-                                {text}
-                            </span>
-                        </div>
-                      );
-                  })}
-              </div>
-          );
+          const items = Array.from(doc.querySelectorAll('li')).map((item, idx) => ({
+              id: `${memory.id}-${idx}`,
+              text: item.textContent || '',
+              checked: item.getAttribute('data-checked') === 'true',
+          }));
+
+          return <ChecklistDisplay items={items} onToggle={handleToggleCheck} />;
       }
       
       return (
           <div 
             className={`prose prose-invert prose-sm max-w-none text-gray-200 font-normal leading-relaxed break-words 
                 prose-p:my-1 prose-headings:mb-1 prose-headings:mt-3 prose-headings:text-gray-100 prose-ul:my-1
-                ${memory.content.length < 80 ? 'text-base' : 'text-sm'}
+                text-sm
             `}
             dangerouslySetInnerHTML={{ __html: linkifyHtml(memory.content) }}
           />
@@ -194,29 +401,33 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
 
   return (
     <>
-      <div 
-        className={`group relative w-full ${isDialog ? 'mb-0' : 'mb-6'} rounded-xl transition-all duration-300 overflow-hidden flex flex-col
-        ${isDialog ? 'bg-gray-900 border border-gray-800' : 'bg-gray-800/40 border border-gray-700/30 hover:bg-gray-800/60 hover:border-gray-600/50 hover:shadow-lg'}
+      <div
+        className={`group relative w-full rounded-xl transition-all duration-(--duration-normal) ${isDialog ? 'overflow-visible' : 'overflow-hidden'} flex flex-col
+        ${isDialog ? 'bg-gray-900 border border-gray-800' : card.interactive}
         ${memory.isPending ? 'opacity-70 border-blue-900/30' : ''}
         ${memory.processingError ? 'border-amber-900/30 bg-amber-900/5' : ''}
-        ${showErrorOverlay || showAddKeyOverlay ? 'min-h-[350px]' : ''}
+        ${showErrorOverlay || showSignInOverlay ? 'min-h-[350px]' : ''}
+        ${!isDialog ? 'animate-in fade-in slide-in-from-bottom-4 duration-(--duration-normal) fill-mode-backwards' : ''}
+        ${isShaking ? 'animate-shake' : ''}
         `}
+        style={!isDialog && index != null ? { animationDelay: `${index * 60}ms` } : undefined}
       >
-        {/* API Key Overlay */}
-        {showAddKeyOverlay && (
-            <div className="absolute inset-0 z-20 bg-gray-900/95 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-300">
+        {/* Sign In Overlay — shown when enrichment failed due to missing auth */}
+        {showSignInOverlay && (
+            <div className="absolute inset-0 z-(--z-dropdown) bg-gray-900/95 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-(--duration-normal)">
                 <div className="w-12 h-12 bg-blue-900/50 border-4 border-blue-800 rounded-full mb-4 flex items-center justify-center">
-                    <Key size={24} className="text-blue-300" />
+                    <LogIn size={24} className="text-blue-300" />
                 </div>
-                <h4 className="text-gray-100 font-bold mb-1">AI Enrichment Requires an API Key</h4>
+                <h4 className="text-gray-100 font-bold mb-1">Sign in for AI Enrichment</h4>
                 <p className="text-xs text-gray-400 mb-4">
-                    Add your Gemini API key to enable automatic summaries, tagging, and contextual search for this memory.
+                    Sign in with your Google account to enable automatic summaries, tagging, and smart search for your memories.
                 </p>
                 <button
-                    onClick={(e) => { e.stopPropagation(); onAddApiKey?.(); }}
-                    className="w-full max-w-[200px] py-2.5 text-sm font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-500 transition-colors shadow-lg shadow-blue-500/20"
+                    onClick={(e) => { e.stopPropagation(); onSignIn?.(); }}
+                    className="w-full max-w-[220px] py-3 text-sm font-bold text-white bg-blue-600 rounded-xl hover:bg-blue-500 transition-colors shadow-lg shadow-blue-500/20 active:scale-95 touch-manipulation flex items-center justify-center gap-2"
                 >
-                    Add API Key
+                    <LogIn size={16} />
+                    Sign in with Google
                 </button>
             </div>
         )}
@@ -224,19 +435,20 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
         {/* Image Preview */}
         {displayImages.length > 0 && (
             <div 
-                className={`relative overflow-hidden rounded-t-xl bg-gray-900/50 group/image cursor-zoom-in ${isDialog ? 'max-h-[50vh]' : 'aspect-video sm:aspect-[2/1]'}`}
-                onClick={(e) => { e.stopPropagation(); onViewAttachment?.(displayImages[0]); }}
+                className={`relative overflow-hidden rounded-t-xl bg-gray-900/50 group/image cursor-zoom-in aspect-video sm:aspect-[2/1] ${isDialog ? 'max-h-[50vh]' : ''}`}
+                onClick={(e) => { e.stopPropagation(); onViewAttachment?.(displayImages[0], [...displayImages, ...documents]); }}
             >
-                <img 
-                    src={displayImages[0].data} 
-                    alt="User content" 
-                    className="w-full h-full object-cover transition-transform duration-700 group-hover/image:scale-105"
+                <img
+                    src={displayImages[0].data}
+                    alt="User content"
+                    loading="lazy"
+                    className="w-full h-full object-cover transition-transform duration-(--duration-slow) group-hover/image:scale-105"
                 />
                 <div className="absolute inset-0 bg-black/20 opacity-0 group-hover/image:opacity-100 transition-opacity flex items-center justify-center">
                     <Maximize2 className="text-white" size={24} />
                 </div>
                 {displayImages.length > 1 && (
-                  <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] font-medium px-2 py-0.5 rounded-full backdrop-blur-md">
+                  <div className="absolute bottom-2 right-2 bg-black/60 text-white text-xs font-medium px-2 py-0.5 rounded-full backdrop-blur-md">
                       +{displayImages.length - 1}
                   </div>
                 )}
@@ -249,17 +461,37 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
              <div className="flex items-center gap-2">
                  {memory.isPinned && <Pin size={12} className="text-blue-400 rotate-45" />}
                  {entity?.type && (
-                    <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-500">
+                    <span className={`flex items-center gap-1.5 ${text.label}`}>
                         {getEntityIcon(entity.type)}
                         {entity.type}
                     </span>
                  )}
                  {!entity?.type && <Clock size={12} className="text-gray-600" />}
-                 <span className="text-[10px] text-gray-600 font-medium">{dateStr}</span>
+                 <span className="text-xs text-gray-600 font-medium">{dateStr}</span>
              </div>
-             {memory.isPending && <span className="text-xs font-medium text-blue-400">Enriching...</span>}
+             {memory.isPending && <span className="text-xs font-medium text-blue-400 animate-pulse">Enriching...</span>}
              {memory.processingError && <WifiOff size={12} className="text-amber-500" />}
+             {syncStatus === 'syncing' && <RefreshCw size={12} className="text-blue-400 animate-spin" />}
+             {syncStatus === 'synced' && <CircleCheck size={12} className="text-green-400" />}
+             {syncStatus === 'error' && (
+                 <button onClick={(e) => { e.stopPropagation(); onSyncRetry?.(memory.id); }}
+                         className="flex items-center gap-1 text-red-400 hover:text-red-300 transition-colors">
+                     <AlertCircle size={14} />
+                     <span className="text-xs font-medium">Retry sync</span>
+                 </button>
+             )}
           </div>
+
+          {/* AI Title — below entity type, above user content */}
+          {entity?.title && (
+              <div className="mb-1">
+                  <h3 className="text-lg font-semibold text-gray-100 leading-tight">{entity.title}</h3>
+                  <div className="flex items-center gap-2 mt-1">
+                      {entity.subtitle && <span className="text-xs text-gray-400">{entity.subtitle}</span>}
+                      {entity.rating && <span className="text-xs px-1.5 py-0.5 bg-yellow-500/10 text-yellow-500 rounded font-medium">★ {entity.rating}</span>}
+                  </div>
+              </div>
+          )}
 
           <div className="space-y-3 flex-1 flex flex-col">
             {/* User Content with Mask-based Fade */}
@@ -267,7 +499,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                 <div className="relative">
                     <div 
                         ref={contentRef}
-                        className={`transition-all duration-300 ${!isDialog && isTruncated ? 'max-h-[300px] overflow-hidden' : ''}`}
+                        className={`transition-all duration-(--duration-normal) ${!isDialog && isTruncated ? 'max-h-[300px] overflow-hidden' : ''}`}
                         style={!isDialog && isTruncated ? {
                             WebkitMaskImage: 'linear-gradient(to bottom, black 150px, transparent 300px)',
                             maskImage: 'linear-gradient(to bottom, black 150px, transparent 300px)'
@@ -280,7 +512,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                         <div className="absolute bottom-0 left-0 right-0 flex justify-center pb-2">
                             <button 
                                 onClick={(e) => { e.stopPropagation(); onExpand?.(memory); }}
-                                className="flex items-center gap-2 px-4 py-1.5 bg-gray-800/90 backdrop-blur-md border border-gray-700 rounded-full text-[10px] font-bold text-blue-400 hover:text-blue-300 hover:bg-gray-700 transition-all shadow-lg"
+                                className="flex items-center gap-2 px-4 py-2 bg-gray-800/90 backdrop-blur-md border border-gray-700 rounded-full text-xs font-bold text-blue-400 hover:text-blue-300 hover:bg-gray-700 transition-all shadow-lg active:scale-95"
                             >
                                 <Maximize2 size={12} /> READ FULL MEMORY
                             </button>
@@ -289,62 +521,115 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                 </div>
             )}
 
-            {/* AI Summary */}
-            <div className="space-y-3 mt-auto">
-                {(entity?.title) && (
-                    <div className="pt-1">
-                        {targetUri ? (
-                            <a href={targetUri} target="_blank" rel="noopener noreferrer" className="group/link inline-flex items-start gap-2 active:opacity-70 transition-all">
-                                <h3 className="text-lg font-bold text-blue-400 leading-tight underline decoration-blue-500/30 underline-offset-4 decoration-2">
-                                    {entity.title}
-                                </h3>
-                                <ExternalLink size={16} className="mt-0.5 text-blue-500/70 shrink-0" />
-                            </a>
-                        ) : (
-                            <h3 className="text-lg font-semibold text-gray-100 leading-tight">{entity.title}</h3>
-                        )}
-                        <div className="flex items-center gap-2 mt-1">
-                            {entity.subtitle && <span className="text-xs text-gray-400">{entity.subtitle}</span>}
-                            {entity.rating && <span className="text-[10px] px-1.5 py-0.5 bg-yellow-500/10 text-yellow-500 rounded font-medium">★ {entity.rating}</span>}
-                        </div>
-                    </div>
-                )}
+            {/* Shimmer placeholder while AI enrichment is pending */}
+            {memory.isPending && !enrichment && (
+                <div className="space-y-2 mt-2">
+                    <div className="h-3 w-3/4 rounded bg-gray-700/50 animate-shimmer" />
+                    <div className="h-3 w-1/2 rounded bg-gray-700/50 animate-shimmer" />
+                    <div className="h-3 w-2/3 rounded bg-gray-700/50 animate-shimmer" />
+                </div>
+            )}
 
-                {aiText && (
-                    <div className="text-sm text-gray-400 font-light leading-relaxed">
-                        <span className={(!isExpanded && shouldTruncateAI) ? 'line-clamp-2' : ''}>{aiText}</span>
-                        {shouldTruncateAI && (
-                            <button 
-                                onClick={(e) => { e.stopPropagation(); setIsExpanded(!isExpanded); }}
-                                className="text-[10px] font-bold text-gray-500 hover:text-blue-400 uppercase tracking-wide mt-1"
-                            >
-                                {isExpanded ? 'Show Less' : 'Read More'}
-                            </button>
+            {/* Enrichment Icon Row + Expandable Sections */}
+            {(() => {
+                const typeSections = enrichment ? getContentTypeSections(enrichment.contentType, enrichment as EnrichmentFields) : [];
+                const hasAnyCTA = aiText || typeSections.length > 0 || targetUri;
+                if (!hasAnyCTA) return null;
+
+                return (
+                    <div className="space-y-2 mt-auto">
+                        <div className="flex items-center gap-1 flex-wrap">
+                            {aiText && (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); setShowSummary(!showSummary); }}
+                                    title="Summary"
+                                    className={`p-2 rounded-lg transition-colors ${showSummary ? 'bg-gray-700/60 text-gray-200' : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'}`}
+                                >
+                                    <FileText size={16} />
+                                </button>
+                            )}
+                            {typeSections.map((section) => (
+                                <button
+                                    key={section.key}
+                                    onClick={(e) => { e.stopPropagation(); setExpandedSection(expandedSection === section.key ? null : section.key); }}
+                                    title={section.label}
+                                    className={`p-2 rounded-lg transition-colors ${expandedSection === section.key ? 'bg-gray-700/60 text-gray-200' : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'}`}
+                                >
+                                    {/* Icons in sections are size 12; scale up for button display */}
+                                    <span className="[&>svg]:w-4 [&>svg]:h-4">{section.icon}</span>
+                                </button>
+                            ))}
+                            {targetUri && (
+                                <a
+                                    href={targetUri}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                    title="Open Link"
+                                    className="p-2 rounded-lg text-gray-500 hover:text-blue-400 hover:bg-white/5 transition-colors"
+                                >
+                                    <ExternalLink size={16} />
+                                </a>
+                            )}
+                        </div>
+
+                        {/* Expandable Summary */}
+                        {showSummary && aiText && (
+                            <div className="text-sm text-gray-400 font-light leading-relaxed pl-1 animate-in fade-in slide-in-from-top-1 duration-(--duration-fast)">
+                                {String(aiText)}
+                            </div>
                         )}
+
+                        {/* Expandable Type-Specific Sections */}
+                        {typeSections.map((section) => {
+                            if (expandedSection !== section.key) return null;
+                            const value = (enrichment as EnrichmentFields)?.[section.key];
+                            if (!value) return null;
+
+                            return (
+                                <div key={section.key} className="animate-in fade-in slide-in-from-top-1 duration-(--duration-fast)">
+                                    {section.type === 'list' && Array.isArray(value) ? (
+                                        <EnrichmentSection
+                                            icon={section.icon}
+                                            label={section.label}
+                                            items={value as string[]}
+                                            textClass={section.textClass}
+                                            bulletClass={section.bulletClass}
+                                        />
+                                    ) : (
+                                        <EnrichmentDetail
+                                            icon={section.icon}
+                                            label={section.label}
+                                            value={String(value)}
+                                        />
+                                    )}
+                                </div>
+                            );
+                        })}
                     </div>
-                )}
-            </div>
+                );
+            })()}
 
             {/* Documents */}
             {documents.length > 0 && (
                 <div className="flex flex-col gap-1.5 pt-1">
-                    {documents.map((doc, idx) => (
-                        <div 
-                            key={idx} 
-                            onClick={(e) => { e.stopPropagation(); onViewAttachment?.(doc); }}
-                            className="flex items-center gap-2 p-2 rounded-lg bg-gray-900/30 border border-gray-700/30 hover:bg-gray-700/50 transition-colors cursor-pointer group/doc"
+                    {documents.map((doc) => (
+                        <div
+                            key={doc.id}
+                            onClick={(e) => { e.stopPropagation(); onViewAttachment?.(doc, [...displayImages, ...documents]); }}
+                            className="flex items-center gap-2 p-3 rounded-xl bg-gray-900/30 border border-gray-700/30 hover:bg-gray-700/50 transition-colors cursor-pointer group/doc active:scale-[0.98]"
                         >
-                            <FileText size={14} className="text-gray-500 group-hover/doc:text-blue-400" />
-                            <span className="text-xs text-gray-300 truncate flex-1 group-hover/doc:text-white">{doc.name}</span>
+                            <FileText size={16} className="text-gray-500 group-hover/doc:text-blue-400" />
+                            <span className="text-sm text-gray-300 truncate flex-1 group-hover/doc:text-white">{doc.name}</span>
                             <div className="flex items-center gap-2">
-                                <Eye size={12} className="text-gray-500 opacity-0 group-hover/doc:opacity-100" />
+                                <Eye size={16} className="text-gray-500 opacity-0 group-hover/doc:opacity-100" />
                                 <a 
                                     href={doc.data} 
                                     download={doc.name} 
                                     onClick={e => e.stopPropagation()} 
-                                    className="p-1 text-gray-500 hover:text-white transition-colors"
+                                    className="p-2 -m-2 text-gray-500 hover:text-white transition-colors"
                                 >
-                                    <Paperclip size={12} />
+                                    <Paperclip size={16} />
                                 </a>
                             </div>
                         </div>
@@ -355,36 +640,44 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
             {/* Footer */}
             <div className="flex flex-wrap items-center gap-y-2 gap-x-4 pt-2 border-t border-gray-700/20 mt-2">
                 <div className="flex flex-wrap gap-1.5 flex-1">
-                    {memory.tags.map((tag, idx) => (
-                        <span key={idx} className="text-[10px] text-gray-500 hover:text-gray-300">#{tag}</span>
+                    {(memory.tags || []).map((tag) => (
+                        <span key={tag} className="text-xs text-gray-500 hover:text-gray-300 bg-gray-900/50 px-2 py-1 rounded-md">#{tag}</span>
                     ))}
                 </div>
                 <div className="flex items-center gap-2 ml-auto relative">
                     {onRetry && memory.processingError && (
-                        <button onClick={() => onRetry(memory.id)} className="text-amber-500 hover:text-amber-400 transition-colors">
-                            <RefreshCcw size={14} />
+                        <button onClick={() => onRetry(memory.id)} className="p-2 text-amber-500 hover:text-amber-400 transition-colors rounded-lg hover:bg-amber-900/20">
+                            <RefreshCcw size={16} />
                         </button>
                     )}
                     <div className="relative">
                         <button 
                             onClick={(e) => { e.stopPropagation(); setIsMenuOpen(!isMenuOpen); }} 
-                            className={`p-1 rounded-full hover:bg-gray-700/50 transition-colors ${isMenuOpen ? 'text-gray-200 bg-gray-700/50' : 'text-gray-500'}`}
+                            className={`p-2 rounded-lg hover:bg-gray-700/50 transition-colors ${isMenuOpen ? 'text-gray-200 bg-gray-700/50' : 'text-gray-500'}`}
                         >
-                            <MoreVertical size={16} />
+                            <MoreVertical size={20} />
                         </button>
                         {isMenuOpen && (
                             <>
-                            <div className="fixed inset-0 z-10 cursor-default" onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); }} />
-                            <div className="absolute bottom-full right-0 mb-1 w-32 bg-gray-900 border border-gray-700 rounded-xl shadow-xl z-20 overflow-hidden animate-in slide-in-from-bottom-2 fade-in duration-200">
+                            <div
+                                className={`${menu.backdrop} ${isDialog ? 'z-(--z-sheet)' : 'z-(--z-overlay)'}`}
+                                onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); }}
+                            />
+                            <div className={`${menu.panel} ${isDialog ? 'z-(--z-toast)' : 'z-(--z-modal)'}`}>
                                 {onTogglePin && (
-                                    <button onClick={handlePin} className="w-full px-3 py-2.5 text-left text-xs font-medium text-gray-300 hover:bg-gray-800 hover:text-white flex items-center gap-2">
-                                        <Pin size={14} className={memory.isPinned ? "fill-current" : ""} /> 
+                                    <button onClick={handlePin} className={menu.item}>
+                                        <Pin size={16} className={memory.isPinned ? "fill-current" : ""} />
                                         {memory.isPinned ? 'Unpin' : 'Pin'}
                                     </button>
                                 )}
+                                {onEdit && (
+                                    <button onClick={handleEdit} className={`${menu.item} ${menu.divider}`}>
+                                        <Pencil size={16} /> Edit
+                                    </button>
+                                )}
                                 {onDelete && (
-                                    <button onClick={startDelete} className="w-full px-3 py-2.5 text-left text-xs font-medium text-red-400 hover:bg-red-900/10 hover:text-red-300 flex items-center gap-2 border-t border-gray-800">
-                                        <Trash2 size={14} /> Delete
+                                    <button onClick={startDelete} className={menu.itemDanger}>
+                                        <Trash2 size={16} /> Delete
                                     </button>
                                 )}
                             </div>
@@ -395,15 +688,15 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
             </div>
             {/* Confirmation Dialog */}
             {isConfirming && (
-                <div className="absolute inset-0 z-30 bg-gray-900/95 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-200">
+                <div className="absolute inset-0 z-(--z-dropdown) bg-gray-900/95 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-(--duration-fast)">
                     <AlertTriangle size={32} className="text-amber-500 mb-3" />
                     <h4 className="text-gray-100 font-bold mb-1">Delete Memory?</h4>
                     <p className="text-xs text-gray-400 mb-4">This action cannot be undone.</p>
                     <div className="flex gap-2 w-full">
-                        <button onClick={cancelDelete} className="flex-1 py-2 text-xs font-medium text-gray-300 bg-gray-800 rounded-lg hover:bg-gray-700 transition-colors">
+                        <button onClick={cancelDelete} className="flex-1 py-3 text-sm font-medium text-gray-300 bg-gray-800 rounded-xl hover:bg-gray-700 transition-colors active:scale-95">
                             Cancel
                         </button>
-                        <button onClick={confirmDelete} className="flex-1 py-2 text-xs font-bold text-white bg-red-500 rounded-lg hover:bg-red-600 transition-colors shadow-lg shadow-red-500/20">
+                        <button onClick={confirmDelete} className="flex-1 py-3 text-sm font-bold text-white bg-red-500 rounded-xl hover:bg-red-600 transition-colors shadow-lg shadow-red-500/20 active:scale-95">
                             Delete
                         </button>
                     </div>
@@ -416,4 +709,4 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
   );
 };
 
-export default MemoryCard;
+export default memo(MemoryCard);

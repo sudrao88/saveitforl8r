@@ -8,13 +8,30 @@ import {
     processAuthCallback
 } from '../services/googleDriveService';
 import { ANALYTICS_EVENTS } from '../constants';
-import { logEvent } from '../services/analytics';
+import { logEvent, setUserId, clearUserId } from '../services/analytics';
+import { isNative } from '../services/platform';
+import { getStoredToken } from '../services/tokenService';
+import { sha256Hash } from '../utils/hash';
 
 export type AuthStatus = 'unlinked' | 'linked' | 'authenticating' | 'error';
 
 export const useAuth = () => {
-  const [authStatus, setAuthStatus] = useState<AuthStatus>(checkIsLinked() ? 'linked' : 'unlinked');
+  const [authStatus, setAuthStatus] = useState<AuthStatus>('unlinked');
   const [authError, setAuthError] = useState<string | null>(null);
+
+  // Initialize auth status (async for native storage)
+  useEffect(() => {
+    const initStatus = async () => {
+        const linked = await checkIsLinked();
+        setAuthStatus(linked ? 'linked' : 'unlinked');
+        // Set GA user ID from stored refresh token if already linked
+        if (linked) {
+          const refreshToken = await getStoredToken('refresh_token');
+          if (refreshToken) setUserId(await sha256Hash(refreshToken));
+        }
+    };
+    initStatus();
+  }, []);
 
   const handleLogin = useCallback(async () => {
     try {
@@ -29,16 +46,30 @@ export const useAuth = () => {
     }
   }, []);
 
-  const handleUnlink = useCallback(() => {
-    unlinkDrive();
+  const handleUnlink = useCallback(async () => {
+    await unlinkDrive();
     setAuthStatus('unlinked');
+    clearUserId();
     logEvent(ANALYTICS_EVENTS.AUTH.CATEGORY, ANALYTICS_EVENTS.AUTH.ACTION_LOGOUT);
   }, []);
 
   // Handle OAuth Callback
   useEffect(() => {
     const handleAuth = async () => {
-        if (window.location.search.includes('code=')) {
+        // Only run this logic on Web. Native auth flow is handled differently (in-app browser or deeplink)
+        // For now, assuming web-based redirect flow is used or native bridge handles it.
+        // If native requires App Links, we'd listen for appUrlOpen here.
+        if (!isNative() && window.location.search.includes('code=')) {
+            
+            // CRITICAL FIX: Check if this is a native login redirect (Bouncer flow)
+            // If so, we must ignore it here so App.tsx can bounce it to the native app.
+            // If we consume the code here, it becomes invalid for the native app.
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('state') === 'is_native_login') {
+                console.log('[Auth] Detected native login flow, skipping web processing to allow bounce.');
+                return; 
+            }
+
             console.log('[Auth] Processing OAuth callback...');
             setAuthStatus('authenticating');
             try {
@@ -46,6 +77,9 @@ export const useAuth = () => {
                 console.log(`[Auth] ${ANALYTICS_EVENTS.AUTH.ACTION_LOGIN_SUCCESS}`);
                 window.history.replaceState({}, document.title, window.location.pathname);
                 setAuthStatus('linked');
+                // Set GA user ID from refresh token for cross-session attribution
+                const refreshToken = await getStoredToken('refresh_token');
+                if (refreshToken) setUserId(await sha256Hash(refreshToken));
                 logEvent(ANALYTICS_EVENTS.AUTH.CATEGORY, ANALYTICS_EVENTS.AUTH.ACTION_LOGIN_SUCCESS);
             } catch (e) {
                 console.error(`[Auth] ${ANALYTICS_EVENTS.AUTH.ACTION_CALLBACK_FAILED}`, e);

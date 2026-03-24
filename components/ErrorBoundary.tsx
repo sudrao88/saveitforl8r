@@ -1,5 +1,7 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { btn, overlay, text, zIndex } from '../styles/design-system';
+import { isChunkLoadError, clearServiceWorkerCaches } from '../utils/chunkErrorUtils';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -28,7 +30,12 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
     this.props.onError?.(error, errorInfo);
   }
 
-  handleReload = () => {
+  handleReload = async () => {
+    // If the error looks like a stale chunk / module import failure,
+    // clear all SW caches first so the reload fetches fresh assets.
+    if (isChunkLoadError(this.state.error)) {
+      await clearServiceWorkerCaches();
+    }
     window.location.reload();
   };
 
@@ -42,28 +49,28 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
       const message = this.props.fallbackMessage || 'An unexpected error occurred. Your data is safe — try reloading the app.';
 
       return (
-        <div className="fixed inset-0 bg-gray-900 flex items-center justify-center z-[9999] p-6">
-          <div className="max-w-md w-full bg-gray-800 border border-gray-700 rounded-2xl p-8 text-center shadow-2xl">
+        <div className={`fixed inset-0 bg-gray-900 flex items-center justify-center ${zIndex.tooltip} p-6`}>
+          <div className={`${overlay.modal} max-w-md w-full p-8 text-center`}>
             <div className="w-14 h-14 mx-auto mb-5 bg-red-900/30 rounded-2xl flex items-center justify-center">
               <AlertTriangle size={28} className="text-red-400" />
             </div>
-            <h2 className="text-xl font-bold text-gray-100 mb-2">{title}</h2>
-            <p className="text-sm text-gray-400 mb-6 leading-relaxed">{message}</p>
+            <h2 className={`${text.heading} text-xl mb-2`}>{title}</h2>
+            <p className={`${text.body} mb-6 leading-relaxed`}>{message}</p>
             {this.state.error && (
-              <pre className="text-xs text-gray-500 bg-gray-900 rounded-lg p-3 mb-6 text-left overflow-auto max-h-32 border border-gray-700">
+              <pre className={`${text.caption} bg-gray-900 rounded-lg p-3 mb-6 text-left overflow-auto max-h-32 border border-gray-700`}>
                 {this.state.error.message}
               </pre>
             )}
             <div className="flex gap-3">
               <button
                 onClick={this.handleDismiss}
-                className="flex-1 py-3 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-xl font-bold text-sm transition-colors"
+                className={`${btn.base} ${btn.secondary} flex-1 py-3`}
               >
                 Try Again
               </button>
               <button
                 onClick={this.handleReload}
-                className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-2"
+                className={`${btn.base} ${btn.primary} flex-1 py-3 flex items-center justify-center gap-2`}
               >
                 <RefreshCw size={16} />
                 Reload App

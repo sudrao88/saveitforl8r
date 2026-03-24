@@ -1,0 +1,51 @@
+require_relative '../../node_modules/@capacitor/ios/scripts/pods_helpers'
+
+platform :ios, '15.0'
+use_frameworks!
+
+# workaround to avoid Xcode caching of Pods that requires
+# Product -> Clean Build Folder after new Cordova plugins installed
+# Requires CocoaPods 1.6 or newer
+install! 'cocoapods', :disable_input_output_paths => true
+
+def capacitor_pods
+  pod 'Capacitor', :path => '../../node_modules/@capacitor/ios'
+  pod 'CapacitorCordova', :path => '../../node_modules/@capacitor/ios'
+  pod 'CapacitorApp', :path => '../../node_modules/@capacitor/app'
+  pod 'CapacitorBrowser', :path => '../../node_modules/@capacitor/browser'
+  pod 'CapacitorFilesystem', :path => '../../node_modules/@capacitor/filesystem'
+  pod 'CapacitorHaptics', :path => '../../node_modules/@capacitor/haptics'
+  pod 'CapacitorKeyboard', :path => '../../node_modules/@capacitor/keyboard'
+  pod 'CapacitorLocalNotifications', :path => '../../node_modules/@capacitor/local-notifications'
+  pod 'CapacitorPreferences', :path => '../../node_modules/@capacitor/preferences'
+  pod 'CapacitorShare', :path => '../../node_modules/@capacitor/share'
+  pod 'CapacitorStatusBar', :path => '../../node_modules/@capacitor/status-bar'
+end
+
+target 'App' do
+  capacitor_pods
+  # Add your Pods here
+end
+
+post_install do |installer|
+  assertDeploymentTarget(installer)
+  installer.pods_project.targets.each do |target|
+    target.build_configurations.each do |config|
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
+      config.build_settings['ENABLE_USER_SCRIPT_SANDBOXING'] = 'NO'
+      # Fix DT_TOOLCHAIN_DIR in xcconfig files (Xcode 15+ compatibility)
+      xcconfig_path = config.base_configuration_reference&.real_path
+      next unless xcconfig_path&.exist?
+      xcconfig = File.read(xcconfig_path)
+      xcconfig_mod = xcconfig.gsub('DT_TOOLCHAIN_DIR', 'TOOLCHAIN_DIR')
+      File.open(xcconfig_path, 'w') { |f| f << xcconfig_mod }
+    end
+  end
+  # Fix DT_TOOLCHAIN_DIR in CocoaPods shell scripts (Xcode 15+ compatibility)
+  Dir.glob(File.join(installer.sandbox.root, 'Target Support Files', '**', '*.sh')).each do |script_path|
+    content = File.read(script_path)
+    if content.include?('DT_TOOLCHAIN_DIR')
+      File.open(script_path, 'w') { |f| f << content.gsub('DT_TOOLCHAIN_DIR', 'TOOLCHAIN_DIR') }
+    end
+  end
+end

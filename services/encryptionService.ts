@@ -1,7 +1,12 @@
 
 // This service handles the low-level encryption/decryption using Web Crypto API.
+// Crypto operations are offloaded to a Web Worker to avoid blocking the main thread
+// during bulk operations (sync, mass load). Falls back to main-thread if worker fails.
+//
 // The master key is stored in IndexedDB as a non-extractable CryptoKey for runtime use.
 // Export/restore operations use a separate extractable import for backup purposes only.
+
+import EncryptionWorker from './encryption.worker?worker';
 
 const ALGO_NAME = 'AES-GCM';
 const KEY_DB_NAME = 'sifl_keystore';
@@ -14,6 +19,56 @@ const LEGACY_KEY_STORAGE_KEY = 'sifl_encryption_key_v1';
 // In-memory cache to avoid repeated IndexedDB reads per session
 let cachedKey: CryptoKey | null = null;
 
+// Cached JWK for sending to the worker (workers can't receive CryptoKey objects)
+let cachedJWK: JsonWebKey | null = null;
+
+// === Worker setup ===
+let worker: Worker | null = null;
+let workerReady = true;
+let messageId = 0;
+const pendingMessages = new Map<number, { resolve: (v: any) => void; reject: (e: any) => void }>();
+
+function getWorker(): Worker | null {
+  if (!workerReady) return null;
+  if (worker) return worker;
+  try {
+    worker = new EncryptionWorker();
+    worker.onmessage = (e: MessageEvent) => {
+      const { id, result, error } = e.data;
+      const pending = pendingMessages.get(id);
+      if (pending) {
+        pendingMessages.delete(id);
+        if (error) pending.reject(new Error(error));
+        else pending.resolve(result);
+      }
+    };
+    worker.onerror = () => {
+      console.warn('[Encryption] Worker error, falling back to main thread');
+      workerReady = false;
+      worker = null;
+      // Reject all pending
+      for (const [, p] of pendingMessages) {
+        p.reject(new Error('Worker died'));
+      }
+      pendingMessages.clear();
+    };
+    return worker;
+  } catch {
+    workerReady = false;
+    return null;
+  }
+}
+
+function postToWorker(type: string, data: Record<string, any>): Promise<any> {
+  const w = getWorker();
+  if (!w) return Promise.reject(new Error('No worker'));
+  const id = ++messageId;
+  return new Promise((resolve, reject) => {
+    pendingMessages.set(id, { resolve, reject });
+    w.postMessage({ type, id, ...data });
+  });
+}
+
 // Convert ArrayBuffer to Base64 string for storage
 const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
   let binary = '';
@@ -25,15 +80,15 @@ const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
   return window.btoa(binary);
 };
 
-// Convert Base64 string to ArrayBuffer for crypto operations
-const base64ToArrayBuffer = (base64: string): ArrayBuffer => {
+// Convert Base64 string to Uint8Array for crypto operations
+const base64ToArrayBuffer = (base64: string): Uint8Array => {
   const binary_string = window.atob(base64);
   const len = binary_string.length;
   const bytes = new Uint8Array(len);
   for (let i = 0; i < len; i++) {
     bytes[i] = binary_string.charCodeAt(i);
   }
-  return bytes.buffer;
+  return bytes;
 };
 
 // Open the dedicated keystore IndexedDB
@@ -116,6 +171,7 @@ const getMasterKey = async (): Promise<CryptoKey> => {
       ['encrypt', 'decrypt']
     );
     cachedKey = key;
+    cachedJWK = jwk;
     return key;
   }
 
@@ -140,7 +196,18 @@ const getMasterKey = async (): Promise<CryptoKey> => {
   );
 
   cachedKey = runtimeKey;
+  cachedJWK = exportedJWK;
   return runtimeKey;
+};
+
+// Get the JWK for sending to the worker
+const getJWK = async (): Promise<JsonWebKey> => {
+  if (cachedJWK) return cachedJWK;
+  await getMasterKey(); // This sets cachedJWK as a side effect
+  if (!cachedJWK) {
+    cachedJWK = await getKeyJWK();
+  }
+  return cachedJWK!;
 };
 
 export interface EncryptedPayload {
@@ -148,17 +215,14 @@ export interface EncryptedPayload {
   iv: string;         // Base64
 }
 
-// Encrypt any JSON-serializable data
-export const encryptData = async (data: any): Promise<EncryptedPayload> => {
+// Main-thread fallback for encrypt
+const encryptDataMainThread = async (data: any): Promise<EncryptedPayload> => {
   const key = await getMasterKey();
-  const iv = window.crypto.getRandomValues(new Uint8Array(12)); // 12 bytes for AES-GCM
+  const iv = window.crypto.getRandomValues(new Uint8Array(12));
   const encodedData = new TextEncoder().encode(JSON.stringify(data));
 
   const encryptedBuffer = await window.crypto.subtle.encrypt(
-    {
-      name: ALGO_NAME,
-      iv: iv,
-    },
+    { name: ALGO_NAME, iv },
     key,
     encodedData
   );
@@ -169,27 +233,66 @@ export const encryptData = async (data: any): Promise<EncryptedPayload> => {
   };
 };
 
-// Decrypt data back to original object
+// Main-thread fallback for decrypt
+const decryptDataMainThread = async (payload: EncryptedPayload): Promise<any> => {
+  const key = await getMasterKey();
+  const iv = base64ToArrayBuffer(payload.iv);
+  const encryptedData = base64ToArrayBuffer(payload.cipherText);
+
+  const decryptedBuffer = await window.crypto.subtle.decrypt(
+    { name: ALGO_NAME, iv },
+    key,
+    encryptedData
+  );
+
+  const decodedString = new TextDecoder().decode(decryptedBuffer);
+  return JSON.parse(decodedString);
+};
+
+// Encrypt any JSON-serializable data (worker-first, main-thread fallback)
+export const encryptData = async (data: any): Promise<EncryptedPayload> => {
+  try {
+    const jwk = await getJWK();
+    return await postToWorker('encrypt', { jwk, data });
+  } catch {
+    return encryptDataMainThread(data);
+  }
+};
+
+// Decrypt data back to original object (worker-first, main-thread fallback)
 export const decryptData = async (payload: EncryptedPayload): Promise<any> => {
   try {
-    const key = await getMasterKey();
-    const iv = base64ToArrayBuffer(payload.iv);
-    const encryptedData = base64ToArrayBuffer(payload.cipherText);
+    const jwk = await getJWK();
+    return await postToWorker('decrypt', { jwk, payload });
+  } catch {
+    try {
+      return await decryptDataMainThread(payload);
+    } catch (error) {
+      console.error('Decryption failed:', error);
+      throw new Error('Failed to decrypt data');
+    }
+  }
+};
 
-    const decryptedBuffer = await window.crypto.subtle.decrypt(
-      {
-        name: ALGO_NAME,
-        iv: iv,
-      },
-      key,
-      encryptedData
+// Batch decrypt multiple payloads in the worker for bulk operations (e.g. getMemories)
+export const decryptBatch = async (
+  payloads: { id: string; cipherText: string; iv: string }[]
+): Promise<{ id: string; data?: any; error?: string }[]> => {
+  try {
+    const jwk = await getJWK();
+    return await postToWorker('decryptBatch', { jwk, payloads });
+  } catch {
+    // Fallback: decrypt individually on main thread
+    return Promise.all(
+      payloads.map(async (p) => {
+        try {
+          const data = await decryptDataMainThread({ cipherText: p.cipherText, iv: p.iv });
+          return { id: p.id, data };
+        } catch (e: any) {
+          return { id: p.id, error: e.message };
+        }
+      })
     );
-
-    const decodedString = new TextDecoder().decode(decryptedBuffer);
-    return JSON.parse(decodedString);
-  } catch (error) {
-    console.error('Decryption failed:', error);
-    throw new Error('Failed to decrypt data');
   }
 };
 
@@ -214,6 +317,9 @@ export const restoreEncryptionKey = async (keyJSON: string): Promise<boolean> =>
         await storeKeyJWK(parsed);
         // Invalidate cached key so next operation picks up the new one
         cachedKey = null;
+        cachedJWK = null;
+        // Tell worker to clear its cached key too
+        postToWorker('clearKey', {}).catch(() => { /* ignore — worker may not be available */ });
         return true;
     } catch (e) {
         console.error('Invalid key format', e);
@@ -222,4 +328,4 @@ export const restoreEncryptionKey = async (keyJSON: string): Promise<boolean> =>
 };
 
 // Clear the in-memory cached key (useful for testing)
-export const _clearCachedKey = () => { cachedKey = null; };
+export const _clearCachedKey = () => { cachedKey = null; cachedJWK = null; };

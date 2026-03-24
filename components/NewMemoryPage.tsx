@@ -1,38 +1,97 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Send, Paperclip, FileText, X, Tag as TagIcon, Loader2, ArrowLeft, Bold, Italic, Underline, Heading1, Heading2, CheckSquare, Plus } from 'lucide-react';
-import { Attachment } from '../types';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Send, Paperclip, Hash, Type, FileText, X, Loader2, ArrowLeft, CheckSquare, Plus, AlertTriangle } from 'lucide-react';
+import AttachmentMenu from './AttachmentMenu';
+import { marked } from 'marked';
+import { Attachment, Memory } from '../types';
+import { isNative } from '../services/platform';
+import { Keyboard } from '@capacitor/keyboard';
+import { escapeHtml, looksLikeMarkdown, parseChecklistMarkdown, sanitizePastedHtml, hasRichFormatting, extractHashtags, mergeTagsWithHashtags, containsUrl, linkifyUrls, handleEditorKeyDown, checkActiveFormats, execFormatCommand, formatsEqual } from '../utils/editorUtils';
+import { processFileInputs } from '../utils/attachmentUtils';
+import FormattingToolbar from './FormattingToolbar';
+import TagInput from './TagInput';
+import { btn, overlay } from '../styles/design-system';
+import { ChecklistEditor } from './ChecklistItems';
 
 interface NewMemoryPageProps {
   onClose: () => void;
   onCreate: (
-    text: string, 
-    attachments: Attachment[], 
-    tags: string[], 
+    text: string,
+    attachments: Attachment[],
+    tags: string[],
     location?: { latitude: number; longitude: number; accuracy?: number }
-  ) => Promise<void>; 
+  ) => Promise<void>;
+  onUpdate?: (
+    id: string,
+    text: string,
+    attachments: Attachment[],
+    tags: string[],
+    location?: { latitude: number; longitude: number; accuracy?: number }
+  ) => Promise<void>;
   initialContent?: {
     text: string;
     attachments: Attachment[];
+    tags?: string[];
     checkClipboard?: boolean;
   };
+  editMemory?: Memory;
 }
 
-const SUGGESTED_TAGS = ["Book", "Restaurant", "Place to Visit", "Movie", "Podcast", "Stuff"];
+// Configure marked for clean output with line-break support
+marked.setOptions({ breaks: true, gfm: true });
 
-const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, initialContent }) => {
-  const [attachments, setAttachments] = useState<Attachment[]>(initialContent?.attachments || []);
-  const [tags, setTags] = useState<string[]>([]);
-  const [tagInput, setTagInput] = useState('');
+const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpdate, initialContent, editMemory }) => {
+  const isEditMode = !!editMemory;
+
+  // Get initial values for edit mode
+  const getInitialAttachments = (): Attachment[] => {
+    if (editMemory?.attachments) return [...editMemory.attachments];
+    if (initialContent?.attachments) return initialContent.attachments;
+    return [];
+  };
+
+  const getInitialTags = (): string[] => {
+    if (editMemory?.tags) return [...editMemory.tags];
+    if (initialContent?.tags) return [...initialContent.tags];
+    return [];
+  };
+
+  const getInitialContent = (): string => {
+    if (editMemory?.content) return editMemory.content;
+    if (initialContent?.text) return initialContent.text;
+    return '';
+  };
+
+  const [attachments, setAttachments] = useState<Attachment[]>(getInitialAttachments);
+  const [tags, setTags] = useState<string[]>(getInitialTags);
   const [isProcessing, setIsProcessing] = useState(false);
-  
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+
+  // Store initial values for change detection
+  const initialValuesRef = useRef({
+    content: getInitialContent(),
+    attachments: JSON.stringify(getInitialAttachments().map(a => a.id).sort()),
+    tags: JSON.stringify([...getInitialTags()].sort())
+  });
+
   // Editor States
-  const [isChecklistMode, setIsChecklistMode] = useState(false);
+  const [isChecklistMode, setIsChecklistMode] = useState(() => {
+    const content = getInitialContent();
+    return content.startsWith('<ul class="checklist">');
+  });
   const [activeFormats, setActiveFormats] = useState<string[]>([]);
-  const [isEmpty, setIsEmpty] = useState(true);
-  
+  const [isEmpty, setIsEmpty] = useState(() => !getInitialContent());
+
+  // Bottom card panel toggles
+  const [showTags, setShowTags] = useState(false);
+  const [showFormatting, setShowFormatting] = useState(false);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
+
   // For Rich Text Mode
   const editorRef = useRef<HTMLDivElement>(null);
   const isInitialized = useRef(false);
+  const pendingEditorContent = useRef<string | null>(null);
+  const formatRafRef = useRef<number>(0);
+  const prevFormatsRef = useRef<string[]>([]);
 
   // For Checklist Mode
   interface ChecklistItem {
@@ -40,22 +99,77 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, initia
     text: string;
     checked: boolean;
   }
-  const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([]);
+  const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>(() => {
+    const content = getInitialContent();
+    if (content.startsWith('<ul class="checklist">')) {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(content, 'text/html');
+      const items = Array.from(doc.querySelectorAll('li'));
+      return items.map(item => ({
+        id: crypto.randomUUID(),
+        text: item.textContent || '',
+        checked: item.getAttribute('data-checked') === 'true'
+      }));
+    }
+    return [];
+  });
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
 
-  // Initialize content ONLY once
   useEffect(() => {
-    if (!isChecklistMode && editorRef.current && !isInitialized.current) {
+    // Ensure keyboard pushes content up on native
+    if (isNative()) {
+      Keyboard.setAccessoryBarVisible({ isVisible: true });
+      Keyboard.setScroll({ isDisabled: false });
+    }
+  }, []);
+
+  // Track virtual keyboard via visualViewport API so toolbar stays above it.
+  // Debounced with rAF to avoid layout jitter during text selection on iOS.
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+
+    let rafId = 0;
+    const updateKeyboardHeight = () => {
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        const kbHeight = window.innerHeight - vv.height;
+        setKeyboardHeight(Math.max(0, kbHeight));
+      });
+    };
+
+    vv.addEventListener('resize', updateKeyboardHeight);
+    return () => {
+      vv.removeEventListener('resize', updateKeyboardHeight);
+      cancelAnimationFrame(rafId);
+    };
+  }, []);
+
+  // Populate editor content: pending mode-switch content takes priority, then one-time init
+  useEffect(() => {
+    if (isChecklistMode || !editorRef.current) return;
+
+    if (pendingEditorContent.current !== null) {
+        editorRef.current.innerHTML = pendingEditorContent.current;
+        setIsEmpty(!pendingEditorContent.current);
+        pendingEditorContent.current = null;
+        isInitialized.current = true;
+        return;
+    }
+
+    if (!isInitialized.current) {
         let initialText = '';
-        if (initialContent?.text) {
+        if (editMemory?.content && !editMemory.content.startsWith('<ul class="checklist">')) {
+            initialText = editMemory.content;
+        } else if (initialContent?.text) {
             initialText = initialContent.text.replace(/\n/g, '<br>');
         }
         editorRef.current.innerHTML = initialText;
         setIsEmpty(!initialText);
         isInitialized.current = true;
     }
-  }, [isChecklistMode, initialContent]);
+  }, [isChecklistMode, initialContent, editMemory]);
 
   // Focus editor on mount
   useEffect(() => {
@@ -67,12 +181,14 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, initia
   }, [isChecklistMode]);
 
   const handlePaste = (e: React.ClipboardEvent) => {
-    const items = e.clipboardData.items;
-    for (const item of items) {
+    const clipboardData = e.clipboardData;
+
+    // Handle image paste — add as attachment
+    for (const item of clipboardData.items) {
         if (item.type.startsWith('image/')) {
             const blob = item.getAsFile();
             if (blob) {
-                e.preventDefault(); 
+                e.preventDefault();
                 const reader = new FileReader();
                 reader.onload = (evt) => {
                     setAttachments(prev => [...prev, {
@@ -85,35 +201,77 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, initia
                 };
                 reader.readAsDataURL(blob);
             }
+            return;
         }
     }
+
+    // Handle text paste — preserve rich formatting or convert markdown
+    const html = clipboardData.getData('text/html');
+    const plainText = clipboardData.getData('text/plain');
+
+    if (!html && !plainText) return;
+
+    e.preventDefault();
+
+    let htmlToInsert = '';
+
+    // Checklist markdown — switch to checklist mode with parsed items
+    if (plainText) {
+        const checklistItems = parseChecklistMarkdown(plainText);
+        if (checklistItems) {
+            setChecklistItems(checklistItems.map(item => ({
+                id: crypto.randomUUID(),
+                text: item.text,
+                checked: item.checked
+            })));
+            if (editorRef.current) editorRef.current.innerHTML = '';
+            setIsChecklistMode(true);
+            setShowFormatting(false);
+            setIsEmpty(false);
+            return;
+        }
+    }
+
+    if (plainText && containsUrl(plainText)) {
+        // Prefer plain text when it contains URLs — clipboard HTML from messaging
+        // apps often wraps URLs in preview cards that lose the actual URL text
+        htmlToInsert = linkifyUrls(escapeHtml(plainText).replace(/\n/g, '<br>'));
+    } else if (html && hasRichFormatting(html)) {
+        // Rich text paste (Word, Google Docs, web pages) — sanitize & preserve formatting
+        htmlToInsert = sanitizePastedHtml(html);
+    } else if (plainText && looksLikeMarkdown(plainText)) {
+        // Plain text with markdown syntax — convert to HTML, then sanitize to prevent XSS
+        htmlToInsert = sanitizePastedHtml(marked.parse(plainText) as string);
+    } else if (plainText) {
+        // Plain text without markdown — insert with line breaks preserved
+        htmlToInsert = escapeHtml(plainText).replace(/\n/g, '<br>');
+    }
+
+    if (htmlToInsert) {
+        const selection = window.getSelection();
+        if (selection && selection.rangeCount > 0) {
+            const range = selection.getRangeAt(0);
+            range.deleteContents();
+            const fragment = range.createContextualFragment(htmlToInsert);
+            range.insertNode(fragment);
+            // Move cursor to end of inserted content
+            range.collapse(false);
+            selection.removeAllRanges();
+            selection.addRange(range);
+        }
+    }
+
+    setIsEmpty(!editorRef.current?.innerText.trim());
+    checkFormats();
   };
+
+  const closeAttachMenu = useCallback(() => setShowAttachMenu(false), []);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      const files = Array.from(e.target.files);
-      const newAttachments: Attachment[] = [];
-
-      for (const file of files) {
-        const reader = new FileReader();
-        const result = await new Promise<string>((resolve) => {
-          reader.onload = (evt) => resolve(evt.target?.result as string);
-          reader.readAsDataURL(file);
-        });
-
-        const type = file.type.startsWith('image/') ? 'image' : 'file';
-        
-        newAttachments.push({
-          id: crypto.randomUUID(),
-          type,
-          mimeType: file.type,
-          data: result,
-          name: file.name
-        });
-      }
-      
+      const newAttachments = await processFileInputs(e.target.files);
       setAttachments(prev => [...prev, ...newAttachments]);
-      if (fileInputRef.current) fileInputRef.current.value = '';
+      e.target.value = '';
     }
   };
 
@@ -121,75 +279,44 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, initia
     setAttachments(prev => prev.filter(a => a.id !== id));
   };
 
-  const handleAddTag = () => {
-    if (tagInput.trim() && !tags.includes(tagInput.trim())) {
-      setTags([...tags, tagInput.trim()]);
-      setTagInput('');
-    }
-  };
 
-  const toggleTag = (tag: string) => {
-    if (tags.includes(tag)) {
-      setTags(tags.filter(t => t !== tag));
-    } else {
-      setTags([...tags, tag]);
-    }
-  };
-
-  const removeTag = (tag: string) => {
-    setTags(tags.filter(t => t !== tag));
-  };
-
-  // Rich Text Formatting
-  const execFormat = (command: string, value?: string) => {
-      if (command === 'formatBlock') {
-          const currentBlock = document.queryCommandValue('formatBlock');
-          if (currentBlock.toLowerCase() === value?.toLowerCase()) {
-              document.execCommand('formatBlock', false, 'p');
-          } else {
-              document.execCommand(command, false, value);
+  // Rich Text Formatting — rAF-debounced to coalesce multiple calls per frame
+  const checkFormats = useCallback(() => {
+      cancelAnimationFrame(formatRafRef.current);
+      formatRafRef.current = requestAnimationFrame(() => {
+          if (!editorRef.current) return;
+          const formats = checkActiveFormats(editorRef.current);
+          if (!formatsEqual(formats, prevFormatsRef.current)) {
+              prevFormatsRef.current = formats;
+              setActiveFormats(formats);
           }
-      } else {
-          document.execCommand(command, false, value);
-      }
+          setIsEmpty(!editorRef.current.innerText.trim());
+      });
+  }, []);
+
+  // Cleanup rAF on unmount
+  useEffect(() => () => cancelAnimationFrame(formatRafRef.current), []);
+
+  const execFormat = useCallback((command: string, value?: string) => {
+      execFormatCommand(command, value);
       editorRef.current?.focus();
       checkFormats();
-  };
+  }, [checkFormats]);
 
-  const checkFormats = () => {
-      const formats: string[] = [];
-      if (document.queryCommandState('bold')) formats.push('bold');
-      if (document.queryCommandState('italic')) formats.push('italic');
-      if (document.queryCommandState('underline')) formats.push('underline');
-      
-      const block = document.queryCommandValue('formatBlock');
-      if (block === 'h1') formats.push('H1');
-      if (block === 'h2') formats.push('H2');
-      
-      setActiveFormats(formats);
-      
-      if (editorRef.current) {
-          setIsEmpty(!editorRef.current.innerText.trim());
-      }
-  };
-
-  const isFormatActive = (format: string) => activeFormats.includes(format);
+  const handleFormat = useCallback((command: string, value?: string) => {
+    execFormat(command, value);
+  }, [execFormat]);
 
   // Toggle Checklist Mode
   const toggleChecklistMode = () => {
       if (isChecklistMode) {
-          const text = checklistItems.map(item => item.text).join('<br>');
+          const text = checklistItems.map(item => escapeHtml(item.text)).join('<br>');
+          pendingEditorContent.current = text;
           setIsChecklistMode(false);
-          setTimeout(() => {
-              if (editorRef.current) {
-                  editorRef.current.innerHTML = text;
-                  setIsEmpty(!text);
-              }
-          }, 0);
       } else {
           const text = editorRef.current?.innerText || '';
           const lines = text.split('\n').filter(l => l.trim().length > 0);
-          
+
           if (lines.length === 0) {
               setChecklistItems([{ id: crypto.randomUUID(), text: '', checked: false }]);
           } else {
@@ -199,7 +326,13 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, initia
                   checked: false
               })));
           }
+          // Clear editor content before switching so the browser-managed
+          // contentEditable text doesn't persist in the reused DOM node.
+          if (editorRef.current) {
+              editorRef.current.innerHTML = '';
+          }
           setIsChecklistMode(true);
+          setShowFormatting(false);
       }
   };
 
@@ -207,7 +340,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, initia
       setChecklistItems(prev => prev.map(item => item.id === id ? { ...item, text } : item));
   };
 
-  const addChecklistItem = (afterId: string) => {
+  const addChecklistItem = (afterId?: string) => {
       setChecklistItems(prev => {
           const index = prev.findIndex(item => item.id === afterId);
           const newItem = { id: crypto.randomUUID(), text: '', checked: false };
@@ -223,12 +356,39 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, initia
       setChecklistItems(prev => prev.filter(item => item.id !== id));
   };
 
+  // Check if there are unsaved changes
+  const hasChanges = useCallback((): boolean => {
+    // Get current content
+    let currentContent = '';
+    if (isChecklistMode) {
+      const listItems = checklistItems.map(item =>
+        `<li data-checked="${item.checked}">${escapeHtml(item.text)}</li>`
+      ).join('');
+      currentContent = checklistItems.length > 0 ? `<ul class="checklist">${listItems}</ul>` : '';
+    } else {
+      currentContent = editorRef.current?.innerHTML || '';
+    }
+
+    // Compare content
+    if (currentContent !== initialValuesRef.current.content) return true;
+
+    // Compare attachments
+    const currentAttachments = JSON.stringify(attachments.map(a => a.id).sort());
+    if (currentAttachments !== initialValuesRef.current.attachments) return true;
+
+    // Compare tags
+    const currentTags = JSON.stringify([...tags].sort());
+    if (currentTags !== initialValuesRef.current.tags) return true;
+
+    return false;
+  }, [isChecklistMode, checklistItems, attachments, tags]);
+
   const handleSubmit = async () => {
     let finalContent = '';
-    
+
     if (isChecklistMode) {
-        const listItems = checklistItems.map(item => 
-            `<li data-checked="${item.checked}">${item.text}</li>`
+        const listItems = checklistItems.map(item =>
+            `<li data-checked="${item.checked}">${escapeHtml(item.text)}</li>`
         ).join('');
         finalContent = `<ul class="checklist">${listItems}</ul>`;
     } else {
@@ -238,303 +398,322 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, initia
     if ((!finalContent.trim() && attachments.length === 0) || isProcessing) return;
 
     setIsProcessing(true);
-    
+
     try {
       let location: { latitude: number; longitude: number; accuracy?: number } | undefined;
-      try {
-        if (navigator.geolocation) {
-            const pos = await Promise.race([
-                new Promise<GeolocationPosition>((resolve, reject) => {
-                    navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
-                }),
-                new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000))
-            ]) as GeolocationPosition | null;
 
-            if (pos) {
-                location = {
-                    latitude: pos.coords.latitude,
-                    longitude: pos.coords.longitude,
-                    accuracy: pos.coords.accuracy
-                };
-            }
+      // Only fetch location for new memories, not edits
+      if (!isEditMode) {
+        try {
+          if (navigator.geolocation) {
+              const pos = await Promise.race([
+                  new Promise<GeolocationPosition>((resolve, reject) => {
+                      navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
+                  }),
+                  new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000))
+              ]) as GeolocationPosition | null;
+
+              if (pos) {
+                  location = {
+                      latitude: pos.coords.latitude,
+                      longitude: pos.coords.longitude,
+                      accuracy: pos.coords.accuracy
+                  };
+              }
+          }
+        } catch (e) {
+          console.warn("Location access denied or unavailable", e);
         }
-      } catch (e) {
-        console.warn("Location access denied or unavailable", e);
       }
 
-      await onCreate(finalContent, attachments, tags, location);
-      handleClose();
+      const extractedTags = extractHashtags(finalContent);
+      const allTags = mergeTagsWithHashtags(tags, extractedTags);
+
+      if (isEditMode && onUpdate && editMemory) {
+        // Update existing memory
+        await onUpdate(editMemory.id, finalContent, attachments, allTags, editMemory.location);
+      } else {
+        // Create new memory
+        await onCreate(finalContent, attachments, allTags, location);
+      }
+      handleCloseConfirmed();
 
     } catch (error) {
-        console.error("Error creating memory:", error);
-        setIsProcessing(false); 
-        alert("Failed to save memory. Please try again.");
+        console.error("Error saving memory:", error);
+        setIsProcessing(false);
+        alert(`Failed to ${isEditMode ? 'update' : 'save'} memory. Please try again.`);
     }
   };
 
-  const handleClose = () => {
+  const handleCloseConfirmed = () => {
     setChecklistItems([]);
     setTags([]);
-    setTagInput('');
     setIsProcessing(false);
+    setShowDiscardConfirm(false);
     onClose();
   };
 
+  const handleClose = () => {
+    // Check for unsaved changes in edit mode, or any content in create mode
+    if (isEditMode ? hasChanges() : hasContent) {
+      setShowDiscardConfirm(true);
+      return;
+    }
+    handleCloseConfirmed();
+  };
+
+  // Keyboard shortcut: ⌘+Enter or Ctrl+Enter to save
+  const handleSubmitRef = useRef(handleSubmit);
+  handleSubmitRef.current = handleSubmit;
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        e.preventDefault();
+        handleSubmitRef.current();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
+  const hasContent = !isEmpty || attachments.length > 0 || (isChecklistMode && checklistItems.some(item => item.text.trim()));
+
+  const discardTitle = isEditMode ? 'Discard Changes?' : 'Discard Memory?';
+  const discardMessage = isEditMode
+    ? 'You have unsaved changes. Are you sure you want to discard them?'
+    : 'You have unsaved content. If you leave now, this memory will be lost.';
+
   return (
-    <div className="min-h-screen bg-gray-900 flex flex-col" dir="ltr">
+    <div className="fixed inset-0 bg-black flex flex-col z-(--z-overlay)" dir="ltr">
         {/* Header */}
-        <div className="sticky top-0 z-30 bg-gray-900/90 backdrop-blur-md border-b border-gray-800 px-4 py-3 flex items-center justify-between">
+        <div className="shrink-0 bg-(--color-surface-base)/90 backdrop-blur-md border-b border-(--color-border-default) px-4 py-3 flex items-center justify-between pt-[calc(var(--sat)+12px)]">
             <div className="flex items-center gap-3">
-                <button 
-                    onClick={handleClose} 
-                    className="p-2 -ml-2 rounded-full hover:bg-gray-800 text-gray-400 hover:text-white transition-colors"
+                <button
+                    onClick={handleClose}
+                    className={overlay.closeBtn}
                 >
                     <ArrowLeft size={24} />
                 </button>
-                <h1 className="text-xl font-bold text-gray-100">New Memory</h1>
+                <h1 className="text-xl font-bold text-(--color-text-primary)">{isEditMode ? 'Edit Memory' : 'New Memory'}</h1>
             </div>
         </div>
 
-        <main className="flex-1 p-4 sm:p-8 max-w-3xl mx-auto w-full flex flex-col">
-            
-            {/* Editor Area */}
-            <div className="min-h-[200px] relative text-left order-1 mb-6" dir="ltr">
+        {/* Full-page editor area */}
+        <main
+            className="flex-1 overflow-y-auto p-4 sm:p-8 max-w-3xl mx-auto w-full"
+            onClick={(e) => {
+                // Focus the editor when tapping empty space in the main area
+                if (!isChecklistMode && editorRef.current && !editorRef.current.contains(e.target as Node)) {
+                    editorRef.current.focus();
+                    // Place cursor at end of content
+                    const selection = window.getSelection();
+                    if (selection && editorRef.current.childNodes.length > 0) {
+                        selection.selectAllChildren(editorRef.current);
+                        selection.collapseToEnd();
+                    }
+                }
+            }}
+        >
+            <div className="min-h-full relative text-left flex flex-col" dir="ltr">
                 {isChecklistMode ? (
-                    <div className="space-y-2">
-                        {checklistItems.map((item, index) => (
-                            <div key={item.id} className="flex items-start gap-3 animate-in fade-in slide-in-from-left-2 duration-200">
-                                <div 
-                                    className="mt-1.5 text-gray-500 cursor-pointer"
-                                    onClick={() => setChecklistItems(prev => prev.map(i => i.id === item.id ? { ...i, checked: !i.checked } : i))}
-                                >
-                                    <div className={`w-5 h-5 border-2 rounded flex items-center justify-center transition-colors ${item.checked ? 'border-blue-500 bg-blue-500/20' : 'border-gray-600'}`}>
-                                        {item.checked && <div className="w-2.5 h-2.5 bg-blue-500 rounded-sm" />}
-                                    </div>
-                                </div>
-                                <input
-                                    type="text"
-                                    value={item.text}
-                                    onChange={(e) => updateChecklistItem(item.id, e.target.value)}
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter') {
-                                            e.preventDefault();
-                                            addChecklistItem(item.id);
-                                        }
-                                        if (e.key === 'Backspace' && item.text === '' && checklistItems.length > 1) {
-                                            e.preventDefault();
-                                            removeChecklistItem(item.id);
-                                        }
-                                    }}
-                                    autoFocus={index === checklistItems.length - 1} 
-                                    placeholder="List item..."
-                                    className={`flex-1 bg-transparent text-lg text-white placeholder-gray-600 focus:outline-none border-b border-transparent focus:border-gray-700/50 pb-1 transition-all text-left ${item.checked ? 'line-through text-gray-500' : ''}`}
-                                    dir="ltr"
-                                />
-                            </div>
-                        ))}
-                        <button 
-                            onClick={() => addChecklistItem(checklistItems[checklistItems.length - 1]?.id)}
-                            className="flex items-center gap-2 text-gray-500 hover:text-blue-400 mt-2 pl-1 transition-colors text-sm font-medium"
-                        >
-                            <Plus size={16} /> Add Item
-                        </button>
-                    </div>
+                    <ChecklistEditor
+                        items={checklistItems}
+                        onToggle={(id) => setChecklistItems(prev => prev.map(i => i.id === id ? { ...i, checked: !i.checked } : i))}
+                        onUpdate={updateChecklistItem}
+                        onAdd={addChecklistItem}
+                        onRemove={removeChecklistItem}
+                        autoFocusLast
+                    />
                 ) : (
                     <>
                         <div
                             ref={editorRef}
                             contentEditable
-                            className="w-full min-h-[200px] bg-transparent text-lg text-white focus:outline-none prose prose-invert max-w-none 
-                            prose-p:my-2 prose-ul:my-2 prose-li:my-0
-                            [&_h1]:text-3xl [&_h1]:font-bold [&_h1]:mt-4 [&_h1]:mb-2 [&_h1]:text-white
-                            [&_h2]:text-2xl [&_h2]:font-bold [&_h2]:mt-3 [&_h2]:mb-2 [&_h2]:text-gray-100
-                            text-left"
+                            className="w-full flex-1 min-h-[200px] bg-transparent text-lg text-(--color-text-primary) focus:outline-none prose prose-invert max-w-none
+                            rich-editor
+                            text-left touch-manipulation"
                             dir="ltr"
+                            onKeyDown={(e) => {
+                                if (editorRef.current) {
+                                    handleEditorKeyDown(e, editorRef.current, checkFormats);
+                                }
+                            }}
                             onKeyUp={checkFormats}
                             onMouseUp={checkFormats}
-                            onInput={() => setIsEmpty(!editorRef.current?.innerText.trim())}
+                            onInput={checkFormats}
                             onPaste={handlePaste}
                             suppressContentEditableWarning={true}
                         />
                         {isEmpty && (
-                            <div className="absolute top-0 left-0 pointer-events-none text-gray-500 text-lg">
+                            <div className="absolute top-0 left-0 pointer-events-none text-(--color-text-tertiary) text-lg">
                                 Capture a thought, idea, or observation...
                             </div>
                         )}
                     </>
                 )}
             </div>
+        </main>
 
-            {/* Attachments Preview - MOVED ABOVE TOOLBAR */}
+        {/* Sticky bottom card */}
+        <div
+          className="shrink-0 px-3 pt-1 max-w-3xl mx-auto w-full transition-[padding-bottom] duration-100"
+          style={{ paddingBottom: keyboardHeight > 0 ? `${keyboardHeight}px` : 'max(0.75rem, var(--sab))' }}
+        >
+          <div className="bg-(--color-surface-overlay)/95 backdrop-blur-xl border border-(--color-border-default)/50 rounded-(--radius-xl) shadow-2xl shadow-black/40">
+            {/* Attachment previews */}
             {attachments.length > 0 && (
-                <div className="flex gap-3 flex-wrap order-2 mb-4">
-                    {attachments.map((att) => (
-                        <div key={att.id} className="relative group animate-in zoom-in-90 duration-200">
-                            {att.type === 'image' ? (
-                                <div className="w-24 h-24 rounded-xl overflow-hidden border border-gray-700 bg-black/50">
-                                    <img src={att.data} alt="preview" className="w-full h-full object-cover" />
-                                </div>
-                            ) : (
-                                <div className="w-24 h-24 rounded-xl border border-gray-700 bg-gray-800/50 flex flex-col items-center justify-center p-2 text-center">
-                                    <FileText size={24} className="text-gray-400 mb-2" />
-                                    <span className="text-[10px] text-gray-400 w-full truncate px-1">{att.name}</span>
-                                </div>
-                            )}
-                            <button 
-                                onClick={() => removeAttachment(att.id)}
-                                className="absolute -top-2 -right-2 bg-gray-800 text-gray-400 hover:text-red-400 border border-gray-600 rounded-full p-1.5 shadow-lg transition-colors"
-                            >
-                                <X size={14} />
-                            </button>
-                        </div>
-                    ))}
+                <div className="px-4 pt-3 pb-1">
+                    <div className="flex gap-2 overflow-x-auto no-scrollbar">
+                        {attachments.map((att) => (
+                            <div key={att.id} className="relative shrink-0 animate-in zoom-in-90 duration-(--duration-fast)">
+                                {att.type === 'image' ? (
+                                    <div className="w-14 h-14 rounded-(--radius-xl) overflow-hidden border border-(--color-border-default) bg-black/50">
+                                        <img src={att.data} alt="preview" className="w-full h-full object-cover" />
+                                    </div>
+                                ) : (
+                                    <div className="w-14 h-14 rounded-(--radius-xl) border border-(--color-border-default) bg-(--color-surface-raised)/50 flex flex-col items-center justify-center">
+                                        <FileText size={18} className="text-(--color-text-secondary)" />
+                                        <span className="text-xs text-(--color-text-tertiary) w-full truncate px-1 text-center">{att.name}</span>
+                                    </div>
+                                )}
+                                <button
+                                    onClick={() => removeAttachment(att.id)}
+                                    className="absolute -top-1.5 -right-1.5 bg-(--color-surface-raised) text-(--color-text-secondary) hover:text-(--color-danger) border border-(--color-border-default) rounded-(--radius-full) p-0.5 shadow-lg transition-colors duration-(--duration-fast) active:scale-95"
+                                >
+                                    <X size={10} />
+                                </button>
+                            </div>
+                        ))}
+                    </div>
                 </div>
             )}
 
-            {/* Toolbar Area - order-3 */}
-            <div className="flex flex-col gap-4 border-gray-800 pt-0 order-3">
-                 {/* Combined Toolbar */}
-                 <div className="flex flex-wrap items-center gap-2 bg-gray-800/30 p-2 rounded-xl border border-gray-700/50">
-                    {/* Attachments Button */}
-                    <button 
-                        onClick={() => fileInputRef.current?.click()}
-                        className="p-2 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors"
-                        title="Add Attachment"
-                    >
-                        <Paperclip size={18} />
-                    </button>
-                    <input 
-                        type="file" 
-                        ref={fileInputRef} 
-                        onChange={handleFileSelect} 
-                        className="hidden" 
-                        multiple 
-                        accept="image/*,.pdf,.txt,.md"
-                    />
+            {/* Tag section (expandable) */}
+            {showTags && (
+                <div className="px-4 pt-3 pb-1 animate-in slide-in-from-bottom-2 duration-(--duration-fast)">
+                    <TagInput tags={tags} onTagsChange={setTags} compact />
+                </div>
+            )}
 
-                    <div className="w-px h-6 bg-gray-700/50 mx-1"></div>
+            {/* Formatting toolbar (expandable) */}
+            {showFormatting && !isChecklistMode && (
+                <div className="px-4 pt-3 pb-1 animate-in slide-in-from-bottom-2 duration-(--duration-fast)">
+                    <FormattingToolbar activeFormats={activeFormats} onFormat={handleFormat} compact />
+                </div>
+            )}
 
-                    {/* Formatting Controls (Only in Normal Mode) */}
-                    {!isChecklistMode && (
-                        <>
-                            <button 
-                                onClick={() => execFormat('bold')} 
-                                className={`p-2 rounded-lg transition-colors ${isFormatActive('bold') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`} 
-                                title="Bold"
-                            >
-                                <Bold size={18} />
-                            </button>
-                            <button 
-                                onClick={() => execFormat('italic')} 
-                                className={`p-2 rounded-lg transition-colors ${isFormatActive('italic') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`} 
-                                title="Italic"
-                            >
-                                <Italic size={18} />
-                            </button>
-                            <button 
-                                onClick={() => execFormat('underline')} 
-                                className={`p-2 rounded-lg transition-colors ${isFormatActive('underline') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`} 
-                                title="Underline"
-                            >
-                                <Underline size={18} />
-                            </button>
-                            <div className="w-px h-6 bg-gray-700/50 mx-1"></div>
-                            <button 
-                                onClick={() => execFormat('formatBlock', 'H1')} 
-                                className={`p-2 rounded-lg transition-colors ${isFormatActive('H1') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`} 
-                                title="Heading 1"
-                            >
-                                <Heading1 size={18} />
-                            </button>
-                            <button 
-                                onClick={() => execFormat('formatBlock', 'H2')} 
-                                className={`p-2 rounded-lg transition-colors ${isFormatActive('H2') ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`} 
-                                title="Heading 2"
-                            >
-                                <Heading2 size={18} />
-                            </button>
-                            <div className="w-px h-6 bg-gray-700/50 mx-1"></div>
-                        </>
-                    )}
-
-                    {/* Checklist Toggle */}
+            {/* Button row */}
+            <div className="flex items-center gap-1 px-3 py-2">
+                {/* Attachment */}
+                <div className="relative">
                     <button
-                        onClick={toggleChecklistMode}
-                        className={`p-2 rounded-lg transition-colors ${isChecklistMode ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'}`}
-                        title="Checklist Mode"
+                        onClick={() => setShowAttachMenu(prev => !prev)}
+                        onMouseDown={(e) => e.preventDefault()}
+                        className={btn.iconLg}
+                        title="Add attachment"
                     >
-                        <CheckSquare size={18} />
+                        <Paperclip size={20} />
                     </button>
-                 </div>
+                    <AttachmentMenu
+                        open={showAttachMenu}
+                        onClose={closeAttachMenu}
+                        onFileSelect={handleFileSelect}
+                    />
+                </div>
+
+                {/* Tags toggle */}
+                <button
+                    onClick={() => setShowTags(prev => !prev)}
+                    onMouseDown={(e) => e.preventDefault()}
+                    className={`${btn.iconLg} ${showTags ? 'bg-(--color-accent) text-white' : ''}`}
+                    title="Tags"
+                >
+                    <Hash size={20} />
+                </button>
+
+                {/* Formatting toggle */}
+                {!isChecklistMode && (
+                    <button
+                        onClick={() => setShowFormatting(prev => !prev)}
+                        onMouseDown={(e) => e.preventDefault()}
+                        className={`${btn.iconLg} ${showFormatting ? 'bg-(--color-accent) text-white' : ''}`}
+                        title="Formatting"
+                    >
+                        <Type size={20} />
+                    </button>
+                )}
+
+                {/* Checklist toggle */}
+                <button
+                    onClick={toggleChecklistMode}
+                    onMouseDown={(e) => e.preventDefault()}
+                    className={`${btn.iconLg} ${isChecklistMode ? 'bg-(--color-accent) text-white' : ''}`}
+                    title="Checklist Mode"
+                >
+                    <CheckSquare size={20} />
+                </button>
+
+                {/* Spacer */}
+                <div className="flex-1" />
+
+                {/* Save button */}
+                <button
+                    onClick={handleSubmit}
+                    disabled={!hasContent || isProcessing}
+                    className={`${btn.base} ${
+                        hasContent && !isProcessing
+                            ? `${btn.primary} shadow-lg`
+                            : 'bg-(--color-surface-raised) text-(--color-text-tertiary) rounded-(--radius-lg) px-4 py-2.5 cursor-not-allowed'
+                    } gap-2 px-5`}
+                    title={isEditMode ? "Update (⌘+Enter)" : "Add (⌘+Enter)"}
+                >
+                    {isProcessing ? (
+                      <>
+                        <Loader2 size={18} className="animate-spin" />
+                        <span className="text-sm">{isEditMode ? 'Updating...' : 'Adding...'}</span>
+                      </>
+                    ) : (
+                      <>
+                        {isEditMode ? <Send size={18} /> : <Plus size={18} strokeWidth={3} />}
+                        <span className="text-sm">{isEditMode ? 'Update' : 'Add'}</span>
+                      </>
+                    )}
+                </button>
             </div>
-            
-            <div className="pt-4 order-4">
-               <hr className="border-gray-800 mb-6" />
+          </div>
+        </div>
 
-               {/* Tags Interface */}
-               <div className="space-y-4">
-                  <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Tags</h3>
-                  <div className="flex flex-wrap items-center gap-2">
-                      {tags.map(tag => (
-                          <span key={tag} className="bg-blue-500/10 text-blue-400 border border-blue-500/20 px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-2 animate-in fade-in">
-                              #{tag}
-                              <button onClick={() => removeTag(tag)} className="hover:text-blue-200"><X size={14} /></button>
-                          </span>
-                      ))}
-                      <div className="flex items-center gap-2 bg-gray-800/50 px-3 py-1.5 rounded-xl border border-gray-700/50 focus-within:border-blue-500/50 focus-within:bg-gray-800 transition-all">
-                          <TagIcon size={16} className="text-gray-500" />
-                          <input 
-                              type="text" 
-                              value={tagInput}
-                              onChange={(e) => setTagInput(e.target.value)}
-                              onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
-                                      e.preventDefault();
-                                      handleAddTag();
-                                  }
-                              }}
-                              onBlur={handleAddTag} 
-                              placeholder="Add custom tag..."
-                              className="bg-transparent text-sm text-white placeholder-gray-500 focus:outline-none min-w-[120px]"
-                          />
-                      </div>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                      {SUGGESTED_TAGS.map(tag => {
-                          const isSelected = tags.includes(tag);
-                          if (isSelected) return null;
-                          return (
-                              <button
-                                  key={tag}
-                                  onClick={() => toggleTag(tag)}
-                                  className="px-3 py-1.5 rounded-full text-xs font-bold bg-gray-800 text-gray-400 border border-gray-700 hover:border-gray-500 hover:text-gray-200 transition-all"
-                              >
-                                  + {tag}
-                              </button>
-                          );
-                      })}
-                  </div>
-               </div>
-
-               <hr className="border-gray-800 my-6" />
-
-               {/* Save Button */}
-               <div className="flex justify-end pt-2 pb-6">
-                  <button 
-                      onClick={handleSubmit}
-                      disabled={isProcessing}
-                      className={`flex items-center justify-center gap-2 px-8 py-3 rounded-xl font-bold transition-all shadow-lg w-full sm:w-auto
-                          ${isProcessing 
-                              ? 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700' 
-                              : 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-900/20 hover:scale-[1.02] active:scale-95'
-                          }`}
-                  >
-                      {isProcessing ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
-                      {isProcessing ? 'Saving...' : 'Save Memory'}
-                  </button>
-               </div>
+        {/* Discard Changes Confirmation Dialog */}
+        {showDiscardConfirm && (
+            <div className={`${overlay.dialogBackdrop} bg-(--color-surface-overlay)/90 backdrop-blur-md animate-in fade-in duration-(--duration-fast)`}>
+                <div className={`${overlay.modal} p-6 max-w-sm w-full mx-4 animate-in zoom-in-95 duration-(--duration-fast)`}>
+                    <div className="flex flex-col items-center text-center">
+                        <div className="w-16 h-16 bg-amber-900/30 rounded-(--radius-full) flex items-center justify-center mb-4">
+                            <AlertTriangle size={32} className="text-(--color-warning)" />
+                        </div>
+                        <h3 className="text-xl font-bold text-(--color-text-primary) mb-2">{discardTitle}</h3>
+                        <p className="text-base text-(--color-text-secondary) mb-6">
+                            {discardMessage}
+                        </p>
+                        <div className="flex gap-4 w-full">
+                            <button
+                                onClick={() => setShowDiscardConfirm(false)}
+                                className={`${btn.base} ${btn.secondary} flex-1 py-3`}
+                            >
+                                Keep Editing
+                            </button>
+                            <button
+                                onClick={handleCloseConfirmed}
+                                className={`${btn.base} ${btn.danger} flex-1 py-3 shadow-lg`}
+                            >
+                                Discard
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
-        </main>
+        )}
     </div>
   );
 };

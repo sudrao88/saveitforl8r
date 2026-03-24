@@ -1,7 +1,7 @@
 
 import React, { useState, useRef } from 'react';
 
-import { X, Key, Download, Upload, Info, RefreshCw, Cloud, AlertTriangle, AlertCircle, ShieldCheck, LogOut, Settings, Cpu, CheckCircle2, Loader2, Database, ChevronDown, Trash2 } from 'lucide-react';
+import { X, Download, Upload, Info, RefreshCw, Cloud, AlertTriangle, AlertCircle, ShieldCheck, LogOut, Settings, Cpu, CheckCircle2, Loader2, Database, ChevronDown, Trash2, Bell, BellOff } from 'lucide-react';
 
 import { useExportImport } from '../hooks/useExportImport';
 import { useEncryptionSettings } from '../hooks/useEncryptionSettings';
@@ -9,16 +9,14 @@ import { useSync } from '../hooks/useSync';
 import { useAuth } from '../hooks/useAuth';
 import { ModelStatus, EmbeddingStats } from '../hooks/useAdaptiveSearch';
 import { factoryReset, forceReindexAll, ReconcileReport } from '../services/storageService';
+import { overlay } from '../styles/design-system';
 
 // Props interface remains the same as all functionality is preserved
 interface SettingsModalProps {
   onClose: () => void;
-  clearKey: () => void;
   availableTypes: string[];
   onImportSuccess?: () => void;
   appVersion: string | null;
-  hasApiKey: boolean;
-  onAddApiKey: () => void;
   syncError: string | null;
   onSyncComplete?: () => void;
   modelStatus: ModelStatus;
@@ -31,6 +29,14 @@ interface SettingsModalProps {
   closeWorkerDB?: () => void;
   reconcileReport?: ReconcileReport | null;
   onUpdateReport?: (report: ReconcileReport) => void;
+  notificationsSupported?: boolean;
+  notificationsEnabled?: boolean;
+  notificationPermission?: 'granted' | 'denied' | 'prompt';
+  notificationTime?: string;
+  onNotificationsEnabledChange?: (enabled: boolean) => Promise<void>;
+  onNotificationTimeChange?: (time: string) => Promise<void>;
+  onRequestNotificationPermission?: () => Promise<void>;
+  onOpenNotificationSettings?: () => void;
 }
 
 // Helper components for the new UI structure
@@ -45,7 +51,7 @@ const SettingsCard: React.FC<{ title: string; icon: React.ElementType; children:
 );
 
 const SettingsRow: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">{children}</div>
+  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-2">{children}</div>
 );
 
 const SettingsInfo: React.FC<{ label: string; description: string }> = ({ label, description }) => (
@@ -64,7 +70,7 @@ const ExpandableSection: React.FC<{ children: React.ReactNode }> = ({ children }
         <ChevronDown size={16} className={`text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </button>
       {isOpen && (
-        <div className="mt-3 pt-3 border-t border-gray-700/50 animate-in fade-in duration-300">
+        <div className="mt-3 pt-3 border-t border-gray-700/50 animate-in fade-in duration-(--duration-normal)">
           {children}
         </div>
       )}
@@ -79,8 +85,8 @@ const FactoryResetModal: React.FC<{ isOpen: boolean; onClose: () => void; onConf
     const isConfirmed = confirmationText === 'DELETE';
 
     return (
-        <div className="absolute inset-0 z-20 flex items-center justify-center bg-gray-900/80 backdrop-blur-md animate-in fade-in duration-300">
-            <div className="bg-red-900/20 border border-red-800 rounded-2xl max-w-sm w-full m-4 p-6 shadow-2xl text-center">
+        <div className="absolute inset-0 z-(--z-dropdown) flex items-center justify-center bg-black/80 backdrop-blur-md animate-in fade-in duration-(--duration-normal) p-4">
+            <div className="bg-red-900/20 border border-red-800 rounded-2xl max-w-sm w-full p-6 shadow-2xl text-center">
                 <div className="w-14 h-14 bg-red-900/50 border-4 border-red-800 rounded-full mx-auto flex items-center justify-center">
                     <AlertTriangle size={32} className="text-red-300" />
                 </div>
@@ -118,11 +124,15 @@ const FactoryResetModal: React.FC<{ isOpen: boolean; onClose: () => void; onConf
 };
 
 const SettingsModal: React.FC<SettingsModalProps> = (props) => {
-  const { 
-    onClose, clearKey, onImportSuccess, appVersion, hasApiKey, onAddApiKey,
+  const {
+    onClose, onImportSuccess, appVersion,
     syncError, onSyncComplete, modelStatus, downloadProgress, retryDownload,
     embeddingStats, retryFailedEmbeddings, totalMemories, lastError, closeWorkerDB,
-    onUpdateReport
+    onUpdateReport,
+    notificationsSupported, notificationsEnabled, notificationPermission,
+    notificationTime, onNotificationsEnabledChange, onNotificationTimeChange,
+    onRequestNotificationPermission,
+    onOpenNotificationSettings,
   } = props;
   
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
@@ -137,9 +147,7 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
   const handleLinkDrive = () => { login(); };
   const handleSyncNow = async () => {
       try {
-
-          await sync();
-
+          await sync(true);
           if (onSyncComplete) onSyncComplete();
       } catch (e: any) { console.error("Sync failed:", e); }
   };
@@ -170,21 +178,24 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
   const statsFailed = embeddingStats?.failed || 0;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-      <div className="bg-gray-900 border border-gray-700 rounded-3xl max-w-2xl w-full shadow-2xl relative max-h-[90vh] flex flex-col overflow-hidden">
-        <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors z-20">
-          <X size={20} />
-        </button>
-        
-        <div className="p-6 border-b border-gray-700 flex items-center gap-4">
-          <div className="w-12 h-12 bg-gray-800 rounded-2xl flex items-center justify-center text-gray-300"><Settings size={24} /></div>
-          <div>
-            <h3 className="text-xl font-bold text-white">Settings</h3>
-            <p className="text-gray-400 text-sm">Manage your data, AI, and security preferences</p>
+    <div className="fixed inset-0 z-(--z-sheet) flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in duration-(--duration-fast)">
+      {/* Modal container: Use calc with safe-area for Safari incognito compatibility */}
+      <div className="bg-black border border-gray-700 rounded-t-3xl sm:rounded-3xl max-w-2xl w-full shadow-2xl relative flex flex-col overflow-hidden animate-in slide-in-from-bottom-10 sm:zoom-in-95 duration-(--duration-fast)"
+           style={{ maxHeight: 'calc(100dvh - var(--sat) - var(--sab) - 16px)' }}>
+        <div className="p-4 sm:p-6 border-b border-gray-700 flex items-center justify-between shrink-0 bg-black z-10 pt-[max(16px,var(--sat))] sm:pt-6">
+          <div className="flex items-center gap-3">
+             <div className="w-10 h-10 bg-gray-800 rounded-xl flex items-center justify-center text-gray-300 shrink-0"><Settings size={20} /></div>
+             <div>
+               <h3 className="text-lg font-bold text-white leading-tight">Settings</h3>
+               <p className="text-gray-400 text-xs hidden sm:block">Manage your data, AI, and security preferences</p>
+             </div>
           </div>
+          <button onClick={onClose} className="p-2 -mr-2 text-gray-400 hover:text-white transition-colors hover:bg-gray-800 rounded-full active:scale-95">
+             <X size={24} />
+          </button>
         </div>
 
-        <div className="overflow-y-auto p-6 flex-1 space-y-6">
+        <div className="overflow-y-auto p-4 sm:p-6 flex-1 space-y-6 overscroll-contain" style={{ paddingBottom: 'max(24px, var(--sab))' }}>
 
 
           {(syncError || modelStatus === 'error') && (
@@ -196,7 +207,7 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
                     <p className="text-sm font-medium text-red-300">Google Drive Sync Error</p>
                     <p className="text-xs text-red-400/80 mt-0.5 break-words">{syncError}</p>
                   </div>
-                  <button onClick={handleSyncNow} disabled={isSyncing} className="px-3 py-1.5 text-xs bg-red-800 hover:bg-red-700 text-white font-bold rounded-lg transition-colors shrink-0 flex items-center gap-1.5 disabled:opacity-50">
+                  <button onClick={handleSyncNow} disabled={isSyncing} className="px-3 py-1.5 text-xs bg-red-800 hover:bg-red-700 text-white font-bold rounded-lg transition-colors shrink-0 flex items-center gap-1.5 disabled:opacity-50 active:scale-95">
                     {isSyncing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Retry Sync
                   </button>
                 </div>
@@ -208,7 +219,7 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
                     <p className="text-sm font-medium text-amber-300">AI Model Download Error</p>
                     <p className="text-xs text-amber-400/80 mt-0.5 break-words">{lastError || 'The local AI model failed to load. Offline search is unavailable.'}</p>
                   </div>
-                  <button onClick={retryDownload} className="px-3 py-1.5 text-xs bg-amber-800 hover:bg-amber-700 text-white font-bold rounded-lg transition-colors shrink-0 flex items-center gap-1.5">
+                  <button onClick={retryDownload} className="px-3 py-1.5 text-xs bg-amber-800 hover:bg-amber-700 text-white font-bold rounded-lg transition-colors shrink-0 flex items-center gap-1.5 active:scale-95">
                     <RefreshCw size={14} /> Retry
                   </button>
                 </div>
@@ -219,26 +230,13 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
 
           <SettingsCard title="AI & Index" icon={Cpu}>
             <SettingsRow>
-              <SettingsInfo label="Gemini API Key" description="Powers AI search, summaries, and enrichment." />
-              <div className="flex items-center gap-2 shrink-0">
-                {hasApiKey ? (
-                  <>
-                    <span className="flex items-center gap-1.5 text-xs text-green-400 bg-green-900/30 px-2 py-1 rounded-md"><CheckCircle2 size={14} /> Set</span>
-                    <button onClick={clearKey} className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors">Clear</button>
-                  </>
-                ) : (
-                  <button onClick={onAddApiKey} className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg transition-colors">Add Key</button>
-                )}
-              </div>
-            </SettingsRow>
-            <SettingsRow>
                <SettingsInfo label="Local AI Index" description="On-device model for offline search capabilities." />
                <div className="flex items-center gap-2">
 
 
                  <span className={`text-xs px-2 py-1 rounded-md font-medium ${modelStatus === 'ready' ? 'bg-green-900/30 text-green-400' : modelStatus === 'error' ? 'bg-red-900/30 text-red-400' : 'bg-yellow-900/30 text-yellow-400'}`}>{modelStatus}</span>
 
-                 <button onClick={handleForceReindex} disabled={isReindexing} className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1.5">
+                 <button onClick={handleForceReindex} disabled={isReindexing} className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1.5 active:scale-95">
                     {isReindexing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Re-index
                  </button>
                </div>
@@ -257,28 +255,69 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
                     <div className="bg-gray-800/50 p-2 rounded-lg"><span className="block font-bold text-lg text-red-400">{statsFailed}</span><span className="text-gray-400">Failed</span></div>
                 </div>
                  {statsFailed > 0 && retryFailedEmbeddings && (
-                    <button onClick={retryFailedEmbeddings} className="w-full mt-2 text-xs py-1.5 bg-red-900/30 hover:bg-red-900/40 text-red-300 rounded-lg transition-colors">Retry {statsFailed} Failed Items</button>
+                    <button onClick={retryFailedEmbeddings} className="w-full mt-2 text-xs py-1.5 bg-red-900/30 hover:bg-red-900/40 text-red-300 rounded-lg transition-colors active:scale-95">Retry {statsFailed} Failed Items</button>
                 )}
             </ExpandableSection>
           </SettingsCard>
+
+          {notificationsSupported && (
+            <SettingsCard title="Notifications" icon={Bell}>
+              <SettingsRow>
+                <SettingsInfo label="Morning Briefing" description="Get a daily summary of your events and tasks." />
+                <button
+                  onClick={() => onNotificationsEnabledChange?.(!notificationsEnabled)}
+                  className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${notificationsEnabled ? 'bg-blue-600' : 'bg-gray-600'}`}
+                >
+                  <span className={`inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${notificationsEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                </button>
+              </SettingsRow>
+              {notificationsEnabled && notificationPermission === 'granted' && (
+                <SettingsRow>
+                  <SettingsInfo label="Notification Time" description="When to receive your daily briefing." />
+                  <input
+                    type="time"
+                    value={notificationTime || '07:00'}
+                    onChange={(e) => onNotificationTimeChange?.(e.target.value)}
+                    className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors"
+                  />
+                </SettingsRow>
+              )}
+              {notificationPermission === 'denied' && (
+                <div className="flex items-start gap-2 p-3 bg-amber-900/30 border border-amber-800/60 rounded-xl">
+                  <BellOff size={16} className="text-amber-400 shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-xs text-amber-300">Notifications are blocked. Enable them in your device settings to receive morning briefings.</p>
+                    {onOpenNotificationSettings && (
+                      <button
+                        onClick={onOpenNotificationSettings}
+                        className="mt-1.5 text-xs font-medium text-(--color-accent) hover:text-(--color-accent-hover) transition-colors duration-(--duration-fast)"
+                      >
+                        Open Notification Settings
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </SettingsCard>
+          )}
 
           <SettingsCard title="Data & Sync" icon={Database}>
             <SettingsRow>
               <SettingsInfo label="Google Drive Sync" description="Securely syncs encrypted data across devices." />
               {authStatus === 'linked' ? (
                 <div className="flex items-center gap-2">
-                  <button onClick={handleSyncNow} disabled={isSyncing} className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg transition-colors flex items-center gap-1.5 disabled:opacity-50">{isSyncing ? <Loader2 size={14} className="animate-spin"/> : <RefreshCw size={14} />} Sync Now</button>
-                  <button onClick={handleUnlink} className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors">Unlink</button>
+                  <button onClick={handleSyncNow} disabled={isSyncing} className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg transition-colors flex items-center gap-1.5 disabled:opacity-50 active:scale-95">{isSyncing ? <Loader2 size={14} className="animate-spin"/> : <RefreshCw size={14} />} Sync Now</button>
+                  <button onClick={handleUnlink} className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors active:scale-95">Unlink</button>
                 </div>
               ) : (
-                <button onClick={handleLinkDrive} disabled={authStatus === 'authenticating'} className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg transition-colors disabled:opacity-50">Connect</button>
+                <button onClick={handleLinkDrive} disabled={authStatus === 'authenticating'} className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg transition-colors disabled:opacity-50 active:scale-95">Connect</button>
               )}
             </SettingsRow>
             <SettingsRow>
                 <SettingsInfo label="Manual Backup & Restore" description="Export or import all memories from a file." />
                 <div className="flex items-center gap-2 shrink-0">
-                    <button onClick={handleExport} className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors flex items-center gap-1.5"><Download size={14} /> Export</button>
-                    <button onClick={handleImportClick} className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors flex items-center gap-1.5"><Upload size={14} /> Import</button>
+                    <button onClick={handleExport} className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors flex items-center gap-1.5 active:scale-95"><Download size={14} /> Export</button>
+                    <button onClick={handleImportClick} className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors flex items-center gap-1.5 active:scale-95"><Upload size={14} /> Import</button>
                 </div>
             </SettingsRow>
           </SettingsCard>
@@ -291,17 +330,17 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
              <SettingsRow>
                 <SettingsInfo label="Encryption Key" description="Back up your key to prevent permanent data loss." />
                  <div className="flex items-center gap-2 shrink-0">
-                    <button onClick={handleDownloadKey} className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors flex items-center gap-1.5"><Download size={14} /> Backup Key</button>
-                    <button onClick={handleRestoreClick} className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors flex items-center gap-1.5"><Upload size={14} /> Restore Key</button>
+                    <button onClick={handleDownloadKey} className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors flex items-center gap-1.5 active:scale-95"><Download size={14} /> Backup Key</button>
+                    <button onClick={handleRestoreClick} className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors flex items-center gap-1.5 active:scale-95"><Upload size={14} /> Restore Key</button>
                 </div>
             </SettingsRow>
           </SettingsCard>
 
-          <div className="border-t border-red-900/50 pt-6">
+          <div className="border-t border-red-900/50 pt-6 pb-6">
             <SettingsCard title="Danger Zone" icon={AlertTriangle}>
                 <SettingsRow>
                     <SettingsInfo label="Factory Reset" description="Permanently erases all data and resets the application." />
-                    <button onClick={() => setIsResetModalOpen(true)} className="px-4 py-2 text-sm bg-red-800 hover:bg-red-700 text-white font-bold rounded-lg transition-colors flex items-center gap-2">
+                    <button onClick={() => setIsResetModalOpen(true)} className="px-4 py-2 text-sm bg-red-800 hover:bg-red-700 text-white font-bold rounded-lg transition-colors flex items-center gap-2 active:scale-95">
                         <Trash2 size={16} /> Wipe All Data
                     </button>
                 </SettingsRow>
@@ -309,7 +348,7 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
           </div>
         </div>
         
-        {appVersion && <div className="text-center py-2 border-t border-gray-700 text-[10px] font-mono text-gray-500">Version: {appVersion}</div>}
+        {appVersion && <div className="text-center py-2 border-t border-gray-700 text-xs font-mono text-gray-500 shrink-0 bg-black">Version: {appVersion}</div>}
         
         <FactoryResetModal 
             isOpen={isResetModalOpen}

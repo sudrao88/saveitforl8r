@@ -2,6 +2,8 @@
   channel = "stable-24.05";
   packages = [
     pkgs.nodejs_20
+    pkgs.jdk21
+    pkgs.android-tools
   ];
   idx.extensions = [
     "svelte.svelte-vscode"
@@ -21,6 +23,9 @@
           "0.0.0.0"
         ];
         manager = "web";
+      };
+      android = {
+        manager = "android";
       };
     };
   };

@@ -1,7 +1,72 @@
 @import "tailwindcss";
 
+@font-face {
+  font-family: 'Shantell Sans';
+  font-style: normal;
+  font-weight: 300 800;
+  font-display: swap;
+  src: url('/fonts/ShantellSans-Variable.woff2') format('woff2');
+}
+
+@theme {
+  /* Surface colors */
+  --color-surface-base: #000000;
+  --color-surface-raised: #1f2937;
+  --color-surface-overlay: #030712;
+
+  /* Border colors */
+  --color-border-default: #374151;
+  --color-border-subtle: rgba(55, 65, 81, 0.3);
+
+  /* Text colors */
+  --color-text-primary: #f3f4f6;
+  --color-text-secondary: #9ca3af;
+  --color-text-tertiary: #6b7280;
+
+  /* Accent colors */
+  --color-accent: #2563eb;
+  --color-accent-hover: #3b82f6;
+  --color-accent-muted: rgba(37, 99, 235, 0.2);
+
+  /* Semantic colors */
+  --color-danger: #dc2626;
+  --color-danger-hover: #b91c1c;
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+
+  /* Z-index layers */
+  --z-sticky: 10;
+  --z-dropdown: 30;
+  --z-overlay: 50;
+  --z-modal: 60;
+  --z-sheet: 70;
+  --z-toast: 80;
+  --z-tooltip: 90;
+
+  /* Border radius */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-full: 9999px;
+
+  /* Transition durations */
+  --duration-fast: 150ms;
+  --duration-normal: 250ms;
+  --duration-slow: 400ms;
+}
+
 :root {
   color-scheme: dark;
+  --sat: env(safe-area-inset-top);
+  --sar: env(safe-area-inset-right);
+  --sab: env(safe-area-inset-bottom);
+  --sal: env(safe-area-inset-left);
+}
+
+html {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 
 body {
@@ -11,9 +76,105 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #111827;
+  background-color: #000000;
   color: #f3f4f6;
   overscroll-behavior-y: none; /* Prevent pull-to-refresh on mobile */
+  
+  padding-right: var(--sar);
+  padding-bottom: var(--sab);
+  padding-left: var(--sal);
+  
+  /* Disable text selection by default for app-like feel, re-enable on specific text areas */
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Re-enable selection for content */
+.prose, input, textarea, [contenteditable] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* ─── Rich Text Editor Styles ─────────────────────────────────────────────── */
+
+.rich-editor {
+  /* Paragraphs */
+  & p { margin: 0.5rem 0; }
+
+  /* Headings */
+  & h1 { font-size: 1.875rem; font-weight: 700; margin: 1rem 0 0.5rem; color: var(--color-text-primary); }
+  & h2 { font-size: 1.5rem; font-weight: 700; margin: 0.75rem 0 0.5rem; color: var(--color-text-primary); }
+
+  /* Lists */
+  & ul, & ol { margin: 0.5rem 0; padding-left: 1.5rem; }
+  & ul { list-style-type: disc; }
+  & ol { list-style-type: decimal; }
+  & li { margin: 0.125rem 0; }
+
+  /* Nested lists */
+  & ul ul, & ol ul { list-style-type: circle; }
+  & ul ul ul, & ol ul ul { list-style-type: square; }
+  & ol ol, & ul ol { list-style-type: lower-alpha; }
+
+  /* Blockquote */
+  & blockquote {
+    border-left: 3px solid var(--color-accent);
+    padding-left: 1rem;
+    margin: 0.75rem 0;
+    color: var(--color-text-secondary);
+    font-style: italic;
+  }
+
+  /* Inline code */
+  & code {
+    background: color-mix(in srgb, var(--color-surface-raised) 60%, transparent);
+    color: var(--color-text-primary);
+    padding: 0.125rem 0.375rem;
+    border-radius: var(--radius-sm);
+    font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 0.875em;
+  }
+
+  /* Code blocks */
+  & pre {
+    background: color-mix(in srgb, var(--color-surface-raised) 80%, transparent);
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-md);
+    padding: 0.75rem 1rem;
+    margin: 0.75rem 0;
+    overflow-x: auto;
+  }
+  & pre code {
+    background: transparent;
+    padding: 0;
+    border-radius: 0;
+    font-size: 0.875rem;
+  }
+
+  /* Horizontal rule */
+  & hr {
+    border: none;
+    border-top: 1px solid var(--color-border-default);
+    margin: 1rem 0;
+  }
+
+  /* Strikethrough */
+  & s, & strike, & del { text-decoration: line-through; color: var(--color-text-tertiary); }
+
+  /* Links */
+  & a { color: var(--color-accent); text-decoration: underline; }
+  & a:hover { color: var(--color-accent-hover); }
+}
+
+/* Compact variant for QuickNoteBar */
+.rich-editor--compact {
+  & p { margin: 0.25rem 0; }
+  & h1 { font-size: 1.25rem; margin: 0.25rem 0; }
+  & h2 { font-size: 1.125rem; margin: 0.25rem 0; }
+  & ul, & ol { margin: 0.25rem 0; }
+  & blockquote { margin: 0.5rem 0; padding-left: 0.75rem; }
+  & pre { margin: 0.5rem 0; padding: 0.5rem 0.75rem; }
+  & hr { margin: 0.5rem 0; }
 }
 
 /* Custom scrollbar for webkit */
@@ -57,7 +218,11 @@ body {
 
 /* Safe Area Utility for Mobile */
 .pb-safe {
-    padding-bottom: env(safe-area-inset-bottom);
+    padding-bottom: var(--sab);
+}
+
+.pt-safe {
+    padding-top: var(--sat);
 }
 
 /* Animations */
@@ -68,6 +233,92 @@ body {
 
 .animate-fade-in {
     animation: fade-in 0.3s ease-out forwards;
+}
+
+/* Shimmer loading effect for processing states */
+@keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
+.animate-shimmer {
+    position: relative;
+    overflow: hidden;
+}
+
+.animate-shimmer::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.04), transparent);
+    animation: shimmer 1.5s ease-in-out infinite;
+}
+
+/* Save success ripple */
+@keyframes save-success {
+    0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.5); }
+    70% { box-shadow: 0 0 0 10px rgba(34, 197, 94, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+}
+
+.animate-save-success {
+    animation: save-success 0.6s ease-out;
+}
+
+/* Filter chip pop */
+@keyframes chip-pop {
+    0% { transform: scale(0.95); }
+    50% { transform: scale(1.08); }
+    100% { transform: scale(1); }
+}
+
+.animate-chip-pop {
+    animation: chip-pop 0.25s ease-out;
+}
+
+/* Moment bubble completion glow */
+@keyframes glow-settle {
+    0% { box-shadow: 0 0 16px 4px rgba(59, 130, 246, 0.6); }
+    100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+}
+
+.animate-glow-settle {
+    animation: glow-settle 0.8s ease-out forwards;
+}
+
+/* Delete shake */
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    15% { transform: translateX(-4px); }
+    30% { transform: translateX(4px); }
+    45% { transform: translateX(-4px); }
+    60% { transform: translateX(4px); }
+    75% { transform: translateX(-2px); }
+    90% { transform: translateX(2px); }
+}
+
+.animate-shake {
+    animation: shake 0.4s ease-in-out;
+}
+
+/* Typing indicator dots */
+@keyframes typing-bounce {
+    0%, 60%, 100% { transform: translateY(0); }
+    30% { transform: translateY(-4px); }
+}
+
+.typing-dot {
+    animation: typing-bounce 1.2s ease-in-out infinite;
+}
+
+/* Accessibility: respect prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
 }
 
 /* Brand Font */

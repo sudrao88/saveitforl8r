@@ -1,206 +1,432 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
-import { EnrichmentData, Memory, Attachment } from '../types.ts';
+import { EnrichmentData, Memory, Attachment, ChatMessage, Moment, SynthesisResponse } from '../types.ts';
+import { postProxy } from './proxyService.ts';
 
-const getAiClient = () => {
-  // STRICT REQUIREMENT: Only use user-provided API key from storage.
-  // Do NOT fallback to process.env.API_KEY
-  const apiKey = localStorage.getItem('gemini_api_key');
-  if (!apiKey) throw new Error("API Key not found in storage");
-  return new GoogleGenAI({ apiKey });
-};
+export interface QuerySource {
+  id: string;
+  preview: string;
+}
 
-const enrichmentSchema = {
-  type: Type.OBJECT,
-  properties: {
-    summary: { type: Type.STRING, description: "A concise summary of the input." },
-    visualDescription: { type: Type.STRING, description: "Description of the attached images or documents content, if provided." },
-    locationIsRelevant: { type: Type.BOOLEAN, description: "Whether the input refers to a specific place or relevant location." },
-    locationContext: {
-      type: Type.OBJECT,
-      properties: {
-        name: { type: Type.STRING, description: "The specific name of the place (e.g. 'Starbucks', 'Eiffel Tower', 'Central Park')." },
-        address: { type: Type.STRING },
-        website: { type: Type.STRING },
-        operatingHours: { type: Type.STRING },
-        latitude: { type: Type.NUMBER },
-        longitude: { type: Type.NUMBER },
-        mapsUri: { type: Type.STRING, description: "Direct Google Maps URL for the specific place found." }
-      }
-    },
-    entityContext: {
-      type: Type.OBJECT,
-      description: "Details if the input is a Movie, Book, TV Show, Product, etc.",
-      properties: {
-        type: { type: Type.STRING, description: "e.g. 'Movie', 'Book', 'TV Show', 'Product', 'Place'" },
-        title: { type: Type.STRING },
-        subtitle: { type: Type.STRING, description: "Author for books, Director/Year for movies." },
-        description: { type: Type.STRING, description: "A brief synopsis, plot summary, or product description." },
-        rating: { type: Type.STRING, description: "Critic or user rating if available (e.g. '4.5/5', 'IMDb 8.2')." }
-      }
-    },
-    suggestedTags: {
-      type: Type.ARRAY,
-      items: { type: Type.STRING },
-      description: "3-5 suggested short tags."
-    }
-  },
-  required: ["summary", "suggestedTags", "locationIsRelevant"]
-};
+export interface QueryResponse {
+  answer: string;
+  sources: QuerySource[];
+}
 
-export const enrichInput = async (
+export interface CreateMomentResponse {
+  title: string;
+  type: string;
+  emoji?: string;
+  usedNoteIds: string[];
+  synthesis: SynthesisResponse;
+  refinedObjective?: string;
+}
+
+interface EnrichmentInput {
+  text: string;
+  attachments: Attachment[];
+  location?: { latitude: number; longitude: number };
+  tags: string[];
+  memoryId?: string;
+  moments?: { id: string; objective: string; refinedObjective?: string; title: string; type: string }[];
+}
+
+interface SubmitEnrichmentResponse {
+  status: string;
+}
+
+/**
+ * Submits memory content to the server proxy for AI enrichment.
+ * The server validates the request, persists a "processing" status,
+ * and returns 200 { status: "accepted" } immediately. Enrichment
+ * happens asynchronously — poll with fetchPendingEnrichments().
+ * Optionally includes moments metadata for moment-matching phase.
+ */
+export const submitEnrichment = async (
   text: string,
   attachments: Attachment[],
   location?: { latitude: number; longitude: number },
-  tags: string[] = []
-): Promise<EnrichmentData> => {
-  const parts: any[] = [];
-  
-  // Add attachments (images, PDFs, text files)
-  for (const att of attachments) {
-    // Extract base64 part from Data URI (data:mime;base64,.....)
-    const base64Data = att.data.split(',')[1];
-    if (base64Data) {
-        parts.push({ 
-            inlineData: { 
-                data: base64Data, 
-                mimeType: att.mimeType 
-            } 
-        });
-    }
-  }
-
-  let prompt = `Analyze this Second Brain entry.
-  TASK: Use Google Search to enrich the content using the INPUT TEXT, USER TAGS, and attached DOCUMENTS/IMAGES.
-  
-  SEARCH STRATEGY:
-  1. Combine the INPUT TEXT and USER TAGS to form your search queries. The tags provide essential context (e.g., "Movie", "Book", "Restaurant") that disambiguates the text.
-  2. If the INPUT TEXT is short or ambiguous, rely on the TAGS to determine the entity type.`;
-
-  if (tags.length > 0) {
-    prompt += `\nUSER TAGS: ${tags.join(', ')}`;
-  }
-
-  if (location) {
-    prompt += `
-    USER CURRENT GPS: Lat ${location.latitude}, Lng ${location.longitude}.
-    
-    LOCATION & SEARCH RULES:
-    1. INPUT IS KEY: The INPUT TEXT is the primary search term.
-    2. USE GPS CONTEXT: When searching, explicitly include the GPS coordinates in your search query to prioritize results near the user. 
-       - Query format: "${text} near ${location.latitude}, ${location.longitude}"
-    3. PLACE IDENTIFICATION: 
-       - If the search result confirms the INPUT TEXT is a specific place/business at this location, set 'locationIsRelevant' to TRUE.
-       - You MUST populate 'locationContext.mapsUri' with the specific Google Maps link found in the search result.
-       - Populate 'locationContext.name' and 'locationContext.address'.
-    4. NO GENERIC REVERSE GEOCODING:
-       - Do NOT return the address of the coordinates if the INPUT TEXT does not match the place.
-       - If the user types "Idea", do not return "Starbucks" just because they are there.
-       - If 'locationIsRelevant' is false, leave 'locationContext' empty.
-    `;
-  } 
-  
-  prompt += `
-    RULES FOR LINKS:
-    1. DO NOT generate generic external links (e.g. no IMDB, no Amazon, no Official Website links).
-    2. LOCATION/BUSINESS: 'locationContext.mapsUri' MUST be the Google Maps link found in the search result.
-
-    ENTITY SPECIFIC INSTRUCTIONS:
-    1. MOVIE/TV: Identify Title, Director/Year, and Description.
-    2. BOOK: Identify Title, Author, and Description.
-    3. LOCATION/BUSINESS: Populate locationContext fully, especially mapsUri.
-    
-    OUTPUT FORMAT:
-    You must return a raw JSON object (no markdown) matching this schema:
-    ${JSON.stringify(enrichmentSchema, null, 2)}
-  `;
-
-  if (text) prompt += `\nINPUT TEXT: "${text}"`;
-  
-  parts.push({ text: prompt });
-
-  const config: any = {
-      tools: [{ googleSearch: {} }],
-      // Safety settings use Gemini API defaults (no explicit overrides)
-      // OPTIMIZATION: Disable thinking process to minimize latency
-      thinkingConfig: { thinkingBudget: 0 }
+  tags: string[] = [],
+  memoryId?: string,
+  moments?: { id: string; objective: string; refinedObjective?: string; title: string; type: string }[]
+): Promise<void> => {
+  const payload: EnrichmentInput = {
+    text,
+    attachments,
+    location,
+    tags,
+    memoryId,
+    moments,
   };
 
-  try {
-    const ai = getAiClient();
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview', 
-      contents: { parts },
-      config: config
-    });
-    
-    let jsonString = response.text || "{}";
-    
-    // Cleanup if markdown code blocks are present
-    const rawResponse = jsonString; // Store raw before cleanup
-    jsonString = jsonString.replace(/```json/g, '').replace(/```/g, '').trim();
-    // Robustness: Extract JSON object if there is extra text
-    const firstBrace = jsonString.indexOf('{');
-    const lastBrace = jsonString.lastIndexOf('}');
-    if (firstBrace !== -1 && lastBrace !== -1) {
-        jsonString = jsonString.substring(firstBrace, lastBrace + 1);
-    }
-    
-    const parsedData = JSON.parse(jsonString) as EnrichmentData;
-    
-    // Inject Audit Trail
-    parsedData.audit = {
-        prompt: prompt,
-        rawResponse: rawResponse
-    };
-    
-    return parsedData;
-  } catch (error: any) {
-    console.error("Enrichment Error:", error);
-    // Rethrow to allow caller (UI) to handle the error state
-    throw error;
+  const result = await postProxy<SubmitEnrichmentResponse>('/api/enrich', payload as unknown as Record<string, unknown>);
+  if (result.status !== 'accepted') {
+    throw new Error(`Unexpected enrichment response: ${result.status}`);
   }
 };
 
-export const queryBrain = async (query: string, memories: Memory[]): Promise<{ answer: string; sourceIds: string[] }> => {
-  const ai = getAiClient();
-  const contextBlock = memories.filter(m => !m.isPending && !m.processingError).map(m => `
-    [ID: ${m.id}] [DATE: ${new Date(m.timestamp).toLocaleDateString()}]
-    [CONTENT]: ${m.content} 
-    [SUMMARY]: ${m.enrichment?.summary}
-    [VISUAL DESCRIPTION]: ${m.enrichment?.visualDescription || "N/A"}
-    [TAGS]: ${(m.tags || []).concat(m.enrichment?.suggestedTags || []).join(', ')}
-    [PLACE]: ${m.enrichment?.locationContext?.name || "N/A"}
-    [ENTITY]: ${m.enrichment?.entityContext?.title || "N/A"} (${m.enrichment?.entityContext?.type || ""})
-    [SUBTITLE]: ${m.enrichment?.entityContext?.subtitle || "N/A"}
-    [DESCRIPTION]: ${m.enrichment?.entityContext?.description || "N/A"}
-    [ATTACHMENTS]: ${(m.attachments || []).map(a => a.name).join(', ')}
-  `).join("\n---\n");
+interface EnrichmentResultEntry {
+  status: 'completed' | 'failed' | 'not_found' | string;
+  data?: EnrichmentData;
+}
 
-  const systemInstruction = `
-    You are SaveItForL8r. Answer based ONLY on context. 
-    Format: Conversational. 
-    End with: [[SOURCE_IDS: id1, id2]].
-  `;
+interface EnrichmentResultsResponse {
+  results: Record<string, EnrichmentResultEntry>;
+}
 
+export type EnrichmentPollResult =
+  | { status: 'completed'; data: EnrichmentData }
+  | { status: 'processing' }
+  | { status: 'failed' }
+  | { status: 'not_found' };
+
+/**
+ * Fetches enrichment results for pending memories from the server.
+ * Returns per-memory status so callers can distinguish between
+ * "still processing", "completed", "failed", and "not found".
+ */
+export const fetchPendingEnrichments = async (
+  memoryIds: string[]
+): Promise<Record<string, EnrichmentPollResult>> => {
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: `CONTEXT:\n${contextBlock}\nQUERY: "${query}"`,
-      config: {
-          systemInstruction,
-          temperature: 0.2,
-          // Safety settings use Gemini API defaults (no explicit overrides)
-          // OPTIMIZATION: Disable thinking process to minimize latency
-          thinkingConfig: { thinkingBudget: 0 }
+    const payload = { memoryIds };
+    const response = await postProxy<EnrichmentResultsResponse>('/api/enrich/results', payload as unknown as Record<string, unknown>);
+
+    const result: Record<string, EnrichmentPollResult> = {};
+    if (response && response.results) {
+      for (const id of memoryIds) {
+        const entry = response.results[id];
+        if (entry?.status === 'completed' && entry.data) {
+          result[id] = { status: 'completed', data: entry.data };
+        } else if (entry?.status === 'failed') {
+          result[id] = { status: 'failed' };
+        } else if (entry?.status === 'processing') {
+          result[id] = { status: 'processing' };
+        } else {
+          result[id] = { status: 'not_found' };
+        }
       }
-    });
-    const text = response.text || "";
-    const match = text.match(/\[\[SOURCE_IDS: (.+?)\]\]/);
-    let sourceIds: string[] = [];
-    if (match) sourceIds = match[1].split(',').map(s => s.trim());
-    return { answer: text.replace(/\[\[SOURCE_IDS: .+?\]\]/, '').trim(), sourceIds };
+    }
+    return result;
   } catch (error) {
-    return { answer: "Unable to retrieve memory.", sourceIds: [] };
+    console.error('Failed to fetch pending enrichments:', error);
+    return {};
+  }
+};
+
+interface LightMemory {
+  id: string;
+  timestamp: number;
+  content: string;
+  tags: string[];
+  enrichment?: EnrichmentData;
+  attachments: { name: string }[];
+  isPending?: boolean;
+  processingError?: boolean;
+}
+
+interface QueryPayload {
+  query: string;
+  memories: LightMemory[];
+  history: ChatMessage[];
+}
+
+// Cap the number of memories sent in query context.
+// Keeps payload under ~1 MB even with large collections.
+// Memories are already sorted by recency, so this sends the most relevant.
+const MAX_QUERY_MEMORIES = 200;
+
+// --- Async Moment Creation ---
+
+interface SubmitMomentCreationResponse {
+  status: string;
+  momentId: string;
+}
+
+/**
+ * Submits a moment creation request asynchronously.
+ * Server returns { status: "accepted", momentId } immediately.
+ * The 3-step pipeline (intent refinement → note selection → synthesis) runs
+ * in the background. Poll with fetchPendingMomentResults() to get the result.
+ */
+export const submitMomentCreation = async (
+  objective: string,
+  memories: Memory[],
+  momentId: string,
+): Promise<{ momentId: string }> => {
+  const lightNotes = memories
+    .filter(m => !m.isPending && !m.processingError && !m.isDeleted)
+    .map(m => ({
+      id: m.id,
+      content: m.content,
+      tags: m.tags,
+      enrichment: m.enrichment
+        ? {
+            summary: m.enrichment.summary,
+            locationContext: m.enrichment.locationContext,
+            entityContext: m.enrichment.entityContext,
+          }
+        : undefined,
+    }));
+
+  const result = await postProxy<SubmitMomentCreationResponse>('/api/create-moment', {
+    objective,
+    notes: lightNotes,
+    momentId,
+  });
+
+  if (result.status !== 'accepted') {
+    throw new Error(`Unexpected moment creation response: ${result.status}`);
+  }
+  return { momentId: result.momentId };
+};
+
+// --- Moment Creation Polling ---
+
+export type MomentCreationPollResult =
+  | { status: 'completed'; data: CreateMomentResponse }
+  | { status: 'processing' }
+  | { status: 'failed' }
+  | { status: 'not_found' };
+
+interface MomentResultEntry {
+  status: 'completed' | 'failed' | 'not_found' | string;
+  data?: CreateMomentResponse;
+}
+
+interface MomentResultsResponse {
+  results: Record<string, MomentResultEntry>;
+}
+
+/**
+ * Fetches moment creation results for pending moments from the server.
+ * Returns per-moment status. Mirrors fetchPendingEnrichments() pattern.
+ */
+export const fetchPendingMomentResults = async (
+  momentIds: string[],
+): Promise<Record<string, MomentCreationPollResult>> => {
+  try {
+    const payload = { momentIds };
+    const response = await postProxy<MomentResultsResponse>(
+      '/api/create-moment/results',
+      payload as unknown as Record<string, unknown>
+    );
+
+    const result: Record<string, MomentCreationPollResult> = {};
+    if (response && response.results) {
+      for (const id of momentIds) {
+        const entry = response.results[id];
+        if (entry?.status === 'completed' && entry.data) {
+          result[id] = { status: 'completed', data: entry.data };
+        } else if (entry?.status === 'failed') {
+          result[id] = { status: 'failed' };
+        } else if (entry?.status === 'processing') {
+          result[id] = { status: 'processing' };
+        } else {
+          result[id] = { status: 'not_found' };
+        }
+      }
+    }
+    return result;
+  } catch (error) {
+    console.error('Failed to fetch pending moment results:', error);
+    return {};
+  }
+};
+
+// --- Async Moment Re-Synthesis ---
+
+interface SubmitResynthesisResponse {
+  status: string;
+  momentId: string;
+}
+
+/**
+ * Submits a re-synthesis request asynchronously.
+ * Server returns { status: "accepted", momentId } immediately.
+ * The synthesis runs in the background. Poll with fetchPendingSynthesisResults()
+ * to get the result.
+ */
+export const submitResynthesis = async (
+  moment: Moment,
+  memories: Memory[]
+): Promise<{ momentId: string }> => {
+  const notes = moment.noteIds
+    .map(id => memories.find(m => m.id === id))
+    .filter((m): m is Memory => !!m)
+    .map(m => ({
+      id: m.id,
+      content: m.content,
+      tags: m.tags,
+      enrichment: m.enrichment
+        ? {
+            summary: m.enrichment.summary,
+            locationContext: m.enrichment.locationContext,
+            entityContext: m.enrichment.entityContext,
+          }
+        : undefined,
+    }));
+
+  const result = await postProxy<SubmitResynthesisResponse>('/api/synthesize', {
+    notes,
+    momentType: moment.type,
+    momentTitle: moment.title,
+    objective: moment.objective,
+    momentId: moment.id,
+  });
+
+  if (result.status !== 'accepted') {
+    throw new Error(`Unexpected synthesis response: ${result.status}`);
+  }
+  return { momentId: result.momentId };
+};
+
+// --- Synthesis Polling ---
+
+export type SynthesisPollResult =
+  | { status: 'completed'; data: SynthesisResponse }
+  | { status: 'processing' }
+  | { status: 'failed' }
+  | { status: 'not_found' };
+
+interface SynthesisResultEntry {
+  status: 'completed' | 'failed' | 'not_found' | string;
+  data?: SynthesisResponse;
+}
+
+interface SynthesisResultsResponse {
+  results: Record<string, SynthesisResultEntry>;
+}
+
+/**
+ * Fetches re-synthesis results for pending moments from the server.
+ * Mirrors fetchPendingMomentResults() pattern.
+ */
+export const fetchPendingSynthesisResults = async (
+  momentIds: string[],
+): Promise<Record<string, SynthesisPollResult>> => {
+  try {
+    const payload = { momentIds };
+    const response = await postProxy<SynthesisResultsResponse>(
+      '/api/synthesize/results',
+      payload as unknown as Record<string, unknown>
+    );
+
+    const result: Record<string, SynthesisPollResult> = {};
+    if (response && response.results) {
+      for (const id of momentIds) {
+        const entry = response.results[id];
+        if (entry?.status === 'not_found') {
+          result[id] = { status: 'not_found' };
+        } else if (entry?.status === 'completed' && entry.data) {
+          result[id] = { status: 'completed', data: entry.data };
+        } else if (entry?.status === 'failed') {
+          result[id] = { status: 'failed' };
+        } else {
+          // Default unknown statuses to 'processing' as a safe intermediate state
+          result[id] = { status: 'processing' };
+        }
+      }
+    }
+    return result;
+  } catch (error) {
+    console.error('Failed to fetch pending synthesis results:', error);
+    return {};
+  }
+};
+
+/** Poll every 1s during the initial fast-polling tier. */
+const SYNTH_FAST_POLL_INTERVAL_MS = 1_000;
+/** Poll every 2s after the fast tier expires. */
+const SYNTH_SLOW_POLL_INTERVAL_MS = 2_000;
+/** Duration of the fast-polling tier (first 15 seconds). */
+const SYNTH_FAST_POLL_TIER_MS = 15_000;
+/** Maximum time to poll before giving up. */
+const SYNTH_POLL_TIMEOUT_MS = 120_000;
+
+/**
+ * Polls for a re-synthesis result with tiered intervals (1s for 15s, then 2s).
+ * Returns the SynthesisResponse when complete, or throws on failure/timeout.
+ * Accepts an optional AbortSignal to stop polling early when the caller is
+ * cancelled (e.g. when a note deletion triggers a new synthesis request).
+ */
+export const pollSynthesisResult = async (
+  momentId: string,
+  signal?: AbortSignal,
+): Promise<SynthesisResponse> => {
+  const start = Date.now();
+
+  while (Date.now() - start < SYNTH_POLL_TIMEOUT_MS) {
+    if (signal?.aborted) {
+      throw new DOMException('Synthesis polling aborted', 'AbortError');
+    }
+
+    const elapsed = Date.now() - start;
+    const interval = elapsed < SYNTH_FAST_POLL_TIER_MS
+      ? SYNTH_FAST_POLL_INTERVAL_MS
+      : SYNTH_SLOW_POLL_INTERVAL_MS;
+
+    // Abort-aware delay: rejects immediately if signal fires during the wait
+    await new Promise<void>((resolve, reject) => {
+      const onAbort = () => {
+        clearTimeout(timer);
+        reject(new DOMException('Synthesis polling aborted', 'AbortError'));
+      };
+      const timer = setTimeout(() => {
+        signal?.removeEventListener('abort', onAbort);
+        resolve();
+      }, interval);
+      signal?.addEventListener('abort', onAbort, { once: true });
+    });
+
+    const results = await fetchPendingSynthesisResults([momentId]);
+    const result = results[momentId];
+
+    if (result?.status === 'completed' && 'data' in result) {
+      return result.data;
+    }
+    if (result?.status === 'failed') {
+      throw new Error('Synthesis failed on server');
+    }
+  }
+
+  throw new Error('Synthesis polling timed out');
+};
+
+/**
+ * Sends a query + memory context to the server proxy for AI-powered recall.
+ */
+export const queryBrain = async (
+  query: string,
+  memories: Memory[],
+  history: ChatMessage[] = []
+): Promise<QueryResponse> => {
+  try {
+    // Strip attachment data and cap count to keep payload manageable.
+    const lightMemories: LightMemory[] = memories
+      .filter(m => !m.isPending && !m.processingError)
+      .slice(0, MAX_QUERY_MEMORIES)
+      .map(m => ({
+        id: m.id,
+        timestamp: m.timestamp,
+        content: m.content,
+        tags: m.tags,
+        enrichment: m.enrichment,
+        attachments: (m.attachments || []).map(a => ({ name: a.name })),
+        isPending: m.isPending,
+        processingError: m.processingError,
+      }));
+
+    const payload: QueryPayload = {
+      query,
+      memories: lightMemories,
+      history,
+    };
+
+    // Explicitly cast the response
+    const result = await postProxy<QueryResponse>('/api/query', payload as unknown as Record<string, unknown>);
+    return result;
+  } catch (error) {
+    console.error('Query Error:', error);
+    return { answer: 'Unable to retrieve memory.', sources: [] };
   }
 };

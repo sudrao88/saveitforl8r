@@ -1,0 +1,59 @@
+/* Splash screen styles — loaded before JS/CSS bundles for instant rendering. */
+body { background-color: #000000; margin: 0; }
+.splash-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  width: 100vw;
+  color: white;
+  font-family: 'Shantell Sans', sans-serif;
+}
+.splash-logo {
+  width: 80px;
+  height: 80px;
+  margin-bottom: 20px;
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: .8; transform: scale(0.95); }
+}
+.splash-offline-msg {
+  text-align: center;
+  color: #9ca3af;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 15px;
+  animation: fadeIn 0.4s ease-out;
+  position: fixed;
+  bottom: 25vh;
+  left: 50%;
+  transform: translateX(-50%);
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+.splash-offline-subtext {
+  font-size: 13px;
+  opacity: 0.7;
+  margin: 4px 0 16px;
+}
+.splash-retry-btn {
+  background: #3b82f6;
+  color: #fff;
+  border: none;
+  padding: 10px 28px;
+  border-radius: 8px;
+  font-size: 15px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.noscript-content {
+  max-width: 700px;
+  margin: 40px auto;
+  padding: 0 20px;
+  color: #e5e7eb;
+  font-family: system-ui, sans-serif;
+}
