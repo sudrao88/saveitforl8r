@@ -12,6 +12,8 @@ import android.view.View;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.util.Locale;
 
 import org.json.JSONObject;
@@ -172,7 +174,20 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
 
             String updatePath = OTADownloadManager.getExistingUpdatePath(getFilesDir());
             if (updatePath != null) {
-                Log.d(TAG, "Applying previously downloaded OTA update from: " + updatePath);
+                // Compare OTA version against bundled version. If the APK was updated
+                // with newer assets, discard the stale OTA download and use bundled.
+                int otaBuild = readBuildNumber(new java.io.File(updatePath, "version.json"));
+                int bundledBuild = readBundledBuildNumber();
+
+                if (otaBuild == -1 || bundledBuild > otaBuild) {
+                    Log.d(TAG, "Bundled assets (build " + bundledBuild + ") are newer than OTA (build " + otaBuild + ") — discarding OTA");
+                    prefs.edit().putString(PREF_USE_REMOTE, "false").apply();
+                    OTADownloadManager.clearUpdate(getFilesDir());
+                    return;
+                }
+
+                Log.d(TAG, "Applying previously downloaded OTA update from: " + updatePath +
+                      " (OTA build " + otaBuild + ", bundled build " + bundledBuild + ")");
                 // setServerBasePath tells the local server to serve files from this
                 // filesystem path, then reloads the WebView. Origin stays https://localhost.
                 bridge.setServerBasePath(updatePath);
@@ -183,6 +198,44 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
         } catch (Exception e) {
             Log.e(TAG, "Error applying downloaded OTA update", e);
         }
+    }
+
+    /**
+     * Reads the buildNumber from a version.json file. Returns -1 on failure.
+     */
+    private int readBuildNumber(java.io.File versionFile) {
+        try (InputStream in = new java.io.FileInputStream(versionFile)) {
+            JSONObject json = new JSONObject(new String(readAllBytesCompat(in), "UTF-8"));
+            return json.optInt("buildNumber", -1);
+        } catch (Exception e) {
+            Log.w(TAG, "Failed to read buildNumber from " + versionFile + ": " + e.getMessage());
+            return -1;
+        }
+    }
+
+    /**
+     * Reads the buildNumber from the bundled assets/public/version.json.
+     * Returns -1 on failure (preserving OTA assets in that case).
+     */
+    private int readBundledBuildNumber() {
+        try (InputStream in = getAssets().open("public/version.json")) {
+            JSONObject json = new JSONObject(new String(readAllBytesCompat(in), "UTF-8"));
+            return json.optInt("buildNumber", -1);
+        } catch (Exception e) {
+            Log.w(TAG, "Failed to read bundled version.json: " + e.getMessage());
+            return -1;
+        }
+    }
+
+    /** Reads all bytes from an InputStream. Compatible with API < 33. */
+    private static byte[] readAllBytesCompat(InputStream in) throws java.io.IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        byte[] buf = new byte[1024];
+        int n;
+        while ((n = in.read(buf)) != -1) {
+            out.write(buf, 0, n);
+        }
+        return out.toByteArray();
     }
 
     /**
