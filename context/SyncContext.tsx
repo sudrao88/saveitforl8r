@@ -467,7 +467,10 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   /** Returns true if the file was actually uploaded, false if skipped. */
   const syncFileInternal = useCallback(async (memory: Memory): Promise<boolean> => {
-      if (memory.isPending || memory.processingError) return false;
+      // Skip notes still being enriched — content will change imminently.
+      // Notes with processingError ARE synced: the user's raw content should
+      // be preserved in Drive even if enrichment failed.
+      if (memory.isPending) return false;
 
       try {
           const filename = `${memory.id}.json`;
@@ -685,7 +688,10 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     for (const local of localMemories) {
         if (handled.has(local.id)) continue;
-        if (local.isPending || local.processingError) continue;
+        // Skip notes still being enriched — they'll be synced via onEnrichmentComplete.
+        // Notes with processingError are NOT skipped: the user's raw content is still
+        // valuable and should be preserved in Drive even if enrichment failed.
+        if (local.isPending) continue;
 
         if (local.isDeleted) {
             const remote = remoteMap.get(local.id);
