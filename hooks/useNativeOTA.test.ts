@@ -344,8 +344,9 @@ describe('useNativeOTA', () => {
       expect(hasUpdate).toBe(false);
     });
 
-    it('should skip update check when already using remote mode', async () => {
+    it('should still check for updates when already using remote mode', async () => {
       mockPreferences.get.mockResolvedValue({ value: 'true' });
+      mockFetchVersions('saveitforl8r-v43', 'saveitforl8r-v44');
       const { result } = renderHook(() => useNativeOTA());
 
       await waitFor(() => {
@@ -357,7 +358,8 @@ describe('useNativeOTA', () => {
         hasUpdate = await result.current.checkForUpdate();
       });
 
-      expect(hasUpdate).toBe(false);
+      expect(hasUpdate).toBe(true);
+      expect(result.current.updateAvailable).toBe(true);
     });
 
     it('should handle remote version fetch failure gracefully', async () => {
