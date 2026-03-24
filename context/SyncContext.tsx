@@ -443,6 +443,14 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // Ref to drain function — set after performSingleSync is defined
   const drainPendingSyncQueueRef = useRef<() => void>(() => {});
 
+  /** Pop one ID from the pending sync queue.  Returns undefined if empty. */
+  const drainNextFromQueue = useCallback((): string | undefined => {
+      if (pendingSyncQueueRef.current.size === 0) return undefined;
+      const nextId = pendingSyncQueueRef.current.values().next().value;
+      if (nextId) pendingSyncQueueRef.current.delete(nextId);
+      return nextId;
+  }, []);
+
   const setOnSyncProgress = useCallback((cb: (() => void) | undefined) => {
     onSyncProgressRef.current = cb;
   }, []);
@@ -1043,7 +1051,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               if (didUpload) {
                   updateSyncStatus(memory.id, 'synced');
               } else {
-                  // syncFileInternal skipped (memory is pending/errored) — clear
+                  // syncFileInternal skipped (memory is pending) — clear
                   // the transient 'syncing' indicator without claiming it synced.
                   syncStatusMapRef.current.delete(memory.id);
                   setSyncStatusVersion(v => v + 1);
@@ -1053,41 +1061,41 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           console.error(`[Sync] Single sync failed for ${memory.id}:`, e);
           updateSyncStatus(memory.id, 'error');
           setSyncError('Failed to save changes to Drive.');
-          throw e;
       } finally {
           setIsSyncing(false);
           isSyncingRef.current = false;
-          // Drain the pending sync queue — use setTimeout to avoid
-          // calling performSingleSync while still inside its finally block.
-          // Re-reads the memory from IndexedDB so we always sync the latest version.
-          if (pendingSyncQueueRef.current.size > 0) {
-              const nextId = pendingSyncQueueRef.current.values().next().value;
-              if (nextId) {
-                  pendingSyncQueueRef.current.delete(nextId);
-                  setTimeout(async () => {
+          // Drain one item from the pending sync queue.
+          // Re-reads from IndexedDB so we always sync the latest version.
+          const nextId = drainNextFromQueue();
+          if (nextId) {
+              setTimeout(async () => {
+                  try {
                       const freshMemory = await getMemory(nextId);
                       if (freshMemory && !freshMemory.isDeleted) {
-                          performSingleSync(freshMemory);
+                          await performSingleSync(freshMemory);
                       }
-                  }, 0);
-              }
+                  } catch (err) {
+                      console.error(`[Sync] Queued sync failed for ${nextId}:`, err);
+                  }
+              }, 0);
           }
       }
   }, [syncFileInternal, getAccessToken, updateSyncStatus]);
 
   // Wire up the drain ref now that performSingleSync is defined
   drainPendingSyncQueueRef.current = () => {
-      if (pendingSyncQueueRef.current.size > 0) {
-          const nextId = pendingSyncQueueRef.current.values().next().value;
-          if (nextId) {
-              pendingSyncQueueRef.current.delete(nextId);
-              setTimeout(async () => {
+      const nextId = drainNextFromQueue();
+      if (nextId) {
+          setTimeout(async () => {
+              try {
                   const freshMemory = await getMemory(nextId);
                   if (freshMemory && !freshMemory.isDeleted) {
-                      performSingleSync(freshMemory);
+                      await performSingleSync(freshMemory);
                   }
-              }, 0);
-          }
+              } catch (err) {
+                  console.error(`[Sync] Queued sync failed for ${nextId}:`, err);
+              }
+          }, 0);
       }
   };
 
