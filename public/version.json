@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v47",
-  "buildNumber": 47,
-  "buildDate": "2026-03-24T00:30:44.465Z",
+  "version": "saveitforl8r-v48",
+  "buildNumber": 48,
+  "buildDate": "2026-03-25T01:35:00.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Harden sync reliability: self-heal never-synced items, fix race condition"
+  "changelog": "Request exact alarm permission on Android 12+ for precise notification timing"
 }
