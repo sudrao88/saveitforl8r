@@ -306,6 +306,21 @@ export const useMemories = () => {
       }
   }, [trySyncFile]);
 
+  const dismissDeletionCandidate = useCallback(async (id: string) => {
+    setMemories(prev => prev.map(m => m.id === id ? { ...m, isDeletionDismissed: true } : m));
+    try {
+      const current = await getMemory(id);
+      if (current) {
+        const updated = { ...current, isDeletionDismissed: true };
+        await saveMemory(updated);
+        await trySyncFile(updated);
+      }
+    } catch (e) {
+      console.error('Failed to dismiss deletion candidate', e);
+      setMemories(prev => prev.map(m => m.id === id ? { ...m, isDeletionDismissed: false } : m));
+    }
+  }, [trySyncFile]);
+
   const togglePin = useCallback(async (id: string, isPinned: boolean) => {
     setMemories(prev => prev.map(m => m.id === id ? { ...m, isPinned } : m));
     try {
@@ -415,6 +430,7 @@ export const useMemories = () => {
     updateMemory,
     updateMemoryContent,
     togglePin,
+    dismissDeletionCandidate,
     isLoading,
     setMomentsRef,
     setOnNoteMatchedMoments,

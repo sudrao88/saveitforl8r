@@ -6,7 +6,7 @@
  */
 
 import React from 'react';
-import { Sparkles, ChevronRight, Calendar, CheckSquare } from 'lucide-react';
+import { Sparkles, ChevronRight, Calendar, CheckSquare, Trash2 } from 'lucide-react';
 import MomentBubble from './MomentBubble';
 import { Moment } from '../types';
 import { text, layout } from '../styles/design-system';
@@ -21,6 +21,8 @@ interface MomentsStripProps {
   onTodoTap: () => void;
   todoPendingCount: number;
   synthesisLoading?: Set<string>;
+  deletionCandidateCount: number;
+  onDeletionCandidatesTap: () => void;
 }
 
 const MomentsStrip: React.FC<MomentsStripProps> = ({
@@ -33,6 +35,8 @@ const MomentsStrip: React.FC<MomentsStripProps> = ({
   onTodoTap,
   todoPendingCount,
   synthesisLoading,
+  deletionCandidateCount,
+  onDeletionCandidatesTap,
 }) => {
   return (
     <div className={`${layout.pageContainer} ${layout.section} py-3`}>
@@ -49,6 +53,24 @@ const MomentsStrip: React.FC<MomentsStripProps> = ({
             Synthesize
           </span>
         </button>
+
+        {/* Deletion candidates — shown only when candidates exist */}
+        {deletionCandidateCount > 0 && (
+          <button
+            onClick={onDeletionCandidatesTap}
+            className="flex flex-col items-center gap-1.5 shrink-0 group touch-manipulation"
+          >
+            <div className="w-16 h-16 rounded-full flex items-center justify-center bg-amber-600/20 border-2 border-amber-500/40 ring-2 ring-amber-500/30 transition-all group-hover:ring-amber-400 group-hover:bg-amber-600/30 group-active:scale-95">
+              <Trash2 size={22} className="text-amber-400" />
+            </div>
+            <span className="text-xs font-semibold text-amber-400 leading-tight text-center">
+              Cleanup
+            </span>
+            <span className="text-xs text-gray-500 leading-tight">
+              {deletionCandidateCount} stale
+            </span>
+          </button>
+        )}
 
         {/* Calendar bubble — second in strip */}
         <button
