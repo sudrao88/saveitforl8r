@@ -59,13 +59,29 @@ const DeletionCandidatesSheet: React.FC<DeletionCandidatesSheetProps> = ({
 
   // Stats per memory
   const statsMap = useMemo(() => {
+    const eventsByMemoryId = new Map<string, CalendarEvent[]>();
+    for (const event of calendarEvents) {
+      if (event.isDeleted) continue;
+      const list = eventsByMemoryId.get(event.memoryId) || [];
+      list.push(event);
+      eventsByMemoryId.set(event.memoryId, list);
+    }
+
+    const todosByMemoryId = new Map<string, TodoItem[]>();
+    for (const todo of todoItems) {
+      if (todo.isDeleted || todo.isDismissed) continue;
+      const list = todosByMemoryId.get(todo.memoryId) || [];
+      list.push(todo);
+      todosByMemoryId.set(todo.memoryId, list);
+    }
+
     const map = new Map<string, { pastEvents: number; completedTodos: number }>();
     for (const c of candidates) {
-      const events = calendarEvents.filter(e => e.memoryId === c.id && !e.isDeleted);
-      const todos = todoItems.filter(t => t.memoryId === c.id && !t.isDeleted && !t.isDismissed);
+      const events = eventsByMemoryId.get(c.id) || [];
+      const todos = todosByMemoryId.get(c.id) || [];
       map.set(c.id, {
         pastEvents: events.length,
-        completedTodos: todos.filter(t => t.isCompleted).length,
+        completedTodos: todos.length,
       });
     }
     return map;
