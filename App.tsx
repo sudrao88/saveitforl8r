@@ -25,6 +25,7 @@ const MomentCreationDialog = lazyWithRetry(() => import('./components/MomentCrea
 const AllMomentsSheet = lazyWithRetry(() => import('./components/AllMomentsSheet'));
 const CalendarAgendaView = lazyWithRetry(() => import('./components/CalendarAgendaView'));
 const TodoListView = lazyWithRetry(() => import('./components/TodoListView'));
+const DeletionCandidatesSheet = lazyWithRetry(() => import('./components/DeletionCandidatesSheet'));
 
 import { useMemories } from './hooks/useMemories';
 import { useSettings } from './hooks/useSettings';
@@ -38,6 +39,7 @@ import { useHotkeys } from './hooks/useHotkeys';
 import { useMoments } from './hooks/useMoments';
 import { useCalendarEvents } from './hooks/useCalendarEvents';
 import { useTodoItems } from './hooks/useTodoItems';
+import { useDeletionCandidates } from './hooks/useDeletionCandidates';
 import { useNotifications } from './hooks/useNotifications';
 import useNativeOTA from './hooks/useNativeOTA';
 import { SyncProvider } from './context/SyncContext';
@@ -87,6 +89,7 @@ const AppContent: React.FC = () => {
     updateMemory,
     updateMemoryContent,
     togglePin,
+    dismissDeletionCandidate,
     isLoading,
     setMomentsRef,
     setOnNoteMatchedMoments,
@@ -133,6 +136,9 @@ const AppContent: React.FC = () => {
 
   const [showCalendarAgenda, setShowCalendarAgenda] = useState(false);
   const [showTodoList, setShowTodoList] = useState(false);
+  const [showDeletionCandidates, setShowDeletionCandidates] = useState(false);
+
+  const deletionCandidates = useDeletionCandidates(memories, calendarEvents, todoItems);
   const [notifBannerDismissed, setNotifBannerDismissed] = useState(false);
 
   // Notification scheduling — syncs on mount, resume, and data changes
@@ -784,6 +790,11 @@ const AppContent: React.FC = () => {
             onTodoTap={handleTodoTap}
             todoPendingCount={todoPendingCount}
             synthesisLoading={synthesisLoading}
+            deletionCandidateCount={deletionCandidates.length}
+            onDeletionCandidatesTap={() => {
+              setShowDeletionCandidates(true);
+              logEvent(ANALYTICS_EVENTS.DELETION_CANDIDATES.CATEGORY, ANALYTICS_EVENTS.DELETION_CANDIDATES.ACTION_OPENED);
+            }}
           />
 
           {notificationsSupported && notificationPermission === 'prompt' && !notifBannerDismissed && activeMemoryCount > 0 && (
@@ -1034,6 +1045,28 @@ const AppContent: React.FC = () => {
             }}
             onViewAttachment={handleViewAttachment}
             onDelete={handleDeleteMemory}
+            onEdit={handleEditMemory}
+            onTogglePin={handleTogglePin}
+          />
+        </Suspense>
+      )}
+
+      {showDeletionCandidates && (
+        <Suspense fallback={null}>
+          <DeletionCandidatesSheet
+            candidates={deletionCandidates}
+            calendarEvents={calendarEvents}
+            todoItems={todoItems}
+            onClose={() => setShowDeletionCandidates(false)}
+            onDelete={(id) => {
+              handleDeleteMemory(id);
+              logEvent(ANALYTICS_EVENTS.DELETION_CANDIDATES.CATEGORY, ANALYTICS_EVENTS.DELETION_CANDIDATES.ACTION_DELETED);
+            }}
+            onDismiss={(id) => {
+              dismissDeletionCandidate(id);
+              logEvent(ANALYTICS_EVENTS.DELETION_CANDIDATES.CATEGORY, ANALYTICS_EVENTS.DELETION_CANDIDATES.ACTION_DISMISSED);
+            }}
+            onViewAttachment={handleViewAttachment}
             onEdit={handleEditMemory}
             onTogglePin={handleTogglePin}
           />
