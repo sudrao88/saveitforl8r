@@ -19,7 +19,7 @@ import {
   Repeat,
 } from 'lucide-react';
 import { CalendarEvent, Memory, Attachment } from '../types';
-import MemoryCard from './MemoryCard';
+import MemoryPreviewModal from './MemoryPreviewModal';
 import { overlay } from '../styles/design-system';
 
 interface CalendarAgendaViewProps {
@@ -366,29 +366,14 @@ const CalendarAgendaView: React.FC<CalendarAgendaViewProps> = ({
 
       {/* Memory Preview Modal */}
       {previewMemory && (
-        <div
-          className={overlay.previewBackdrop}
-          onClick={() => setPreviewMemoryId(null)}
-        >
-          <div className="relative w-full max-w-lg max-h-[80vh] flex flex-col animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
-            <div className="overflow-y-auto flex-1 min-h-0">
-              <MemoryCard
-                memory={previewMemory}
-                isDialog={true}
-                onViewAttachment={onViewAttachment}
-                onDelete={onDelete}
-                onEdit={onEdit}
-                onTogglePin={onTogglePin}
-              />
-            </div>
-            <button
-              onClick={() => setPreviewMemoryId(null)}
-              className={overlay.previewCloseBtn}
-            >
-              Close Preview
-            </button>
-          </div>
-        </div>
+        <MemoryPreviewModal
+          memory={previewMemory}
+          onClose={() => setPreviewMemoryId(null)}
+          onViewAttachment={onViewAttachment}
+          onDelete={onDelete}
+          onEdit={onEdit}
+          onTogglePin={onTogglePin}
+        />
       )}
     </div>
   );

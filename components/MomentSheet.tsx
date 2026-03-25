@@ -24,7 +24,7 @@ import {
   Memory,
   Attachment,
 } from '../types';
-import MemoryCard from './MemoryCard';
+import MemoryPreviewModal from './MemoryPreviewModal';
 import { overlay } from '../styles/design-system';
 
 // Shared loading indicator for pending creation and resynthesis states
@@ -77,6 +77,9 @@ interface MomentSheetProps {
   loadSynthesis: (moment: Moment, memories: Memory[], signal?: AbortSignal) => Promise<SynthesisResponse | null>;
   onDelete: (momentId: string) => Promise<void>;
   onViewAttachment?: (attachment: Attachment, allAttachments: Attachment[]) => void;
+  onMemoryDelete?: (id: string) => void;
+  onMemoryEdit?: (memory: Memory) => void;
+  onMemoryTogglePin?: (id: string, isPinned: boolean) => void;
 }
 
 const MomentSheet: React.FC<MomentSheetProps> = ({
@@ -86,6 +89,9 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
   loadSynthesis,
   onDelete,
   onViewAttachment,
+  onMemoryDelete,
+  onMemoryEdit,
+  onMemoryTogglePin,
 }) => {
   const [synthesis, setSynthesis] = useState<SynthesisResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -103,16 +109,6 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
   }, [memories]);
 
   const previewMemory = previewMemoryId ? memoriesMap.get(previewMemoryId) : undefined;
-
-  // Close preview modal on Escape key
-  useEffect(() => {
-    if (!previewMemoryId) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setPreviewMemoryId(null);
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [previewMemoryId]);
 
   // Keep refs to latest props so the effect always uses current values
   const momentRef = useRef(moment);
@@ -319,26 +315,14 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
 
       {/* Memory Preview Modal */}
       {previewMemory && (
-        <div
-          className={overlay.previewBackdrop}
-          onClick={() => setPreviewMemoryId(null)}
-        >
-          <div className="relative w-full max-w-lg max-h-[80vh] flex flex-col animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
-            <div className="overflow-y-auto flex-1 min-h-0">
-              <MemoryCard
-                memory={previewMemory}
-                isDialog={true}
-                onViewAttachment={onViewAttachment}
-              />
-            </div>
-            <button
-              onClick={() => setPreviewMemoryId(null)}
-              className={overlay.previewCloseBtn}
-            >
-              Close Preview
-            </button>
-          </div>
-        </div>
+        <MemoryPreviewModal
+          memory={previewMemory}
+          onClose={() => setPreviewMemoryId(null)}
+          onViewAttachment={onViewAttachment}
+          onDelete={onMemoryDelete}
+          onEdit={onMemoryEdit}
+          onTogglePin={onMemoryTogglePin}
+        />
       )}
     </SheetShell>
   );

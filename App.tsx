@@ -958,6 +958,9 @@ const AppContent: React.FC = () => {
             loadSynthesis={loadSynthesis}
             onDelete={deleteMoment}
             onViewAttachment={handleViewAttachment}
+            onMemoryDelete={handleDeleteMemory}
+            onMemoryEdit={handleEditMemory}
+            onMemoryTogglePin={handleTogglePin}
           />
         </Suspense>
       )}
