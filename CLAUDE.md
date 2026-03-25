@@ -179,13 +179,7 @@ import { btn, card, overlay, text, chip, menu, zIndex } from '../styles/design-s
 
 ## Pull Request Policy
 
-When creating a pull request, always set the **base branch** to the branch from which the current feature branch was originally created — not necessarily `master`. To determine the parent branch, use:
-
-```bash
-git log --decorate --oneline --all | grep "$(git rev-parse --short HEAD~10)..$(git rev-parse --short HEAD)" || true
-```
-
-Or more reliably, check which branch the current branch was forked from:
+When creating a pull request, always set the **base branch** to the branch from which the current feature branch was originally created — not necessarily `master`. To determine the parent branch, check which branch the current branch was forked from:
 
 ```bash
 git log --oneline --first-parent master..HEAD
