@@ -188,7 +188,7 @@ git log --oneline --first-parent <candidate-branch>..HEAD
 
 Pick the base branch that yields the shortest history (i.e., the most recent common ancestor). If the branch was created from `master`, use `master`. If it was created from another feature branch, use that feature branch as the PR base.
 
-After creating a pull request, always subscribe to PR activity using the `subscribe_pr_activity` tool so you can monitor and respond to review comments, CI status updates, and other PR events.
+After creating a pull request, always use the `subscribe_pr_activity` tool to monitor and respond to review comments, CI status updates, and other PR events.
 
 ## Common Development Tasks
 (omitted for brevity)
