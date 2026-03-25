@@ -11,6 +11,7 @@ import { App as CapacitorApp } from '@capacitor/app';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { isNative } from '../services/platform';
 import { CalendarEvent, TodoItem } from '../types';
+import { Capacitor } from '@capacitor/core';
 import {
   synchronizeNotifications,
   checkNotificationPermission,
@@ -22,6 +23,8 @@ import {
   setNotificationTime as setTimePref,
   registerPeriodicSync,
   cancelAllNotifications,
+  checkExactAlarmPermission,
+  requestExactAlarmPermission,
 } from '../services/notificationService';
 
 export interface UseNotificationsReturn {
@@ -167,6 +170,15 @@ export const useNotifications = (
           openNotificationSettings();
         }
         return;
+      }
+
+      // On Android 12+, request exact alarm permission for precise scheduling.
+      // If denied, notifications still work but may be delayed by Doze mode.
+      if (isNative() && Capacitor.getPlatform() === 'android') {
+        const exactStatus = await checkExactAlarmPermission();
+        if (exactStatus !== 'granted') {
+          await requestExactAlarmPermission();
+        }
       }
 
       setIsEnabled(true);
