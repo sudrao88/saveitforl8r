@@ -92,8 +92,9 @@ export const checkExactAlarmPermission = async (): Promise<'granted' | 'denied'>
   try {
     const { exact_alarm } = await LocalNotifications.checkExactNotificationSetting();
     return exact_alarm === 'granted' ? 'granted' : 'denied';
-  } catch {
+  } catch (err) {
     // API not available (older Capacitor or Android < 12) — exact alarms work by default
+    console.debug('[Notifications] Could not check exact alarm permission, assuming granted by default.', err);
     return 'granted';
   }
 };
@@ -108,8 +109,9 @@ export const requestExactAlarmPermission = async (): Promise<'granted' | 'denied
     await LocalNotifications.changeExactNotificationSetting();
     // Re-check after the user returns from settings
     return checkExactAlarmPermission();
-  } catch {
-    return 'denied';
+  } catch (err) {
+    console.debug('[Notifications] Failed to request exact alarm permission, assuming granted.', err);
+    return 'granted';
   }
 };
 
