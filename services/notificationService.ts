@@ -81,6 +81,40 @@ export const openNotificationSettings = (): void => {
   }
 };
 
+// ─── Exact alarm helpers (Android 12+) ──────────────────────────────
+
+/**
+ * Check whether the OS has granted the exact alarm permission.
+ * Returns 'granted' on non-Android platforms or Android < 12.
+ */
+export const checkExactAlarmPermission = async (): Promise<'granted' | 'denied'> => {
+  if (!isNative() || Capacitor.getPlatform() !== 'android') return 'granted';
+  try {
+    const { exact_alarm } = await LocalNotifications.checkExactNotificationSetting();
+    return exact_alarm === 'granted' ? 'granted' : 'denied';
+  } catch (err) {
+    // API not available (older Capacitor or Android < 12) — exact alarms work by default
+    console.debug('[Notifications] Could not check exact alarm permission, assuming granted by default.', err);
+    return 'granted';
+  }
+};
+
+/**
+ * Open the OS settings page where the user can grant exact alarm permission.
+ * Only meaningful on Android 12+; no-op on other platforms.
+ */
+export const requestExactAlarmPermission = async (): Promise<'granted' | 'denied'> => {
+  if (!isNative() || Capacitor.getPlatform() !== 'android') return 'granted';
+  try {
+    await LocalNotifications.changeExactNotificationSetting();
+    // Re-check after the user returns from settings
+    return checkExactAlarmPermission();
+  } catch (err) {
+    console.debug('[Notifications] Failed to request exact alarm permission, assuming granted.', err);
+    return 'granted';
+  }
+};
+
 // ─── Settings helpers ───────────────────────────────────────────────
 
 export const isNotificationEnabled = async (): Promise<boolean> => {
@@ -139,6 +173,9 @@ const registerActionTypes = (() => {
 const synchronizeNative = async (): Promise<void> => {
   // Register action types so iOS handles taps directly
   await registerActionTypes();
+
+  // Check if exact alarms are available (Android 12+)
+  const exactAlarmGranted = await checkExactAlarmPermission() === 'granted';
 
   // Collect desired notifications from all providers
   const desired: (PendingNotification & { providerKey: string })[] = [];
@@ -200,7 +237,10 @@ const synchronizeNative = async (): Promise<void> => {
           id: n.id,
           title: n.title,
           body: n.body,
-          schedule: { at: n.scheduledAt },
+          schedule: {
+            at: n.scheduledAt,
+            allowWhileIdle: exactAlarmGranted,
+          },
           extra: n.extra,
           actionTypeId: ACTION_TYPE_OPEN,
         })),
