@@ -5,7 +5,7 @@
  * Used by MomentSheet, ChatInterface, CalendarAgendaView, and TodoListView.
  */
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Memory, Attachment } from '../types';
 import MemoryCard from './MemoryCard';
 import { overlay } from '../styles/design-system';
@@ -27,13 +27,16 @@ const MemoryPreviewModal: React.FC<MemoryPreviewModalProps> = ({
   onEdit,
   onTogglePin,
 }) => {
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') onCloseRef.current();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
+  }, []);
 
   return (
     <div
