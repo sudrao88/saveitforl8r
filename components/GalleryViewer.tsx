@@ -2,6 +2,7 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { X, Download, ChevronLeft, ChevronRight, FileText, Share2 } from 'lucide-react';
 import { Attachment } from '../types';
 import { zIndex } from '../styles/design-system';
+import { downloadDataUri } from '../services/downloadService';
 import ZoomableImage from './ZoomableImage';
 import PdfViewer from './PdfViewer';
 
@@ -31,6 +32,13 @@ function getSafeDataUri(attachment: Attachment): string {
 async function dataUriToBlob(dataUri: string): Promise<Blob> {
   const response = await fetch(dataUri);
   return response.blob();
+}
+
+/** Downloads an attachment using the cross-platform download service */
+function handleDownload(attachment: Attachment): void {
+  const safeUri = getSafeDataUri(attachment);
+  if (!safeUri) return;
+  downloadDataUri(safeUri, attachment.name, attachment.mimeType);
 }
 
 /** Shares the given attachment using the Web Share API (with file support) */
@@ -180,13 +188,12 @@ const GalleryViewer: React.FC<GalleryViewerProps> = ({ attachments, initialIndex
           <p className="text-gray-400 text-xs">Preview not available for this file type.</p>
         </div>
         {safeUri && (
-          <a
-            href={safeUri}
-            download={attachment.name}
+          <button
+            onClick={() => handleDownload(attachment)}
             className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold transition-all shadow-lg active:scale-95 text-center"
           >
             Download to View
-          </a>
+          </button>
         )}
       </div>
     );
@@ -219,13 +226,12 @@ const GalleryViewer: React.FC<GalleryViewerProps> = ({ attachments, initialIndex
             </button>
           )}
           {getSafeDataUri(current) && (
-            <a
-              href={getSafeDataUri(current)}
-              download={current.name}
+            <button
+              onClick={() => handleDownload(current)}
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all active:scale-95"
             >
               <Download size={14} /> Download
-            </a>
+            </button>
           )}
         </div>
       </div>
