@@ -174,7 +174,7 @@ On enrichment/moment/synthesis completion:
 
 #### Android — WorkManager
 
-1. Register a `PeriodicWorkRequest` with 15-min minimum interval
+1. Register a `PeriodicWorkRequest` with a 12-hour interval
 2. Worker wakes the WebView (or runs headless JS) to:
    a. **Check for pending enrichments/moments**: Call `/api/enrich/results` and `/api/create-moment/results` for any memories still in `processing` state in IndexedDB
    b. **Apply any completed results**: Run the background pipeline (fetch → apply → update moments)
@@ -197,7 +197,7 @@ For user-initiated "sync everything" from settings:
 
 #### iOS — BGAppRefreshTask
 
-1. Register `BGAppRefreshTask` with identifier `com.saveitforl8r.app.refresh`
+1. Register `BGAppRefreshTask` with identifier `com.saveitforl8r.app.refresh`, targeting ~12-hour intervals (iOS decides actual timing)
 2. Task gets ~30s — enough to run the same cycle as WorkManager:
    a. Check for pending enrichments/moments → apply completed results
    b. Run Drive delta sync (upload enriched memories, download new items)
@@ -238,7 +238,7 @@ For user-initiated "sync everything" from settings:
 **Purpose**: For users who install the PWA, register periodic background sync to silently run the full cycle (enrichment recovery + Drive sync) even when no tabs are open.
 
 #### How it works:
-1. On PWA install, register: `registration.periodicSync.register('full-sync', { minInterval: 15 * 60 * 1000 })`
+1. On PWA install, register: `registration.periodicSync.register('full-sync', { minInterval: 12 * 60 * 60 * 1000 })`
 2. Chrome decides actual timing (could be less frequent based on engagement)
 3. SW `periodicsync` event fires → run the same cycle:
    a. Check for pending enrichments/moments in IndexedDB → poll server for results → apply completed ones
@@ -316,7 +316,7 @@ For user-initiated "sync everything" from settings:
 3. **Periodic Background Sync (PWA)**: Install PWA → close all tabs → verify Drive sync runs (check IndexedDB timestamps)
 4. **FCM silent push (Android)**: Submit enrichment → background app → wait 30s+ → reopen → verify result is already in IndexedDB (no notification was shown)
 5. **Silent push (iOS)**: Submit enrichment → lock device → wait → reopen → verify result is stored
-6. **WorkManager (Android)**: Kill app → wait 15+ min → reopen → verify Drive sync occurred in background
+6. **WorkManager (Android)**: Kill app → wait 12+ hours (or force-trigger via adb for testing) → reopen → verify Drive sync occurred in background
 7. **BGAppRefreshTask (iOS)**: Background app → check console logs for background execution
 8. **Foreground polling unaffected**: Verify all current polling works identically — enrichment, moment, synthesis, Drive sync — with all background layers enabled
 9. **No unexpected notifications**: Verify that no user-visible notifications are shown from any background sync activity (only morning briefing)
@@ -327,7 +327,7 @@ For user-initiated "sync everything" from settings:
 
 - **FCM/APNS require Firebase project setup** — adds infrastructure dependency for native silent push
 - **iOS silent push rate-limited** — Apple limits to ~2-3/hour; enrichments completing rapidly may queue
-- **WorkManager 15-min minimum** — Android enforces this; background sync can't be more frequent
+- **WorkManager runs every 12 hours** — conservative to save battery; silent push handles time-sensitive completions between cycles
 - **Background Sync API is Chrome-only** — Safari/Firefox fall back to existing recovery-on-open
 - **Periodic Background Sync timing is OS-controlled** — Chrome decides actual frequency based on engagement score
 - **Web has no true silent push** — browsers require visible notification for push events; web relies on Background Sync API + recovery-on-open instead
