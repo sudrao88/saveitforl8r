@@ -57,6 +57,10 @@ vi.mock('../services/googleDriveService', () => ({
   deleteRemoteNote: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock('../services/backgroundSyncQueue', () => ({
+  enqueue: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock('../hooks/useAuth', () => ({
   useAuth: () => ({
     authStatus: 'linked',
@@ -738,6 +742,73 @@ describe('SyncContext', () => {
       });
 
       // No Drive operations should have been called
+      expect(driveService.listAllFiles).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('visibility-aware scheduling', () => {
+    it('should set up periodic interval on mount', async () => {
+      const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
+
+      renderHook(() => useSync(), { wrapper });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(100);
+      });
+
+      // Should have registered at least one interval for periodic sync
+      expect(setIntervalSpy).toHaveBeenCalled();
+      setIntervalSpy.mockRestore();
+    });
+
+    it('should adjust interval on visibility change', async () => {
+      const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
+
+      renderHook(() => useSync(), { wrapper });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(100);
+      });
+
+      // Record how many setInterval calls happened during mount
+      const mountCalls = setIntervalSpy.mock.calls.length;
+
+      // Simulate going to background
+      Object.defineProperty(document, 'visibilityState', { value: 'hidden', writable: true });
+      await act(async () => {
+        document.dispatchEvent(new Event('visibilitychange'));
+        await vi.advanceTimersByTimeAsync(100);
+      });
+
+      // Should have registered a new interval (background interval)
+      expect(setIntervalSpy.mock.calls.length).toBeGreaterThan(mountCalls);
+
+      // The last call should use the background interval (15 min = 900000ms)
+      const lastCall = setIntervalSpy.mock.calls[setIntervalSpy.mock.calls.length - 1];
+      expect(lastCall[1]).toBe(15 * 60 * 1000);
+
+      setIntervalSpy.mockRestore();
+    });
+
+    it('should not trigger sync on visibility change when data is fresh', async () => {
+      // Mark data as fresh
+      mockStorageValues['gdrive_last_sync_time'] = String(Date.now());
+
+      renderHook(() => useSync(), { wrapper });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(100);
+      });
+
+      (driveService.listAllFiles as any).mockClear();
+
+      Object.defineProperty(document, 'visibilityState', { value: 'visible', writable: true });
+      await act(async () => {
+        document.dispatchEvent(new Event('visibilitychange'));
+        await vi.advanceTimersByTimeAsync(2500);
+      });
+
+      // Should NOT trigger sync since data is fresh
       expect(driveService.listAllFiles).not.toHaveBeenCalled();
     });
   });
