@@ -381,7 +381,7 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
             activity.mainHandler.post(() -> {
                 try {
                     android.content.Intent intent = new android.content.Intent(activity, ForegroundSyncService.class);
-                    intent.setAction("START");
+                    intent.setAction(ForegroundSyncService.ACTION_START);
                     intent.putExtra("totalItems", totalItems);
                     activity.startService(intent);
                 } catch (Exception e) {
@@ -399,7 +399,7 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
             activity.mainHandler.post(() -> {
                 try {
                     android.content.Intent intent = new android.content.Intent(activity, ForegroundSyncService.class);
-                    intent.setAction("UPDATE_PROGRESS");
+                    intent.setAction(ForegroundSyncService.ACTION_UPDATE_PROGRESS);
                     intent.putExtra("current", current);
                     intent.putExtra("total", total);
                     activity.startService(intent);
@@ -419,7 +419,7 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
             activity.mainHandler.post(() -> {
                 try {
                     android.content.Intent intent = new android.content.Intent(activity, ForegroundSyncService.class);
-                    intent.setAction("STOP");
+                    intent.setAction(ForegroundSyncService.ACTION_STOP);
                     activity.startService(intent);
                 } catch (Exception e) {
                     Log.e(TAG, "Failed to stop foreground sync service", e);

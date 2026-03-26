@@ -448,40 +448,24 @@ async function processDriveSyncQueue() {
       return;
     }
 
-    let processed = 0;
-    for (const op of operations) {
-      try {
-        const { path, body, token } = op.payload;
-        if (!path || !body) {
-          console.warn('[SW] Background Sync: skipping malformed drive sync operation', op.id);
-          await removeOperation(db, op.id);
-          processed++;
-          continue;
-        }
-
-        const headers = { 'Content-Type': 'application/json' };
-        if (token) {
-          headers['Authorization'] = `Bearer ${token}`;
-        }
-
-        const response = await fetch(path, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(body),
+    // Drive uploads require Google OAuth tokens and the full Drive API,
+    // which are only available in the foreground app context. Notify any
+    // active clients so they can drain the queue with proper auth.
+    const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    if (clients.length > 0) {
+      for (const client of clients) {
+        client.postMessage({
+          type: 'DRIVE_SYNC_PENDING',
+          count: operations.length,
         });
-
-        if (response.ok) {
-          await removeOperation(db, op.id);
-          processed++;
-        } else {
-          console.warn(`[SW] Background Sync: drive sync request failed with status ${response.status}`);
-        }
-      } catch (err) {
-        console.warn('[SW] Background Sync: drive sync fetch failed, will retry later:', err.message);
       }
+      console.log(`[SW] Background Sync: notified ${clients.length} client(s) of ${operations.length} pending drive sync operations`);
+    } else {
+      console.log(`[SW] Background Sync: ${operations.length} drive sync operations pending, waiting for foreground`);
+      // Throw to signal the browser to retry the sync event later
+      throw new Error('No active clients to process drive sync');
     }
 
-    console.log(`[SW] Background Sync: processed ${processed}/${operations.length} drive sync operations`);
     db.close();
   } catch (err) {
     console.error('[SW] Background Sync: failed to process drive sync queue:', err);

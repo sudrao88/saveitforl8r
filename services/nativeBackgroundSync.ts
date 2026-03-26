@@ -66,3 +66,26 @@ export const stopForegroundSync = async (): Promise<void> => {
     // Best-effort — service stop failures are non-critical
   }
 };
+
+/**
+ * Signal to the native layer that background sync work is complete.
+ * On iOS, this calls BackgroundSyncTask.syncCompleted() to properly
+ * finish the BGTask with the actual result instead of using a fixed timer.
+ */
+export const signalSyncCompleted = (success: boolean): void => {
+  if (!isNative()) return;
+
+  try {
+    const platform = Capacitor.getPlatform();
+    if (platform === 'ios') {
+      // Call via IOSBridge WKScriptMessageHandler
+      (window as any).webkit?.messageHandlers?.IOSBridge?.postMessage({
+        action: 'syncCompleted',
+        success,
+      });
+    }
+    // Android WorkManager tasks complete independently via SyncWorker.doWork()
+  } catch {
+    // Best-effort — signaling failure is non-critical
+  }
+};

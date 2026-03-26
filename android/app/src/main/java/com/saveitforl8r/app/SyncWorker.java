@@ -26,6 +26,7 @@ import java.util.concurrent.TimeUnit;
 public class SyncWorker extends Worker {
     private static final String TAG = "SyncWorker";
     public static final String WORK_NAME = "saveitforl8r-periodic-sync";
+    public static final String ACTION_BACKGROUND_SYNC = "com.saveitforl8r.BACKGROUND_SYNC";
 
     public SyncWorker(@NonNull Context context, @NonNull WorkerParameters params) {
         super(context, params);
@@ -38,7 +39,7 @@ public class SyncWorker extends Worker {
         try {
             // Send a broadcast that the app can listen for to trigger sync.
             // This approach works even when the WebView is not loaded.
-            Intent intent = new Intent("com.saveitforl8r.BACKGROUND_SYNC");
+            Intent intent = new Intent(ACTION_BACKGROUND_SYNC);
             getApplicationContext().sendBroadcast(intent);
 
             Log.d(TAG, "Background sync broadcast sent");

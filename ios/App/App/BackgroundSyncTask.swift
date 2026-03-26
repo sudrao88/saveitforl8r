@@ -10,6 +10,10 @@ class BackgroundSyncTask {
     static let refreshTaskIdentifier = "com.saveitforl8r.app.refresh"
     static let processingTaskIdentifier = "com.saveitforl8r.app.processing"
 
+    /// Pending task completion handler, called from JS when sync finishes.
+    private static var pendingCompletion: ((Bool) -> Void)?
+    private static let completionLock = NSLock()
+
     /// Register background task identifiers.
     /// Must be called in application(_:didFinishLaunchingWithOptions:) BEFORE
     /// the end of the launch sequence.
@@ -29,6 +33,22 @@ class BackgroundSyncTask {
         }
 
         print("[BackgroundSync] Task identifiers registered")
+    }
+
+    /// Called from the JavaScript layer (via Capacitor bridge) when background
+    /// sync work is complete. This signals the pending BGTask to finish.
+    static func syncCompleted(success: Bool) {
+        completionLock.lock()
+        let completion = pendingCompletion
+        pendingCompletion = nil
+        completionLock.unlock()
+
+        if let completion = completion {
+            completion(success)
+            print("[BackgroundSync] JS signaled sync completed (success: \(success))")
+        } else {
+            print("[BackgroundSync] syncCompleted called but no pending task")
+        }
     }
 
     /// Schedule the next refresh task.
@@ -72,12 +92,13 @@ class BackgroundSyncTask {
         // Set expiration handler
         task.expirationHandler = {
             print("[BackgroundSync] Refresh task expired")
+            completionLock.lock()
+            pendingCompletion = nil
+            completionLock.unlock()
             task.setTaskCompleted(success: false)
         }
 
         // Perform the sync work
-        // We send a notification to the Capacitor bridge to trigger sync
-        // via the WebView if it's loaded, or log for future implementation
         performSyncWork { success in
             task.setTaskCompleted(success: success)
             print("[BackgroundSync] Refresh task completed (success: \(success))")
@@ -89,6 +110,9 @@ class BackgroundSyncTask {
 
         task.expirationHandler = {
             print("[BackgroundSync] Processing task expired")
+            completionLock.lock()
+            pendingCompletion = nil
+            completionLock.unlock()
             task.setTaskCompleted(success: false)
         }
 
@@ -100,6 +124,11 @@ class BackgroundSyncTask {
     }
 
     private static func performSyncWork(completion: @escaping (Bool) -> Void) {
+        // Store completion handler for JS to call via syncCompleted()
+        completionLock.lock()
+        pendingCompletion = completion
+        completionLock.unlock()
+
         // Post a notification that the bridge can observe
         // This allows the Capacitor web layer to handle the actual sync
         DispatchQueue.main.async {
@@ -109,9 +138,21 @@ class BackgroundSyncTask {
             )
         }
 
-        // Give the WebView time to process (up to 25 seconds for refresh tasks)
+        // Safety timeout: if JS doesn't respond within 25 seconds,
+        // complete the task to avoid being killed by the system.
+        // BGAppRefreshTask has ~30s budget; we leave 5s margin.
         DispatchQueue.global().asyncAfter(deadline: .now() + 25) {
-            completion(true)
+            completionLock.lock()
+            let stillPending = pendingCompletion != nil
+            if stillPending {
+                pendingCompletion = nil
+            }
+            completionLock.unlock()
+
+            if stillPending {
+                print("[BackgroundSync] Timeout: JS did not signal completion, completing task")
+                completion(false)
+            }
         }
     }
 }

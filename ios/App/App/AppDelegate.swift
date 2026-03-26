@@ -302,6 +302,9 @@ class IOSBridgeHandler: NSObject, WKScriptMessageHandler {
             appDelegate?.handleDisableRemoteMode()
         case "openNotificationSettings":
             appDelegate?.handleOpenNotificationSettings()
+        case "syncCompleted":
+            let success = (body["success"] as? Bool) ?? false
+            BackgroundSyncTask.syncCompleted(success: success)
         default:
             print("[IOSBridge] Unknown action: \(action)")
         }

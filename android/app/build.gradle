@@ -64,7 +64,7 @@ dependencies {
     implementation project(':capacitor-cordova-android-plugins')
 
     // WorkManager for periodic background sync (12-hour interval)
-    implementation "androidx.work:work-runtime:2.9.1"
+    implementation "androidx.work:work-runtime:2.9.0"
 
     // Fix for Duplicate class kotlin.collections.jdk8.CollectionsJDK8Kt
     constraints {

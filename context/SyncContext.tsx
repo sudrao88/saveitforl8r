@@ -15,7 +15,7 @@ import {
 import { Memory, Moment, MomentSynthesis, CalendarEvent, TodoItem } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { storage } from '../services/platform';
-import { enqueue as bgSyncEnqueue } from '../services/backgroundSyncQueue';
+import { enqueue as bgSyncEnqueue, peekAll as bgSyncPeekAll, remove as bgSyncRemove } from '../services/backgroundSyncQueue';
 
 type SyncStatus = 'syncing' | 'synced' | 'error';
 
@@ -277,8 +277,18 @@ const executeSyncPlan = async (plan: SyncPlan, onProgress?: () => void): Promise
     // Queue failed uploads for Background Sync retry (best-effort)
     for (const failedFilename of upFailures) {
         try {
-            const noteId = failedFilename.replace('.json', '');
-            await bgSyncEnqueue({ type: 'sync-drive', payload: { noteId } });
+            const failedItem = uploadItems.find(item => item.filename === failedFilename);
+            if (failedItem) {
+                await bgSyncEnqueue({
+                    type: 'sync-drive',
+                    payload: {
+                        noteId: failedFilename.replace('.json', ''),
+                        filename: failedItem.filename,
+                        content: failedItem.content,
+                        existingFileId: failedItem.existingFileId,
+                    },
+                });
+            }
         } catch {
             // Background Sync queue is best-effort, don't fail the sync
         }
@@ -1116,6 +1126,50 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [authStatus, performSync]);
+
+  // Drain the Background Sync drive queue from the foreground.
+  // The service worker cannot perform Google Drive uploads (needs OAuth),
+  // so it notifies us via postMessage to retry here with proper auth.
+  useEffect(() => {
+    if (authStatus !== 'linked') return;
+
+    const drainDriveSyncQueue = async () => {
+        try {
+            const pending = await bgSyncPeekAll();
+            const driveOps = pending.filter(op => op.type === 'sync-drive');
+            if (driveOps.length === 0) return;
+
+            await getAccessToken();
+            for (const op of driveOps) {
+                try {
+                    const { filename, content, existingFileId } = op.payload;
+                    if (filename && content) {
+                        await uploadFile(filename, content, existingFileId);
+                        await bgSyncRemove(op.id!);
+                    }
+                } catch (e) {
+                    console.warn(`[Sync] BG queue retry failed for ${op.payload?.noteId}:`, e);
+                }
+            }
+        } catch (e) {
+            console.warn('[Sync] Failed to drain drive sync queue:', e);
+        }
+    };
+
+    const handleSWMessage = (event: MessageEvent) => {
+        if (event.data?.type === 'DRIVE_SYNC_PENDING') {
+            drainDriveSyncQueue();
+        }
+    };
+
+    navigator.serviceWorker?.addEventListener('message', handleSWMessage);
+    // Also drain on mount in case items were queued while app was closed
+    drainDriveSyncQueue();
+
+    return () => {
+        navigator.serviceWorker?.removeEventListener('message', handleSWMessage);
+    };
+  }, [authStatus, getAccessToken]);
 
   useEffect(() => {
     return () => {

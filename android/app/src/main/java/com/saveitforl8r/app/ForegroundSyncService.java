@@ -18,6 +18,10 @@ import androidx.core.app.NotificationCompat;
  * Only used for user-initiated bulk sync from settings.
  */
 public class ForegroundSyncService extends Service {
+    public static final String ACTION_START = "com.saveitforl8r.app.action.START_SYNC";
+    public static final String ACTION_UPDATE_PROGRESS = "com.saveitforl8r.app.action.UPDATE_PROGRESS";
+    public static final String ACTION_STOP = "com.saveitforl8r.app.action.STOP_SYNC";
+
     private static final String TAG = "ForegroundSyncService";
     private static final String CHANNEL_ID = "sync_channel";
     private static final int NOTIFICATION_ID = 1001;
@@ -32,7 +36,7 @@ public class ForegroundSyncService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         String action = intent != null ? intent.getAction() : null;
 
-        if ("START".equals(action)) {
+        if (ACTION_START.equals(action)) {
             int totalItems = intent.getIntExtra("totalItems", 0);
             Notification notification = buildNotification(
                 "Syncing memories...",
@@ -40,11 +44,11 @@ public class ForegroundSyncService extends Service {
             );
             startForeground(NOTIFICATION_ID, notification);
             Log.d(TAG, "Foreground sync service started");
-        } else if ("UPDATE_PROGRESS".equals(action)) {
+        } else if (ACTION_UPDATE_PROGRESS.equals(action)) {
             int current = intent.getIntExtra("current", 0);
             int total = intent.getIntExtra("total", 0);
             updateNotification("Syncing memories...", "Synced " + current + "/" + total + " memories");
-        } else if ("STOP".equals(action)) {
+        } else if (ACTION_STOP.equals(action)) {
             stopForeground(true);
             stopSelf();
             Log.d(TAG, "Foreground sync service stopped");
