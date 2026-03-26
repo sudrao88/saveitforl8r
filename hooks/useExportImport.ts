@@ -2,6 +2,7 @@
 import { useState, useRef } from 'react';
 import { getMemories, saveMemory } from '../services/storageService';
 import { memoriesToCSV, csvToMemories } from '../services/csvService';
+import { downloadBlob } from '../services/downloadService';
 
 export const useExportImport = (onImportSuccess: () => void) => {
   const [exportSelectedTypes, setExportSelectedTypes] = useState<string[]>([]);
@@ -24,13 +25,8 @@ export const useExportImport = (onImportSuccess: () => void) => {
 
     const csvString = memoriesToCSV(data);
     const blob = new Blob([csvString], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `saveitforl8r-backup-${new Date().toISOString().split('T')[0]}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const filename = `saveitforl8r-backup-${new Date().toISOString().split('T')[0]}.csv`;
+    await downloadBlob(blob, filename);
   };
 
   const handleImportClick = () => {

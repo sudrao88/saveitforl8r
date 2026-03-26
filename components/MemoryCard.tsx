@@ -3,6 +3,7 @@ import { Trash2, Loader2, Clock, ExternalLink, Star, ShoppingBag, Tv, BookOpen, 
 import { Memory, Attachment } from '../types.ts';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { card, menu, overlay, text } from '../styles/design-system';
+import { downloadDataUri } from '../services/downloadService';
 import { ChecklistDisplay } from './ChecklistItems';
 
 interface EnrichmentSectionProps {
@@ -636,14 +637,12 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                             <span className="text-sm text-gray-300 truncate flex-1 group-hover/doc:text-white">{doc.name}</span>
                             <div className="flex items-center gap-2">
                                 <Eye size={16} className="text-gray-500 opacity-0 group-hover/doc:opacity-100" />
-                                <a 
-                                    href={doc.data} 
-                                    download={doc.name} 
-                                    onClick={e => e.stopPropagation()} 
+                                <button
+                                    onClick={async e => { e.stopPropagation(); try { await downloadDataUri(doc.data, doc.name, doc.mimeType); } catch (err) { console.error('Download failed:', err); } }}
                                     className="p-2 -m-2 text-gray-500 hover:text-white transition-colors"
                                 >
                                     <Paperclip size={16} />
-                                </a>
+                                </button>
                             </div>
                         </div>
                     ))}
