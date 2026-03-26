@@ -798,7 +798,7 @@ const AppContent: React.FC = () => {
           />
 
           {notificationsSupported && notificationPermission === 'prompt' && !notifBannerDismissed && activeMemoryCount > 0 && (
-            <div className="mx-4 sm:mx-8 mt-3 flex items-center gap-3 p-3 bg-(--color-accent-muted) border border-(--color-accent)/30 rounded-(--radius-xl)">
+            <div className="mx-4 sm:mx-8 my-3 flex items-center gap-3 p-3 bg-(--color-accent-muted) border border-(--color-accent)/30 rounded-(--radius-xl)">
               <Bell size={18} className="text-(--color-accent) shrink-0" />
               <p className="flex-1 text-sm text-(--color-text-secondary)">
                 Enable notifications to get a daily briefing of your events and tasks.
