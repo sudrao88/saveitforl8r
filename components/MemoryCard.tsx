@@ -239,6 +239,19 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
   const [isTruncated, setIsTruncated] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const shakeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasAnimatedRef = useRef(false);
+  const [shouldAnimate, setShouldAnimate] = useState(() => !isDialog);
+
+  useEffect(() => {
+    if (!isDialog && !hasAnimatedRef.current) {
+      hasAnimatedRef.current = true;
+      const delay = (index ?? 0) * 60;
+      const timer = setTimeout(() => {
+        setShouldAnimate(false);
+      }, delay + 250); // delay + animation duration
+      return () => clearTimeout(timer);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     return () => {
@@ -407,10 +420,10 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
         ${memory.isPending ? 'opacity-70 border-blue-900/30' : ''}
         ${memory.processingError ? 'border-amber-900/30 bg-amber-900/5' : ''}
         ${showErrorOverlay || showSignInOverlay ? 'min-h-[350px]' : ''}
-        ${!isDialog ? 'animate-in fade-in slide-in-from-bottom-4 duration-(--duration-normal) fill-mode-backwards' : ''}
+        ${shouldAnimate ? 'animate-in fade-in slide-in-from-bottom-4 duration-(--duration-normal) fill-mode-backwards' : ''}
         ${isShaking ? 'animate-shake' : ''}
         `}
-        style={!isDialog && index != null ? { animationDelay: `${index * 60}ms` } : undefined}
+        style={shouldAnimate && index != null ? { animationDelay: `${index * 60}ms` } : undefined}
       >
         {/* Sign In Overlay — shown when enrichment failed due to missing auth */}
         {showSignInOverlay && (
