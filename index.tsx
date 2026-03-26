@@ -13,6 +13,9 @@ declare global {
       enableRemoteMode: () => void;
       disableRemoteMode: () => void;
       openNotificationSettings: () => void;
+      startForegroundSync: (totalItems: number) => void;
+      updateSyncProgress: (current: number, total: number) => void;
+      stopForegroundSync: () => void;
     };
     webkit?: {
       messageHandlers: {

@@ -1,6 +1,7 @@
 
 import { EnrichmentData, Memory, Attachment, ChatMessage, Moment, SynthesisResponse } from '../types.ts';
 import { postProxy } from './proxyService.ts';
+import { enqueue as bgSyncEnqueue } from './backgroundSyncQueue.ts';
 
 export interface QuerySource {
   id: string;
@@ -58,9 +59,27 @@ export const submitEnrichment = async (
     moments,
   };
 
-  const result = await postProxy<SubmitEnrichmentResponse>('/api/enrich', payload as unknown as Record<string, unknown>);
-  if (result.status !== 'accepted') {
-    throw new Error(`Unexpected enrichment response: ${result.status}`);
+  try {
+    const result = await postProxy<SubmitEnrichmentResponse>('/api/enrich', payload as unknown as Record<string, unknown>);
+    if (result.status !== 'accepted') {
+      throw new Error(`Unexpected enrichment response: ${result.status}`);
+    }
+  } catch (err) {
+    // Queue for Background Sync retry on network errors (TypeError from fetch failures).
+    // Server errors (4xx/5xx) throw Error with "Proxy error" prefix — don't queue those.
+    if (err instanceof TypeError) {
+      try {
+        await bgSyncEnqueue({
+          type: 'enrich',
+          payload: { path: '/api/enrich', body: payload },
+        });
+        console.log('[Enrichment] Queued for Background Sync retry');
+      } catch (queueErr) {
+        // Background Sync queue is best-effort — don't mask the original error
+        console.warn('[Enrichment] Failed to queue for Background Sync:', queueErr);
+      }
+    }
+    throw err;
   }
 };
 

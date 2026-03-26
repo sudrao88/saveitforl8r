@@ -36,6 +36,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+        // Register background task identifiers before launch sequence ends
+        BackgroundSyncTask.register()
+
         // Wait for the Capacitor bridge to initialize, then set up OTA + IOSBridge.
         // Both require the bridge to be ready, so we use a single retry loop.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
@@ -198,6 +201,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func applicationDidEnterBackground(_ application: UIApplication) {
+        BackgroundSyncTask.scheduleRefresh()
+        BackgroundSyncTask.scheduleProcessing()
     }
 
     func applicationWillEnterForeground(_ application: UIApplication) {

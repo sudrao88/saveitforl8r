@@ -15,6 +15,7 @@ import {
 import { Memory, Moment, MomentSynthesis, CalendarEvent, TodoItem } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { storage } from '../services/platform';
+import { enqueue as bgSyncEnqueue } from '../services/backgroundSyncQueue';
 
 type SyncStatus = 'syncing' | 'synced' | 'error';
 
@@ -39,8 +40,9 @@ const SyncContext = createContext<SyncContextType | undefined>(undefined);
 const SNAPSHOT_KEY = 'gdrive_remote_snapshot';
 const LAST_SYNC_KEY = 'gdrive_last_sync_time';
 const SYNC_DEBOUNCE_MS = 2000;
-const PERIODIC_SYNC_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
-const STALE_SYNC_THRESHOLD_MS = 2 * 60 * 1000;   // 2 minutes
+const PERIODIC_SYNC_INTERVAL_MS = 5 * 60 * 1000;      // 5 minutes (foreground)
+const BACKGROUND_SYNC_INTERVAL_MS = 15 * 60 * 1000;   // 15 minutes (backgrounded tab)
+const STALE_SYNC_THRESHOLD_MS = 2 * 60 * 1000;        // 2 minutes
 
 // ---- Shared Execution Logic ----
 
@@ -271,6 +273,16 @@ const executeSyncPlan = async (plan: SyncPlan, onProgress?: () => void): Promise
 
     const { failures: upFailures } = await uploadMultipleFiles(uploadItems);
     errors.push(...upFailures.map(f => f.replace('.json', '')));
+
+    // Queue failed uploads for Background Sync retry (best-effort)
+    for (const failedFilename of upFailures) {
+        try {
+            const noteId = failedFilename.replace('.json', '');
+            await bgSyncEnqueue({ type: 'sync-drive', payload: { noteId } });
+        } catch {
+            // Background Sync queue is best-effort, don't fail the sync
+        }
+    }
 
     for (const item of plan.toDeleteRemote) {
         try {
@@ -1048,10 +1060,14 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
   }, [syncFileInternal, getAccessToken, updateSyncStatus]);
 
-  // Periodic sync: poll every 5 minutes while tab is visible,
-  // and sync on tab re-focus if data is stale (>2 min since last sync).
+  // Visibility-aware periodic sync:
+  // - Foreground: sync every 5 minutes (PERIODIC_SYNC_INTERVAL_MS)
+  // - Background: sync every 15 minutes (BACKGROUND_SYNC_INTERVAL_MS) to save battery
+  // - On return to foreground: immediate sync if data is stale (>2 min since last sync)
   useEffect(() => {
     if (authStatus !== 'linked') return;
+
+    let intervalId: ReturnType<typeof setInterval>;
 
     const isStale = async (): Promise<boolean> => {
         const lastStr = await storage.get(LAST_SYNC_KEY);
@@ -1067,22 +1083,29 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
     };
 
-    // Periodic interval — only syncs when tab is visible
-    const intervalId = setInterval(() => {
-        if (document.visibilityState === 'visible') {
-            trySyncQuietly();
-        }
-    }, PERIODIC_SYNC_INTERVAL_MS);
+    const startInterval = (ms: number) => {
+        if (intervalId) clearInterval(intervalId);
+        intervalId = setInterval(trySyncQuietly, ms);
+    };
 
-    // Sync on tab re-focus if stale
+    // Start with the appropriate interval based on current visibility
+    const isVisible = document.visibilityState === 'visible';
+    startInterval(isVisible ? PERIODIC_SYNC_INTERVAL_MS : BACKGROUND_SYNC_INTERVAL_MS);
+
+    // On visibility change: adjust interval and trigger immediate sync if stale
     const handleVisibilityChange = async () => {
         if (document.visibilityState === 'visible') {
+            // Returned to foreground — switch to fast interval
+            startInterval(PERIODIC_SYNC_INTERVAL_MS);
             try {
                 const stale = await isStale();
                 if (stale) trySyncQuietly();
             } catch (err) {
                 console.error('[Sync] Error checking for stale sync on visibility change:', err);
             }
+        } else {
+            // Moved to background — switch to slow interval to save battery
+            startInterval(BACKGROUND_SYNC_INTERVAL_MS);
         }
     };
 

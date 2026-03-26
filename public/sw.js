@@ -329,10 +329,197 @@ self.addEventListener('sync', (event) => {
   if (event.tag === 'enrich-memory') {
     event.waitUntil(processEnrichQueue());
   }
+  if (event.tag === 'sync-drive') {
+    event.waitUntil(processDriveSyncQueue());
+  }
 });
 
+// ─── Background Sync IndexedDB Helpers ───────────────────────────────
+// These operate on the 'saveitforl8r-bg-sync' DB (separate from SaveItForL8rDB).
+
+function openBgSyncDB() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open('saveitforl8r-bg-sync', 1);
+    request.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('operations')) {
+        db.createObjectStore('operations', { keyPath: 'id', autoIncrement: true });
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function getAllOperations(db, type) {
+  return new Promise((resolve, reject) => {
+    try {
+      const tx = db.transaction('operations', 'readonly');
+      const store = tx.objectStore('operations');
+      const request = store.getAll();
+      request.onsuccess = () => {
+        const all = request.result || [];
+        resolve(all.filter(op => op.type === type));
+      };
+      request.onerror = () => reject(request.error);
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+function removeOperation(db, id) {
+  return new Promise((resolve, reject) => {
+    try {
+      const tx = db.transaction('operations', 'readwrite');
+      const store = tx.objectStore('operations');
+      store.delete(id);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
 async function processEnrichQueue() {
-   console.log('[SW] Background sync triggered (placeholder)');
+  console.log('[SW] Background Sync: processing enrich queue');
+  try {
+    const db = await openBgSyncDB();
+    const operations = await getAllOperations(db, 'enrich');
+
+    if (operations.length === 0) {
+      console.log('[SW] Background Sync: no enrich operations pending');
+      db.close();
+      return;
+    }
+
+    let processed = 0;
+    for (const op of operations) {
+      try {
+        const { path, body, token } = op.payload;
+        if (!path || !body) {
+          console.warn('[SW] Background Sync: skipping malformed enrich operation', op.id);
+          await removeOperation(db, op.id);
+          processed++;
+          continue;
+        }
+
+        const headers = { 'Content-Type': 'application/json' };
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+
+        const response = await fetch(path, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(body),
+        });
+
+        if (response.ok) {
+          await removeOperation(db, op.id);
+          processed++;
+        } else {
+          console.warn(`[SW] Background Sync: enrich request failed with status ${response.status}`);
+          // Leave in queue for retry on non-2xx
+        }
+      } catch (err) {
+        console.warn('[SW] Background Sync: enrich fetch failed, will retry later:', err.message);
+        // Leave in queue — Background Sync will retry
+      }
+    }
+
+    console.log(`[SW] Background Sync: processed ${processed}/${operations.length} enrich operations`);
+    db.close();
+  } catch (err) {
+    console.error('[SW] Background Sync: failed to process enrich queue:', err);
+  }
+}
+
+async function processDriveSyncQueue() {
+  console.log('[SW] Background Sync: processing drive sync queue');
+  try {
+    const db = await openBgSyncDB();
+    const operations = await getAllOperations(db, 'sync-drive');
+
+    if (operations.length === 0) {
+      console.log('[SW] Background Sync: no drive sync operations pending');
+      db.close();
+      return;
+    }
+
+    let processed = 0;
+    for (const op of operations) {
+      try {
+        const { path, body, token } = op.payload;
+        if (!path || !body) {
+          console.warn('[SW] Background Sync: skipping malformed drive sync operation', op.id);
+          await removeOperation(db, op.id);
+          processed++;
+          continue;
+        }
+
+        const headers = { 'Content-Type': 'application/json' };
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+
+        const response = await fetch(path, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(body),
+        });
+
+        if (response.ok) {
+          await removeOperation(db, op.id);
+          processed++;
+        } else {
+          console.warn(`[SW] Background Sync: drive sync request failed with status ${response.status}`);
+        }
+      } catch (err) {
+        console.warn('[SW] Background Sync: drive sync fetch failed, will retry later:', err.message);
+      }
+    }
+
+    console.log(`[SW] Background Sync: processed ${processed}/${operations.length} drive sync operations`);
+    db.close();
+  } catch (err) {
+    console.error('[SW] Background Sync: failed to process drive sync queue:', err);
+  }
+}
+
+async function handleFullSync() {
+  try {
+    // Check if any client tabs are open — if so, let the app handle it
+    const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: false });
+    if (clients.length > 0) {
+      console.log('[SW] Periodic full-sync: active tab found, deferring to app');
+      return;
+    }
+
+    // Open the main app IndexedDB to check for pending enrichments
+    const db = await openNotificationDB();
+    if (!db) {
+      console.log('[SW] Periodic full-sync: could not open DB');
+      return;
+    }
+
+    const memories = await getAllFromStore(db, 'memories');
+    db.close();
+
+    const pendingCount = memories.filter(m => m.isPending === true).length;
+    const totalCount = memories.length;
+
+    if (pendingCount > 0) {
+      // SW cannot easily obtain auth tokens for re-enrichment.
+      // Log for diagnostics; the app will handle recovery on next open.
+      console.log(`[SW] Periodic full-sync: found ${pendingCount} pending enrichments — app will recover on next open`);
+    }
+
+    console.log(`[SW] Periodic full-sync: found ${pendingCount} pending enrichments, ${totalCount} total memories`);
+  } catch (err) {
+    console.error('[SW] Periodic full-sync error:', err);
+  }
 }
 
 
@@ -516,6 +703,9 @@ self.addEventListener('fetch', (event) => {
 self.addEventListener('periodicsync', (event) => {
   if (event.tag === 'morning-briefing-check') {
     event.waitUntil(handleMorningBriefingCheck());
+  }
+  if (event.tag === 'full-sync') {
+    event.waitUntil(handleFullSync());
   }
 });
 
