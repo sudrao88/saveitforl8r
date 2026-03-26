@@ -638,7 +638,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                             <div className="flex items-center gap-2">
                                 <Eye size={16} className="text-gray-500 opacity-0 group-hover/doc:opacity-100" />
                                 <button
-                                    onClick={e => { e.stopPropagation(); downloadDataUri(doc.data, doc.name, doc.mimeType); }}
+                                    onClick={async e => { e.stopPropagation(); try { await downloadDataUri(doc.data, doc.name, doc.mimeType); } catch (err) { console.error('Download failed:', err); } }}
                                     className="p-2 -m-2 text-gray-500 hover:text-white transition-colors"
                                 >
                                     <Paperclip size={16} />

@@ -35,10 +35,14 @@ async function dataUriToBlob(dataUri: string): Promise<Blob> {
 }
 
 /** Downloads an attachment using the cross-platform download service */
-function handleDownload(attachment: Attachment): void {
+async function handleDownload(attachment: Attachment): Promise<void> {
   const safeUri = getSafeDataUri(attachment);
   if (!safeUri) return;
-  downloadDataUri(safeUri, attachment.name, attachment.mimeType);
+  try {
+    await downloadDataUri(safeUri, attachment.name, attachment.mimeType);
+  } catch (error) {
+    console.error('Failed to download attachment:', error);
+  }
 }
 
 /** Shares the given attachment using the Web Share API (with file support) */

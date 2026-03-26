@@ -10,7 +10,6 @@
  *   1. Web Share API with file — works reliably on iOS ("Save to Files").
  *   2. Blob-URL + programmatic anchor click — works on Chrome, Firefox,
  *      desktop Safari, and most Android browsers.
- *   3. window.open — last-resort fallback.
  */
 
 const isIOS = (): boolean =>
@@ -39,6 +38,7 @@ export async function downloadBlob(blob: Blob, filename: string): Promise<void> 
   const a = document.createElement('a');
   a.href = url;
   a.download = filename;
+  a.style.display = 'none';
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
