@@ -433,6 +433,7 @@ async function processEnrichQueue() {
     db.close();
   } catch (err) {
     console.error('[SW] Background Sync: failed to process enrich queue:', err);
+    throw err; // Re-throw so the browser knows to retry the sync event
   }
 }
 

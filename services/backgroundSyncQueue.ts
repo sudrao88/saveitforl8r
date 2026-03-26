@@ -88,9 +88,9 @@ export const dequeue = async (): Promise<BackgroundSyncOperation | null> => {
       cursorRequest.onerror = () => reject(cursorRequest.error);
     });
 
-    await new Promise<void>((resolve) => {
+    await new Promise<void>((resolve, reject) => {
       tx.oncomplete = () => resolve();
-      tx.onerror = () => resolve();
+      tx.onerror = () => reject(tx.error);
     });
 
     db.close();

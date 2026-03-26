@@ -38,17 +38,7 @@ class BackgroundSyncTask {
     /// Called from the JavaScript layer (via Capacitor bridge) when background
     /// sync work is complete. This signals the pending BGTask to finish.
     static func syncCompleted(success: Bool) {
-        completionLock.lock()
-        let completion = pendingCompletion
-        pendingCompletion = nil
-        completionLock.unlock()
-
-        if let completion = completion {
-            completion(success)
-            print("[BackgroundSync] JS signaled sync completed (success: \(success))")
-        } else {
-            print("[BackgroundSync] syncCompleted called but no pending task")
-        }
+        completeOnce(success: success, reason: "JS signaled")
     }
 
     /// Schedule the next refresh task.
@@ -81,6 +71,23 @@ class BackgroundSyncTask {
         }
     }
 
+    // MARK: - Private Helpers
+
+    /// Atomically invoke the pending completion handler exactly once.
+    /// Subsequent calls are no-ops, preventing double calls to
+    /// task.setTaskCompleted() which would crash.
+    private static func completeOnce(success: Bool, reason: String) {
+        completionLock.lock()
+        let completion = pendingCompletion
+        pendingCompletion = nil
+        completionLock.unlock()
+
+        if let completion = completion {
+            completion(success)
+            print("[BackgroundSync] Completed via \(reason) (success: \(success))")
+        }
+    }
+
     // MARK: - Task Handlers
 
     private static func handleRefreshTask(_ task: BGAppRefreshTask) {
@@ -89,19 +96,16 @@ class BackgroundSyncTask {
         // Schedule the next refresh before doing work
         scheduleRefresh()
 
-        // Set expiration handler
+        // Set expiration handler — uses completeOnce so it's safe
+        // even if the sync completion fires at the same time
         task.expirationHandler = {
             print("[BackgroundSync] Refresh task expired")
-            completionLock.lock()
-            pendingCompletion = nil
-            completionLock.unlock()
-            task.setTaskCompleted(success: false)
+            completeOnce(success: false, reason: "expiration")
         }
 
         // Perform the sync work
         performSyncWork { success in
             task.setTaskCompleted(success: success)
-            print("[BackgroundSync] Refresh task completed (success: \(success))")
         }
     }
 
@@ -110,21 +114,17 @@ class BackgroundSyncTask {
 
         task.expirationHandler = {
             print("[BackgroundSync] Processing task expired")
-            completionLock.lock()
-            pendingCompletion = nil
-            completionLock.unlock()
-            task.setTaskCompleted(success: false)
+            completeOnce(success: false, reason: "expiration")
         }
 
         // Processing tasks get more time — can do heavier sync
         performSyncWork { success in
             task.setTaskCompleted(success: success)
-            print("[BackgroundSync] Processing task completed (success: \(success))")
         }
     }
 
     private static func performSyncWork(completion: @escaping (Bool) -> Void) {
-        // Store completion handler for JS to call via syncCompleted()
+        // Store completion handler — completeOnce guarantees it's called at most once
         completionLock.lock()
         pendingCompletion = completion
         completionLock.unlock()
@@ -142,17 +142,7 @@ class BackgroundSyncTask {
         // complete the task to avoid being killed by the system.
         // BGAppRefreshTask has ~30s budget; we leave 5s margin.
         DispatchQueue.global().asyncAfter(deadline: .now() + 25) {
-            completionLock.lock()
-            let stillPending = pendingCompletion != nil
-            if stillPending {
-                pendingCompletion = nil
-            }
-            completionLock.unlock()
-
-            if stillPending {
-                print("[BackgroundSync] Timeout: JS did not signal completion, completing task")
-                completion(false)
-            }
+            completeOnce(success: false, reason: "timeout (25s)")
         }
     }
 }

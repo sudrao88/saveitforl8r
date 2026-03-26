@@ -1143,10 +1143,13 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             for (const op of driveOps) {
                 try {
                     const { filename, content, existingFileId } = op.payload;
-                    if (filename && content) {
-                        await uploadFile(filename, content, existingFileId);
+                    if (!filename || !content) {
+                        console.warn(`[Sync] BG queue: removing malformed item ${op.id}`);
                         await bgSyncRemove(op.id!);
+                        continue;
                     }
+                    await uploadFile(filename, content, existingFileId);
+                    await bgSyncRemove(op.id!);
                 } catch (e) {
                     console.warn(`[Sync] BG queue retry failed for ${op.payload?.noteId}:`, e);
                 }

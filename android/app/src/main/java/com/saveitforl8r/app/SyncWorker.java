@@ -55,24 +55,28 @@ public class SyncWorker extends Worker {
      * Called from MainActivity on app startup.
      */
     public static void register(Context context) {
-        Constraints constraints = new Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
-            .setRequiresBatteryNotLow(true)
-            .build();
+        try {
+            Constraints constraints = new Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .setRequiresBatteryNotLow(true)
+                .build();
 
-        PeriodicWorkRequest syncRequest = new PeriodicWorkRequest.Builder(
-            SyncWorker.class,
-            12, TimeUnit.HOURS
-        )
-            .setConstraints(constraints)
-            .build();
+            PeriodicWorkRequest syncRequest = new PeriodicWorkRequest.Builder(
+                SyncWorker.class,
+                12, TimeUnit.HOURS
+            )
+                .setConstraints(constraints)
+                .build();
 
-        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-            WORK_NAME,
-            ExistingPeriodicWorkPolicy.KEEP, // Don't replace if already scheduled
-            syncRequest
-        );
+            WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+                WORK_NAME,
+                ExistingPeriodicWorkPolicy.KEEP, // Don't replace if already scheduled
+                syncRequest
+            );
 
-        Log.d(TAG, "Periodic sync registered (12-hour interval)");
+            Log.d(TAG, "Periodic sync registered (12-hour interval)");
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to register periodic sync", e);
+        }
     }
 }

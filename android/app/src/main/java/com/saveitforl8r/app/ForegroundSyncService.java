@@ -49,7 +49,7 @@ public class ForegroundSyncService extends Service {
             int total = intent.getIntExtra("total", 0);
             updateNotification("Syncing memories...", "Synced " + current + "/" + total + " memories");
         } else if (ACTION_STOP.equals(action)) {
-            stopForeground(true);
+            stopForeground(STOP_FOREGROUND_REMOVE);
             stopSelf();
             Log.d(TAG, "Foreground sync service stopped");
         }

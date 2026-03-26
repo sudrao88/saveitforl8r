@@ -1,6 +1,7 @@
 
 import { EnrichmentData, Memory, Attachment, ChatMessage, Moment, SynthesisResponse } from '../types.ts';
-import { postProxy } from './proxyService.ts';
+import { postProxy, getProxyUrl } from './proxyService.ts';
+import { getValidToken } from './googleAuth.ts';
 import { enqueue as bgSyncEnqueue } from './backgroundSyncQueue.ts';
 
 export interface QuerySource {
@@ -69,9 +70,13 @@ export const submitEnrichment = async (
     // Server errors (4xx/5xx) throw Error with "Proxy error" prefix — don't queue those.
     if (err instanceof TypeError) {
       try {
+        // Include full URL (SW may not have VITE_PROXY_URL) and auth token
+        // so the service worker can retry with proper authentication
+        let token: string | null = null;
+        try { token = await getValidToken(); } catch { /* best-effort */ }
         await bgSyncEnqueue({
           type: 'enrich',
-          payload: { path: '/api/enrich', body: payload },
+          payload: { path: `${getProxyUrl()}/api/enrich`, body: payload, token },
         });
         console.log('[Enrichment] Queued for Background Sync retry');
       } catch (queueErr) {
