@@ -83,6 +83,9 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
                 }
             }, SPLASH_TIMEOUT_MS);
 
+            // Register periodic background sync via WorkManager
+            SyncWorker.register(this);
+
             // Process initial intent
             if (getIntent() != null) {
                 shareHandler.handleIntent(getIntent());
@@ -365,6 +368,63 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
                     }
                 }
             );
+        }
+
+        /**
+         * Starts the foreground sync service with a persistent notification.
+         * Called from JS when the user initiates a bulk sync operation.
+         */
+        @JavascriptInterface
+        public void startForegroundSync(int totalItems) {
+            Log.d(TAG, "Starting foreground sync service with " + totalItems + " items");
+            if (activity == null) return;
+            activity.mainHandler.post(() -> {
+                try {
+                    android.content.Intent intent = new android.content.Intent(activity, ForegroundSyncService.class);
+                    intent.setAction(ForegroundSyncService.ACTION_START);
+                    intent.putExtra("totalItems", totalItems);
+                    activity.startService(intent);
+                } catch (Exception e) {
+                    Log.e(TAG, "Failed to start foreground sync service", e);
+                }
+            });
+        }
+
+        /**
+         * Updates the foreground sync notification with current progress.
+         */
+        @JavascriptInterface
+        public void updateSyncProgress(int current, int total) {
+            if (activity == null) return;
+            activity.mainHandler.post(() -> {
+                try {
+                    android.content.Intent intent = new android.content.Intent(activity, ForegroundSyncService.class);
+                    intent.setAction(ForegroundSyncService.ACTION_UPDATE_PROGRESS);
+                    intent.putExtra("current", current);
+                    intent.putExtra("total", total);
+                    activity.startService(intent);
+                } catch (Exception e) {
+                    Log.e(TAG, "Failed to update sync progress", e);
+                }
+            });
+        }
+
+        /**
+         * Stops the foreground sync service and dismisses the notification.
+         */
+        @JavascriptInterface
+        public void stopForegroundSync() {
+            Log.d(TAG, "Stopping foreground sync service");
+            if (activity == null) return;
+            activity.mainHandler.post(() -> {
+                try {
+                    android.content.Intent intent = new android.content.Intent(activity, ForegroundSyncService.class);
+                    intent.setAction(ForegroundSyncService.ACTION_STOP);
+                    activity.startService(intent);
+                } catch (Exception e) {
+                    Log.e(TAG, "Failed to stop foreground sync service", e);
+                }
+            });
         }
 
         /**

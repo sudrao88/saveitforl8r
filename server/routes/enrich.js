@@ -22,6 +22,7 @@ import {
   momentMatchingResponseSchema,
 } from '../services/gemini.js';
 import { sanitizeUserInput } from '../lib/sanitize.js';
+import { sendSilentPush } from '../lib/silentPush.js';
 
 /**
  * Performs moment matching: evaluates if a newly enriched note is relevant
@@ -326,6 +327,21 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
           }
 
           persistEnrichmentResult(memoryId, req.userId, 'completed', sanitized);
+
+          // Schedule a delayed silent push (30s grace period)
+          // If the client polls and retrieves the result within 30s, the push is unnecessary
+          // but the client handles duplicates gracefully
+          setTimeout(async () => {
+            try {
+              await sendSilentPush(req.userId, {
+                type: 'enrichment-complete',
+                memoryId: memoryId || '',
+              }, db);
+            } catch (pushErr) {
+              // Silent push is best-effort
+              console.error('[Enrich] Silent push failed:', pushErr.message);
+            }
+          }, 30_000);
         } catch (primaryError) {
           clearTimeout(timeout);
           throw primaryError;
@@ -372,6 +388,18 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
           }
 
           persistEnrichmentResult(memoryId, req.userId, 'completed', sanitizedFallback);
+
+          // Schedule a delayed silent push (30s grace period)
+          setTimeout(async () => {
+            try {
+              await sendSilentPush(req.userId, {
+                type: 'enrichment-complete',
+                memoryId: memoryId || '',
+              }, db);
+            } catch (pushErr) {
+              console.error('[Enrich] Silent push failed:', pushErr.message);
+            }
+          }, 30_000);
         } catch (fallbackError) {
           console.error(`[Enrich] [${req.requestId}] Fallback also failed:`, fallbackError.message);
           persistEnrichmentResult(memoryId, req.userId, 'failed', null);

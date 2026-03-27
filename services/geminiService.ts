@@ -1,6 +1,8 @@
 
 import { EnrichmentData, Memory, Attachment, ChatMessage, Moment, SynthesisResponse } from '../types.ts';
-import { postProxy } from './proxyService.ts';
+import { postProxy, getProxyUrl } from './proxyService.ts';
+import { getValidToken } from './googleAuth.ts';
+import { enqueue as bgSyncEnqueue } from './backgroundSyncQueue.ts';
 
 export interface QuerySource {
   id: string;
@@ -58,9 +60,31 @@ export const submitEnrichment = async (
     moments,
   };
 
-  const result = await postProxy<SubmitEnrichmentResponse>('/api/enrich', payload as unknown as Record<string, unknown>);
-  if (result.status !== 'accepted') {
-    throw new Error(`Unexpected enrichment response: ${result.status}`);
+  try {
+    const result = await postProxy<SubmitEnrichmentResponse>('/api/enrich', payload as unknown as Record<string, unknown>);
+    if (result.status !== 'accepted') {
+      throw new Error(`Unexpected enrichment response: ${result.status}`);
+    }
+  } catch (err) {
+    // Queue for Background Sync retry on network errors (TypeError from fetch failures).
+    // Server errors (4xx/5xx) throw Error with "Proxy error" prefix — don't queue those.
+    if (err instanceof TypeError) {
+      try {
+        // Include full URL (SW may not have VITE_PROXY_URL) and auth token
+        // so the service worker can retry with proper authentication
+        let token: string | null = null;
+        try { token = await getValidToken(); } catch { /* best-effort */ }
+        await bgSyncEnqueue({
+          type: 'enrich',
+          payload: { path: `${getProxyUrl()}/api/enrich`, body: payload, token },
+        });
+        console.log('[Enrichment] Queued for Background Sync retry');
+      } catch (queueErr) {
+        // Background Sync queue is best-effort — don't mask the original error
+        console.warn('[Enrichment] Failed to queue for Background Sync:', queueErr);
+      }
+    }
+    throw err;
   }
 };
 
