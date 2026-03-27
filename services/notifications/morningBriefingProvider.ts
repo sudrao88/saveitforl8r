@@ -139,7 +139,7 @@ export const morningBriefingProvider: NotificationProvider = {
 
       if (dayEvents.length === 0 && dayTodos.length === 0) continue;
 
-      const dayLabel = getDayLabel(targetDate, today);
+      const dayLabel = getDayLabel(targetDate, targetDate);
       const body = buildBody(dayEvents.length, dayTodos.length, dayLabel);
       const route = getRoute(dayEvents.length > 0, dayTodos.length > 0);
 
