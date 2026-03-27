@@ -16,6 +16,7 @@ import { Memory, Moment, MomentSynthesis, CalendarEvent, TodoItem } from '../typ
 import { useAuth } from '../hooks/useAuth';
 import { storage } from '../services/platform';
 import { enqueue as bgSyncEnqueue, peekAll as bgSyncPeekAll, remove as bgSyncRemove } from '../services/backgroundSyncQueue';
+import { startForegroundSync, updateForegroundSyncProgress, stopForegroundSync } from '../services/nativeBackgroundSync';
 
 type SyncStatus = 'syncing' | 'synced' | 'error';
 
@@ -792,7 +793,18 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     console.log(`[Sync] Delta sync plan: download=${plan.toDownload.length} upload=${plan.toUpload.length} deleteRemote=${plan.toDeleteRemote.length}`);
 
-    const errors = await executeSyncPlan(plan, onProgress);
+    const totalSyncItems = plan.toDownload.length + plan.toUpload.length + plan.toDeleteRemote.length;
+    if (totalSyncItems > 0) {
+        await startForegroundSync(totalSyncItems);
+    }
+    let syncedCount = 0;
+    const wrappedOnProgress = totalSyncItems > 0 ? () => {
+        syncedCount++;
+        updateForegroundSyncProgress(syncedCount, totalSyncItems);
+        onProgress?.();
+    } : onProgress;
+
+    const errors = await executeSyncPlan(plan, wrappedOnProgress);
 
     // Rebuild snapshot from Drive's actual state, but EXCLUDE items that failed
     // to sync. This ensures failed downloads are retried on the next sync instead
@@ -920,6 +932,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 setSyncError(errorMessage);
                 reject(e);
             } finally {
+                await stopForegroundSync();
                 setIsSyncing(false);
                 setIsSyncingDownload(false);
                 isSyncingRef.current = false;
