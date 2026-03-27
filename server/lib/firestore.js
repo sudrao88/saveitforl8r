@@ -17,19 +17,30 @@
  * @returns {(docId: string, userId: string, status: string, result: any) => void}
  */
 export function createResultPersister(db, collection, successTtlMs, failedTtlMs) {
-  return (docId, userId, status, result) => {
+  return async (docId, userId, status, result) => {
     if (!db || !docId) return;
-    const doc = {
-      userId,
-      status,
-      createdAt: Date.now(),
-      expireAt: new Date(Date.now() + (status === 'completed' ? successTtlMs : failedTtlMs)),
-    };
-    if (result) doc.result = result;
-    db.collection(collection)
-      .doc(docId)
-      .set(doc)
-      .catch((err) => console.error(`[Firestore] Failed to persist ${collection}/${docId}:`, err.message));
+
+    const docRef = db.collection(collection).doc(docId);
+
+    try {
+      // Verify ownership: only allow overwrite if doc doesn't exist or belongs to this user
+      const existing = await docRef.get();
+      if (existing.exists && existing.data().userId !== userId) {
+        console.warn(`[Firestore] Ownership mismatch for ${collection}/${docId}: requested by ${userId}, owned by ${existing.data().userId}`);
+        return;
+      }
+
+      const doc = {
+        userId,
+        status,
+        createdAt: Date.now(),
+        expireAt: new Date(Date.now() + (status === 'completed' ? successTtlMs : failedTtlMs)),
+      };
+      if (result) doc.result = result;
+      await docRef.set(doc);
+    } catch (err) {
+      console.error(`[Firestore] Failed to persist ${collection}/${docId}:`, err.message);
+    }
   };
 }
 
