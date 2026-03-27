@@ -35,20 +35,6 @@ export const toLocalDateKey = (date: Date): string => {
 /** Extract the YYYY-MM-DD portion from an ISO 8601 string */
 const isoToDateKey = (iso: string): string => iso.slice(0, 10);
 
-/** Get a human-readable day label */
-const getDayLabel = (target: Date, today: Date): string => {
-  const todayKey = toLocalDateKey(today);
-  const targetKey = toLocalDateKey(target);
-
-  if (targetKey === todayKey) return 'today';
-
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  if (targetKey === toLocalDateKey(tomorrow)) return 'tomorrow';
-
-  return `on ${target.toLocaleDateString('en-US', { weekday: 'long' })}`;
-};
-
 /** Build notification body text */
 export const buildBody = (eventCount: number, todoCount: number, dayLabel: string): string => {
   const parts: string[] = [];
@@ -139,7 +125,7 @@ export const morningBriefingProvider: NotificationProvider = {
 
       if (dayEvents.length === 0 && dayTodos.length === 0) continue;
 
-      const dayLabel = getDayLabel(targetDate, targetDate);
+      const dayLabel = 'today';
       const body = buildBody(dayEvents.length, dayTodos.length, dayLabel);
       const route = getRoute(dayEvents.length > 0, dayTodos.length > 0);
 
