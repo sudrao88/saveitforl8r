@@ -31,6 +31,9 @@ export const authenticateRequest = async (req, res, next) => {
     .digest('hex');
   const cached = tokenCache.get(tokenHash);
   if (cached && Date.now() < cached.expiresAt) {
+    // LRU: move to end so least-recently-used entries are evicted first
+    tokenCache.delete(tokenHash);
+    tokenCache.set(tokenHash, cached);
     req.userId = cached.userId;
     return next();
   }

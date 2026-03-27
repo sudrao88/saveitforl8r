@@ -93,3 +93,22 @@ export const ANALYTICS_EVENTS = {
     ACTION_DISMISSED: 'Dismissed',
   },
 } as const;
+
+/**
+ * Shared polling timing constants.
+ * Used by enrichment, moment creation, and synthesis polling.
+ */
+export const POLLING = {
+  /** Poll every 1s during the initial fast-polling tier. */
+  FAST_INTERVAL_MS: 1_000,
+  /** Poll every 2s after the fast tier expires. */
+  SLOW_INTERVAL_MS: 2_000,
+  /** Duration of the fast-polling tier (first 15 seconds). */
+  FAST_TIER_MS: 15_000,
+  /** Enrichment polling timeout. */
+  ENRICHMENT_TIMEOUT_MS: 120_000,
+  /** Moment creation polling timeout (3-step pipeline takes longer). */
+  MOMENT_CREATION_TIMEOUT_MS: 180_000,
+  /** Re-synthesis polling timeout. */
+  SYNTHESIS_TIMEOUT_MS: 120_000,
+} as const;

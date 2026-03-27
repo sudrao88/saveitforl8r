@@ -2,15 +2,7 @@ import { useCallback, useRef } from 'react';
 import { fetchPendingEnrichments } from '../services/geminiService';
 import { getMemory, saveMemory } from '../services/storageService';
 import { Attachment, LinkPreview, Memory } from '../types';
-
-const ENRICHMENT_TIMEOUT_MS = 120_000;
-
-/** Poll every 1s during the initial fast-polling tier. */
-const FAST_POLL_INTERVAL_MS = 1_000;
-/** Poll every 2s after the fast tier expires. */
-const SLOW_POLL_INTERVAL_MS = 2_000;
-/** Duration of the fast-polling tier (first 15 seconds). */
-const FAST_POLL_TIER_MS = 15_000;
+import { POLLING } from '../constants';
 
 /**
  * Applies an enrichment poll result to a single memory.
@@ -26,7 +18,7 @@ export const applyEnrichmentResult = async (
   const needsUpdate =
     (result?.status === 'completed' && result.data) ||
     result?.status === 'failed' ||
-    ((!result || result.status === 'not_found') && Date.now() - memory.timestamp > ENRICHMENT_TIMEOUT_MS);
+    ((!result || result.status === 'not_found') && Date.now() - memory.timestamp > POLLING.ENRICHMENT_TIMEOUT_MS);
 
   if (!needsUpdate) return null; // Still processing, no change
 
@@ -149,14 +141,14 @@ export const useEnrichmentPolling = ({
       const stillPending = memoriesRef.current.filter(m => m.isPending);
       if (stillPending.length > 0 && pollingActiveRef.current) {
         const elapsed = Date.now() - pollingStartTime;
-        const nextDelay = elapsed < FAST_POLL_TIER_MS ? FAST_POLL_INTERVAL_MS : SLOW_POLL_INTERVAL_MS;
+        const nextDelay = elapsed < POLLING.FAST_TIER_MS ? POLLING.FAST_INTERVAL_MS : POLLING.SLOW_INTERVAL_MS;
         setTimeout(poll, nextDelay);
       } else {
         pollingActiveRef.current = false;
       }
     };
 
-    setTimeout(poll, FAST_POLL_INTERVAL_MS);
+    setTimeout(poll, POLLING.FAST_INTERVAL_MS);
   }, [memoriesRef, setMemories]);
 
   /**

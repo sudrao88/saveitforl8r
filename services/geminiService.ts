@@ -3,6 +3,7 @@ import { EnrichmentData, Memory, Attachment, ChatMessage, Moment, SynthesisRespo
 import { postProxy, getProxyUrl } from './proxyService.ts';
 import { getValidToken } from './googleAuth.ts';
 import { enqueue as bgSyncEnqueue } from './backgroundSyncQueue.ts';
+import { POLLING } from '../constants.ts';
 
 export interface QuerySource {
   id: string;
@@ -88,15 +89,6 @@ export const submitEnrichment = async (
   }
 };
 
-interface EnrichmentResultEntry {
-  status: 'completed' | 'failed' | 'not_found' | string;
-  data?: EnrichmentData;
-}
-
-interface EnrichmentResultsResponse {
-  results: Record<string, EnrichmentResultEntry>;
-}
-
 export type EnrichmentPollResult =
   | { status: 'completed'; data: EnrichmentData }
   | { status: 'processing' }
@@ -104,20 +96,24 @@ export type EnrichmentPollResult =
   | { status: 'not_found' };
 
 /**
- * Fetches enrichment results for pending memories from the server.
- * Returns per-memory status so callers can distinguish between
- * "still processing", "completed", "failed", and "not found".
+ * Generic polling result fetcher. All three polling endpoints (enrich, moment,
+ * synthesis) share the same request/response shape — this eliminates the
+ * duplicated fetch + status-normalization logic.
  */
-export const fetchPendingEnrichments = async (
-  memoryIds: string[]
-): Promise<Record<string, EnrichmentPollResult>> => {
+async function fetchPendingResults<TData>(
+  ids: string[],
+  endpoint: string,
+  idsKey: string,
+  label: string,
+): Promise<Record<string, { status: 'completed'; data: TData } | { status: 'processing' } | { status: 'failed' } | { status: 'not_found' }>> {
   try {
-    const payload = { memoryIds };
-    const response = await postProxy<EnrichmentResultsResponse>('/api/enrich/results', payload as unknown as Record<string, unknown>);
+    const response = await postProxy<{ results: Record<string, { status: string; data?: TData }> }>(
+      endpoint, { [idsKey]: ids } as unknown as Record<string, unknown>
+    );
 
-    const result: Record<string, EnrichmentPollResult> = {};
-    if (response && response.results) {
-      for (const id of memoryIds) {
+    const result: Record<string, { status: 'completed'; data: TData } | { status: 'processing' } | { status: 'failed' } | { status: 'not_found' }> = {};
+    if (response?.results) {
+      for (const id of ids) {
         const entry = response.results[id];
         if (entry?.status === 'completed' && entry.data) {
           result[id] = { status: 'completed', data: entry.data };
@@ -132,10 +128,16 @@ export const fetchPendingEnrichments = async (
     }
     return result;
   } catch (error) {
-    console.error('Failed to fetch pending enrichments:', error);
+    console.error(`Failed to fetch ${label}:`, error);
     return {};
   }
-};
+}
+
+/**
+ * Fetches enrichment results for pending memories from the server.
+ */
+export const fetchPendingEnrichments = (memoryIds: string[]) =>
+  fetchPendingResults<EnrichmentData>(memoryIds, '/api/enrich/results', 'memoryIds', 'pending enrichments');
 
 interface LightMemory {
   id: string;
@@ -212,50 +214,11 @@ export type MomentCreationPollResult =
   | { status: 'failed' }
   | { status: 'not_found' };
 
-interface MomentResultEntry {
-  status: 'completed' | 'failed' | 'not_found' | string;
-  data?: CreateMomentResponse;
-}
-
-interface MomentResultsResponse {
-  results: Record<string, MomentResultEntry>;
-}
-
 /**
  * Fetches moment creation results for pending moments from the server.
- * Returns per-moment status. Mirrors fetchPendingEnrichments() pattern.
  */
-export const fetchPendingMomentResults = async (
-  momentIds: string[],
-): Promise<Record<string, MomentCreationPollResult>> => {
-  try {
-    const payload = { momentIds };
-    const response = await postProxy<MomentResultsResponse>(
-      '/api/create-moment/results',
-      payload as unknown as Record<string, unknown>
-    );
-
-    const result: Record<string, MomentCreationPollResult> = {};
-    if (response && response.results) {
-      for (const id of momentIds) {
-        const entry = response.results[id];
-        if (entry?.status === 'completed' && entry.data) {
-          result[id] = { status: 'completed', data: entry.data };
-        } else if (entry?.status === 'failed') {
-          result[id] = { status: 'failed' };
-        } else if (entry?.status === 'processing') {
-          result[id] = { status: 'processing' };
-        } else {
-          result[id] = { status: 'not_found' };
-        }
-      }
-    }
-    return result;
-  } catch (error) {
-    console.error('Failed to fetch pending moment results:', error);
-    return {};
-  }
-};
+export const fetchPendingMomentResults = (momentIds: string[]) =>
+  fetchPendingResults<CreateMomentResponse>(momentIds, '/api/create-moment/results', 'momentIds', 'pending moment results');
 
 // --- Async Moment Re-Synthesis ---
 
@@ -312,60 +275,12 @@ export type SynthesisPollResult =
   | { status: 'failed' }
   | { status: 'not_found' };
 
-interface SynthesisResultEntry {
-  status: 'completed' | 'failed' | 'not_found' | string;
-  data?: SynthesisResponse;
-}
-
-interface SynthesisResultsResponse {
-  results: Record<string, SynthesisResultEntry>;
-}
-
 /**
  * Fetches re-synthesis results for pending moments from the server.
- * Mirrors fetchPendingMomentResults() pattern.
  */
-export const fetchPendingSynthesisResults = async (
-  momentIds: string[],
-): Promise<Record<string, SynthesisPollResult>> => {
-  try {
-    const payload = { momentIds };
-    const response = await postProxy<SynthesisResultsResponse>(
-      '/api/synthesize/results',
-      payload as unknown as Record<string, unknown>
-    );
+export const fetchPendingSynthesisResults = (momentIds: string[]) =>
+  fetchPendingResults<SynthesisResponse>(momentIds, '/api/synthesize/results', 'momentIds', 'pending synthesis results');
 
-    const result: Record<string, SynthesisPollResult> = {};
-    if (response && response.results) {
-      for (const id of momentIds) {
-        const entry = response.results[id];
-        if (entry?.status === 'not_found') {
-          result[id] = { status: 'not_found' };
-        } else if (entry?.status === 'completed' && entry.data) {
-          result[id] = { status: 'completed', data: entry.data };
-        } else if (entry?.status === 'failed') {
-          result[id] = { status: 'failed' };
-        } else {
-          // Default unknown statuses to 'processing' as a safe intermediate state
-          result[id] = { status: 'processing' };
-        }
-      }
-    }
-    return result;
-  } catch (error) {
-    console.error('Failed to fetch pending synthesis results:', error);
-    return {};
-  }
-};
-
-/** Poll every 1s during the initial fast-polling tier. */
-const SYNTH_FAST_POLL_INTERVAL_MS = 1_000;
-/** Poll every 2s after the fast tier expires. */
-const SYNTH_SLOW_POLL_INTERVAL_MS = 2_000;
-/** Duration of the fast-polling tier (first 15 seconds). */
-const SYNTH_FAST_POLL_TIER_MS = 15_000;
-/** Maximum time to poll before giving up. */
-const SYNTH_POLL_TIMEOUT_MS = 120_000;
 
 /**
  * Polls for a re-synthesis result with tiered intervals (1s for 15s, then 2s).
@@ -379,15 +294,15 @@ export const pollSynthesisResult = async (
 ): Promise<SynthesisResponse> => {
   const start = Date.now();
 
-  while (Date.now() - start < SYNTH_POLL_TIMEOUT_MS) {
+  while (Date.now() - start < POLLING.SYNTHESIS_TIMEOUT_MS) {
     if (signal?.aborted) {
       throw new DOMException('Synthesis polling aborted', 'AbortError');
     }
 
     const elapsed = Date.now() - start;
-    const interval = elapsed < SYNTH_FAST_POLL_TIER_MS
-      ? SYNTH_FAST_POLL_INTERVAL_MS
-      : SYNTH_SLOW_POLL_INTERVAL_MS;
+    const interval = elapsed < POLLING.FAST_TIER_MS
+      ? POLLING.FAST_INTERVAL_MS
+      : POLLING.SLOW_INTERVAL_MS;
 
     // Abort-aware delay: rejects immediately if signal fires during the wait
     await new Promise<void>((resolve, reject) => {

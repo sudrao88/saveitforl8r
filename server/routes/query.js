@@ -6,6 +6,7 @@ import rateLimit from 'express-rate-limit';
 import { authenticateRequest } from '../middleware/auth.js';
 import { validateQueryInput } from '../middleware/validation.js';
 import { sanitizeUserInput, sanitizeString } from '../lib/sanitize.js';
+import { callGeminiWithFallback } from '../lib/geminiCall.js';
 import {
   queryResponseSchema,
   QUERY_SYSTEM_PROMPT,
@@ -114,56 +115,21 @@ export const createQueryRouter = ({ ai, MODEL_NAME, FALLBACK_MODEL_NAME, GEMINI_
 
         console.log(`[Query] [${req.requestId}] user=${req.userId} query="${query?.substring(0, 50)}" memories=${memories.length} history=${normalizedHistory.length}`);
 
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
+        const config = {
+          systemInstruction: QUERY_SYSTEM_PROMPT,
+          responseMimeType: 'application/json',
+          responseSchema: queryResponseSchema,
+          thinkingConfig: { thinkingBudget: 0 },
+        };
 
-        try {
-          const response = await ai.models.generateContent({
-            model: MODEL_NAME,
-            contents,
-            config: {
-              systemInstruction: QUERY_SYSTEM_PROMPT,
-              responseMimeType: 'application/json',
-              responseSchema: queryResponseSchema,
-              thinkingConfig: { thinkingBudget: 0 },
-            },
-            requestOptions: { signal: controller.signal },
-          });
-          clearTimeout(timeout);
+        const responseText = await callGeminiWithFallback({
+          ai, primaryModel: MODEL_NAME, fallbackModel: FALLBACK_MODEL_NAME,
+          contents, config, timeoutMs: GEMINI_TIMEOUT_MS,
+          label: '[Query]', requestId: req.requestId,
+        });
 
-          const responseText = response.text || '{}';
-          console.log(`[Query] [${req.requestId}] Response length: ${responseText.length}`);
-          res.json(sanitizeQueryResponse(JSON.parse(responseText)));
-        } catch (apiError) {
-          clearTimeout(timeout);
-
-          // Fallback with alternate model
-          console.warn(`[Query] [${req.requestId}] Primary model failed: ${apiError.message}. Trying fallback…`);
-          const fbController = new AbortController();
-          const fbTimeout = setTimeout(() => fbController.abort(), GEMINI_TIMEOUT_MS);
-
-          try {
-            const fbResponse = await ai.models.generateContent({
-              model: FALLBACK_MODEL_NAME,
-              contents,
-              config: {
-                systemInstruction: QUERY_SYSTEM_PROMPT,
-                responseMimeType: 'application/json',
-                responseSchema: queryResponseSchema,
-                thinkingConfig: { thinkingBudget: 0 },
-              },
-              requestOptions: { signal: fbController.signal },
-            });
-            clearTimeout(fbTimeout);
-
-            const fbText = fbResponse.text || '{}';
-            console.log(`[Query] [${req.requestId}] Fallback response length: ${fbText.length}`);
-            return res.json(sanitizeQueryResponse(JSON.parse(fbText)));
-          } catch (fbError) {
-            clearTimeout(fbTimeout);
-            throw fbError;
-          }
-        }
+        console.log(`[Query] [${req.requestId}] Response length: ${responseText.length}`);
+        res.json(sanitizeQueryResponse(JSON.parse(responseText)));
       } catch (error) {
         console.error(`[Query] [${req.requestId}] Failed:`, error.message);
         res.status(500).json({ error: 'Query failed' });

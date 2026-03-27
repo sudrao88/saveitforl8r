@@ -11,15 +11,7 @@ import { fetchPendingMomentResults, CreateMomentResponse } from '../services/gem
 import { Moment, Memory, MomentSynthesis, MomentType } from '../types';
 import { saveMoment, saveMomentSynthesis } from '../services/storageService';
 import { computeInputHash } from '../utils/hash';
-
-const MOMENT_CREATION_TIMEOUT_MS = 180_000; // 3 minutes (3-step pipeline)
-
-/** Poll every 1s during the initial fast-polling tier. */
-const FAST_POLL_INTERVAL_MS = 1_000;
-/** Poll every 2s after the fast tier expires. */
-const SLOW_POLL_INTERVAL_MS = 2_000;
-/** Duration of the fast-polling tier (first 15 seconds). */
-const FAST_POLL_TIER_MS = 15_000;
+import { POLLING } from '../constants';
 
 interface UseMomentCreationPollingOptions {
   momentsRef: React.RefObject<Moment[]>;
@@ -104,7 +96,7 @@ const applyMomentResult = async (
   // Timed out (not_found or still processing beyond timeout)
   if (
     (!result || result.status === 'not_found') &&
-    Date.now() - pendingMoment.createdAt > MOMENT_CREATION_TIMEOUT_MS
+    Date.now() - pendingMoment.createdAt > POLLING.MOMENT_CREATION_TIMEOUT_MS
   ) {
     const timedOut: Moment = {
       ...pendingMoment,
@@ -165,14 +157,14 @@ export const useMomentCreationPolling = ({
       const stillPending = momentsRef.current.filter(m => m.isPending);
       if (stillPending.length > 0 && pollingActiveRef.current) {
         const elapsed = Date.now() - pollingStartTime;
-        const nextDelay = elapsed < FAST_POLL_TIER_MS ? FAST_POLL_INTERVAL_MS : SLOW_POLL_INTERVAL_MS;
+        const nextDelay = elapsed < POLLING.FAST_TIER_MS ? POLLING.FAST_INTERVAL_MS : POLLING.SLOW_INTERVAL_MS;
         setTimeout(poll, nextDelay);
       } else {
         pollingActiveRef.current = false;
       }
     };
 
-    setTimeout(poll, FAST_POLL_INTERVAL_MS);
+    setTimeout(poll, POLLING.FAST_INTERVAL_MS);
   }, [momentsRef, memoriesRef, setMoments, setSynthesesMap, onMomentCreated]);
 
   const recoverPending = useCallback(async (pendingMoments: Moment[]) => {
