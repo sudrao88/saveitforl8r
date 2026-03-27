@@ -273,6 +273,8 @@ const executeSyncPlan = async (plan: SyncPlan, onProgress?: () => void): Promise
     }
 
     const { failures: upFailures } = await uploadMultipleFiles(uploadItems);
+    // Report progress for each upload (successful or not)
+    for (let i = 0; i < uploadItems.length; i++) onProgress?.();
     errors.push(...upFailures.map(f => f.replace('.json', '')));
 
     // Queue failed uploads for Background Sync retry (best-effort)
@@ -312,6 +314,7 @@ const executeSyncPlan = async (plan: SyncPlan, onProgress?: () => void): Promise
             console.error(`[Sync] Failed to delete remote file for ${item.noteId}:`, e);
             errors.push(item.noteId);
         }
+        onProgress?.();
     }
 
     for (const id of [...plan.toHardDeleteLocal, ...plan.toDeleteLocal]) {
