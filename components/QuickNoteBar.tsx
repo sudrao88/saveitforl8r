@@ -3,7 +3,7 @@ import { Paperclip, Hash, Type, Maximize2, Plus, X, FileText, Loader2, CheckSqua
 import AttachmentMenu from './AttachmentMenu';
 import { marked } from 'marked';
 import { Attachment, QuickNoteState } from '../types';
-import { escapeHtml, looksLikeMarkdown, parseChecklistMarkdown, sanitizePastedHtml, hasRichFormatting, extractHashtags, mergeTagsWithHashtags, containsUrl, linkifyUrls, handleEditorKeyDown, checkActiveFormats, execFormatCommand, formatsEqual } from '../utils/editorUtils';
+import { escapeHtml, looksLikeMarkdown, parseChecklistMarkdown, sanitizePastedHtml, hasRichFormatting, extractHashtags, mergeTagsWithHashtags, containsUrl, linkifyUrls, handleEditorKeyDown, handleEditorBeforeInput, checkActiveFormats, execFormatCommand, formatsEqual } from '../utils/editorUtils';
 import { processFileInputs } from '../utils/attachmentUtils';
 import { triggerHaptic } from '../services/platform';
 import FormattingToolbar from './FormattingToolbar';
@@ -112,6 +112,20 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
       setIsEmpty(!editorRef.current.innerText.trim());
     });
   }, []);
+
+  // Native beforeinput listener for markdown auto-formatting on Android.
+  // Android virtual keyboards fire keydown with e.key === 'Unidentified',
+  // so the keydown handler can't detect space presses. beforeinput reliably
+  // provides the inserted character via event.data.
+  useEffect(() => {
+    const el = editorRef.current;
+    if (!el) return;
+    const handler = (e: Event) => {
+      handleEditorBeforeInput(e as InputEvent, el, checkFormats);
+    };
+    el.addEventListener('beforeinput', handler);
+    return () => el.removeEventListener('beforeinput', handler);
+  }, [checkFormats]);
 
   const execFormat = useCallback((command: string, value?: string) => {
     execFormatCommand(command, value);
