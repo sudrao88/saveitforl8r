@@ -216,12 +216,23 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                 self?.dispatchShareDataToJS()
             }
         }
+
+        // Check for pending widget event
+        if let widgetEvent = pendingWidgetEvent {
+            pendingWidgetEvent = nil
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                self?.dispatchWidgetEvent(widgetEvent)
+            }
+        }
     }
 
     func applicationWillTerminate(_ application: UIApplication) {
     }
 
     // MARK: - URL Handling
+
+    // Pending widget event detail to dispatch when JS is ready
+    private var pendingWidgetEvent: String? = nil
 
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
         // Handle share extension URL scheme
@@ -231,8 +242,44 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             return true
         }
 
+        // Handle widget deep link
+        if url.scheme == "com.saveitforl8r.app" && url.host == "quick-note" {
+            print("[Widget] Received quick-note deep link")
+            let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+            let mode = components?.queryItems?.first(where: { $0.name == "mode" })?.value
+            var dict: [String: String] = [:]
+            if let mode = mode { dict["mode"] = mode }
+            let eventDetail: String
+            if let data = try? JSONSerialization.data(withJSONObject: dict),
+               let str = String(data: data, encoding: .utf8) {
+                eventDetail = str
+            } else {
+                eventDetail = "{}"
+            }
+            dispatchWidgetEvent(eventDetail)
+            return true
+        }
+
         // Default Capacitor URL handling (deep links, OAuth)
         return ApplicationDelegateProxy.shared.application(app, open: url, options: options)
+    }
+
+    private func dispatchWidgetEvent(_ eventDetail: String) {
+        guard let bridge = bridgeViewController?.bridge else {
+            // Queue for later dispatch
+            pendingWidgetEvent = eventDetail
+            return
+        }
+
+        let base64 = Data(eventDetail.utf8).base64EncodedString()
+        let js = "window.dispatchEvent(new CustomEvent('onWidgetQuickNote', { detail: JSON.parse(atob('\(base64)')) }));"
+        bridge.webView?.evaluateJavaScript(js) { _, error in
+            if let error = error {
+                print("[Widget] JS dispatch error: \(error)")
+            } else {
+                print("[Widget] Quick note event dispatched to JS")
+            }
+        }
     }
 
     func application(_ application: UIApplication, continue userActivity: NSUserActivity, restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void) -> Bool {

@@ -60,7 +60,27 @@
                 <data android:scheme="com.saveitforl8r.app" android:host="google-auth" />
             </intent-filter>
 
+            <!-- Widget deep link: quick-note -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="com.saveitforl8r.app" android:host="quick-note" />
+            </intent-filter>
+
         </activity>
+
+        <!-- Quick Note Home Screen Widget -->
+        <receiver
+            android:name=".QuickNoteWidgetProvider"
+            android:exported="true"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/quick_note_widget_info" />
+        </receiver>
 
         <!-- Foreground service for user-initiated bulk sync operations -->
         <service

@@ -4,4 +4,8 @@
     <string name="title_activity_main">saveitforl8r</string>
     <string name="package_name">com.saveitforl8r.app</string>
     <string name="custom_url_scheme">com.saveitforl8r.app</string>
+    <string name="widget_hint">Save a thought…</string>
+    <string name="widget_description">Quick access to save notes</string>
+    <string name="widget_camera">Take photo</string>
+    <string name="widget_document">Upload document</string>
 </resources>

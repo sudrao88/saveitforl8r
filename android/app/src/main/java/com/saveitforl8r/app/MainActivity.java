@@ -16,6 +16,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.util.Locale;
 
+import org.json.JSONException;
 import org.json.JSONObject;
 
 import androidx.core.graphics.Insets;
@@ -88,7 +89,11 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
 
             // Process initial intent
             if (getIntent() != null) {
-                shareHandler.handleIntent(getIntent());
+                if (isWidgetDeepLink(getIntent())) {
+                    handleWidgetDeepLink(getIntent());
+                } else {
+                    shareHandler.handleIntent(getIntent());
+                }
             }
         } catch (Exception e) {
             Log.e(TAG, "Error in onCreate", e);
@@ -100,8 +105,65 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
-        if (intent != null && shareHandler != null) {
-            shareHandler.handleIntent(intent);
+        if (intent != null) {
+            if (isWidgetDeepLink(intent)) {
+                handleWidgetDeepLink(intent);
+            } else if (shareHandler != null) {
+                shareHandler.handleIntent(intent);
+            }
+        }
+    }
+
+    /**
+     * Check if this intent is a widget deep-link (quick-note://).
+     */
+    private boolean isWidgetDeepLink(Intent intent) {
+        if (intent == null || intent.getData() == null) return false;
+        Uri data = intent.getData();
+        return QuickNoteWidgetProvider.DEEP_LINK_SCHEME.equals(data.getScheme())
+                && "quick-note".equals(data.getHost());
+    }
+
+    /**
+     * Handle deep-link from the home screen widget.
+     * Dispatches a JS event to focus the quick note bar and optionally
+     * open a specific capture mode (e.g., camera).
+     */
+    private void handleWidgetDeepLink(Intent intent) {
+        Uri data = intent.getData();
+        String mode = data != null ? data.getQueryParameter("mode") : null;
+
+        String eventDetail;
+        try {
+            JSONObject json = new JSONObject();
+            if (mode != null) {
+                json.put("mode", mode);
+            }
+            eventDetail = json.toString();
+        } catch (JSONException e) {
+            Log.w(TAG, "Failed to build widget event JSON", e);
+            eventDetail = "{}";
+        }
+
+        Log.d(TAG, "Widget deep link received, mode: " + mode);
+
+        // Dispatch immediately if JS is ready, otherwise queue it
+        mainHandler.post(() -> {
+            if (jsAppReady && bridge != null) {
+                bridge.triggerJSEvent("onWidgetQuickNote", "window", eventDetail);
+            } else {
+                // Queue and dispatch when app is ready
+                pendingWidgetEvent = eventDetail;
+            }
+        });
+    }
+
+    private String pendingWidgetEvent = null;
+
+    private void dispatchPendingWidgetEvent() {
+        if (pendingWidgetEvent != null && bridge != null) {
+            bridge.triggerJSEvent("onWidgetQuickNote", "window", pendingWidgetEvent);
+            pendingWidgetEvent = null;
         }
     }
 
@@ -301,6 +363,7 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
                     activity.webViewReady = true; // Dismiss splash screen
                     activity.dispatchPendingInsets();
                     activity.dispatchShareData();
+                    activity.dispatchPendingWidgetEvent();
                 });
             }
         }

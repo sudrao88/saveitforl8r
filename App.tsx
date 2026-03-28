@@ -42,6 +42,7 @@ import { useTodoItems } from './hooks/useTodoItems';
 import { useDeletionCandidates } from './hooks/useDeletionCandidates';
 import { useNotifications } from './hooks/useNotifications';
 import useNativeOTA from './hooks/useNativeOTA';
+import { useWidgetDeepLink } from './hooks/useWidgetDeepLink';
 import { SyncProvider } from './context/SyncContext';
 import { reconcileEmbeddings, ReconcileReport, getMemories as getStoredMemories } from './services/storageService';
 import { ViewMode, Memory, Attachment, Moment, QuickNoteState, CalendarEvent } from './types';
@@ -659,6 +660,19 @@ const AppContent: React.FC = () => {
     'Mod+k': () => quickNoteBarRef.current?.focus(),
     'Mod+f': () => setView(ViewMode.RECALL),
     'Mod+,': () => setIsSettingsOpen(true),
+  });
+
+  // Handle home screen widget deep links
+  useWidgetDeepLink({
+    onFocus: useCallback(() => quickNoteBarRef.current?.focus(), []),
+    onCamera: useCallback(() => {
+      quickNoteBarRef.current?.triggerCamera();
+      logEvent(ANALYTICS_EVENTS.NAVIGATION.CATEGORY, ANALYTICS_EVENTS.NAVIGATION.ACTION_CAPTURE_OPENED, 'Widget-Camera');
+    }, []),
+    onDocument: useCallback(() => {
+      quickNoteBarRef.current?.triggerDocument();
+      logEvent(ANALYTICS_EVENTS.NAVIGATION.CATEGORY, ANALYTICS_EVENTS.NAVIGATION.ACTION_CAPTURE_OPENED, 'Widget-Document');
+    }, []),
   });
 
   const displayMemories = useMemo(() => {
