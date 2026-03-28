@@ -210,39 +210,52 @@ const isAtBlockStart = (selection: Selection, editorEl: HTMLElement): boolean =>
 };
 
 /**
- * Replace the text before the cursor (the markdown trigger chars) with empty string
- * and execute the given formatting command.
+ * Execute a formatting command first (while DOM has valid content), then
+ * remove the markdown trigger characters from the resulting block.
+ *
+ * Older approach emptied the text node before calling execCommand, which
+ * caused browsers to silently fail when the selection sat inside an empty
+ * text node with no surrounding block element.
  */
-const replaceTextAndFormat = (
-    node: Node,
-    offset: number,
-    charsToRemove: number,
+const formatThenCleanup = (
     command: string,
+    charsToRemove: number,
     value?: string
 ) => {
-    const textNode = node as Text;
-    const before = textNode.textContent?.slice(0, offset - charsToRemove) || '';
-    const after = textNode.textContent?.slice(offset) || '';
-    textNode.textContent = before + after;
+    // Execute the command while the trigger text is still in the DOM,
+    // giving the browser a valid block to convert.
+    document.execCommand(command, false, value);
 
-    // Place cursor at the adjusted position
+    // Now remove the trigger characters (e.g. "- ", "1. ", "# ", "> ")
+    // from the start of the newly formatted block.
     const sel = window.getSelection();
-    if (sel) {
+    if (!sel?.anchorNode) return;
+
+    // After execCommand the cursor is inside the new structure.
+    // Walk to the first text node in the current block and strip the prefix.
+    const anchor = sel.anchorNode;
+    const container = anchor.nodeType === Node.TEXT_NODE
+        ? anchor.parentElement
+        : anchor as HTMLElement;
+    if (!container) return;
+
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+    const firstText = walker.nextNode() as Text | null;
+    if (firstText && firstText.textContent) {
+        firstText.textContent = firstText.textContent.slice(charsToRemove);
+        // Place cursor at the start of the cleaned text
         const range = document.createRange();
-        range.setStart(textNode, before.length);
+        range.setStart(firstText, 0);
         range.collapse(true);
         sel.removeAllRanges();
         sel.addRange(range);
     }
-
-    document.execCommand(command, false, value);
 };
 
 /** Try to apply inline markdown formatting (e.g. **bold**, *italic*, `code`, ~~strike~~).
- *  Only called on Space key — converts closing delimiters into formatted elements. */
-const tryInlineMarkdown = (e: KeyboardEvent): boolean => {
-    if (e.key !== ' ') return false;
-
+ *  Called on Space — converts closing delimiters into formatted elements.
+ *  Returns true if a pattern matched and formatting was applied. */
+const tryInlineMarkdown = (): boolean => {
     const sel = window.getSelection();
     if (!sel || !sel.anchorNode || sel.anchorNode.nodeType !== Node.TEXT_NODE) return false;
 
@@ -262,7 +275,6 @@ const tryInlineMarkdown = (e: KeyboardEvent): boolean => {
     for (const { regex, wrapTag } of patterns) {
         const match = before.match(regex);
         if (match) {
-            e.preventDefault();
             const fullMatch = match[0];
             const innerText = match[1];
             const textNode = sel.anchorNode as Text;
@@ -302,6 +314,43 @@ const tryInlineMarkdown = (e: KeyboardEvent): boolean => {
 };
 
 /**
+ * Core logic for space-triggered markdown shortcuts (block-level and inline).
+ * Shared by the keydown handler (desktop) and beforeinput handler (Android).
+ * Returns true if a shortcut was applied.
+ */
+const handleSpaceMarkdown = (editorEl: HTMLElement): boolean => {
+    const sel = window.getSelection();
+    if (!sel?.anchorNode) return false;
+
+    const textBefore = getTextBeforeCursor(sel);
+
+    // Block-level shortcuts — only at the start of a block
+    if (isAtBlockStart(sel, editorEl)) {
+        if (textBefore === '-' || textBefore === '*' || textBefore === '+') {
+            formatThenCleanup('insertUnorderedList', textBefore.length);
+            return true;
+        } else if (/^\d+\.$/.test(textBefore)) {
+            formatThenCleanup('insertOrderedList', textBefore.length);
+            return true;
+        } else if (textBefore === '#') {
+            formatThenCleanup('formatBlock', 1, 'H1');
+            return true;
+        } else if (textBefore === '##') {
+            formatThenCleanup('formatBlock', 2, 'H2');
+            return true;
+        } else if (textBefore === '>') {
+            formatThenCleanup('formatBlock', 1, 'BLOCKQUOTE');
+            return true;
+        }
+    }
+
+    // Inline markdown (works anywhere)
+    if (tryInlineMarkdown()) return true;
+
+    return false;
+};
+
+/**
  * Handle keydown events in the rich text editor for markdown auto-formatting,
  * list behavior, and keyboard shortcuts.
  *
@@ -312,7 +361,6 @@ export const handleEditorKeyDown = (
     editorEl: HTMLElement,
     checkFormats: () => void
 ): boolean => {
-    const nativeEvent = 'nativeEvent' in e ? e.nativeEvent : e;
     const sel = window.getSelection();
     const mod = e.metaKey || e.ctrlKey;
 
@@ -445,46 +493,12 @@ export const handleEditorKeyDown = (
         }
     }
 
-    // ── Space key: block-level markdown shortcuts ───────────────────────────
-    if (e.key === ' ' && sel?.anchorNode) {
-        const textBefore = getTextBeforeCursor(sel);
-
-        // Only trigger if at block start
-        if (isAtBlockStart(sel, editorEl)) {
-            let handled = false;
-
-            if (textBefore === '-' || textBefore === '*' || textBefore === '+') {
-                // Bullet list
-                e.preventDefault();
-                replaceTextAndFormat(sel.anchorNode, sel.anchorOffset, textBefore.length, 'insertUnorderedList');
-                handled = true;
-            } else if (/^\d+\.$/.test(textBefore)) {
-                // Numbered list
-                e.preventDefault();
-                replaceTextAndFormat(sel.anchorNode, sel.anchorOffset, textBefore.length, 'insertOrderedList');
-                handled = true;
-            } else if (textBefore === '#') {
-                e.preventDefault();
-                replaceTextAndFormat(sel.anchorNode, sel.anchorOffset, 1, 'formatBlock', 'H1');
-                handled = true;
-            } else if (textBefore === '##') {
-                e.preventDefault();
-                replaceTextAndFormat(sel.anchorNode, sel.anchorOffset, 2, 'formatBlock', 'H2');
-                handled = true;
-            } else if (textBefore === '>') {
-                e.preventDefault();
-                replaceTextAndFormat(sel.anchorNode, sel.anchorOffset, 1, 'formatBlock', 'BLOCKQUOTE');
-                handled = true;
-            }
-
-            if (handled) {
-                checkFormats();
-                return true;
-            }
-        }
-
-        // Inline markdown (works anywhere)
-        if (tryInlineMarkdown(nativeEvent)) {
+    // ── Space key: block-level & inline markdown shortcuts ───────────────────
+    // On desktop browsers e.key === ' '; on Android virtual keyboards it is
+    // often 'Unidentified', so the beforeinput handler covers that case.
+    if (e.key === ' ') {
+        if (handleSpaceMarkdown(editorEl)) {
+            e.preventDefault();
             checkFormats();
             return true;
         }
@@ -519,6 +533,33 @@ export const handleEditorKeyDown = (
         }
     }
 
+    return false;
+};
+
+/**
+ * Handle beforeinput events for markdown auto-formatting.
+ *
+ * On Android virtual keyboards, keydown often fires with e.key === 'Unidentified'
+ * so the space-triggered shortcuts in handleEditorKeyDown never match.
+ * The beforeinput event reliably provides the inserted text via event.data,
+ * making it the correct hook for Android/mobile IME input.
+ *
+ * On desktop, if handleEditorKeyDown already handled the space (and called
+ * preventDefault), the browser will not fire beforeinput, so there is no
+ * double-handling.
+ */
+export const handleEditorBeforeInput = (
+    e: InputEvent,
+    editorEl: HTMLElement,
+    checkFormats: () => void
+): boolean => {
+    if (e.inputType === 'insertText' && e.data === ' ') {
+        if (handleSpaceMarkdown(editorEl)) {
+            e.preventDefault();
+            checkFormats();
+            return true;
+        }
+    }
     return false;
 };
 
