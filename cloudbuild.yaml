@@ -43,6 +43,7 @@ steps:
           --build-arg "VITE_GOOGLE_CLIENT_ID=$$VITE_GOOGLE_CLIENT_ID" \
           --build-arg "VITE_GOOGLE_CLIENT_SECRET=$$VITE_GOOGLE_CLIENT_SECRET" \
           --build-arg "VITE_PROXY_URL=${_SERVER_URL}" \
+          --build-arg "VITE_APP_URL=${_APP_URL}" \
           -t "us-west1-docker.pkg.dev/$PROJECT_ID/saveitforl8r-repo/client:latest" \
           .
 
@@ -209,6 +210,7 @@ options:
 
 substitutions:
   _SERVER_URL: "https://api.saveitforl8r.com"
+  _APP_URL: "https://saveitforl8r.com"
 
 availableSecrets:
   secretManager:
