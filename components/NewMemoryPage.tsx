@@ -5,12 +5,13 @@ import { marked } from 'marked';
 import { Attachment, Memory } from '../types';
 import { isNative } from '../services/platform';
 import { Keyboard } from '@capacitor/keyboard';
-import { escapeHtml, looksLikeMarkdown, parseChecklistMarkdown, sanitizePastedHtml, hasRichFormatting, extractHashtags, mergeTagsWithHashtags, containsUrl, linkifyUrls, handleEditorKeyDown, handleEditorBeforeInput, checkActiveFormats, execFormatCommand, formatsEqual } from '../utils/editorUtils';
+import { escapeHtml, looksLikeMarkdown, parseChecklistMarkdown, sanitizePastedHtml, hasRichFormatting, extractHashtags, mergeTagsWithHashtags, containsUrl, linkifyUrls, handleEditorKeyDown, checkActiveFormats, execFormatCommand, formatsEqual } from '../utils/editorUtils';
 import { processFileInputs } from '../utils/attachmentUtils';
 import FormattingToolbar from './FormattingToolbar';
 import TagInput from './TagInput';
 import { btn, overlay } from '../styles/design-system';
 import { ChecklistEditor } from './ChecklistItems';
+import useBeforeInputMarkdown from '../hooks/useBeforeInputMarkdown';
 
 interface NewMemoryPageProps {
   onClose: () => void;
@@ -297,19 +298,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
   // Cleanup rAF on unmount
   useEffect(() => () => cancelAnimationFrame(formatRafRef.current), []);
 
-  // Native beforeinput listener for markdown auto-formatting on Android.
-  // Android virtual keyboards fire keydown with e.key === 'Unidentified',
-  // so the keydown handler can't detect space presses. beforeinput reliably
-  // provides the inserted character via event.data.
-  useEffect(() => {
-    const el = editorRef.current;
-    if (!el) return;
-    const handler = (e: Event) => {
-      handleEditorBeforeInput(e as InputEvent, el, checkFormats);
-    };
-    el.addEventListener('beforeinput', handler);
-    return () => el.removeEventListener('beforeinput', handler);
-  }, [checkFormats]);
+  useBeforeInputMarkdown(editorRef, checkFormats);
 
   const execFormat = useCallback((command: string, value?: string) => {
       execFormatCommand(command, value);
