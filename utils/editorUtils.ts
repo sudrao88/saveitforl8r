@@ -1,3 +1,9 @@
+/** Check whether the editor is effectively empty (no text and no list elements). */
+export const isEditorEmpty = (editor: HTMLDivElement | null): boolean => {
+    if (!editor) return true;
+    return !editor.innerText.trim() && !editor.querySelector('ul, ol');
+};
+
 export const escapeHtml = (text: string): string =>
     text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
