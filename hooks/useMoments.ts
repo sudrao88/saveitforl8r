@@ -330,9 +330,11 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
             return prev;
           }
 
+          const newNoteIds = [...current.noteIds, noteId];
           const updated: Moment = {
             ...current,
-            noteIds: [...current.noteIds, noteId],
+            noteIds: newNoteIds,
+            inputHash: computeInputHash(newNoteIds, memoriesRef.current),
             updatedAt: Date.now(),
           };
 
@@ -358,7 +360,7 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
       return new Promise((resolve, reject) => {
         setMomentsList(prev => {
           const current = prev.find(m => m.id === momentId);
-          if (!current || !current.inputHash || current.lastSeenInputHash === current.inputHash) {
+          if (!current || current.lastSeenInputHash === current.inputHash) {
             resolve();
             return prev;
           }
