@@ -12,7 +12,7 @@ export interface DriveFile {
 }
 
 const BATCH_CONCURRENCY = 6;
-const DOWNLOAD_CONCURRENCY = 15;
+const DOWNLOAD_CONCURRENCY = 50;
 
 export const loginToDrive = initiateLogin;
 export const processAuthCallback = handleAuthCallback;
