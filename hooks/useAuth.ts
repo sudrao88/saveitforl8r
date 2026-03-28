@@ -53,6 +53,17 @@ export const useAuth = () => {
     logEvent(ANALYTICS_EVENTS.AUTH.CATEGORY, ANALYTICS_EVENTS.AUTH.ACTION_LOGOUT);
   }, []);
 
+  // Re-check auth status from storage (used after native deep link auth)
+  const recheckAuth = useCallback(async () => {
+    const linked = await checkIsLinked();
+    if (linked) {
+        setAuthStatus('linked');
+        const refreshToken = await getStoredToken('refresh_token');
+        if (refreshToken) setUserId(await sha256Hash(refreshToken));
+        logEvent(ANALYTICS_EVENTS.AUTH.CATEGORY, ANALYTICS_EVENTS.AUTH.ACTION_LOGIN_SUCCESS);
+    }
+  }, []);
+
   // Handle OAuth Callback
   useEffect(() => {
     const handleAuth = async () => {
@@ -104,6 +115,7 @@ export const useAuth = () => {
     authError,
     login: handleLogin,
     unlink: handleUnlink,
-    getAccessToken
+    getAccessToken,
+    recheckAuth
   };
 };

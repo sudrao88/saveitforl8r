@@ -780,16 +780,13 @@ export const factoryReset = async () => {
 
         localStorage.clear();
 
-        // Clear Capacitor Preferences (native) — localStorage.clear() only
-        // covers web storage, not Capacitor Preferences used on native
+        // Clear ALL Capacitor Preferences (native) — localStorage.clear() only
+        // covers web storage, not Capacitor Preferences used on native.
+        // Using storage.clear() instead of selective key removal ensures no
+        // stale state (e.g. pkce_verifier, sync snapshots) survives the reset,
+        // which could corrupt subsequent auth flows on Android.
         try {
-            const nativeKeysToClear = [
-                'gdrive_linked', 'gdrive_email',
-                'access_token', 'expires_at', 'refresh_token',
-                'encryption_key', 'ota_use_remote', 'ota_last_version',
-                'notification_scheduled_ids', 'notification_enabled', 'notification_time',
-            ];
-            await Promise.all(nativeKeysToClear.map(key => storage.remove(key)));
+            await storage.clear();
         } catch (e) {
             console.warn('Failed to clear native preferences:', e);
         }

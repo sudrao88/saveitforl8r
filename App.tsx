@@ -76,7 +76,7 @@ const AppContent: React.FC = () => {
   const { shareData, clearShareData } = useShareReceiver();
   
   const { sync, isSyncing, isSyncingDownload, syncError, getSyncStatusMap, syncStatusVersion, retrySyncFile, setOnSyncProgress } = useSync();
-  const { authStatus, login, unlink } = useAuth();
+  const { authStatus, login, unlink, recheckAuth } = useAuth();
 
   const { modelStatus, downloadProgress, retryDownload, search, embeddingStats, retryFailedEmbeddings, deleteNoteFromIndex, lastError, closeWorkerDB } = useAdaptiveSearch();
 
@@ -441,6 +441,10 @@ const AppContent: React.FC = () => {
   }, [isSyncingDownload, refreshMemories]);
 
   // NATIVE DEEP LINK HANDLING (Google Auth)
+  // Uses a ref for recheckAuth so the listener doesn't need to be re-added on every render.
+  const recheckAuthRef = useRef(recheckAuth);
+  useEffect(() => { recheckAuthRef.current = recheckAuth; }, [recheckAuth]);
+
   useEffect(() => {
     if (!isNative()) return;
 
@@ -448,11 +452,13 @@ const AppContent: React.FC = () => {
         // Handle Google Auth Deep Link
         if (event.url.includes('google-auth')) {
             try {
-                await handleDeepLink(event.url);
-                // Trigger sync after successful login
-                if (authStatus !== 'linked') {
-                    // Force a reload or re-check auth state might be needed, 
-                    // but handleDeepLink does a reload() currently.
+                const success = await handleDeepLink(event.url);
+                if (success) {
+                    // Update React auth state directly instead of reloading
+                    // the page — reload() is unreliable on Android when called
+                    // from a deep link handler and prevents the init effect
+                    // from triggering the first sync.
+                    await recheckAuthRef.current();
                 }
             } catch (e) {
                 console.error("Deep link error:", e);
@@ -461,12 +467,12 @@ const AppContent: React.FC = () => {
         }
     };
 
-    CapacitorApp.addListener('appUrlOpen', handleUrlOpen);
+    const listenerPromise = CapacitorApp.addListener('appUrlOpen', handleUrlOpen);
 
-    // No cleanup here to avoid removing backButton listener if they are shared on the plugin level
-    // in older versions, but typically addListener returns a handle to remove it specifically.
-    // For simplicity in this functional component, we assume it persists.
-  }, [authStatus]);
+    return () => {
+        listenerPromise.then(handle => handle.remove()).catch(e => console.error(e));
+    };
+  }, []);
 
   // NATIVE BACK BUTTON HANDLING - separate effect with UI state dependencies
   useEffect(() => {
