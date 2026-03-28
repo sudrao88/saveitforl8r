@@ -291,7 +291,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
               prevFormatsRef.current = formats;
               setActiveFormats(formats);
           }
-          setIsEmpty(!editorRef.current.innerText.trim());
+          setIsEmpty(!editorRef.current.innerText.trim() && !editorRef.current.querySelector('ul, ol'));
       });
   }, []);
 

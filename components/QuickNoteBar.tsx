@@ -110,7 +110,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
         prevFormatsRef.current = formats;
         setActiveFormats(formats);
       }
-      setIsEmpty(!editorRef.current.innerText.trim());
+      setIsEmpty(!editorRef.current.innerText.trim() && !editorRef.current.querySelector('ul, ol'));
     });
   }, []);
 
