@@ -988,6 +988,7 @@ const AppContent: React.FC = () => {
             onClose={handleMomentClose}
             loadSynthesis={loadSynthesis}
             onDelete={deleteMoment}
+            onDeleteNotes={(noteIds) => noteIds.forEach(handleDeleteMemory)}
             onViewAttachment={handleViewAttachment}
             onMemoryDelete={handleDeleteMemory}
             onMemoryEdit={handleEditMemory}
