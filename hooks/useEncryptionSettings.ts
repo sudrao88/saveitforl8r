@@ -1,6 +1,7 @@
 
 import { useState, useRef } from 'react';
 import { exportEncryptionKey, restoreEncryptionKey } from '../services/encryptionService';
+import { downloadBlob } from '../services/downloadService';
 
 export const useEncryptionSettings = () => {
   const [showKeyWarning, setShowKeyWarning] = useState(false);
@@ -14,14 +15,8 @@ export const useEncryptionSettings = () => {
     }
     
     const blob = new Blob([key], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `saveitforl8r-key-${new Date().toISOString().slice(0, 10)}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    const filename = `saveitforl8r-key-${new Date().toISOString().slice(0, 10)}.json`;
+    await downloadBlob(blob, filename);
   };
 
   const handleRestoreClick = () => {

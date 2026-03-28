@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Send, BrainCircuit, ExternalLink, Bot, Sparkles, WifiOff, Download, FileText } from 'lucide-react';
 import { Memory, Attachment, ChatMessage } from '../types';
-import MemoryCard from './MemoryCard';
-import { overlay } from '../styles/design-system';
+import MemoryPreviewModal from './MemoryPreviewModal';
 
 interface ChatInterfaceProps {
   memories: Memory[];
@@ -307,29 +306,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
 
       {/* Memory Preview Modal */}
       {previewMemory && (
-          <div
-            className={`${overlay.previewBackdrop}`}
-            onClick={() => setPreviewMemoryId(null)}
-          >
-              <div className="relative w-full max-w-lg max-h-[80vh] flex flex-col animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
-                  <div className="overflow-y-auto flex-1 min-h-0">
-                      <MemoryCard
-                        memory={previewMemory}
-                        isDialog={true}
-                        onViewAttachment={onViewAttachment}
-                        onDelete={onDelete}
-                        onEdit={onEdit}
-                        onTogglePin={onTogglePin}
-                      />
-                  </div>
-                  <button
-                    onClick={() => setPreviewMemoryId(null)}
-                    className={overlay.previewCloseBtn}
-                  >
-                      Close Preview
-                  </button>
-              </div>
-          </div>
+          <MemoryPreviewModal
+            memory={previewMemory}
+            onClose={() => setPreviewMemoryId(null)}
+            onViewAttachment={onViewAttachment}
+            onDelete={onDelete}
+            onEdit={onEdit}
+            onTogglePin={onTogglePin}
+          />
       )}
     </div>
     </>

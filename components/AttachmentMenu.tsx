@@ -35,11 +35,10 @@ const AttachmentMenu: React.FC<AttachmentMenuProps> = ({ open, onClose, onFileSe
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     onFileSelect(e);
-    // Reset so the same file can be selected again
-    e.target.value = '';
+    // The parent handler resets e.target.value after processing completes.
+    // Do NOT reset it here — onFileSelect is async and the FileList may be
+    // invalidated before files are read if we clear it synchronously.
   }, [onFileSelect]);
-
-  if (!open) return null;
 
   const handleSelect = (ref: React.RefObject<HTMLInputElement | null>) => {
     ref.current?.click();
@@ -50,32 +49,10 @@ const AttachmentMenu: React.FC<AttachmentMenuProps> = ({ open, onClose, onFileSe
 
   return (
     <div ref={menuRef}>
-      <div className={`${menu.panel} !right-auto left-0`}>
-        {showCamera && (
-          <button
-            className={menu.item}
-            onClick={() => handleSelect(cameraInputRef)}
-          >
-            <Camera size={18} />
-            Take photo
-          </button>
-        )}
-        <button
-          className={menu.item}
-          onClick={() => handleSelect(imageInputRef)}
-        >
-          <Image size={18} />
-          Upload image
-        </button>
-        <button
-          className={menu.item}
-          onClick={() => handleSelect(docInputRef)}
-        >
-          <FileText size={18} />
-          Upload document
-        </button>
-      </div>
-
+      {/* Hidden file inputs rendered BEFORE the conditional menu panel so their
+          position in the React tree is stable. If they came after {open && ...},
+          toggling `open` would shift their tree positions, causing React to
+          unmount/remount them and breaking the browser file picker association. */}
       {showCamera && (
         <input
           type="file"
@@ -102,6 +79,34 @@ const AttachmentMenu: React.FC<AttachmentMenuProps> = ({ open, onClose, onFileSe
         multiple
         accept=".pdf,.txt,.md"
       />
+
+      {open && (
+        <div className={`${menu.panel} !right-auto left-0`}>
+          {showCamera && (
+            <button
+              className={menu.item}
+              onClick={() => handleSelect(cameraInputRef)}
+            >
+              <Camera size={18} />
+              Take photo
+            </button>
+          )}
+          <button
+            className={menu.item}
+            onClick={() => handleSelect(imageInputRef)}
+          >
+            <Image size={18} />
+            Upload image
+          </button>
+          <button
+            className={menu.item}
+            onClick={() => handleSelect(docInputRef)}
+          >
+            <FileText size={18} />
+            Upload document
+          </button>
+        </div>
+      )}
     </div>
   );
 };

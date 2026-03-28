@@ -15,6 +15,8 @@ import {
 import { Memory, Moment, MomentSynthesis, CalendarEvent, TodoItem } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { storage } from '../services/platform';
+import { enqueue as bgSyncEnqueue, peekAll as bgSyncPeekAll, remove as bgSyncRemove } from '../services/backgroundSyncQueue';
+import { startForegroundSync, updateForegroundSyncProgress, stopForegroundSync } from '../services/nativeBackgroundSync';
 
 type SyncStatus = 'syncing' | 'synced' | 'error';
 
@@ -39,8 +41,9 @@ const SyncContext = createContext<SyncContextType | undefined>(undefined);
 const SNAPSHOT_KEY = 'gdrive_remote_snapshot';
 const LAST_SYNC_KEY = 'gdrive_last_sync_time';
 const SYNC_DEBOUNCE_MS = 2000;
-const PERIODIC_SYNC_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
-const STALE_SYNC_THRESHOLD_MS = 2 * 60 * 1000;   // 2 minutes
+const PERIODIC_SYNC_INTERVAL_MS = 5 * 60 * 1000;      // 5 minutes (foreground)
+const BACKGROUND_SYNC_INTERVAL_MS = 15 * 60 * 1000;   // 15 minutes (backgrounded tab)
+const STALE_SYNC_THRESHOLD_MS = 2 * 60 * 1000;        // 2 minutes
 
 // ---- Shared Execution Logic ----
 
@@ -177,11 +180,16 @@ const executeSyncPlan = async (plan: SyncPlan, onProgress?: () => void): Promise
                 continue;
             }
 
-            // Validate timestamp before saving — invalid timestamps cause "Invalid Date" in UI
+            // Self-heal invalid timestamps — use local copy's timestamp or fall back to now
             if (typeof content.timestamp !== 'number' || !isFinite(content.timestamp) || content.timestamp <= 0) {
-                console.warn(`[Sync] Skipping memory ${item.noteId}: invalid timestamp`, content.timestamp);
-                errors.push(item.noteId);
-                continue;
+                let healed = item.local?.timestamp;
+                if (typeof healed !== 'number' || !isFinite(healed) || healed <= 0) {
+                    healed = Date.now();
+                }
+                console.warn(`[Sync] Healing memory ${item.noteId}: invalid timestamp ${content.timestamp} → ${healed}`);
+                content.timestamp = healed;
+                // Re-upload the healed version to fix remote
+                plan.toUpload.push({ noteId: item.noteId, memory: content, remoteFileId: item.fileId });
             }
 
             if (item.local) {
@@ -265,7 +273,29 @@ const executeSyncPlan = async (plan: SyncPlan, onProgress?: () => void): Promise
     }
 
     const { failures: upFailures } = await uploadMultipleFiles(uploadItems);
+    // Report progress for each upload (successful or not)
+    for (let i = 0; i < uploadItems.length; i++) onProgress?.();
     errors.push(...upFailures.map(f => f.replace('.json', '')));
+
+    // Queue failed uploads for Background Sync retry (best-effort)
+    for (const failedFilename of upFailures) {
+        try {
+            const failedItem = uploadItems.find(item => item.filename === failedFilename);
+            if (failedItem) {
+                await bgSyncEnqueue({
+                    type: 'sync-drive',
+                    payload: {
+                        noteId: failedFilename.replace('.json', ''),
+                        filename: failedItem.filename,
+                        content: failedItem.content,
+                        existingFileId: failedItem.existingFileId,
+                    },
+                });
+            }
+        } catch {
+            // Background Sync queue is best-effort, don't fail the sync
+        }
+    }
 
     for (const item of plan.toDeleteRemote) {
         try {
@@ -284,6 +314,7 @@ const executeSyncPlan = async (plan: SyncPlan, onProgress?: () => void): Promise
             console.error(`[Sync] Failed to delete remote file for ${item.noteId}:`, e);
             errors.push(item.noteId);
         }
+        onProgress?.();
     }
 
     for (const id of [...plan.toHardDeleteLocal, ...plan.toDeleteLocal]) {
@@ -508,10 +539,12 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
   }, []);
 
-  const saveSnapshot = useCallback(async (remoteFiles: DriveFile[]) => {
+  const saveSnapshot = useCallback(async (remoteFiles: DriveFile[], updateLastSyncTime = true) => {
       const snapshot = Object.fromEntries(remoteFiles.map(f => [f.name.replace('.json', ''), f.modifiedTime]));
       await storage.set(SNAPSHOT_KEY, JSON.stringify(snapshot));
-      await storage.set(LAST_SYNC_KEY, Date.now().toString());
+      if (updateLastSyncTime) {
+          await storage.set(LAST_SYNC_KEY, Date.now().toString());
+      }
   }, []);
 
   const doDeltaSync = useCallback(async (previousSnapshot: Record<string, string>, onProgress?: () => void) => {
@@ -681,7 +714,8 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
             plan.toHardDeleteLocal.push(local.id);
             handled.add(local.id);
-        } else if (local.timestamp > lastSyncTime) {
+        } else if (local.timestamp > lastSyncTime || !previousSnapshot[local.id]) {
+            // Upload if modified since last sync, or if never successfully synced (no snapshot entry)
             const remote = remoteMap.get(local.id);
             plan.toUpload.push({ noteId: local.id, memory: local, remoteFileId: remote?.id });
             handled.add(local.id);
@@ -700,7 +734,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
             plan.toHardDeleteLocal.push(key);
             handled.add(key);
-        } else if (moment.updatedAt > lastSyncTime) {
+        } else if (moment.updatedAt > lastSyncTime || !previousSnapshot[key]) {
             const remote = remoteMap.get(key);
             plan.toUpload.push({ noteId: key, memory: moment, remoteFileId: remote?.id });
             handled.add(key);
@@ -719,7 +753,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
             plan.toHardDeleteLocal.push(key);
             handled.add(key);
-        } else if (event.updatedAt > lastSyncTime) {
+        } else if (event.updatedAt > lastSyncTime || !previousSnapshot[key]) {
             const remote = remoteMap.get(key);
             plan.toUpload.push({ noteId: key, memory: event, remoteFileId: remote?.id });
             handled.add(key);
@@ -738,7 +772,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
             plan.toHardDeleteLocal.push(key);
             handled.add(key);
-        } else if (item.updatedAt > lastSyncTime) {
+        } else if (item.updatedAt > lastSyncTime || !previousSnapshot[key]) {
             const remote = remoteMap.get(key);
             plan.toUpload.push({ noteId: key, memory: item, remoteFileId: remote?.id });
             handled.add(key);
@@ -762,18 +796,32 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     console.log(`[Sync] Delta sync plan: download=${plan.toDownload.length} upload=${plan.toUpload.length} deleteRemote=${plan.toDeleteRemote.length}`);
 
-    const errors = await executeSyncPlan(plan, onProgress);
+    const totalSyncItems = plan.toDownload.length + plan.toUpload.length + plan.toDeleteRemote.length;
+    if (totalSyncItems > 0) {
+        await startForegroundSync(totalSyncItems);
+    }
+    let syncedCount = 0;
+    const wrappedOnProgress = totalSyncItems > 0 ? () => {
+        syncedCount++;
+        updateForegroundSyncProgress(syncedCount, totalSyncItems);
+        onProgress?.();
+    } : onProgress;
+
+    const errors = await executeSyncPlan(plan, wrappedOnProgress);
 
     // Rebuild snapshot from Drive's actual state, but EXCLUDE items that failed
     // to sync. This ensures failed downloads are retried on the next sync instead
     // of being permanently skipped due to a matching modifiedTime in the snapshot.
     const updatedRemoteFiles = await listAllFiles();
     if (errors.length > 0) {
+        // Save snapshot excluding failed items so they're retried, but do NOT
+        // advance lastSyncTime — keeps it at the previous value so failed
+        // uploads remain eligible (timestamp > lastSyncTime) on the next delta sync.
         const errorSet = new Set(errors);
         const successfulFiles = updatedRemoteFiles.filter(
             f => !errorSet.has(f.name.replace('.json', ''))
         );
-        await saveSnapshot(successfulFiles);
+        await saveSnapshot(successfulFiles, false);
     } else {
         await saveSnapshot(updatedRemoteFiles);
     }
@@ -820,6 +868,13 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     return new Promise<void>((resolve, reject) => {
         debounceTimerRef.current = setTimeout(async () => {
+            // Re-check after debounce: a single-file sync may have started
+            // during the debounce window, which would cause concurrent syncs.
+            if (isSyncingRef.current) {
+                console.log('[Sync] Skip sync: another sync started during debounce');
+                resolve();
+                return;
+            }
             setIsSyncing(true);
             setIsSyncingDownload(true);
             isSyncingRef.current = true;
@@ -880,6 +935,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 setSyncError(errorMessage);
                 reject(e);
             } finally {
+                await stopForegroundSync();
                 setIsSyncing(false);
                 setIsSyncingDownload(false);
                 isSyncingRef.current = false;
@@ -1030,10 +1086,14 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
   }, [syncFileInternal, getAccessToken, updateSyncStatus]);
 
-  // Periodic sync: poll every 5 minutes while tab is visible,
-  // and sync on tab re-focus if data is stale (>2 min since last sync).
+  // Visibility-aware periodic sync:
+  // - Foreground: sync every 5 minutes (PERIODIC_SYNC_INTERVAL_MS)
+  // - Background: sync every 15 minutes (BACKGROUND_SYNC_INTERVAL_MS) to save battery
+  // - On return to foreground: immediate sync if data is stale (>2 min since last sync)
   useEffect(() => {
     if (authStatus !== 'linked') return;
+
+    let intervalId: ReturnType<typeof setInterval>;
 
     const isStale = async (): Promise<boolean> => {
         const lastStr = await storage.get(LAST_SYNC_KEY);
@@ -1049,22 +1109,29 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
     };
 
-    // Periodic interval — only syncs when tab is visible
-    const intervalId = setInterval(() => {
-        if (document.visibilityState === 'visible') {
-            trySyncQuietly();
-        }
-    }, PERIODIC_SYNC_INTERVAL_MS);
+    const startInterval = (ms: number) => {
+        if (intervalId) clearInterval(intervalId);
+        intervalId = setInterval(trySyncQuietly, ms);
+    };
 
-    // Sync on tab re-focus if stale
+    // Start with the appropriate interval based on current visibility
+    const isVisible = document.visibilityState === 'visible';
+    startInterval(isVisible ? PERIODIC_SYNC_INTERVAL_MS : BACKGROUND_SYNC_INTERVAL_MS);
+
+    // On visibility change: adjust interval and trigger immediate sync if stale
     const handleVisibilityChange = async () => {
         if (document.visibilityState === 'visible') {
+            // Returned to foreground — switch to fast interval
+            startInterval(PERIODIC_SYNC_INTERVAL_MS);
             try {
                 const stale = await isStale();
                 if (stale) trySyncQuietly();
             } catch (err) {
                 console.error('[Sync] Error checking for stale sync on visibility change:', err);
             }
+        } else {
+            // Moved to background — switch to slow interval to save battery
+            startInterval(BACKGROUND_SYNC_INTERVAL_MS);
         }
     };
 
@@ -1075,6 +1142,53 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [authStatus, performSync]);
+
+  // Drain the Background Sync drive queue from the foreground.
+  // The service worker cannot perform Google Drive uploads (needs OAuth),
+  // so it notifies us via postMessage to retry here with proper auth.
+  useEffect(() => {
+    if (authStatus !== 'linked') return;
+
+    const drainDriveSyncQueue = async () => {
+        try {
+            const pending = await bgSyncPeekAll();
+            const driveOps = pending.filter(op => op.type === 'sync-drive');
+            if (driveOps.length === 0) return;
+
+            await getAccessToken();
+            for (const op of driveOps) {
+                try {
+                    const { filename, content, existingFileId } = op.payload;
+                    if (!filename || !content) {
+                        console.warn(`[Sync] BG queue: removing malformed item ${op.id}`);
+                        await bgSyncRemove(op.id!);
+                        continue;
+                    }
+                    await uploadFile(filename, content, existingFileId);
+                    await bgSyncRemove(op.id!);
+                } catch (e) {
+                    console.warn(`[Sync] BG queue retry failed for ${op.payload?.noteId}:`, e);
+                }
+            }
+        } catch (e) {
+            console.warn('[Sync] Failed to drain drive sync queue:', e);
+        }
+    };
+
+    const handleSWMessage = (event: MessageEvent) => {
+        if (event.data?.type === 'DRIVE_SYNC_PENDING') {
+            drainDriveSyncQueue();
+        }
+    };
+
+    navigator.serviceWorker?.addEventListener('message', handleSWMessage);
+    // Also drain on mount in case items were queued while app was closed
+    drainDriveSyncQueue();
+
+    return () => {
+        navigator.serviceWorker?.removeEventListener('message', handleSWMessage);
+    };
+  }, [authStatus, getAccessToken]);
 
   useEffect(() => {
     return () => {

@@ -82,6 +82,12 @@
                 android:resource="@xml/quick_note_widget_info" />
         </receiver>
 
+        <!-- Foreground service for user-initiated bulk sync operations -->
+        <service
+            android:name=".ForegroundSyncService"
+            android:foregroundServiceType="dataSync"
+            android:exported="false" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -114,4 +120,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- Foreground service permission for bulk sync -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 </manifest>

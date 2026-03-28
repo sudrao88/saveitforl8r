@@ -177,5 +177,18 @@ import { btn, card, overlay, text, chip, menu, zIndex } from '../styles/design-s
 7. **Enrichment/content-type colors** (in `SECTION_CONFIG_MAP`) are exempt from token rules — they use Tailwind palette for variety
 8. **All UI changes must use semantic tokens** (`--color-*`, `--radius-*`, `--duration-*`, `--z-*`) instead of raw Tailwind color/radius/duration/z-index values. This applies to every component, not just new ones — when touching existing code, migrate any raw values to tokens.
 
+## Pull Request Policy
+
+When creating a pull request, always set the **base branch** to the branch from which the current feature branch was originally created — not necessarily `master`. To determine the parent branch, check which branch the current branch was forked from:
+
+```bash
+git log --oneline --first-parent master..HEAD
+git log --oneline --first-parent <candidate-branch>..HEAD
+```
+
+Pick the base branch that yields the shortest history (i.e., the most recent common ancestor). If the branch was created from `master`, use `master`. If it was created from another feature branch, use that feature branch as the PR base.
+
+After creating a pull request, always use the `subscribe_pr_activity` tool to monitor and respond to review comments, CI status updates, and other PR events.
+
 ## Common Development Tasks
 (omitted for brevity)

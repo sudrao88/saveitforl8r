@@ -45,6 +45,7 @@
     "uuid": "^13.0.0"
   },
   "devDependencies": {
+    "@capacitor/push-notifications": "^8.0.3",
     "@tailwindcss/postcss": "^4.1.18",
     "@tailwindcss/vite": "^4.1.18",
     "@testing-library/dom": "^10.4.0",

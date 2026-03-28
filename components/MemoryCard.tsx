@@ -3,6 +3,7 @@ import { Trash2, Loader2, Clock, ExternalLink, Star, ShoppingBag, Tv, BookOpen, 
 import { Memory, Attachment } from '../types.ts';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { card, menu, overlay, text } from '../styles/design-system';
+import { downloadDataUri } from '../services/downloadService';
 import { ChecklistDisplay } from './ChecklistItems';
 
 interface EnrichmentSectionProps {
@@ -239,6 +240,19 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
   const [isTruncated, setIsTruncated] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const shakeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasAnimatedRef = useRef(false);
+  const [shouldAnimate, setShouldAnimate] = useState(() => !isDialog);
+
+  useEffect(() => {
+    if (!isDialog && !hasAnimatedRef.current) {
+      hasAnimatedRef.current = true;
+      const delay = (index ?? 0) * 60;
+      const timer = setTimeout(() => {
+        setShouldAnimate(false);
+      }, delay + 250); // delay + animation duration
+      return () => clearTimeout(timer);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     return () => {
@@ -407,10 +421,10 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
         ${memory.isPending ? 'opacity-70 border-blue-900/30' : ''}
         ${memory.processingError ? 'border-amber-900/30 bg-amber-900/5' : ''}
         ${showErrorOverlay || showSignInOverlay ? 'min-h-[350px]' : ''}
-        ${!isDialog ? 'animate-in fade-in slide-in-from-bottom-4 duration-(--duration-normal) fill-mode-backwards' : ''}
+        ${shouldAnimate ? 'animate-in fade-in slide-in-from-bottom-4 duration-(--duration-normal) fill-mode-backwards' : ''}
         ${isShaking ? 'animate-shake' : ''}
         `}
-        style={!isDialog && index != null ? { animationDelay: `${index * 60}ms` } : undefined}
+        style={shouldAnimate && index != null ? { animationDelay: `${index * 60}ms` } : undefined}
       >
         {/* Sign In Overlay — shown when enrichment failed due to missing auth */}
         {showSignInOverlay && (
@@ -623,14 +637,12 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                             <span className="text-sm text-gray-300 truncate flex-1 group-hover/doc:text-white">{doc.name}</span>
                             <div className="flex items-center gap-2">
                                 <Eye size={16} className="text-gray-500 opacity-0 group-hover/doc:opacity-100" />
-                                <a 
-                                    href={doc.data} 
-                                    download={doc.name} 
-                                    onClick={e => e.stopPropagation()} 
+                                <button
+                                    onClick={async e => { e.stopPropagation(); try { await downloadDataUri(doc.data, doc.name, doc.mimeType); } catch (err) { console.error('Download failed:', err); } }}
                                     className="p-2 -m-2 text-gray-500 hover:text-white transition-colors"
                                 >
                                     <Paperclip size={16} />
-                                </a>
+                                </button>
                             </div>
                         </div>
                     ))}

@@ -49,6 +49,11 @@
     <string>SaveItForL8r needs camera access to take photos for your memories.</string>
     <key>NSPhotoLibraryUsageDescription</key>
     <string>SaveItForL8r needs photo library access to attach images to your memories.</string>
+    <key>BGTaskSchedulerPermittedIdentifiers</key>
+    <array>
+        <string>com.saveitforl8r.app.refresh</string>
+        <string>com.saveitforl8r.app.processing</string>
+    </array>
     <key>CFBundleURLTypes</key>
     <array>
         <dict>

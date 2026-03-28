@@ -22,6 +22,8 @@ import {
   setNotificationTime as setTimePref,
   registerPeriodicSync,
   cancelAllNotifications,
+  checkExactAlarmPermission,
+  requestExactAlarmPermission,
 } from '../services/notificationService';
 
 export interface UseNotificationsReturn {
@@ -167,6 +169,13 @@ export const useNotifications = (
           openNotificationSettings();
         }
         return;
+      }
+
+      // On Android 12+, request exact alarm permission for precise scheduling.
+      // If denied, notifications still work but may be delayed by Doze mode.
+      const exactStatus = await checkExactAlarmPermission();
+      if (exactStatus !== 'granted') {
+        await requestExactAlarmPermission();
       }
 
       setIsEnabled(true);

@@ -86,4 +86,10 @@ export const ANALYTICS_EVENTS = {
     ACTION_PERMISSION_GRANTED: 'Permission Granted',
     ACTION_SETTING_CHANGED: 'Setting Changed',
   },
+  DELETION_CANDIDATES: {
+    CATEGORY: 'DeletionCandidates',
+    ACTION_OPENED: 'Opened',
+    ACTION_DELETED: 'Deleted',
+    ACTION_DISMISSED: 'Dismissed',
+  },
 } as const;

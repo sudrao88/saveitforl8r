@@ -14,6 +14,7 @@ import { Type } from '@google/genai';
 import rateLimit from 'express-rate-limit';
 import { authenticateRequest } from '../middleware/auth.js';
 import { sanitizeUserInput, sanitizeForPromptEmbedding } from '../lib/sanitize.js';
+import { sendSilentPush } from '../lib/silentPush.js';
 
 const SYNTHESIS_THINKING_BUDGET = 4096;
 
@@ -395,6 +396,18 @@ export const createMomentRouter = ({
         const result = { title, type: momentType, emoji, usedNoteIds: selectedNoteIds, synthesis, refinedObjective: refinement.refinedObjective };
         persistMomentResult(id, req.userId, 'completed', result);
         console.log(`[CreateMoment] [${req.requestId}] Pipeline complete in ${Date.now() - startTime}ms`);
+
+        // Schedule a delayed silent push (30s grace period)
+        setTimeout(async () => {
+          try {
+            await sendSilentPush(req.userId, {
+              type: 'moment-complete',
+              momentId: id,
+            }, db);
+          } catch (pushErr) {
+            console.error('[CreateMoment] Silent push failed:', pushErr.message);
+          }
+        }, 30_000);
       } catch (error) {
         console.error(`[CreateMoment] [${req.requestId}] Pipeline failed after ${Date.now() - startTime}ms:`, error.message);
 

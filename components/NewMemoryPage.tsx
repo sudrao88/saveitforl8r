@@ -11,6 +11,7 @@ import FormattingToolbar from './FormattingToolbar';
 import TagInput from './TagInput';
 import { btn, overlay } from '../styles/design-system';
 import { ChecklistEditor } from './ChecklistItems';
+import useBeforeInputMarkdown from '../hooks/useBeforeInputMarkdown';
 
 interface NewMemoryPageProps {
   onClose: () => void;
@@ -296,6 +297,8 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
 
   // Cleanup rAF on unmount
   useEffect(() => () => cancelAnimationFrame(formatRafRef.current), []);
+
+  useBeforeInputMarkdown(editorRef, checkFormats);
 
   const execFormat = useCallback((command: string, value?: string) => {
       execFormatCommand(command, value);

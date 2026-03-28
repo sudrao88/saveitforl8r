@@ -10,6 +10,7 @@ import FormattingToolbar from './FormattingToolbar';
 import TagInput from './TagInput';
 import { btn, zIndex } from '../styles/design-system';
 import { ChecklistEditor } from './ChecklistItems';
+import useBeforeInputMarkdown from '../hooks/useBeforeInputMarkdown';
 
 // Configure marked for clean output
 marked.setOptions({ breaks: true, gfm: true });
@@ -118,6 +119,8 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
       setIsEmpty(!editorRef.current.innerText.trim());
     });
   }, []);
+
+  useBeforeInputMarkdown(editorRef, checkFormats);
 
   const execFormat = useCallback((command: string, value?: string) => {
     execFormatCommand(command, value);

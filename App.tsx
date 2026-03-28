@@ -25,6 +25,7 @@ const MomentCreationDialog = lazyWithRetry(() => import('./components/MomentCrea
 const AllMomentsSheet = lazyWithRetry(() => import('./components/AllMomentsSheet'));
 const CalendarAgendaView = lazyWithRetry(() => import('./components/CalendarAgendaView'));
 const TodoListView = lazyWithRetry(() => import('./components/TodoListView'));
+const DeletionCandidatesSheet = lazyWithRetry(() => import('./components/DeletionCandidatesSheet'));
 
 import { useMemories } from './hooks/useMemories';
 import { useSettings } from './hooks/useSettings';
@@ -38,6 +39,7 @@ import { useHotkeys } from './hooks/useHotkeys';
 import { useMoments } from './hooks/useMoments';
 import { useCalendarEvents } from './hooks/useCalendarEvents';
 import { useTodoItems } from './hooks/useTodoItems';
+import { useDeletionCandidates } from './hooks/useDeletionCandidates';
 import { useNotifications } from './hooks/useNotifications';
 import useNativeOTA from './hooks/useNativeOTA';
 import { useWidgetDeepLink } from './hooks/useWidgetDeepLink';
@@ -75,7 +77,7 @@ const AppContent: React.FC = () => {
   const { shareData, clearShareData } = useShareReceiver();
   
   const { sync, isSyncing, isSyncingDownload, syncError, getSyncStatusMap, syncStatusVersion, retrySyncFile, setOnSyncProgress } = useSync();
-  const { authStatus, login, unlink } = useAuth();
+  const { authStatus, login, unlink, recheckAuth } = useAuth();
 
   const { modelStatus, downloadProgress, retryDownload, search, embeddingStats, retryFailedEmbeddings, deleteNoteFromIndex, lastError, closeWorkerDB } = useAdaptiveSearch();
 
@@ -88,6 +90,7 @@ const AppContent: React.FC = () => {
     updateMemory,
     updateMemoryContent,
     togglePin,
+    dismissDeletionCandidate,
     isLoading,
     setMomentsRef,
     setOnNoteMatchedMoments,
@@ -134,6 +137,9 @@ const AppContent: React.FC = () => {
 
   const [showCalendarAgenda, setShowCalendarAgenda] = useState(false);
   const [showTodoList, setShowTodoList] = useState(false);
+  const [showDeletionCandidates, setShowDeletionCandidates] = useState(false);
+
+  const deletionCandidates = useDeletionCandidates(memories, calendarEvents, todoItems);
   const [notifBannerDismissed, setNotifBannerDismissed] = useState(false);
 
   // Notification scheduling — syncs on mount, resume, and data changes
@@ -436,6 +442,10 @@ const AppContent: React.FC = () => {
   }, [isSyncingDownload, refreshMemories]);
 
   // NATIVE DEEP LINK HANDLING (Google Auth)
+  // Uses a ref for recheckAuth so the listener doesn't need to be re-added on every render.
+  const recheckAuthRef = useRef(recheckAuth);
+  useEffect(() => { recheckAuthRef.current = recheckAuth; }, [recheckAuth]);
+
   useEffect(() => {
     if (!isNative()) return;
 
@@ -443,11 +453,13 @@ const AppContent: React.FC = () => {
         // Handle Google Auth Deep Link
         if (event.url.includes('google-auth')) {
             try {
-                await handleDeepLink(event.url);
-                // Trigger sync after successful login
-                if (authStatus !== 'linked') {
-                    // Force a reload or re-check auth state might be needed, 
-                    // but handleDeepLink does a reload() currently.
+                const success = await handleDeepLink(event.url);
+                if (success) {
+                    // Update React auth state directly instead of reloading
+                    // the page — reload() is unreliable on Android when called
+                    // from a deep link handler and prevents the init effect
+                    // from triggering the first sync.
+                    await recheckAuthRef.current();
                 }
             } catch (e) {
                 console.error("Deep link error:", e);
@@ -456,12 +468,12 @@ const AppContent: React.FC = () => {
         }
     };
 
-    CapacitorApp.addListener('appUrlOpen', handleUrlOpen);
+    const listenerPromise = CapacitorApp.addListener('appUrlOpen', handleUrlOpen);
 
-    // No cleanup here to avoid removing backButton listener if they are shared on the plugin level
-    // in older versions, but typically addListener returns a handle to remove it specifically.
-    // For simplicity in this functional component, we assume it persists.
-  }, [authStatus]);
+    return () => {
+        listenerPromise.then(handle => handle.remove()).catch(e => console.error(e));
+    };
+  }, []);
 
   // NATIVE BACK BUTTON HANDLING - separate effect with UI state dependencies
   useEffect(() => {
@@ -774,7 +786,7 @@ const AppContent: React.FC = () => {
       {/* Main UI — hidden when MomentCreationDialog is open */}
       {!showCreateMoment ? (
         <>
-          <div ref={topNavRef} className="sticky top-0 z-(--z-overlay) bg-black/90 backdrop-blur-md border-b border-gray-800/50 pt-[var(--sat)]">
+          <div ref={topNavRef} className="sticky top-0 z-(--z-overlay) bg-black/90 backdrop-blur-md pt-[var(--sat)]">
               <TopNavigation
                 setView={handleSetView}
                 resetFilters={handleResetFilters}
@@ -798,10 +810,15 @@ const AppContent: React.FC = () => {
             onTodoTap={handleTodoTap}
             todoPendingCount={todoPendingCount}
             synthesisLoading={synthesisLoading}
+            deletionCandidateCount={deletionCandidates.length}
+            onDeletionCandidatesTap={() => {
+              setShowDeletionCandidates(true);
+              logEvent(ANALYTICS_EVENTS.DELETION_CANDIDATES.CATEGORY, ANALYTICS_EVENTS.DELETION_CANDIDATES.ACTION_OPENED);
+            }}
           />
 
           {notificationsSupported && notificationPermission === 'prompt' && !notifBannerDismissed && activeMemoryCount > 0 && (
-            <div className="mx-4 sm:mx-8 mt-3 flex items-center gap-3 p-3 bg-(--color-accent-muted) border border-(--color-accent)/30 rounded-(--radius-xl)">
+            <div className="mx-4 sm:mx-8 my-3 flex items-center gap-3 p-3 bg-(--color-accent-muted) border border-(--color-accent)/30 rounded-(--radius-xl)">
               <Bell size={18} className="text-(--color-accent) shrink-0" />
               <p className="flex-1 text-sm text-(--color-text-secondary)">
                 Enable notifications to get a daily briefing of your events and tasks.
@@ -972,6 +989,9 @@ const AppContent: React.FC = () => {
             loadSynthesis={loadSynthesis}
             onDelete={deleteMoment}
             onViewAttachment={handleViewAttachment}
+            onMemoryDelete={handleDeleteMemory}
+            onMemoryEdit={handleEditMemory}
+            onMemoryTogglePin={handleTogglePin}
           />
         </Suspense>
       )}
@@ -1048,6 +1068,28 @@ const AppContent: React.FC = () => {
             }}
             onViewAttachment={handleViewAttachment}
             onDelete={handleDeleteMemory}
+            onEdit={handleEditMemory}
+            onTogglePin={handleTogglePin}
+          />
+        </Suspense>
+      )}
+
+      {showDeletionCandidates && (
+        <Suspense fallback={null}>
+          <DeletionCandidatesSheet
+            candidates={deletionCandidates}
+            calendarEvents={calendarEvents}
+            todoItems={todoItems}
+            onClose={() => setShowDeletionCandidates(false)}
+            onDelete={(id) => {
+              handleDeleteMemory(id);
+              logEvent(ANALYTICS_EVENTS.DELETION_CANDIDATES.CATEGORY, ANALYTICS_EVENTS.DELETION_CANDIDATES.ACTION_DELETED);
+            }}
+            onDismiss={(id) => {
+              dismissDeletionCandidate(id);
+              logEvent(ANALYTICS_EVENTS.DELETION_CANDIDATES.CATEGORY, ANALYTICS_EVENTS.DELETION_CANDIDATES.ACTION_DISMISSED);
+            }}
+            onViewAttachment={handleViewAttachment}
             onEdit={handleEditMemory}
             onTogglePin={handleTogglePin}
           />

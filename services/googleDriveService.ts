@@ -12,6 +12,7 @@ export interface DriveFile {
 }
 
 const BATCH_CONCURRENCY = 6;
+const DOWNLOAD_CONCURRENCY = 15;
 
 export const loginToDrive = initiateLogin;
 export const processAuthCallback = handleAuthCallback;
@@ -137,30 +138,38 @@ export const deleteRemoteNote = async (noteId: string) => {
 };
 
 export const downloadMultipleFiles = async (
-    fileIds: string[]
+    fileIds: string[],
+    onFileDownloaded?: () => void
 ): Promise<{ contents: Map<string, any>; failures: string[] }> => {
     const contents = new Map<string, any>();
     const failures: string[] = [];
     if (fileIds.length === 0) return { contents, failures };
 
-    for (let i = 0; i < fileIds.length; i += BATCH_CONCURRENCY) {
-        const batch = fileIds.slice(i, i + BATCH_CONCURRENCY);
-        const results = await Promise.all(
-            batch.map(async (fileId) => {
-                try {
-                    const content = await downloadFileContent(fileId);
-                    return { fileId, content, ok: true as const };
-                } catch (e) {
-                    console.error(`[Drive] Download failed for ${fileId}:`, e);
-                    return { fileId, content: null, ok: false as const };
-                }
-            })
-        );
-        for (const r of results) {
-            if (r.ok) contents.set(r.fileId, r.content);
-            else failures.push(r.fileId);
+    // Sliding-window concurrency: keep DOWNLOAD_CONCURRENCY requests in
+    // flight at all times instead of waiting for fixed-size batches.
+    let nextIndex = 0;
+
+    const processNext = async (): Promise<void> => {
+        while (nextIndex < fileIds.length) {
+            const idx = nextIndex++;
+            const fileId = fileIds[idx];
+            try {
+                const content = await downloadFileContent(fileId);
+                contents.set(fileId, content);
+            } catch (e) {
+                console.error(`[Drive] Download failed for ${fileId}:`, e);
+                failures.push(fileId);
+            }
+            onFileDownloaded?.();
         }
-    }
+    };
+
+    const workers = Array.from(
+        { length: Math.min(DOWNLOAD_CONCURRENCY, fileIds.length) },
+        () => processNext()
+    );
+    await Promise.all(workers);
+
     return { contents, failures };
 };
 

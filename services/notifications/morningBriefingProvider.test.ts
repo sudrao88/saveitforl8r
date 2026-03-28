@@ -124,7 +124,7 @@ describe('morningBriefingProvider', () => {
     // Future day should have 1 todo
     const futureNotif = notifications.find(n => n.id === 1004);
     expect(futureNotif).toBeDefined();
-    expect(futureNotif!.body).toBe('You have 1 task on Wednesday');
+    expect(futureNotif!.body).toBe('You have 1 task today');
   });
 
   it('schedules notifications for multiple upcoming days', async () => {
@@ -212,13 +212,14 @@ describe('morningBriefingProvider', () => {
     expect(notifications).toEqual([]);
   });
 
-  it('generates correct title for future days', async () => {
+  it('generates correct body for future days relative to fire date', async () => {
     (storageService.getCalendarEvents as any).mockResolvedValue([
       makeEvent({ startDate: '2026-03-22T10:00:00' }), // Tomorrow (Sunday)
     ]);
 
     const notifications = await morningBriefingProvider.getNotifications();
     expect(notifications).toHaveLength(1);
-    expect(notifications[0].body).toBe('You have 1 event tomorrow');
+    // Notification fires on March 22, so it should say "today" not "tomorrow"
+    expect(notifications[0].body).toBe('You have 1 event today');
   });
 });

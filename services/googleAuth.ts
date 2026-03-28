@@ -139,27 +139,30 @@ export const handleAuthCallback = async () => {
   return exchangeCodeForToken(code, error);
 };
 
-// Handle Native Deep Link
-export const handleDeepLink = async (url: string) => {
+// Handle Native Deep Link — returns true if auth succeeded
+export const handleDeepLink = async (url: string): Promise<boolean> => {
     // URL format: com.saveitforl8r.app://google-auth?code=...
     console.log("[Auth] Handling Deep Link:", url);
-    
+
     // We can use the URL API, but we need to ensure the scheme is handled
     try {
         const urlObj = new URL(url);
         const params = new URLSearchParams(urlObj.search);
         const code = params.get('code');
         const error = params.get('error');
-        
-        await exchangeCodeForToken(code, error);
-        
+
+        const success = await exchangeCodeForToken(code, error);
+
         // Close the browser window if it's still open (sometimes needed on iOS, rarely on Android if redirect happened)
-        await Browser.close(); 
-        
-        // Force reload or state update might be needed in the app
-        window.location.reload(); 
+        await Browser.close();
+
+        // Return success so the caller can update React state directly
+        // instead of relying on window.location.reload() which is unreliable
+        // on Android when called from a deep link handler.
+        return !!success;
     } catch (e) {
         console.error("Deep link handling failed:", e);
+        return false;
     }
 };
 
