@@ -34,10 +34,18 @@ export const useWidgetDeepLink = (handlers: WidgetDeepLinkHandlers) => {
 
     switch (detail.mode) {
       case 'camera':
-        handlersRef.current.onCamera?.() ?? handlersRef.current.onFocus();
+        if (handlersRef.current.onCamera) {
+          handlersRef.current.onCamera();
+        } else {
+          handlersRef.current.onFocus();
+        }
         break;
       case 'document':
-        handlersRef.current.onDocument?.() ?? handlersRef.current.onFocus();
+        if (handlersRef.current.onDocument) {
+          handlersRef.current.onDocument();
+        } else {
+          handlersRef.current.onFocus();
+        }
         break;
       default:
         handlersRef.current.onFocus();

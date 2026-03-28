@@ -131,7 +131,17 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
     private void handleWidgetDeepLink(Intent intent) {
         Uri data = intent.getData();
         String mode = data != null ? data.getQueryParameter("mode") : null;
-        String eventDetail = mode != null ? "{\"mode\":\"" + mode + "\"}" : "{}";
+
+        String eventDetail;
+        try {
+            JSONObject json = new JSONObject();
+            if (mode != null) {
+                json.put("mode", mode);
+            }
+            eventDetail = json.toString();
+        } catch (Exception e) {
+            eventDetail = "{}";
+        }
 
         Log.d(TAG, "Widget deep link received, mode: " + mode);
 

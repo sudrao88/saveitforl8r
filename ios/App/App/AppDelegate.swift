@@ -247,7 +247,15 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             print("[Widget] Received quick-note deep link")
             let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
             let mode = components?.queryItems?.first(where: { $0.name == "mode" })?.value
-            let eventDetail = mode != nil ? "{\"mode\":\"\(mode!)\"}" : "{}"
+            var dict: [String: String] = [:]
+            if let mode = mode { dict["mode"] = mode }
+            let eventDetail: String
+            if let data = try? JSONSerialization.data(withJSONObject: dict),
+               let str = String(data: data, encoding: .utf8) {
+                eventDetail = str
+            } else {
+                eventDetail = "{}"
+            }
             dispatchWidgetEvent(eventDetail)
             return true
         }
