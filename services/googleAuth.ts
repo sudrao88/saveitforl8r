@@ -13,7 +13,12 @@ const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 const CLIENT_SECRET = import.meta.env.VITE_GOOGLE_CLIENT_SECRET;
 // The hosted PWA URL is required for Native Auth redirection (Bouncer pattern)
 // because Google only accepts http/https redirect URIs for Web Clients.
-const APP_URL = import.meta.env.VITE_APP_URL || window.location.origin;
+// In native context, window.location.origin is https://localhost (Capacitor),
+// which is NOT a valid Google OAuth redirect URI. VITE_APP_URL is set in native
+// APK builds but absent after OTA updates (web builds don't include it).
+// Fall back to the known production URL so OAuth works after OTA updates.
+const PROD_HOSTED_URL = 'https://saveitforl8r.com';
+const APP_URL = import.meta.env.VITE_APP_URL || PROD_HOSTED_URL;
 
 if (!CLIENT_ID) {
   console.warn('[Auth] VITE_GOOGLE_CLIENT_ID is not set. Google Drive sync will not work.');

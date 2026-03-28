@@ -71,6 +71,9 @@ function setupAndroidBridge() {
     enableRemoteMode: vi.fn(),
     disableRemoteMode: vi.fn(),
     openNotificationSettings: vi.fn(),
+    startForegroundSync: vi.fn(),
+    updateSyncProgress: vi.fn(),
+    stopForegroundSync: vi.fn(),
   };
 }
 

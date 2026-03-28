@@ -38,7 +38,7 @@ describe('backgroundPipeline', () => {
   describe('runBackgroundPipeline', () => {
     describe('enrichment-complete', () => {
       it('should fetch result and apply to memory via applyEnrichmentResult', async () => {
-        const enrichmentResult = { status: 'completed', data: { tags: ['tag1'] } };
+        const enrichmentResult = { status: 'completed' as const, data: { summary: 'test', suggestedTags: ['tag1'] } };
         vi.mocked(getMemory).mockResolvedValue({ ...mockMemory });
         vi.mocked(fetchPendingEnrichments).mockResolvedValue({
           'mem-1': enrichmentResult,
@@ -98,7 +98,7 @@ describe('backgroundPipeline', () => {
     describe('moment-complete', () => {
       it('should flag in localStorage when completed', async () => {
         vi.mocked(fetchPendingMomentResults).mockResolvedValue({
-          'moment-1': { status: 'completed', data: { name: 'Test Moment' } },
+          'moment-1': { status: 'completed', data: { title: 'Test Moment', type: 'collection', usedNoteIds: [], synthesis: { format: 'general', title: 'Test Moment', sections: [], generatedFrom: [] } } },
         });
 
         await runBackgroundPipeline({ type: 'moment-complete', momentId: 'moment-1' });
@@ -111,7 +111,7 @@ describe('backgroundPipeline', () => {
       it('should not duplicate momentId in localStorage', async () => {
         localStorage.setItem('bg_pending_moments', JSON.stringify(['moment-1']));
         vi.mocked(fetchPendingMomentResults).mockResolvedValue({
-          'moment-1': { status: 'completed', data: { name: 'Test Moment' } },
+          'moment-1': { status: 'completed', data: { title: 'Test Moment', type: 'collection', usedNoteIds: [], synthesis: { format: 'general', title: 'Test Moment', sections: [], generatedFrom: [] } } },
         });
 
         await runBackgroundPipeline({ type: 'moment-complete', momentId: 'moment-1' });
@@ -141,7 +141,7 @@ describe('backgroundPipeline', () => {
     describe('synthesis-complete', () => {
       it('should flag in localStorage when completed', async () => {
         vi.mocked(fetchPendingSynthesisResults).mockResolvedValue({
-          'moment-1': { status: 'completed', data: { synthesis: 'result' } },
+          'moment-1': { status: 'completed', data: { format: 'general', title: 'Test', sections: [], generatedFrom: [] } },
         });
 
         await runBackgroundPipeline({ type: 'synthesis-complete', momentId: 'moment-1' });
@@ -203,8 +203,8 @@ describe('backgroundPipeline', () => {
       ];
       vi.mocked(getMemories).mockResolvedValue(pendingMemories);
       vi.mocked(fetchPendingEnrichments).mockResolvedValue({
-        'mem-1': { status: 'completed', data: { tags: ['tag1'] } },
-        'mem-2': { status: 'completed', data: { tags: ['tag2'] } },
+        'mem-1': { status: 'completed' as const, data: { summary: 'test1', suggestedTags: ['tag1'] } },
+        'mem-2': { status: 'completed' as const, data: { summary: 'test2', suggestedTags: ['tag2'] } },
       });
       vi.mocked(applyEnrichmentResult).mockResolvedValue({
         updated: { ...mockMemory, isPending: false },
@@ -238,9 +238,9 @@ describe('backgroundPipeline', () => {
       ];
       vi.mocked(getMemories).mockResolvedValue(pendingMemories);
       vi.mocked(fetchPendingEnrichments).mockResolvedValue({
-        'mem-1': { status: 'completed', data: { tags: ['tag1'] } },
+        'mem-1': { status: 'completed' as const, data: { summary: 'test1', suggestedTags: ['tag1'] } },
         'mem-2': { status: 'processing' },
-        'mem-3': { status: 'completed', data: { tags: ['tag3'] } },
+        'mem-3': { status: 'completed' as const, data: { summary: 'test3', suggestedTags: ['tag3'] } },
       });
       vi.mocked(applyEnrichmentResult)
         .mockResolvedValueOnce({
