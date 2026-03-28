@@ -16,6 +16,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.util.Locale;
 
+import org.json.JSONException;
 import org.json.JSONObject;
 
 import androidx.core.graphics.Insets;
@@ -119,7 +120,7 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
     private boolean isWidgetDeepLink(Intent intent) {
         if (intent == null || intent.getData() == null) return false;
         Uri data = intent.getData();
-        return "com.saveitforl8r.app".equals(data.getScheme())
+        return QuickNoteWidgetProvider.DEEP_LINK_SCHEME.equals(data.getScheme())
                 && "quick-note".equals(data.getHost());
     }
 
@@ -139,7 +140,8 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
                 json.put("mode", mode);
             }
             eventDetail = json.toString();
-        } catch (Exception e) {
+        } catch (JSONException e) {
+            Log.w(TAG, "Failed to build widget event JSON", e);
             eventDetail = "{}";
         }
 

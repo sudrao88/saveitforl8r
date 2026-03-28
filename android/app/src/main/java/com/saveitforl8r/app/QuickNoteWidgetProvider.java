@@ -21,7 +21,10 @@ import android.widget.RemoteViews;
  */
 public class QuickNoteWidgetProvider extends AppWidgetProvider {
 
-    private static final String DEEP_LINK_SCHEME = "com.saveitforl8r.app";
+    /** URL scheme for deep-links into the app. Shared with MainActivity. */
+    public static final String DEEP_LINK_SCHEME = "com.saveitforl8r.app";
+
+    private static final String DEEP_LINK_HOST = "quick-note";
 
     @Override
     public void onUpdate(Context context, AppWidgetManager appWidgetManager, int[] appWidgetIds) {
@@ -34,43 +37,50 @@ public class QuickNoteWidgetProvider extends AppWidgetProvider {
         RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_quick_note);
 
         // Tap on input hint → open app with quick note bar focused
-        Intent quickNoteIntent = new Intent(context, MainActivity.class);
-        quickNoteIntent.setAction(Intent.ACTION_VIEW);
-        quickNoteIntent.setData(Uri.parse(DEEP_LINK_SCHEME + "://quick-note"));
-        quickNoteIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        PendingIntent quickNotePendingIntent = PendingIntent.getActivity(
-                context, 0, quickNoteIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        views.setOnClickPendingIntent(R.id.widget_input_hint, quickNotePendingIntent);
+        views.setOnClickPendingIntent(R.id.widget_input_hint,
+                buildQuickNotePendingIntent(context, 0, null));
 
         // Tap on icon → open app normally
         Intent openAppIntent = new Intent(context, MainActivity.class);
         openAppIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        PendingIntent openAppPendingIntent = PendingIntent.getActivity(
+        views.setOnClickPendingIntent(R.id.widget_icon, PendingIntent.getActivity(
                 context, 1, openAppIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        views.setOnClickPendingIntent(R.id.widget_icon, openAppPendingIntent);
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
 
         // Tap on camera → open app in photo capture mode
-        Intent cameraIntent = new Intent(context, MainActivity.class);
-        cameraIntent.setAction(Intent.ACTION_VIEW);
-        cameraIntent.setData(Uri.parse(DEEP_LINK_SCHEME + "://quick-note?mode=camera"));
-        cameraIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        PendingIntent cameraPendingIntent = PendingIntent.getActivity(
-                context, 2, cameraIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        views.setOnClickPendingIntent(R.id.widget_camera_btn, cameraPendingIntent);
+        views.setOnClickPendingIntent(R.id.widget_camera_btn,
+                buildQuickNotePendingIntent(context, 2, "camera"));
 
         // Tap on document → open app in document upload mode
-        Intent docIntent = new Intent(context, MainActivity.class);
-        docIntent.setAction(Intent.ACTION_VIEW);
-        docIntent.setData(Uri.parse(DEEP_LINK_SCHEME + "://quick-note?mode=document"));
-        docIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        PendingIntent docPendingIntent = PendingIntent.getActivity(
-                context, 3, docIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        views.setOnClickPendingIntent(R.id.widget_document_btn, docPendingIntent);
+        views.setOnClickPendingIntent(R.id.widget_document_btn,
+                buildQuickNotePendingIntent(context, 3, "document"));
 
         appWidgetManager.updateAppWidget(appWidgetId, views);
+    }
+
+    /**
+     * Builds a PendingIntent that deep-links into the app's quick-note handler.
+     *
+     * @param context      Application context
+     * @param requestCode  Unique request code for the PendingIntent
+     * @param mode         Optional capture mode ("camera", "document"), or null for text focus
+     */
+    private static PendingIntent buildQuickNotePendingIntent(Context context, int requestCode, String mode) {
+        Uri.Builder uriBuilder = new Uri.Builder()
+                .scheme(DEEP_LINK_SCHEME)
+                .authority(DEEP_LINK_HOST);
+
+        if (mode != null) {
+            uriBuilder.appendQueryParameter("mode", mode);
+        }
+
+        Intent intent = new Intent(context, MainActivity.class);
+        intent.setAction(Intent.ACTION_VIEW);
+        intent.setData(uriBuilder.build());
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+
+        return PendingIntent.getActivity(
+                context, requestCode, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
 }
