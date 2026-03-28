@@ -1164,7 +1164,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                         await bgSyncRemove(op.id!);
                         continue;
                     }
-                    await uploadFile(filename, content, existingFileId);
+                    await uploadFile(filename as string, content, existingFileId as string | undefined);
                     await bgSyncRemove(op.id!);
                 } catch (e) {
                     console.warn(`[Sync] BG queue retry failed for ${op.payload?.noteId}:`, e);
