@@ -210,32 +210,46 @@ const isAtBlockStart = (selection: Selection, editorEl: HTMLElement): boolean =>
 };
 
 /**
- * Replace the text before the cursor (the markdown trigger chars) with empty string
- * and execute the given formatting command.
+ * Execute a formatting command first (while DOM has valid content), then
+ * remove the markdown trigger characters from the resulting block.
+ *
+ * Older approach emptied the text node before calling execCommand, which
+ * caused browsers to silently fail when the selection sat inside an empty
+ * text node with no surrounding block element.
  */
-const replaceTextAndFormat = (
-    node: Node,
-    offset: number,
-    charsToRemove: number,
+const formatThenCleanup = (
     command: string,
+    charsToRemove: number,
     value?: string
 ) => {
-    const textNode = node as Text;
-    const before = textNode.textContent?.slice(0, offset - charsToRemove) || '';
-    const after = textNode.textContent?.slice(offset) || '';
-    textNode.textContent = before + after;
+    // Execute the command while the trigger text is still in the DOM,
+    // giving the browser a valid block to convert.
+    document.execCommand(command, false, value);
 
-    // Place cursor at the adjusted position
+    // Now remove the trigger characters (e.g. "- ", "1. ", "# ", "> ")
+    // from the start of the newly formatted block.
     const sel = window.getSelection();
-    if (sel) {
+    if (!sel?.anchorNode) return;
+
+    // After execCommand the cursor is inside the new structure.
+    // Walk to the first text node in the current block and strip the prefix.
+    const anchor = sel.anchorNode;
+    const container = anchor.nodeType === Node.TEXT_NODE
+        ? anchor.parentElement
+        : anchor as HTMLElement;
+    if (!container) return;
+
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+    const firstText = walker.nextNode() as Text | null;
+    if (firstText && firstText.textContent) {
+        firstText.textContent = firstText.textContent.slice(charsToRemove);
+        // Place cursor at the start of the cleaned text
         const range = document.createRange();
-        range.setStart(textNode, before.length);
+        range.setStart(firstText, 0);
         range.collapse(true);
         sel.removeAllRanges();
         sel.addRange(range);
     }
-
-    document.execCommand(command, false, value);
 };
 
 /** Try to apply inline markdown formatting (e.g. **bold**, *italic*, `code`, ~~strike~~).
@@ -456,24 +470,24 @@ export const handleEditorKeyDown = (
             if (textBefore === '-' || textBefore === '*' || textBefore === '+') {
                 // Bullet list
                 e.preventDefault();
-                replaceTextAndFormat(sel.anchorNode, sel.anchorOffset, textBefore.length, 'insertUnorderedList');
+                formatThenCleanup('insertUnorderedList', textBefore.length);
                 handled = true;
             } else if (/^\d+\.$/.test(textBefore)) {
                 // Numbered list
                 e.preventDefault();
-                replaceTextAndFormat(sel.anchorNode, sel.anchorOffset, textBefore.length, 'insertOrderedList');
+                formatThenCleanup('insertOrderedList', textBefore.length);
                 handled = true;
             } else if (textBefore === '#') {
                 e.preventDefault();
-                replaceTextAndFormat(sel.anchorNode, sel.anchorOffset, 1, 'formatBlock', 'H1');
+                formatThenCleanup('formatBlock', 1, 'H1');
                 handled = true;
             } else if (textBefore === '##') {
                 e.preventDefault();
-                replaceTextAndFormat(sel.anchorNode, sel.anchorOffset, 2, 'formatBlock', 'H2');
+                formatThenCleanup('formatBlock', 2, 'H2');
                 handled = true;
             } else if (textBefore === '>') {
                 e.preventDefault();
-                replaceTextAndFormat(sel.anchorNode, sel.anchorOffset, 1, 'formatBlock', 'BLOCKQUOTE');
+                formatThenCleanup('formatBlock', 1, 'BLOCKQUOTE');
                 handled = true;
             }
 
