@@ -105,6 +105,9 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
   const [previewMemoryId, setPreviewMemoryId] = useState<string | null>(null);
   const [deleteConfirmStep, setDeleteConfirmStep] = useState<DeleteConfirmStep | null>(null);
 
+  const noteCount = moment.noteIds.length;
+  const noteLabel = noteCount === 1 ? 'note' : 'notes';
+
   // Build a lookup map for source note citations
   const memoriesMap = useMemo(() => {
     const map = new Map<string, Memory>();
@@ -348,7 +351,7 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
         />
       )}
 
-      {/* Delete Confirmation Dialog */}
+      {/* Delete Confirmation Dialog — Step 1: Choose scope */}
       {deleteConfirmStep === 'choose' && (
         <div className={overlay.dialogBackdrop} onClick={() => setDeleteConfirmStep(null)}>
           <div
@@ -356,17 +359,17 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-(--color-danger)/10 rounded-full flex items-center justify-center shrink-0">
-                <Trash2 size={20} className="text-(--color-danger)" />
+              <div className="w-10 h-10 bg-red-900/20 rounded-full flex items-center justify-center shrink-0">
+                <Trash2 size={20} className="text-red-400" />
               </div>
               <div>
-                <h3 className="text-base font-bold text-(--color-text-primary)">Delete moment</h3>
-                <p className="text-xs text-(--color-text-tertiary) mt-0.5">
-                  This moment has {moment.noteIds.length} associated {moment.noteIds.length === 1 ? 'note' : 'notes'}
+                <h3 className="text-base font-bold text-gray-100">Delete moment</h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  This moment has {noteCount} associated {noteLabel}
                 </p>
               </div>
             </div>
-            <p className="text-sm text-(--color-text-secondary) mb-6">
+            <p className="text-sm text-gray-400 mb-6">
               Would you also like to delete the associated notes, or only remove the moment?
             </p>
             <div className="flex flex-col gap-2">
@@ -393,6 +396,7 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
         </div>
       )}
 
+      {/* Delete Confirmation Dialog — Step 2: Confirm note deletion */}
       {deleteConfirmStep === 'confirm-notes' && (
         <div className={overlay.dialogBackdrop} onClick={() => setDeleteConfirmStep(null)}>
           <div
@@ -400,12 +404,12 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
             onClick={e => e.stopPropagation()}
           >
             <div className="flex flex-col items-center text-center mb-6">
-              <div className="w-12 h-12 bg-(--color-danger)/10 rounded-full flex items-center justify-center mb-3">
-                <AlertTriangle size={24} className="text-(--color-warning)" />
+              <div className="w-12 h-12 bg-red-900/20 rounded-full flex items-center justify-center mb-3">
+                <AlertTriangle size={24} className="text-amber-500" />
               </div>
-              <h3 className="text-base font-bold text-(--color-text-primary) mb-1">Are you sure?</h3>
-              <p className="text-sm text-(--color-text-secondary)">
-                This will permanently delete {moment.noteIds.length} {moment.noteIds.length === 1 ? 'note' : 'notes'} along with the moment. This action cannot be undone.
+              <h3 className="text-base font-bold text-gray-100 mb-1">Are you sure?</h3>
+              <p className="text-sm text-gray-400">
+                This will permanently delete {noteCount} {noteLabel} along with the moment. This action cannot be undone.
               </p>
             </div>
             <div className="flex gap-3">

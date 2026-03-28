@@ -613,6 +613,27 @@ const AppContent: React.FC = () => {
     if (expandedMemory?.id === id) setExpandedMemory(null);
   }, [handleDelete, expandedMemory, deleteNoteFromIndex, removeNoteFromMoments, removeEventsForMemory, syncCalendarEvents, removeTodoItemsForMemory, syncTodoItems]);
 
+  const handleDeleteNotes = useCallback(async (noteIds: string[]) => {
+    await Promise.all(noteIds.map(async (id) => {
+      try {
+        await handleDelete(id);
+        deleteNoteFromIndex(id);
+        await removeNoteFromMoments(id);
+        const eventTombstones = await removeEventsForMemory(id);
+        if (eventTombstones.length > 0) {
+          await syncCalendarEvents(eventTombstones);
+        }
+        const todoTombstones = await removeTodoItemsForMemory(id);
+        if (todoTombstones.length > 0) {
+          await syncTodoItems(todoTombstones);
+        }
+      } catch (err) {
+        console.error(`[DeleteNotes] Failed to delete note ${id}:`, err);
+      }
+    }));
+    logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_DELETED);
+  }, [handleDelete, deleteNoteFromIndex, removeNoteFromMoments, removeEventsForMemory, syncCalendarEvents, removeTodoItemsForMemory, syncTodoItems]);
+
   const handleRetryMemory = useCallback((id: string) => {
     handleRetry(id);
     logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_RETRIED);
@@ -988,7 +1009,7 @@ const AppContent: React.FC = () => {
             onClose={handleMomentClose}
             loadSynthesis={loadSynthesis}
             onDelete={deleteMoment}
-            onDeleteNotes={(noteIds) => noteIds.forEach(handleDeleteMemory)}
+            onDeleteNotes={handleDeleteNotes}
             onViewAttachment={handleViewAttachment}
             onMemoryDelete={handleDeleteMemory}
             onMemoryEdit={handleEditMemory}
