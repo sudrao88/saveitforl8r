@@ -3,7 +3,7 @@ import { Paperclip, Hash, Type, Maximize2, Plus, X, FileText, Loader2, CheckSqua
 import AttachmentMenu from './AttachmentMenu';
 import { marked } from 'marked';
 import { Attachment, QuickNoteState } from '../types';
-import { escapeHtml, looksLikeMarkdown, parseChecklistMarkdown, sanitizePastedHtml, hasRichFormatting, extractHashtags, mergeTagsWithHashtags, containsUrl, linkifyUrls, handleEditorKeyDown, checkActiveFormats, execFormatCommand, formatsEqual } from '../utils/editorUtils';
+import { escapeHtml, looksLikeMarkdown, parseChecklistMarkdown, sanitizePastedHtml, hasRichFormatting, extractHashtags, mergeTagsWithHashtags, containsUrl, linkifyUrls, handleEditorKeyDown, checkActiveFormats, execFormatCommand, formatsEqual, isEditorEmpty } from '../utils/editorUtils';
 import { processFileInputs } from '../utils/attachmentUtils';
 import { triggerHaptic } from '../services/platform';
 import FormattingToolbar from './FormattingToolbar';
@@ -110,7 +110,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
         prevFormatsRef.current = formats;
         setActiveFormats(formats);
       }
-      setIsEmpty(!editorRef.current.innerText.trim());
+      setIsEmpty(isEditorEmpty(editorRef.current));
     });
   }, []);
 
@@ -199,7 +199,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
       }
     }
 
-    setIsEmpty(!editorRef.current?.innerText.trim());
+    setIsEmpty(isEditorEmpty(editorRef.current));
     checkFormats();
   }, [checkFormats]);
 
