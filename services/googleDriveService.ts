@@ -174,9 +174,13 @@ export const downloadMultipleFiles = async (
 };
 
 /**
- * Stream-download files with a per-file callback. Each file is downloaded
- * and immediately passed to `onFile` for processing, rather than buffering
- * all downloads in memory first. Uses sliding-window concurrency.
+ * Stream-download files and process each one as it arrives. Downloads run
+ * with full sliding-window concurrency (DOWNLOAD_CONCURRENCY). Processing
+ * is serialized via a queue to avoid race conditions on shared state while
+ * still rendering cards to the UI as soon as each download completes.
+ *
+ * Files are processed in download-completion order (fastest first), which
+ * means lighter text-only memories appear before heavier attachment files.
  */
 export const downloadFilesStreaming = async (
     fileIds: string[],
@@ -185,15 +189,49 @@ export const downloadFilesStreaming = async (
     const failures: string[] = [];
     if (fileIds.length === 0) return { failures };
 
-    let nextIndex = 0;
+    // Queue of downloaded files waiting to be processed, plus a resolver
+    // that the processing loop awaits when the queue is empty.
+    const queue: Array<{ fileId: string; content: any }> = [];
+    // Shared state object so TS doesn't narrow the callback away.
+    const state = { wake: null as (() => void) | null, done: false };
 
-    const processNext = async (): Promise<void> => {
+    // Signal the processing loop that a new item is available.
+    const enqueue = (fileId: string, content: any) => {
+        queue.push({ fileId, content });
+        if (state.wake) {
+            state.wake();
+            state.wake = null;
+        }
+    };
+
+    // Processing loop: runs sequentially, draining items as they arrive.
+    const processLoop = async () => {
+        while (true) {
+            if (queue.length === 0) {
+                if (state.done) break;
+                // Wait until a download finishes or all downloads are done.
+                await new Promise<void>(resolve => { state.wake = resolve; });
+                continue;
+            }
+            const { fileId, content } = queue.shift()!;
+            try {
+                await onFile(fileId, content);
+            } catch (e) {
+                console.error(`[Drive] Stream process failed for ${fileId}:`, e);
+                failures.push(fileId);
+            }
+        }
+    };
+
+    // Download workers: run in parallel with sliding-window concurrency.
+    let nextIndex = 0;
+    const downloadNext = async (): Promise<void> => {
         while (nextIndex < fileIds.length) {
             const idx = nextIndex++;
             const fileId = fileIds[idx];
             try {
                 const content = await downloadFileContent(fileId);
-                await onFile(fileId, content);
+                enqueue(fileId, content);
             } catch (e) {
                 console.error(`[Drive] Stream download failed for ${fileId}:`, e);
                 failures.push(fileId);
@@ -201,11 +239,18 @@ export const downloadFilesStreaming = async (
         }
     };
 
-    const workers = Array.from(
+    const downloadWorkers = Array.from(
         { length: Math.min(DOWNLOAD_CONCURRENCY, fileIds.length) },
-        () => processNext()
+        () => downloadNext()
     );
-    await Promise.all(workers);
+
+    // Start processing loop alongside the download workers.
+    const processingDone = processLoop();
+    await Promise.all(downloadWorkers);
+    state.done = true;
+    // Wake the processor in case it's waiting on an empty queue.
+    state.wake?.();
+    await processingDone;
 
     return { failures };
 };
