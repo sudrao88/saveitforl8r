@@ -15,6 +15,7 @@ import {
   Check,
   RefreshCw,
   FileText,
+  AlertTriangle,
 } from 'lucide-react';
 import {
   Moment,
@@ -25,7 +26,7 @@ import {
   Attachment,
 } from '../types';
 import MemoryPreviewModal from './MemoryPreviewModal';
-import { overlay } from '../styles/design-system';
+import { overlay, btn } from '../styles/design-system';
 
 // Shared loading indicator for pending creation and resynthesis states
 const SynthesisLoadingState: React.FC = () => (
@@ -70,12 +71,15 @@ const SheetShell: React.FC<{
   </div>
 );
 
+type DeleteConfirmStep = 'choose' | 'confirm-notes';
+
 interface MomentSheetProps {
   moment: Moment;
   memories: Memory[];
   onClose: () => void;
   loadSynthesis: (moment: Moment, memories: Memory[], signal?: AbortSignal) => Promise<SynthesisResponse | null>;
   onDelete: (momentId: string) => Promise<void>;
+  onDeleteNotes?: (noteIds: string[]) => void;
   onViewAttachment?: (attachment: Attachment, allAttachments: Attachment[]) => void;
   onMemoryDelete?: (id: string) => void;
   onMemoryEdit?: (memory: Memory) => void;
@@ -88,6 +92,7 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
   onClose,
   loadSynthesis,
   onDelete,
+  onDeleteNotes,
   onViewAttachment,
   onMemoryDelete,
   onMemoryEdit,
@@ -98,6 +103,10 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
   const [error, setError] = useState(false);
   const [completedItems, setCompletedItems] = useState<Set<string>>(new Set());
   const [previewMemoryId, setPreviewMemoryId] = useState<string | null>(null);
+  const [deleteConfirmStep, setDeleteConfirmStep] = useState<DeleteConfirmStep | null>(null);
+
+  const noteCount = moment.noteIds.length;
+  const noteLabel = noteCount === 1 ? 'note' : 'notes';
 
   // Build a lookup map for source note citations
   const memoriesMap = useMemo(() => {
@@ -182,10 +191,27 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
     });
   }, []);
 
-  const handleDelete = useCallback(() => {
+  const handleDeleteClick = useCallback(() => {
+    if (moment.noteIds.length > 0 && onDeleteNotes) {
+      setDeleteConfirmStep('choose');
+    } else {
+      onDelete(moment.id);
+      onClose();
+    }
+  }, [moment.id, moment.noteIds.length, onDelete, onDeleteNotes, onClose]);
+
+  const handleDeleteMomentOnly = useCallback(() => {
     onDelete(moment.id);
+    setDeleteConfirmStep(null);
     onClose();
   }, [moment.id, onDelete, onClose]);
+
+  const handleDeleteWithNotes = useCallback(() => {
+    onDelete(moment.id);
+    onDeleteNotes?.(moment.noteIds);
+    setDeleteConfirmStep(null);
+    onClose();
+  }, [moment.id, moment.noteIds, onDelete, onDeleteNotes, onClose]);
 
   // Pending state — moment is still being created
   if (moment.isPending) {
@@ -214,7 +240,7 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
               Could not create this moment. Check your connection and try again.
             </p>
             <button
-              onClick={handleDelete}
+              onClick={handleDeleteClick}
               className="px-6 py-2.5 bg-red-600/20 text-red-400 rounded-xl text-sm font-bold hover:bg-red-600/30 transition-colors active:scale-95"
             >
               Remove
@@ -300,7 +326,7 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
                     Re-synthesize
                   </button>
                   <button
-                    onClick={handleDelete}
+                    onClick={handleDeleteClick}
                     className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-red-900/20 text-red-400 border border-red-800/30 hover:border-red-600/50 hover:text-red-300 transition-all active:scale-95"
                   >
                     <Trash2 size={14} />
@@ -323,6 +349,85 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
           onEdit={onMemoryEdit}
           onTogglePin={onMemoryTogglePin}
         />
+      )}
+
+      {/* Delete Confirmation Dialog — Step 1: Choose scope */}
+      {deleteConfirmStep === 'choose' && (
+        <div className={overlay.dialogBackdrop} onClick={() => setDeleteConfirmStep(null)}>
+          <div
+            className={`${overlay.modal} p-6 mx-4 w-full max-w-sm animate-in zoom-in-95 fade-in duration-(--duration-normal)`}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-(--color-danger)/10 rounded-full flex items-center justify-center shrink-0">
+                <Trash2 size={20} className="text-(--color-danger)" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-(--color-text-primary)">Delete moment</h3>
+                <p className="text-xs text-(--color-text-tertiary) mt-0.5">
+                  This moment has {noteCount} associated {noteLabel}
+                </p>
+              </div>
+            </div>
+            <p className="text-sm text-(--color-text-secondary) mb-6">
+              Would you also like to delete the associated notes, or only remove the moment?
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={handleDeleteMomentOnly}
+                className={`${btn.base} ${btn.secondary} w-full text-sm`}
+              >
+                Delete moment only
+              </button>
+              <button
+                onClick={() => setDeleteConfirmStep('confirm-notes')}
+                className={`${btn.base} ${btn.danger} w-full text-sm`}
+              >
+                Delete moment and notes
+              </button>
+              <button
+                onClick={() => setDeleteConfirmStep(null)}
+                className={`${btn.base} ${btn.ghost} w-full text-sm mt-1`}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Dialog — Step 2: Confirm note deletion */}
+      {deleteConfirmStep === 'confirm-notes' && (
+        <div className={overlay.dialogBackdrop} onClick={() => setDeleteConfirmStep(null)}>
+          <div
+            className={`${overlay.modal} p-6 mx-4 w-full max-w-sm animate-in zoom-in-95 fade-in duration-(--duration-normal)`}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex flex-col items-center text-center mb-6">
+              <div className="w-12 h-12 bg-(--color-danger)/10 rounded-full flex items-center justify-center mb-3">
+                <AlertTriangle size={24} className="text-(--color-warning)" />
+              </div>
+              <h3 className="text-base font-bold text-(--color-text-primary) mb-1">Are you sure?</h3>
+              <p className="text-sm text-(--color-text-secondary)">
+                This will permanently delete {noteCount} {noteLabel} along with the moment. This action cannot be undone.
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDeleteConfirmStep('choose')}
+                className={`${btn.base} ${btn.secondary} flex-1 text-sm`}
+              >
+                Go back
+              </button>
+              <button
+                onClick={handleDeleteWithNotes}
+                className={`${btn.base} ${btn.danger} flex-1 text-sm`}
+              >
+                Delete all
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </SheetShell>
   );
