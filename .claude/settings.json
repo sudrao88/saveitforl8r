@@ -1,0 +1,9 @@
+{
+  "skills": {
+    "create-pr": {
+      "description": "Create a pull request against native-app (default), subscribe to PR activity, and auto-fix review comments and CI failures.",
+      "path": "skills/create-pr.md",
+      "user_invocable": true
+    }
+  }
+}
