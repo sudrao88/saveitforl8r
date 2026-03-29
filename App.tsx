@@ -77,7 +77,7 @@ const AppContent: React.FC = () => {
 
   const { shareData, clearShareData } = useShareReceiver();
   
-  const { sync, isSyncing, isSyncingDownload, syncError, getSyncStatusMap, syncStatusVersion, retrySyncFile, setOnSyncProgress } = useSync();
+  const { sync, isSyncing, isSyncingDownload, syncError, getSyncStatusMap, syncStatusVersion, retrySyncFile, setOnSyncProgress, setOnMemorySynced } = useSync();
   const { authStatus, login, unlink, recheckAuth } = useAuth();
 
   const { modelStatus, downloadProgress, retryDownload, search, embeddingStats, retryFailedEmbeddings, deleteNoteFromIndex, lastError, closeWorkerDB } = useAdaptiveSearch();
@@ -85,6 +85,7 @@ const AppContent: React.FC = () => {
   const {
     memories,
     refreshMemories,
+    upsertMemory,
     handleDelete,
     handleRetry,
     createMemory,
@@ -409,15 +410,21 @@ const AppContent: React.FC = () => {
     }, 0);
   }, [authStatus]);
 
-  // Render notes incrementally as they are downloaded during sync, rather
-  // than waiting for the entire sync to finish. A debounce timer coalesces
-  // rapid per-item callbacks into batched refreshes (~300ms apart).
+  // Incrementally render cards as they are downloaded during sync.
+  // Each synced memory is upserted into React state directly, avoiding
+  // a full IDB reload per item (which caused jank and flickering).
+  useEffect(() => {
+    setOnMemorySynced(upsertMemory);
+    return () => { setOnMemorySynced(undefined); };
+  }, [setOnMemorySynced, upsertMemory]);
+
+  // For non-memory entities (moments, events, todos), use a debounced
+  // refresh on sync progress since they don't have incremental upsert.
   const syncProgressTimerRef = useRef<NodeJS.Timeout | null>(null);
   useEffect(() => {
     const debouncedRefresh = () => {
       if (syncProgressTimerRef.current) clearTimeout(syncProgressTimerRef.current);
       syncProgressTimerRef.current = setTimeout(() => {
-        refreshMemories();
         refreshMoments();
         refreshEvents();
         refreshTodoItems();
@@ -428,19 +435,19 @@ const AppContent: React.FC = () => {
       setOnSyncProgress(undefined);
       if (syncProgressTimerRef.current) clearTimeout(syncProgressTimerRef.current);
     };
-  }, [setOnSyncProgress, refreshMemories, refreshMoments, refreshEvents, refreshTodoItems]);
+  }, [setOnSyncProgress, refreshMoments, refreshEvents, refreshTodoItems]);
 
-  // Refresh memory state after periodic/visibility-triggered sync downloads
-  // complete. The init effect above handles the first sync; this covers
-  // subsequent background syncs that write to IndexedDB without updating
-  // React state.
+  // Safety-net refresh after sync completes for moments/events/todos.
+  // Memories are already up-to-date via incremental upsert.
   const wasSyncingDownload = useRef(false);
   useEffect(() => {
     if (wasSyncingDownload.current && !isSyncingDownload) {
-      refreshMemories();
+      refreshMoments();
+      refreshEvents();
+      refreshTodoItems();
     }
     wasSyncingDownload.current = isSyncingDownload;
-  }, [isSyncingDownload, refreshMemories]);
+  }, [isSyncingDownload, refreshMoments, refreshEvents, refreshTodoItems]);
 
   // NATIVE DEEP LINK HANDLING (Google Auth)
   // Uses a ref for recheckAuth so the listener doesn't need to be re-added on every render.

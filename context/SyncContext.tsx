@@ -3,7 +3,7 @@ import { getMemories, getMemory, saveMemory, deleteMemory, reconcileEmbeddings, 
 
 import {
     listAllFiles,
-    downloadMultipleFiles,
+    downloadFilesStreaming,
     uploadFile,
     uploadMultipleFiles,
     findFileByName,
@@ -12,7 +12,7 @@ import {
     deleteRemoteNote,
     type DriveFile,
 } from '../services/googleDriveService';
-import { Memory, Moment, MomentSynthesis, CalendarEvent, TodoItem } from '../types';
+import { Memory, Attachment, Moment, MomentSynthesis, CalendarEvent, TodoItem } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { storage } from '../services/platform';
 import { enqueue as bgSyncEnqueue, peekAll as bgSyncPeekAll, remove as bgSyncRemove } from '../services/backgroundSyncQueue';
@@ -34,6 +34,7 @@ interface SyncContextType {
   syncStatusVersion: number;
   pendingCount: number;
   setOnSyncProgress: (cb: (() => void) | undefined) => void;
+  setOnMemorySynced: (cb: ((memory: Memory) => void) | undefined) => void;
 }
 
 const SyncContext = createContext<SyncContextType | undefined>(undefined);
@@ -47,8 +48,14 @@ const STALE_SYNC_THRESHOLD_MS = 2 * 60 * 1000;        // 2 minutes
 
 // ---- Shared Execution Logic ----
 
-const executeSyncPlan = async (plan: SyncPlan, onProgress?: () => void): Promise<string[]> => {
+interface ExecuteSyncCallbacks {
+    onProgress?: () => void;
+    onMemorySynced?: (memory: Memory) => void;
+}
+
+const executeSyncPlan = async (plan: SyncPlan, callbacks?: ExecuteSyncCallbacks): Promise<string[]> => {
     const errors: string[] = [];
+    const { onProgress, onMemorySynced } = callbacks || {};
 
     /** Call onProgress after awaiting the given promise. */
     const withProgress = async <T,>(promise: Promise<T>): Promise<T> => {
@@ -57,10 +64,192 @@ const executeSyncPlan = async (plan: SyncPlan, onProgress?: () => void): Promise
         return result;
     };
 
-    const fileIdsToDownload = plan.toDownload.map(d => d.fileId);
-    const { contents: downloadedContents, failures: dlFailures } =
-        await downloadMultipleFiles(fileIdsToDownload);
+    // Build a lookup from fileId → DownloadItem for use in the streaming callback
+    const downloadItemByFileId = new Map(plan.toDownload.map(d => [d.fileId, d]));
 
+    // Track successfully downloaded notes for moment-match reconciliation
+    const downloadedNotes: Array<{ id: string; enrichment?: { matchedMomentIds?: string[] } }> = [];
+
+    // Memories whose attachments were deferred — full versions emitted after download phase
+    const deferredAttachmentMemories: Memory[] = [];
+
+    // Stream-download and process each file immediately as it arrives,
+    // rather than buffering all downloads in memory first. This lets
+    // the UI render cards incrementally as they sync.
+    const fileIdsToDownload = plan.toDownload.map(d => d.fileId);
+    const { failures: dlFailures } = await downloadFilesStreaming(
+        fileIdsToDownload,
+        async (fileId: string, content: any) => {
+            const item = downloadItemByFileId.get(fileId);
+            if (!item) return;
+
+            try {
+                // Handle moment synthesis files
+                if (item.noteId.startsWith('moment-synthesis-')) {
+                    const synthesisContent = content as unknown as MomentSynthesis;
+                    const momentId = item.noteId.replace('moment-synthesis-', '');
+                    const safeSynthesis: MomentSynthesis = { ...synthesisContent, momentId };
+
+                    const localSynthesis = await getMomentSynthesis(momentId);
+                    if (!localSynthesis || safeSynthesis.generatedAt > localSynthesis.generatedAt) {
+                        await withProgress(saveMomentSynthesis(safeSynthesis));
+                    }
+                    return;
+                }
+
+                // Handle calendar event files
+                if (item.noteId.startsWith('event-')) {
+                    const eventContent = content as unknown as CalendarEvent;
+                    const verifiedEventId = item.noteId.replace('event-', '');
+                    const safeEvent: CalendarEvent = { ...eventContent, id: verifiedEventId };
+                    if (item.localCalendarEvent) {
+                        if (safeEvent.updatedAt > item.localCalendarEvent.updatedAt) {
+                            if (safeEvent.isDeleted) {
+                                await withProgress(deleteCalendarEventHard(verifiedEventId));
+                            } else {
+                                await withProgress(saveCalendarEvent(safeEvent));
+                            }
+                        } else if (item.localCalendarEvent.updatedAt > safeEvent.updatedAt) {
+                            plan.toUpload.push({
+                                noteId: item.noteId,
+                                memory: item.localCalendarEvent,
+                                remoteFileId: item.fileId
+                            });
+                        }
+                    } else {
+                        if (safeEvent.isDeleted) {
+                            await withProgress(deleteCalendarEventHard(verifiedEventId));
+                        } else {
+                            await withProgress(saveCalendarEvent(safeEvent));
+                        }
+                    }
+                    return;
+                }
+
+                // Handle todo item files
+                if (item.noteId.startsWith('todo-')) {
+                    const todoContent = content as unknown as TodoItem;
+                    const verifiedTodoId = item.noteId.replace('todo-', '');
+                    const safeTodo: TodoItem = { ...todoContent, id: verifiedTodoId };
+                    if (item.localTodoItem) {
+                        if (safeTodo.updatedAt > item.localTodoItem.updatedAt) {
+                            if (safeTodo.isDeleted) {
+                                await withProgress(deleteTodoItemHard(verifiedTodoId));
+                            } else {
+                                await withProgress(updateTodoItem(safeTodo));
+                            }
+                        } else if (item.localTodoItem.updatedAt > safeTodo.updatedAt) {
+                            plan.toUpload.push({
+                                noteId: item.noteId,
+                                memory: item.localTodoItem,
+                                remoteFileId: item.fileId
+                            });
+                        }
+                    } else {
+                        if (safeTodo.isDeleted) {
+                            await withProgress(deleteTodoItemHard(verifiedTodoId));
+                        } else {
+                            await withProgress(updateTodoItem(safeTodo));
+                        }
+                    }
+                    return;
+                }
+
+                // Handle moment files with proper conflict resolution
+                if (item.noteId.startsWith('moment-')) {
+                    const momentContent = content as unknown as Moment;
+                    const verifiedMomentId = item.noteId.replace('moment-', '');
+                    const safeMoment: Moment = { ...momentContent, id: verifiedMomentId };
+                    if (item.localMoment) {
+                        if (safeMoment.updatedAt > item.localMoment.updatedAt) {
+                            if (safeMoment.isDeleted) {
+                                await withProgress(deleteMomentHard(verifiedMomentId));
+                            } else {
+                                await withProgress(saveMoment(safeMoment));
+                            }
+                        } else if (item.localMoment.updatedAt > safeMoment.updatedAt) {
+                            plan.toUpload.push({
+                                noteId: item.noteId,
+                                memory: item.localMoment,
+                                remoteFileId: item.fileId
+                            });
+                        }
+                    } else {
+                        if (safeMoment.isDeleted) {
+                            await withProgress(deleteMomentHard(verifiedMomentId));
+                        } else {
+                            await withProgress(saveMoment(safeMoment));
+                        }
+                    }
+                    return;
+                }
+
+                // --- Memory files ---
+
+                // Self-heal invalid timestamps
+                if (typeof content.timestamp !== 'number' || !isFinite(content.timestamp) || content.timestamp <= 0) {
+                    let healed = item.local?.timestamp;
+                    if (typeof healed !== 'number' || !isFinite(healed) || healed <= 0) {
+                        healed = Date.now();
+                    }
+                    console.warn(`[Sync] Healing memory ${item.noteId}: invalid timestamp ${content.timestamp} → ${healed}`);
+                    content.timestamp = healed;
+                    plan.toUpload.push({ noteId: item.noteId, memory: content, remoteFileId: item.fileId });
+                }
+
+                const shouldSave = item.local
+                    ? content.timestamp > item.local.timestamp
+                    : !content.isDeleted;
+
+                const shouldUploadLocal = item.local && item.local.timestamp > content.timestamp;
+
+                if (shouldUploadLocal) {
+                    plan.toUpload.push({
+                        noteId: item.noteId,
+                        memory: item.local!,
+                        remoteFileId: item.fileId
+                    });
+                } else if (shouldSave) {
+                    if (content.isDeleted) {
+                        await withProgress(deleteMemory(item.noteId));
+                    } else {
+                        // Save full memory to IDB
+                        await withProgress(saveMemory(content));
+
+                        // Emit lightweight version (without attachment data) to UI
+                        // so the card renders immediately with textual info.
+                        // Attachment data will be emitted after the download phase.
+                        const hasAttachments = (content.attachments?.length > 0) || content.image;
+                        if (onMemorySynced) {
+                            if (hasAttachments) {
+                                const lightMemory: Memory = {
+                                    ...content,
+                                    attachments: content.attachments?.map((a: Attachment) => ({
+                                        ...a, data: ''
+                                    })) || [],
+                                    image: content.image ? '' : undefined,
+                                    _attachmentsDeferred: true,
+                                };
+                                onMemorySynced(lightMemory);
+                                deferredAttachmentMemories.push(content);
+                            } else {
+                                onMemorySynced(content);
+                            }
+                        }
+                    }
+                }
+
+                // Track for moment-match reconciliation
+                downloadedNotes.push({ id: item.noteId, enrichment: (content as Memory).enrichment });
+
+            } catch (e) {
+                console.error(`[Sync] Process download failed for ${item.noteId}:`, e);
+                errors.push(item.noteId);
+            }
+        }
+    );
+
+    // Record download failures
     const dlFailureSet = new Set(dlFailures);
     for (const item of plan.toDownload) {
         if (dlFailureSet.has(item.fileId)) {
@@ -68,147 +257,11 @@ const executeSyncPlan = async (plan: SyncPlan, onProgress?: () => void): Promise
         }
     }
 
-    for (const item of plan.toDownload) {
-        if (dlFailureSet.has(item.fileId)) continue;
-
-        const content = downloadedContents.get(item.fileId);
-        if (!content) { errors.push(item.noteId); continue; }
-
-        try {
-            // Handle moment synthesis files
-            if (item.noteId.startsWith('moment-synthesis-')) {
-                const synthesisContent = content as unknown as MomentSynthesis;
-                const momentId = item.noteId.replace('moment-synthesis-', '');
-                const safeSynthesis: MomentSynthesis = { ...synthesisContent, momentId };
-
-                const localSynthesis = await getMomentSynthesis(momentId);
-                if (!localSynthesis || safeSynthesis.generatedAt > localSynthesis.generatedAt) {
-                    await withProgress(saveMomentSynthesis(safeSynthesis));
-                }
-                continue;
-            }
-
-            // Handle calendar event files
-            if (item.noteId.startsWith('event-')) {
-                const eventContent = content as unknown as CalendarEvent;
-                const verifiedEventId = item.noteId.replace('event-', '');
-                const safeEvent: CalendarEvent = { ...eventContent, id: verifiedEventId };
-                if (item.localCalendarEvent) {
-                    if (safeEvent.updatedAt > item.localCalendarEvent.updatedAt) {
-                        if (safeEvent.isDeleted) {
-                            await withProgress(deleteCalendarEventHard(verifiedEventId));
-                        } else {
-                            await withProgress(saveCalendarEvent(safeEvent));
-                        }
-                    } else if (item.localCalendarEvent.updatedAt > safeEvent.updatedAt) {
-                        plan.toUpload.push({
-                            noteId: item.noteId,
-                            memory: item.localCalendarEvent,
-                            remoteFileId: item.fileId
-                        });
-                    }
-                } else {
-                    if (safeEvent.isDeleted) {
-                        await withProgress(deleteCalendarEventHard(verifiedEventId));
-                    } else {
-                        await withProgress(saveCalendarEvent(safeEvent));
-                    }
-                }
-                continue;
-            }
-
-            // Handle todo item files
-            if (item.noteId.startsWith('todo-')) {
-                const todoContent = content as unknown as TodoItem;
-                const verifiedTodoId = item.noteId.replace('todo-', '');
-                const safeTodo: TodoItem = { ...todoContent, id: verifiedTodoId };
-                if (item.localTodoItem) {
-                    if (safeTodo.updatedAt > item.localTodoItem.updatedAt) {
-                        if (safeTodo.isDeleted) {
-                            await withProgress(deleteTodoItemHard(verifiedTodoId));
-                        } else {
-                            await withProgress(updateTodoItem(safeTodo));
-                        }
-                    } else if (item.localTodoItem.updatedAt > safeTodo.updatedAt) {
-                        plan.toUpload.push({
-                            noteId: item.noteId,
-                            memory: item.localTodoItem,
-                            remoteFileId: item.fileId
-                        });
-                    }
-                } else {
-                    if (safeTodo.isDeleted) {
-                        await withProgress(deleteTodoItemHard(verifiedTodoId));
-                    } else {
-                        await withProgress(updateTodoItem(safeTodo));
-                    }
-                }
-                continue;
-            }
-
-            // Handle moment files with proper conflict resolution
-            if (item.noteId.startsWith('moment-')) {
-                const momentContent = content as unknown as Moment;
-                // Use the verified ID from the filename, not the untrusted JSON content
-                const verifiedMomentId = item.noteId.replace('moment-', '');
-                const safeMoment: Moment = { ...momentContent, id: verifiedMomentId };
-                if (item.localMoment) {
-                    // Both local and remote exist — compare updatedAt timestamps
-                    if (safeMoment.updatedAt > item.localMoment.updatedAt) {
-                        if (safeMoment.isDeleted) {
-                            await withProgress(deleteMomentHard(verifiedMomentId));
-                        } else {
-                            await withProgress(saveMoment(safeMoment));
-                        }
-                    } else if (item.localMoment.updatedAt > safeMoment.updatedAt) {
-                        // Local is newer — push to upload instead
-                        plan.toUpload.push({
-                            noteId: item.noteId,
-                            memory: item.localMoment,
-                            remoteFileId: item.fileId
-                        });
-                    }
-                    // Equal timestamps — no action needed
-                } else {
-                    // Remote-only moment
-                    if (safeMoment.isDeleted) {
-                        await withProgress(deleteMomentHard(verifiedMomentId));
-                    } else {
-                        await withProgress(saveMoment(safeMoment));
-                    }
-                }
-                continue;
-            }
-
-            // Self-heal invalid timestamps — use local copy's timestamp or fall back to now
-            if (typeof content.timestamp !== 'number' || !isFinite(content.timestamp) || content.timestamp <= 0) {
-                let healed = item.local?.timestamp;
-                if (typeof healed !== 'number' || !isFinite(healed) || healed <= 0) {
-                    healed = Date.now();
-                }
-                console.warn(`[Sync] Healing memory ${item.noteId}: invalid timestamp ${content.timestamp} → ${healed}`);
-                content.timestamp = healed;
-                // Re-upload the healed version to fix remote
-                plan.toUpload.push({ noteId: item.noteId, memory: content, remoteFileId: item.fileId });
-            }
-
-            if (item.local) {
-                if (content.timestamp > item.local.timestamp) {
-                    if (content.isDeleted) await withProgress(deleteMemory(item.noteId));
-                    else await withProgress(saveMemory(content));
-                } else if (item.local.timestamp > content.timestamp) {
-                    plan.toUpload.push({
-                        noteId: item.noteId,
-                        memory: item.local,
-                        remoteFileId: item.fileId
-                    });
-                }
-            } else {
-                if (!content.isDeleted) await withProgress(saveMemory(content));
-            }
-        } catch (e) {
-            console.error(`[Sync] Process download failed for ${item.noteId}:`, e);
-            errors.push(item.noteId);
+    // Emit full memories (with attachments) for deferred items now that
+    // the download phase is complete. Batched to avoid per-card re-renders.
+    if (onMemorySynced && deferredAttachmentMemories.length > 0) {
+        for (const fullMemory of deferredAttachmentMemories) {
+            onMemorySynced(fullMemory);
         }
     }
 
@@ -217,14 +270,7 @@ const executeSyncPlan = async (plan: SyncPlan, onProgress?: () => void): Promise
     // Device A also updates the moment's noteIds and syncs it. But if the moment
     // sync hasn't propagated yet (race condition, offline, etc.), Device B needs
     // to apply these matches locally when it downloads the note.
-    const downloadedNotes: Array<{ id: string; enrichment?: { matchedMomentIds?: string[] } }> = [];
-    for (const item of plan.toDownload) {
-        if (dlFailureSet.has(item.fileId)) continue;
-        if (item.noteId.startsWith('moment-') || item.noteId.startsWith('event-') || item.noteId.startsWith('todo-')) continue;
-        const content = downloadedContents.get(item.fileId);
-        if (content) downloadedNotes.push({ id: item.noteId, enrichment: (content as Memory).enrichment });
-    }
-
+    // (downloadedNotes was populated during the streaming download phase above)
     const matchesToApply = collectMatchedMomentIds(downloadedNotes);
     if (matchesToApply.size > 0) {
         const allMoments = await getAllMomentsIncludingDeleted();
@@ -462,9 +508,14 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const syncStatusMapRef = useRef<Map<string, SyncStatus>>(new Map());
   const syncStatusTimersRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
   const onSyncProgressRef = useRef<(() => void) | undefined>(undefined);
+  const onMemorySyncedRef = useRef<((memory: Memory) => void) | undefined>(undefined);
 
   const setOnSyncProgress = useCallback((cb: (() => void) | undefined) => {
     onSyncProgressRef.current = cb;
+  }, []);
+
+  const setOnMemorySynced = useCallback((cb: ((memory: Memory) => void) | undefined) => {
+    onMemorySyncedRef.current = cb;
   }, []);
 
   const updateSyncStatus = useCallback((noteId: string, status: SyncStatus) => {
@@ -547,7 +598,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
   }, []);
 
-  const doDeltaSync = useCallback(async (previousSnapshot: Record<string, string>, onProgress?: () => void) => {
+  const doDeltaSync = useCallback(async (previousSnapshot: Record<string, string>, callbacks?: ExecuteSyncCallbacks) => {
     const localMemories = await getMemories();
     const localMap = new Map(localMemories.map(m => [m.id, m]));
 
@@ -804,10 +855,13 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const wrappedOnProgress = totalSyncItems > 0 ? () => {
         syncedCount++;
         updateForegroundSyncProgress(syncedCount, totalSyncItems);
-        onProgress?.();
-    } : onProgress;
+        callbacks?.onProgress?.();
+    } : callbacks?.onProgress;
 
-    const errors = await executeSyncPlan(plan, wrappedOnProgress);
+    const errors = await executeSyncPlan(plan, {
+        onProgress: wrappedOnProgress,
+        onMemorySynced: callbacks?.onMemorySynced,
+    });
 
     // Rebuild snapshot from Drive's actual state, but EXCLUDE items that failed
     // to sync. This ensures failed downloads are retried on the next sync instead
@@ -921,7 +975,10 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 }
 
                 console.log(`--- [Sync] Starting ${forceFullSync ? 'FULL' : 'DELTA'} Sync ---`);
-                await doDeltaSync(previousSnapshot, onSyncProgressRef.current);
+                await doDeltaSync(previousSnapshot, {
+                    onProgress: onSyncProgressRef.current,
+                    onMemorySynced: onMemorySyncedRef.current,
+                });
                 reconcileEmbeddings().catch(e => console.error("[Sync] RAG Reconciliation failed:", e));
                 resolve();
             } catch (e: any) {
@@ -1214,7 +1271,8 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         getSyncStatusMap,
         syncStatusVersion,
         pendingCount,
-        setOnSyncProgress
+        setOnSyncProgress,
+        setOnMemorySynced
     }}>
       {children}
     </SyncContext.Provider>

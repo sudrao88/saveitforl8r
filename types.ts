@@ -218,6 +218,7 @@ export interface Memory {
   isDeleted?: boolean; // Persistent soft-delete flag for sync
   isPinned?: boolean;
   isDeletionDismissed?: boolean; // User dismissed this note from deletion suggestions
+  _attachmentsDeferred?: boolean; // Transient UI flag: attachment data not yet loaded
 }
 
 export interface ChatMessage {
