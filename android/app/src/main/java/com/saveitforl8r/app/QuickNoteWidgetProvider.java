@@ -5,7 +5,6 @@ import android.appwidget.AppWidgetManager;
 import android.appwidget.AppWidgetProvider;
 import android.content.Context;
 import android.content.Intent;
-import android.net.Uri;
 import android.widget.RemoteViews;
 
 /**
@@ -21,10 +20,15 @@ import android.widget.RemoteViews;
  */
 public class QuickNoteWidgetProvider extends AppWidgetProvider {
 
-    /** URL scheme for deep-links into the app. Shared with MainActivity. */
-    public static final String DEEP_LINK_SCHEME = "com.saveitforl8r.app";
+    /**
+     * Custom action for widget quick-note intents. Using an explicit action
+     * instead of ACTION_VIEW with a custom URI scheme avoids Samsung One UI
+     * intercepting the intent through its link handler/browser.
+     */
+    public static final String ACTION_QUICK_NOTE = "com.saveitforl8r.app.ACTION_QUICK_NOTE";
 
-    private static final String DEEP_LINK_HOST = "quick-note";
+    /** Intent extra key for the capture mode (camera, document, or absent for text). */
+    public static final String EXTRA_MODE = "com.saveitforl8r.app.EXTRA_MODE";
 
     @Override
     public void onUpdate(Context context, AppWidgetManager appWidgetManager, int[] appWidgetIds) {
@@ -59,28 +63,27 @@ public class QuickNoteWidgetProvider extends AppWidgetProvider {
     }
 
     /**
-     * Builds a PendingIntent that deep-links into the app's quick-note handler.
+     * Builds a PendingIntent that launches the app's quick-note handler.
+     *
+     * Uses an explicit intent with a custom action and extras instead of
+     * ACTION_VIEW with a URI scheme. This is more reliable on Samsung One UI
+     * devices which can intercept ACTION_VIEW intents through their link handler.
      *
      * @param context      Application context
      * @param requestCode  Unique request code for the PendingIntent
      * @param mode         Optional capture mode ("camera", "document"), or null for text focus
      */
     private static PendingIntent buildQuickNotePendingIntent(Context context, int requestCode, String mode) {
-        Uri.Builder uriBuilder = new Uri.Builder()
-                .scheme(DEEP_LINK_SCHEME)
-                .authority(DEEP_LINK_HOST);
+        Intent intent = new Intent(context, MainActivity.class);
+        intent.setAction(ACTION_QUICK_NOTE);
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
 
         if (mode != null) {
-            uriBuilder.appendQueryParameter("mode", mode);
+            intent.putExtra(EXTRA_MODE, mode);
         }
-
-        Intent intent = new Intent(context, MainActivity.class);
-        intent.setAction(Intent.ACTION_VIEW);
-        intent.setData(uriBuilder.build());
-        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
 
         return PendingIntent.getActivity(
                 context, requestCode, intent,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE);
     }
 }
