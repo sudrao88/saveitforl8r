@@ -33,6 +33,12 @@ export const btn = {
     'bg-(--color-danger) hover:bg-(--color-danger-hover) text-(--color-text-primary) rounded-(--radius-lg) px-3 py-1.5 text-xs font-bold',
   warningSm:
     'bg-(--color-warning) hover:bg-(--color-warning)/80 text-(--color-text-primary) rounded-(--radius-lg) px-3 py-1.5 text-xs font-bold',
+  // Circular CTA (primary floating action buttons — save, send, etc.)
+  cta: 'p-2.5 rounded-(--radius-xl) bg-(--color-accent) hover:bg-(--color-accent-hover) text-(--color-text-primary) shadow-lg shrink-0',
+  ctaDisabled:
+    'p-2.5 rounded-(--radius-xl) bg-(--color-surface-raised) text-(--color-text-tertiary) cursor-not-allowed shrink-0',
+  ctaSuccess:
+    'p-2.5 rounded-(--radius-xl) bg-(--color-success) text-(--color-text-primary) animate-save-success shrink-0',
   // Outlined / subtle variants (bordered, muted background)
   outlinedSm:
     'flex items-center gap-1.5 px-3 py-2 rounded-(--radius-lg) text-xs font-medium bg-(--color-surface-raised) text-(--color-text-secondary) border border-(--color-border-default) hover:border-(--color-border-default) hover:text-(--color-text-primary) transition-all active:scale-95',
