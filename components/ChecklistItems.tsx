@@ -93,7 +93,7 @@ export function ChecklistEditor({
             }}
             autoFocus={autoFocusLast && index === items.length - 1}
             placeholder="List item..."
-            className={`flex-1 bg-transparent text-sm text-white placeholder-gray-600 focus:outline-none transition-all text-left ${item.checked ? checklist.itemTextChecked : ''}`}
+            className={`flex-1 bg-transparent text-sm text-(--color-text-primary) placeholder-(--color-text-tertiary) focus:outline-none transition-all text-left ${item.checked ? checklist.itemTextChecked : ''}`}
             dir="ltr"
           />
         </div>

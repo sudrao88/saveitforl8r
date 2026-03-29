@@ -155,10 +155,10 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ dataUri, fileName }) => {
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center gap-4 text-center p-8">
-        <Loader size={32} className="text-blue-400 animate-spin" />
+        <Loader size={32} className="text-(--color-accent) animate-spin" />
         <div>
-          <p className="text-gray-200 font-medium text-sm">Loading PDF...</p>
-          <p className="text-gray-500 text-xs mt-1">
+          <p className="text-(--color-text-primary) font-medium text-sm">Loading PDF...</p>
+          <p className="text-(--color-text-tertiary) text-xs mt-1">
             {loadingProgress > 0 ? `${loadingProgress}%` : 'Preparing...'}
           </p>
         </div>
@@ -169,7 +169,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ dataUri, fileName }) => {
   if (error) {
     return (
       <div className="flex items-center justify-center p-8">
-        <p className="text-red-400 text-sm">{error}</p>
+        <p className="text-(--color-danger) text-sm">{error}</p>
       </div>
     );
   }
@@ -181,26 +181,26 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ dataUri, fileName }) => {
         <button
           onClick={zoomOut}
           disabled={zoom <= MIN_ZOOM}
-          className="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors active:scale-95 disabled:opacity-30 disabled:pointer-events-none"
+          className="p-2 rounded-lg hover:bg-white/10 text-(--color-text-secondary) hover:text-(--color-text-primary) transition-colors active:scale-95 disabled:opacity-30 disabled:pointer-events-none"
           aria-label="Zoom out"
         >
           <ZoomOut size={18} />
         </button>
         <button
           onClick={resetZoom}
-          className="px-3 py-1 rounded-lg hover:bg-white/10 text-gray-300 text-xs font-medium transition-colors min-w-[4rem]"
+          className="px-3 py-1 rounded-lg hover:bg-white/10 text-(--color-text-secondary) text-xs font-medium transition-colors min-w-[4rem]"
         >
           {Math.round(zoom * 100)}%
         </button>
         <button
           onClick={zoomIn}
           disabled={zoom >= MAX_ZOOM}
-          className="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors active:scale-95 disabled:opacity-30 disabled:pointer-events-none"
+          className="p-2 rounded-lg hover:bg-white/10 text-(--color-text-secondary) hover:text-(--color-text-primary) transition-colors active:scale-95 disabled:opacity-30 disabled:pointer-events-none"
           aria-label="Zoom in"
         >
           <ZoomIn size={18} />
         </button>
-        <span className="text-xs text-gray-500 ml-2">{totalPages} {totalPages === 1 ? 'page' : 'pages'}</span>
+        <span className="text-xs text-(--color-text-tertiary) ml-2">{totalPages} {totalPages === 1 ? 'page' : 'pages'}</span>
       </div>
 
       {/* Scrollable page container */}
@@ -223,7 +223,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ dataUri, fileName }) => {
                 className="w-full shadow-xl rounded-sm bg-white"
                 draggable={false}
               />
-              <div className="absolute bottom-2 right-2 bg-black/60 text-white text-xs px-2 py-0.5 rounded-full backdrop-blur-sm">
+              <div className="absolute bottom-2 right-2 bg-black/60 text-(--color-text-primary) text-xs px-2 py-0.5 rounded-full backdrop-blur-sm">
                 {idx + 1} / {totalPages}
               </div>
             </div>

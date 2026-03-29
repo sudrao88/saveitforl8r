@@ -134,9 +134,9 @@ const groupEventsByDate = (events: CalendarEvent[]): DateGroup[] => {
 };
 
 const statusColors: Record<string, string> = {
-  confirmed: 'bg-green-500/20 text-green-400 border-green-500/30',
-  tentative: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-  cancelled: 'bg-red-500/20 text-red-400 border-red-500/30 line-through',
+  confirmed: 'bg-(--color-success)/20 text-(--color-success) border-(--color-success)/30',
+  tentative: 'bg-(--color-warning)/20 text-(--color-warning) border-(--color-warning)/30',
+  cancelled: 'bg-(--color-danger)/20 text-(--color-danger) border-(--color-danger)/30 line-through',
 };
 
 const EventCard: React.FC<{
@@ -153,9 +153,9 @@ const EventCard: React.FC<{
     <div
       className={`rounded-(--radius-xl) border p-4 transition-all duration-(--duration-fast) ${
         isPast
-          ? 'border-(--color-border-subtle) bg-gray-900/30'
+          ? 'border-(--color-border-subtle) bg-(--color-surface-overlay)/30'
           : event.status === 'cancelled'
-            ? 'border-red-900/30 bg-red-950/20'
+            ? 'border-(--color-danger)/30 bg-(--color-danger)/20'
             : 'border-(--color-border-subtle) bg-(--color-surface-raised)/30 hover:bg-(--color-surface-raised)/50'
       }`}
     >
@@ -165,7 +165,7 @@ const EventCard: React.FC<{
           <h3
             className={`font-semibold text-base ${
               event.status === 'cancelled'
-                ? 'text-red-400 line-through'
+                ? 'text-(--color-danger) line-through'
                 : isPast
                   ? 'text-(--color-text-tertiary)'
                   : 'text-(--color-text-primary)'
@@ -219,7 +219,7 @@ const EventCard: React.FC<{
           </span>
           {/* Recurrence indicator */}
           {event.recurringGroupId && (
-            <span className="flex items-center gap-1 text-xs text-blue-400">
+            <span className="flex items-center gap-1 text-xs text-(--color-accent)">
               <Repeat size={10} />
               {event.recurrenceRule?.frequency}
             </span>
@@ -236,7 +236,7 @@ const EventCard: React.FC<{
       {memory && (
         <button
           onClick={() => onViewMemory(memory)}
-          className="mt-3 flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition-colors"
+          className="mt-3 flex items-center gap-1.5 text-xs text-(--color-accent) hover:text-(--color-accent-hover) transition-colors"
         >
           <FileText size={12} />
           View source note
@@ -285,11 +285,11 @@ const CalendarAgendaView: React.FC<CalendarAgendaViewProps> = ({
             <X size={24} />
           </button>
           <div className="flex items-center gap-2">
-            <Calendar size={20} className="text-blue-400" />
-            <h2 className="text-lg font-bold text-gray-100">Calendar</h2>
+            <Calendar size={20} className="text-(--color-accent)" />
+            <h2 className="text-lg font-bold text-(--color-text-primary)">Calendar</h2>
           </div>
         </div>
-        <span className="text-sm text-gray-500">
+        <span className="text-sm text-(--color-text-tertiary)">
           {events.length} event{events.length !== 1 ? 's' : ''}
         </span>
       </div>
@@ -298,11 +298,11 @@ const CalendarAgendaView: React.FC<CalendarAgendaViewProps> = ({
       <div className="flex-1 overflow-y-auto">
         {events.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full px-8 text-center">
-            <Calendar size={48} className="text-gray-700 mb-4" />
-            <h3 className="text-lg font-semibold text-gray-400 mb-2">
+            <Calendar size={48} className="text-(--color-text-tertiary) mb-4" />
+            <h3 className="text-lg font-semibold text-(--color-text-secondary) mb-2">
               No events yet
             </h3>
-            <p className="text-sm text-gray-500 max-w-xs">
+            <p className="text-sm text-(--color-text-tertiary) max-w-xs">
               Your calendar builds itself. Save a note with a date — like a
               wedding invite, meeting, or appointment — and it&apos;ll show up here.
             </p>

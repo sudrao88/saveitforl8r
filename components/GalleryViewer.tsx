@@ -163,7 +163,7 @@ const GalleryViewer: React.FC<GalleryViewerProps> = ({ attachments, initialIndex
     const safeUri = getSafeDataUri(attachment);
 
     if (attachment.type === 'image') {
-      if (!safeUri) return <p className="text-red-400 text-sm">Unable to display this image.</p>;
+      if (!safeUri) return <p className="text-(--color-danger) text-sm">Unable to display this image.</p>;
       return (
         <ZoomableImage
           src={safeUri}
@@ -174,7 +174,7 @@ const GalleryViewer: React.FC<GalleryViewerProps> = ({ attachments, initialIndex
       );
     }
     if (attachment.mimeType === 'application/pdf') {
-      if (!safeUri) return <p className="text-red-400 text-sm">Unable to display this PDF.</p>;
+      if (!safeUri) return <p className="text-(--color-danger) text-sm">Unable to display this PDF.</p>;
       return (
         <PdfViewer
           dataUri={safeUri}
@@ -183,18 +183,18 @@ const GalleryViewer: React.FC<GalleryViewerProps> = ({ attachments, initialIndex
       );
     }
     return (
-      <div className="bg-gray-900 border border-gray-800 p-8 rounded-2xl flex flex-col items-center gap-4 text-center max-w-sm">
-        <div className="w-16 h-16 bg-gray-800 rounded-2xl flex items-center justify-center">
-          <FileText size={32} className="text-blue-400" />
+      <div className="bg-(--color-surface-overlay) border border-(--color-border-default) p-8 rounded-2xl flex flex-col items-center gap-4 text-center max-w-sm">
+        <div className="w-16 h-16 bg-(--color-surface-raised) rounded-2xl flex items-center justify-center">
+          <FileText size={32} className="text-(--color-accent)" />
         </div>
         <div>
-          <h3 className="text-gray-100 font-bold mb-1">{attachment.name}</h3>
-          <p className="text-gray-400 text-xs">Preview not available for this file type.</p>
+          <h3 className="text-(--color-text-primary) font-bold mb-1">{attachment.name}</h3>
+          <p className="text-(--color-text-secondary) text-xs">Preview not available for this file type.</p>
         </div>
         {safeUri && (
           <button
             onClick={() => handleDownload(attachment)}
-            className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold transition-all shadow-lg active:scale-95 text-center"
+            className="w-full py-3 bg-(--color-accent) hover:bg-(--color-accent-hover) text-(--color-text-primary) rounded-xl font-bold transition-all shadow-lg active:scale-95 text-center"
           >
             Download to View
           </button>
@@ -210,20 +210,20 @@ const GalleryViewer: React.FC<GalleryViewerProps> = ({ attachments, initialIndex
         <div className="flex items-center gap-3 flex-1 min-w-0 overflow-hidden">
           <button
             onClick={onClose}
-            className="p-3 -ml-3 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition-colors active:scale-95 shrink-0"
+            className="p-3 -ml-3 rounded-full hover:bg-white/10 text-(--color-text-secondary) hover:text-(--color-text-primary) transition-colors active:scale-95 shrink-0"
           >
             <X size={24} />
           </button>
-          <span className="text-sm font-medium text-gray-200 truncate">{current.name}</span>
+          <span className="text-sm font-medium text-(--color-text-primary) truncate">{current.name}</span>
           {attachments.length > 1 && (
-            <span className="text-xs text-gray-500 shrink-0">{currentIndex + 1} of {attachments.length}</span>
+            <span className="text-xs text-(--color-text-tertiary) shrink-0">{currentIndex + 1} of {attachments.length}</span>
           )}
         </div>
         <div className="flex items-center gap-2 shrink-0 ml-3">
           {canShare && getSafeDataUri(current) && (
             <button
               onClick={handleShare}
-              className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-xl text-xs font-bold transition-all active:scale-95"
+              className="flex items-center gap-2 px-4 py-2 bg-(--color-surface-raised) hover:bg-(--color-surface-raised) text-(--color-text-primary) rounded-xl text-xs font-bold transition-all active:scale-95"
               aria-label="Share"
             >
               <Share2 size={14} /> Share
@@ -232,7 +232,7 @@ const GalleryViewer: React.FC<GalleryViewerProps> = ({ attachments, initialIndex
           {getSafeDataUri(current) && (
             <button
               onClick={() => handleDownload(current)}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all active:scale-95"
+              className="flex items-center gap-2 px-4 py-2 bg-(--color-accent) hover:bg-(--color-accent-hover) text-(--color-text-primary) rounded-xl text-xs font-bold transition-all active:scale-95"
             >
               <Download size={14} /> Download
             </button>
@@ -251,7 +251,7 @@ const GalleryViewer: React.FC<GalleryViewerProps> = ({ attachments, initialIndex
         {hasPrev && !isPdf && (
           <button
             onClick={goPrev}
-            className="absolute left-2 sm:left-4 z-(--z-sticky) p-3 rounded-full bg-black/40 hover:bg-black/70 text-white/70 hover:text-white transition-all active:scale-90 backdrop-blur-sm"
+            className="absolute left-2 sm:left-4 z-(--z-sticky) p-3 rounded-full bg-black/40 hover:bg-black/70 text-(--color-text-primary)/70 hover:text-(--color-text-primary) transition-all active:scale-90 backdrop-blur-sm"
           >
             <ChevronLeft size={24} />
           </button>
@@ -276,7 +276,7 @@ const GalleryViewer: React.FC<GalleryViewerProps> = ({ attachments, initialIndex
         {hasNext && !isPdf && (
           <button
             onClick={goNext}
-            className="absolute right-2 sm:right-4 z-(--z-sticky) p-3 rounded-full bg-black/40 hover:bg-black/70 text-white/70 hover:text-white transition-all active:scale-90 backdrop-blur-sm"
+            className="absolute right-2 sm:right-4 z-(--z-sticky) p-3 rounded-full bg-black/40 hover:bg-black/70 text-(--color-text-primary)/70 hover:text-(--color-text-primary) transition-all active:scale-90 backdrop-blur-sm"
           >
             <ChevronRight size={24} />
           </button>
@@ -292,8 +292,8 @@ const GalleryViewer: React.FC<GalleryViewerProps> = ({ attachments, initialIndex
               onClick={() => goTo(idx)}
               className={`rounded-full transition-all ${
                 idx === currentIndex
-                  ? 'w-2.5 h-2.5 bg-blue-500'
-                  : 'w-2 h-2 bg-gray-600 hover:bg-gray-400'
+                  ? 'w-2.5 h-2.5 bg-(--color-accent)'
+                  : 'w-2 h-2 bg-(--color-text-tertiary) hover:bg-(--color-text-secondary)'
               }`}
             />
           ))}
@@ -303,7 +303,7 @@ const GalleryViewer: React.FC<GalleryViewerProps> = ({ attachments, initialIndex
       {/* Counter for many items (no dots, not shown for PDFs) */}
       {!isPdf && attachments.length > MAX_DOT_INDICATORS && (
         <div className="flex items-center justify-center py-3 pb-[calc(0.75rem+var(--sab))]">
-          <span className="text-xs text-gray-500">{currentIndex + 1} / {attachments.length}</span>
+          <span className="text-xs text-(--color-text-tertiary)">{currentIndex + 1} / {attachments.length}</span>
         </div>
       )}
     </div>

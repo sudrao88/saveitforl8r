@@ -68,15 +68,15 @@ const MomentCreationDialog: React.FC<MomentCreationDialogProps> = ({
       {/* Dialog */}
       <div className={`relative w-full max-w-lg mx-4 mb-4 sm:mb-0 ${overlay.modal} animate-in slide-in-from-bottom duration-(--duration-normal)`}>
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-(--color-border-default)">
           <div className="flex items-center gap-2">
-            <Sparkles size={18} className="text-blue-400" />
-            <h3 className="text-base font-bold text-gray-100">New Moment</h3>
+            <Sparkles size={18} className="text-(--color-accent)" />
+            <h3 className="text-base font-bold text-(--color-text-primary)">New Moment</h3>
           </div>
           <button
             onClick={onClose}
             disabled={isCreating}
-            className="p-2 rounded-full hover:bg-gray-800 text-gray-400 hover:text-white transition-colors disabled:opacity-50"
+            className="p-2 rounded-full hover:bg-(--color-surface-raised) text-(--color-text-secondary) hover:text-(--color-text-primary) transition-colors disabled:opacity-50"
           >
             <X size={18} />
           </button>
@@ -84,7 +84,7 @@ const MomentCreationDialog: React.FC<MomentCreationDialogProps> = ({
 
         {/* Body */}
         <div className="p-4">
-          <label className="block text-sm text-gray-300 mb-2">
+          <label className="block text-sm text-(--color-text-secondary) mb-2">
             What would you like to synthesize from your notes?
           </label>
           <input
@@ -95,20 +95,20 @@ const MomentCreationDialog: React.FC<MomentCreationDialogProps> = ({
             onKeyDown={handleKeyDown}
             placeholder={PLACEHOLDER_EXAMPLES[placeholderIdx]}
             disabled={isCreating}
-            className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 text-sm disabled:opacity-50"
+            className="w-full px-4 py-3 bg-(--color-surface-raised) border border-(--color-border-default) rounded-xl text-(--color-text-primary) placeholder-(--color-text-tertiary) focus:outline-none focus:ring-2 focus:ring-(--color-accent)/50 focus:border-(--color-accent)/50 text-sm disabled:opacity-50"
             maxLength={1000}
           />
-          <p className="text-xs text-gray-500 mt-2">
+          <p className="text-xs text-(--color-text-tertiary) mt-2">
             We'll search through all your notes and build a synthesis matching this objective.
           </p>
         </div>
 
         {/* Footer */}
-        <div className="px-4 py-3 border-t border-gray-800 flex justify-end gap-2">
+        <div className="px-4 py-3 border-t border-(--color-border-default) flex justify-end gap-2">
           <button
             onClick={onClose}
             disabled={isCreating}
-            className="px-4 py-2 text-sm text-gray-400 hover:text-gray-200 transition-colors disabled:opacity-50"
+            className="px-4 py-2 text-sm text-(--color-text-secondary) hover:text-(--color-text-primary) transition-colors disabled:opacity-50"
           >
             Cancel
           </button>

@@ -11,24 +11,24 @@ const EmptyState: React.FC<EmptyStateProps> = ({ hasMemories, clearFilters }) =>
     <div className="h-[60vh] flex flex-col items-center justify-center text-center px-6 relative">
       {hasMemories ? (
         <div className="flex flex-col items-center animate-in fade-in zoom-in-95">
-          <div className="w-16 h-16 bg-gray-800 rounded-2xl flex items-center justify-center mb-4 border border-gray-700">
+          <div className="w-16 h-16 bg-(--color-surface-raised) rounded-2xl flex items-center justify-center mb-4 border border-(--color-border-default)">
              <span className="text-3xl">🔍</span>
           </div>
-          <h3 className="text-xl font-bold text-gray-200">No matching memories</h3>
+          <h3 className="text-xl font-bold text-(--color-text-primary)">No matching memories</h3>
           <p className={`${text.body} mt-2`}>Try adjusting your filters.</p>
           <button
             onClick={clearFilters}
-            className={`${btn.base} ${btn.secondary} mt-6 text-blue-400`}
+            className={`${btn.base} ${btn.secondary} mt-6 text-(--color-accent)`}
           >
             Clear Filters
           </button>
         </div>
       ) : (
         <>
-            <h2 className="text-3xl font-black text-white mb-2 tracking-tight">
+            <h2 className="text-3xl font-black text-(--color-text-primary) mb-2 tracking-tight">
               🧠 Your AI-Powered Second Brain
             </h2>
-            <p className="text-gray-400 text-base mb-6 max-w-sm">
+            <p className="text-(--color-text-secondary) text-base mb-6 max-w-sm">
               Drop anything in. We'll handle the rest.
             </p>
 

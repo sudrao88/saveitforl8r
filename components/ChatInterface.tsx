@@ -179,12 +179,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
         style={{ height: viewport.height, top: viewport.top }}
     >
       {/* Header */}
-      <div className="flex-none border-b border-gray-800 px-4 pb-3 pt-[calc(0.75rem+var(--sat))] flex items-center justify-between bg-black z-(--z-sticky) shadow-sm shrink-0">
+      <div className="flex-none border-b border-(--color-border-default) px-4 pb-3 pt-[calc(0.75rem+var(--sat))] flex items-center justify-between bg-black z-(--z-sticky) shadow-sm shrink-0">
         <div className="flex items-center gap-2">
-            <BrainCircuit size={24} className="text-blue-500" />
-            <h2 className="text-lg font-bold text-gray-100">Brain Search</h2>
+            <BrainCircuit size={24} className="text-(--color-accent)" />
+            <h2 className="text-lg font-bold text-(--color-text-primary)">Brain Search</h2>
         </div>
-        <button onClick={onClose} className="p-3 -m-3 hover:bg-gray-800 rounded-full transition text-gray-400 active:scale-95">
+        <button onClick={onClose} className="p-3 -m-3 hover:bg-(--color-surface-raised) rounded-full transition text-(--color-text-secondary) active:scale-95">
           <X size={24} />
         </button>
       </div>
@@ -197,9 +197,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
       >
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center text-center max-w-sm mx-auto opacity-50 px-4 pt-10">
-            <BrainCircuit size={48} className="text-blue-500 mb-6" />
-            <h3 className="text-xl font-bold text-gray-100 mb-2">Neural Retrieval</h3>
-            <p className="text-sm text-gray-400 leading-relaxed">
+            <BrainCircuit size={48} className="text-(--color-accent) mb-6" />
+            <h3 className="text-xl font-bold text-(--color-text-primary) mb-2">Neural Retrieval</h3>
+            <p className="text-sm text-(--color-text-secondary) leading-relaxed">
               Ask questions to your second brain. SaveItForL8R synthesizes answers using only your captured memories.
             </p>
           </div>
@@ -209,12 +209,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
           <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in`}>
             <div className={`max-w-[90%] sm:max-w-[80%] rounded-2xl px-5 py-3 ${
               msg.role === 'user' 
-                ? 'bg-blue-600 text-white shadow-md' 
-                : 'bg-gray-800 border border-gray-700 text-gray-100 shadow-sm'
+                ? 'bg-(--color-accent) text-(--color-text-primary) shadow-md' 
+                : 'bg-(--color-surface-raised) border border-(--color-border-default) text-(--color-text-primary) shadow-sm'
             }`}>
               {msg.isOffline && (
                 <div className="flex items-center mb-1">
-                   <span className="flex items-center gap-1 text-xs uppercase font-bold text-yellow-500/80 mb-1">
+                   <span className="flex items-center gap-1 text-xs uppercase font-bold text-(--color-warning)/80 mb-1">
                       <WifiOff size={10} /> Offline Mode
                    </span>
                 </div>
@@ -225,8 +225,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
               
               {/* Citations */}
               {msg.sources && msg.sources.length > 0 && (
-                <div className="mt-4 pt-3 border-t border-gray-700/50">
-                    <p className="text-xs font-black uppercase text-gray-500 mb-2 tracking-widest">
+                <div className="mt-4 pt-3 border-t border-(--color-border-subtle)">
+                    <p className="text-xs font-black uppercase text-(--color-text-tertiary) mb-2 tracking-widest">
                         {msg.isOffline ? 'Relevant Notes' : 'Sources'}
                     </p>
                     <div className="grid grid-cols-1 gap-2">
@@ -237,18 +237,18 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
                                 <button 
                                     key={source.id}
                                     onClick={() => setPreviewMemoryId(source.id)}
-                                    className="flex items-center gap-2 p-1.5 bg-gray-900 rounded-lg border border-gray-700 hover:border-blue-500 transition-all text-left shadow-sm group active:scale-[0.98]"
+                                    className="flex items-center gap-2 p-1.5 bg-(--color-surface-overlay) rounded-lg border border-(--color-border-default) hover:border-(--color-accent) transition-all text-left shadow-sm group active:scale-[0.98]"
                                 >
                                     {mem.image && (
-                                        <img src={mem.image} className="w-8 h-8 rounded-md object-cover bg-gray-800 border border-gray-800" alt="" />
+                                        <img src={mem.image} className="w-8 h-8 rounded-md object-cover bg-(--color-surface-raised) border border-(--color-border-default)" alt="" />
                                     )}
                                     <div className="flex-1 overflow-hidden min-w-0">
-                                        <p className="text-xs font-bold text-gray-200 truncate">
+                                        <p className="text-xs font-bold text-(--color-text-primary) truncate">
                                             {source.preview || mem.enrichment?.summary || mem.content || "Memory Entry"}
                                         </p>
-                                        <p className="text-xs text-gray-500">{(() => { const d = new Date(mem.timestamp); return isNaN(d.getTime()) ? 'Unknown date' : d.toLocaleDateString(); })()}</p>
+                                        <p className="text-xs text-(--color-text-tertiary)">{(() => { const d = new Date(mem.timestamp); return isNaN(d.getTime()) ? 'Unknown date' : d.toLocaleDateString(); })()}</p>
                                     </div>
-                                    <ExternalLink size={12} className="text-gray-600 group-hover:text-blue-400 shrink-0 mx-1" />
+                                    <ExternalLink size={12} className="text-(--color-text-tertiary) group-hover:text-(--color-accent) shrink-0 mx-1" />
                                 </button>
                             );
                         })}
@@ -261,10 +261,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
 
         {loading && (
           <div className="flex justify-start animate-in fade-in">
-            <div className="bg-gray-800 border border-gray-700 rounded-2xl px-5 py-4 flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-blue-400 typing-dot" />
-              <span className="w-2 h-2 rounded-full bg-blue-400 typing-dot" style={{ animationDelay: '0.15s' }} />
-              <span className="w-2 h-2 rounded-full bg-blue-400 typing-dot" style={{ animationDelay: '0.3s' }} />
+            <div className="bg-(--color-surface-raised) border border-(--color-border-default) rounded-2xl px-5 py-4 flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-(--color-accent) typing-dot" />
+              <span className="w-2 h-2 rounded-full bg-(--color-accent) typing-dot" style={{ animationDelay: '0.15s' }} />
+              <span className="w-2 h-2 rounded-full bg-(--color-accent) typing-dot" style={{ animationDelay: '0.3s' }} />
             </div>
           </div>
         )}
@@ -272,7 +272,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
 
       {/* Input Area */}
       <div 
-        className="flex-none w-full bg-black border-t border-gray-800 shrink-0 z-(--z-dropdown)"
+        className="flex-none w-full bg-black border-t border-(--color-border-default) shrink-0 z-(--z-dropdown)"
         style={{ 
             paddingBottom: 'max(1rem, var(--sab))',
             paddingTop: '1rem',
@@ -280,12 +280,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
             paddingRight: '1rem'
         }}
       >
-        <div className="max-w-4xl mx-auto flex items-end gap-3 bg-gray-800 px-4 py-2 rounded-2xl border border-gray-700 focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500 transition-all shadow-sm">
+        <div className="max-w-4xl mx-auto flex items-end gap-3 bg-(--color-surface-raised) px-4 py-2 rounded-2xl border border-(--color-border-default) focus-within:border-(--color-accent) focus-within:ring-1 focus-within:ring-(--color-accent) transition-all shadow-sm">
             <textarea
                 ref={textareaRef}
                 autoFocus
                 rows={1}
-                className="w-full text-base font-medium focus:outline-none bg-transparent placeholder-gray-500 border-none text-gray-100 py-2 resize-none max-h-32"
+                className="w-full text-base font-medium focus:outline-none bg-transparent placeholder-(--color-text-tertiary) border-none text-(--color-text-primary) py-2 resize-none max-h-32"
                 placeholder="Ask your second brain..."
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
@@ -297,7 +297,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
             <button 
                 onClick={handleSend}
                 disabled={!query.trim() || loading}
-                className="mb-1 p-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0 active:scale-95"
+                className="mb-1 p-2 bg-(--color-accent) hover:bg-(--color-accent-hover) text-(--color-text-primary) rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0 active:scale-95"
             >
                 <Send size={18} />
             </button>

@@ -31,15 +31,15 @@ const FilterBar: React.FC<FilterBarProps> = ({
 
   return (
     <div className={`${layout.pageContainer} ${layout.section} py-2 flex items-center gap-2 overflow-x-auto no-scrollbar mask-gradient touch-pan-x`}>
-       <div className="flex items-center gap-2 pr-3 shrink-0 border-r border-gray-700/50 mr-1">
-           <Filter size={14} className="text-gray-500" />
+       <div className="flex items-center gap-2 pr-3 shrink-0 border-r border-(--color-border-subtle) mr-1">
+           <Filter size={14} className="text-(--color-text-tertiary)" />
            <span className={`${text.label} tracking-widest hidden sm:inline`}>Filter</span>
        </div>
 
        {filterType && (
            <button 
                onClick={clearFilters} 
-               className={`${chip.base} bg-gray-800 text-gray-400 border-red-900/30 hover:bg-red-900/20 hover:text-red-400`}
+               className={`${chip.base} bg-(--color-surface-raised) text-(--color-text-secondary) border-(--color-danger)/30 hover:bg-(--color-danger)/20 hover:text-(--color-danger)`}
            >
                <X size={12} /> Clear
            </button>

@@ -46,10 +46,10 @@ const MomentsStrip: React.FC<MomentsStripProps> = ({
           onClick={onNewMoment}
           className="flex flex-col items-center gap-1.5 shrink-0 group touch-manipulation"
         >
-          <div className="w-16 h-16 rounded-full flex items-center justify-center bg-blue-600/20 border-2 border-dashed border-blue-500/50 transition-all group-hover:border-blue-400 group-hover:bg-blue-600/30 group-active:scale-95">
-            <Sparkles size={22} className="text-blue-400" />
+          <div className="w-16 h-16 rounded-full flex items-center justify-center bg-(--color-accent)/20 border-2 border-dashed border-(--color-accent)/50 transition-all group-hover:border-(--color-accent-hover) group-hover:bg-(--color-accent)/30 group-active:scale-95">
+            <Sparkles size={22} className="text-(--color-accent)" />
           </div>
-          <span className="text-xs font-semibold text-blue-400 leading-tight text-center">
+          <span className="text-xs font-semibold text-(--color-accent) leading-tight text-center">
             Synthesize
           </span>
         </button>
@@ -60,13 +60,13 @@ const MomentsStrip: React.FC<MomentsStripProps> = ({
             onClick={onDeletionCandidatesTap}
             className="flex flex-col items-center gap-1.5 shrink-0 group touch-manipulation"
           >
-            <div className="w-16 h-16 rounded-full flex items-center justify-center bg-amber-600/20 border-2 border-amber-500/40 ring-2 ring-amber-500/30 transition-all group-hover:ring-amber-400 group-hover:bg-amber-600/30 group-active:scale-95">
-              <Trash2 size={22} className="text-amber-400" />
+            <div className="w-16 h-16 rounded-full flex items-center justify-center bg-(--color-warning)/20 border-2 border-(--color-warning)/40 ring-2 ring-(--color-warning)/30 transition-all group-hover:ring-(--color-warning) group-hover:bg-(--color-warning)/30 group-active:scale-95">
+              <Trash2 size={22} className="text-(--color-warning)" />
             </div>
-            <span className="text-xs font-semibold text-amber-400 leading-tight text-center">
+            <span className="text-xs font-semibold text-(--color-warning) leading-tight text-center">
               Cleanup
             </span>
-            <span className="text-xs text-gray-500 leading-tight">
+            <span className="text-xs text-(--color-text-tertiary) leading-tight">
               {deletionCandidateCount} stale
             </span>
           </button>
@@ -77,13 +77,13 @@ const MomentsStrip: React.FC<MomentsStripProps> = ({
           onClick={onCalendarTap}
           className="flex flex-col items-center gap-1.5 shrink-0 group touch-manipulation"
         >
-          <div className="w-16 h-16 rounded-full flex items-center justify-center bg-purple-600/20 border-2 border-purple-500/40 ring-2 ring-purple-500/30 transition-all group-hover:ring-purple-400 group-hover:bg-purple-600/30 group-active:scale-95">
-            <Calendar size={22} className="text-purple-400" />
+          <div className="w-16 h-16 rounded-full flex items-center justify-center bg-(--color-accent)/20 border-2 border-(--color-accent)/40 ring-2 ring-(--color-accent)/30 transition-all group-hover:ring-(--color-accent-hover) group-hover:bg-(--color-accent)/30 group-active:scale-95">
+            <Calendar size={22} className="text-(--color-accent)" />
           </div>
-          <span className="text-xs font-semibold text-purple-400 leading-tight text-center">
+          <span className="text-xs font-semibold text-(--color-accent) leading-tight text-center">
             Calendar
           </span>
-          <span className="text-xs text-gray-500 leading-tight">
+          <span className="text-xs text-(--color-text-tertiary) leading-tight">
             {calendarEventCount} event{calendarEventCount !== 1 ? 's' : ''}
           </span>
         </button>
@@ -93,13 +93,13 @@ const MomentsStrip: React.FC<MomentsStripProps> = ({
           onClick={onTodoTap}
           className="flex flex-col items-center gap-1.5 shrink-0 group touch-manipulation"
         >
-          <div className="w-16 h-16 rounded-full flex items-center justify-center bg-green-600/20 border-2 border-green-500/40 ring-2 ring-green-500/30 transition-all group-hover:ring-green-400 group-hover:bg-green-600/30 group-active:scale-95">
-            <CheckSquare size={22} className="text-green-400" />
+          <div className="w-16 h-16 rounded-full flex items-center justify-center bg-(--color-success)/20 border-2 border-(--color-success)/40 ring-2 ring-(--color-success)/30 transition-all group-hover:ring-(--color-success) group-hover:bg-(--color-success)/30 group-active:scale-95">
+            <CheckSquare size={22} className="text-(--color-success)" />
           </div>
-          <span className="text-xs font-semibold text-green-400 leading-tight text-center">
+          <span className="text-xs font-semibold text-(--color-success) leading-tight text-center">
             To Do
           </span>
-          <span className="text-xs text-gray-500 leading-tight">
+          <span className="text-xs text-(--color-text-tertiary) leading-tight">
             {todoPendingCount} task{todoPendingCount !== 1 ? 's' : ''}
           </span>
         </button>
@@ -119,10 +119,10 @@ const MomentsStrip: React.FC<MomentsStripProps> = ({
             onClick={onShowAll}
             className="flex flex-col items-center gap-1.5 shrink-0 group touch-manipulation"
           >
-            <div className="w-16 h-16 rounded-full flex items-center justify-center bg-gray-800/50 border border-gray-700/50 ring-2 ring-gray-700 transition-all group-hover:ring-gray-500 group-active:scale-95">
-              <ChevronRight size={24} className="text-gray-400" />
+            <div className="w-16 h-16 rounded-full flex items-center justify-center bg-(--color-surface-raised)/50 border border-(--color-border-subtle) ring-2 ring-(--color-border-default) transition-all group-hover:ring-(--color-text-tertiary) group-active:scale-95">
+              <ChevronRight size={24} className="text-(--color-text-secondary)" />
             </div>
-            <span className="text-xs font-semibold text-gray-400 leading-tight text-center">
+            <span className="text-xs font-semibold text-(--color-text-secondary) leading-tight text-center">
               All
             </span>
           </button>

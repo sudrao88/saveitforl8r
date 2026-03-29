@@ -47,27 +47,27 @@ const MultiSelect: React.FC<MultiSelectProps> = ({ label, options, selected, onC
       <label className={`block ${text.label} mb-1`}>{label}</label>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full bg-gray-800 text-left text-white text-sm rounded-lg px-3 py-2 border border-gray-600 focus:border-blue-500 outline-none flex justify-between items-center hover:bg-gray-750 transition-colors"
+        className="w-full bg-(--color-surface-raised) text-left text-(--color-text-primary) text-sm rounded-lg px-3 py-2 border border-(--color-border-default) focus:border-(--color-accent) outline-none flex justify-between items-center hover:bg-(--color-surface-raised) transition-colors"
       >
         <span className="truncate block pr-2">
           {selected.length === 0 
-            ? <span className="text-gray-400">{placeholder}</span> 
+            ? <span className="text-(--color-text-secondary)">{placeholder}</span> 
             : selected.length === options.length 
                 ? "All Selected"
                 : `${selected.length} selected`}
         </span>
-        <ChevronDown size={14} className={`text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        <ChevronDown size={14} className={`text-(--color-text-secondary) transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
       {isOpen && (
-        <div className={`absolute ${zIndex.overlay} w-full mt-1 bg-gray-800 border border-gray-600 rounded-lg shadow-xl max-h-60 overflow-y-auto overflow-x-hidden`}>
+        <div className={`absolute ${zIndex.overlay} w-full mt-1 bg-(--color-surface-raised) border border-(--color-border-default) rounded-lg shadow-xl max-h-60 overflow-y-auto overflow-x-hidden`}>
           {options.length > 0 && (
              <div 
                 onClick={handleSelectAll}
-                className="px-3 py-2 hover:bg-gray-700 cursor-pointer flex items-center gap-2 border-b border-gray-700 sticky top-0 bg-gray-800 text-xs font-bold text-blue-400"
+                className="px-3 py-2 hover:bg-(--color-surface-raised) cursor-pointer flex items-center gap-2 border-b border-(--color-border-default) sticky top-0 bg-(--color-surface-raised) text-xs font-bold text-(--color-accent)"
              >
-                <div className={`w-4 h-4 rounded border flex items-center justify-center ${selected.length === options.length ? 'bg-blue-600 border-blue-600' : 'border-gray-500'}`}>
-                    {selected.length === options.length && <Check size={10} className="text-white" />}
+                <div className={`w-4 h-4 rounded border flex items-center justify-center ${selected.length === options.length ? 'bg-(--color-accent) border-(--color-accent)' : 'border-(--color-border-default)'}`}>
+                    {selected.length === options.length && <Check size={10} className="text-(--color-text-primary)" />}
                 </div>
                 Select All
              </div>
@@ -77,16 +77,16 @@ const MultiSelect: React.FC<MultiSelectProps> = ({ label, options, selected, onC
             <div 
               key={option} 
               onClick={() => toggleOption(option)}
-              className="px-3 py-2 hover:bg-gray-700 cursor-pointer flex items-center gap-2"
+              className="px-3 py-2 hover:bg-(--color-surface-raised) cursor-pointer flex items-center gap-2"
             >
-              <div className={`w-4 h-4 rounded border flex items-center justify-center ${selected.includes(option) ? 'bg-blue-600 border-blue-600' : 'border-gray-500'}`}>
-                {selected.includes(option) && <Check size={10} className="text-white" />}
+              <div className={`w-4 h-4 rounded border flex items-center justify-center ${selected.includes(option) ? 'bg-(--color-accent) border-(--color-accent)' : 'border-(--color-border-default)'}`}>
+                {selected.includes(option) && <Check size={10} className="text-(--color-text-primary)" />}
               </div>
-              <span className="text-sm text-gray-200 truncate">{option}</span>
+              <span className="text-sm text-(--color-text-primary) truncate">{option}</span>
             </div>
           ))}
           {options.length === 0 && (
-             <div className="px-3 py-2 text-gray-500 text-sm italic">No options available</div>
+             <div className="px-3 py-2 text-(--color-text-tertiary) text-sm italic">No options available</div>
           )}
         </div>
       )}

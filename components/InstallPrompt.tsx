@@ -61,22 +61,22 @@ export const InstallPrompt = () => {
   if (!showPrompt) return null;
 
   return (
-    <div className="bg-gray-800 border-b border-gray-700 relative z-(--z-overlay)">
+    <div className="bg-(--color-surface-raised) border-b border-(--color-border-default) relative z-(--z-overlay)">
       {showInstructions ? (
-         <div className="p-4 bg-gray-800 animate-in fade-in slide-in-from-top-2">
+         <div className="p-4 bg-(--color-surface-raised) animate-in fade-in slide-in-from-top-2">
             <div className="flex items-start justify-between mb-3">
-                <span className="text-white font-medium text-sm">Install Instructions</span>
+                <span className="text-(--color-text-primary) font-medium text-sm">Install Instructions</span>
                 <button onClick={() => setShowInstructions(false)} className={btn.icon}>
                     <X size={18} />
                 </button>
             </div>
             {isIOS ? (
-                <div className="text-sm text-gray-300 space-y-2">
-                    <p className="flex items-center gap-2">1. Tap the Share button <Share size={16} className="text-blue-400" /></p>
-                    <p className="flex items-center gap-2">2. Select "Add to Home Screen" <span className="border border-gray-600 rounded px-1 text-xs bg-gray-700">+</span></p>
+                <div className="text-sm text-(--color-text-secondary) space-y-2">
+                    <p className="flex items-center gap-2">1. Tap the Share button <Share size={16} className="text-(--color-accent)" /></p>
+                    <p className="flex items-center gap-2">2. Select "Add to Home Screen" <span className="border border-(--color-border-default) rounded px-1 text-xs bg-(--color-surface-raised)">+</span></p>
                 </div>
             ) : (
-                <div className="text-sm text-gray-300 space-y-2">
+                <div className="text-sm text-(--color-text-secondary) space-y-2">
                     <p>1. Tap the browser menu (three dots)</p>
                     <p>2. Select "Install App"</p>
                 </div>
@@ -87,12 +87,12 @@ export const InstallPrompt = () => {
             <button onClick={dismiss} className={`${btn.icon} -ml-1`}>
                 <X size={18} />
             </button>
-            <div className="shrink-0 w-10 h-10 rounded-lg overflow-hidden bg-gray-900 flex items-center justify-center">
+            <div className="shrink-0 w-10 h-10 rounded-lg overflow-hidden bg-(--color-surface-overlay) flex items-center justify-center">
                 <Logo className="w-full h-full" />
             </div>
             <div className="flex-1 min-w-0 flex flex-col justify-center">
-                <h3 className="text-white font-medium text-sm leading-tight truncate">SaveItForL8R</h3>
-                <p className="text-gray-400 text-xs leading-tight truncate">Personal Second Brain</p>
+                <h3 className="text-(--color-text-primary) font-medium text-sm leading-tight truncate">SaveItForL8R</h3>
+                <p className="text-(--color-text-secondary) text-xs leading-tight truncate">Personal Second Brain</p>
             </div>
             <button
                 onClick={handleInstall}
