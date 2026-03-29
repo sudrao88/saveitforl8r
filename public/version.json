@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v55",
-  "buildNumber": 55,
+  "version": "saveitforl8r-v56",
+  "buildNumber": 56,
   "buildDate": "2026-03-29T12:00:00.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Bump cache version to v55"
+  "changelog": "Remove moment strip side padding for edge-to-edge scrolling"
 }
