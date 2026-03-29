@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { X, Send, BrainCircuit, ExternalLink, Bot, Sparkles, WifiOff, Download, FileText } from 'lucide-react';
 import { Memory, Attachment, ChatMessage } from '../types';
 import MemoryPreviewModal from './MemoryPreviewModal';
+import { overlay } from '../styles/design-system';
 
 interface ChatInterfaceProps {
   memories: Memory[];
@@ -184,7 +185,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
             <BrainCircuit size={24} className="text-(--color-accent)" />
             <h2 className="text-lg font-bold text-(--color-text-primary)">Brain Search</h2>
         </div>
-        <button onClick={onClose} className="p-3 -m-3 hover:bg-(--color-surface-raised) rounded-full transition text-(--color-text-secondary) active:scale-95">
+        <button onClick={onClose} className={overlay.closeBtn}>
           <X size={24} />
         </button>
       </div>
@@ -207,7 +208,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
 
         {messages.map((msg) => (
           <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in`}>
-            <div className={`max-w-[90%] sm:max-w-[80%] rounded-2xl px-5 py-3 ${
+            <div className={`max-w-[90%] sm:max-w-[80%] rounded-(--radius-xl) px-5 py-3 ${
               msg.role === 'user' 
                 ? 'bg-(--color-accent) text-(--color-text-primary) shadow-md' 
                 : 'bg-(--color-surface-raised) border border-(--color-border-default) text-(--color-text-primary) shadow-sm'
@@ -237,10 +238,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
                                 <button 
                                     key={source.id}
                                     onClick={() => setPreviewMemoryId(source.id)}
-                                    className="flex items-center gap-2 p-1.5 bg-(--color-surface-overlay) rounded-lg border border-(--color-border-default) hover:border-(--color-accent) transition-all text-left shadow-sm group active:scale-[0.98]"
+                                    className="flex items-center gap-2 p-1.5 bg-(--color-surface-overlay) rounded-(--radius-lg) border border-(--color-border-default) hover:border-(--color-accent) transition-all text-left shadow-sm group active:scale-[0.98]"
                                 >
                                     {mem.image && (
-                                        <img src={mem.image} className="w-8 h-8 rounded-md object-cover bg-(--color-surface-raised) border border-(--color-border-default)" alt="" />
+                                        <img src={mem.image} className="w-8 h-8 rounded-(--radius-md) object-cover bg-(--color-surface-raised) border border-(--color-border-default)" alt="" />
                                     )}
                                     <div className="flex-1 overflow-hidden min-w-0">
                                         <p className="text-xs font-bold text-(--color-text-primary) truncate">
@@ -261,7 +262,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
 
         {loading && (
           <div className="flex justify-start animate-in fade-in">
-            <div className="bg-(--color-surface-raised) border border-(--color-border-default) rounded-2xl px-5 py-4 flex items-center gap-1.5">
+            <div className="bg-(--color-surface-raised) border border-(--color-border-default) rounded-(--radius-xl) px-5 py-4 flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-(--color-accent) typing-dot" />
               <span className="w-2 h-2 rounded-full bg-(--color-accent) typing-dot" style={{ animationDelay: '0.15s' }} />
               <span className="w-2 h-2 rounded-full bg-(--color-accent) typing-dot" style={{ animationDelay: '0.3s' }} />
@@ -280,7 +281,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
             paddingRight: '1rem'
         }}
       >
-        <div className="max-w-4xl mx-auto flex items-end gap-3 bg-(--color-surface-raised) px-4 py-2 rounded-2xl border border-(--color-border-default) focus-within:border-(--color-accent) focus-within:ring-1 focus-within:ring-(--color-accent) transition-all shadow-sm">
+        <div className="max-w-4xl mx-auto flex items-end gap-3 bg-(--color-surface-raised) px-4 py-2 rounded-(--radius-xl) border border-(--color-border-default) focus-within:border-(--color-accent) focus-within:ring-1 focus-within:ring-(--color-accent) transition-all shadow-sm">
             <textarea
                 ref={textareaRef}
                 autoFocus
@@ -297,7 +298,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
             <button 
                 onClick={handleSend}
                 disabled={!query.trim() || loading}
-                className="mb-1 p-2 bg-(--color-accent) hover:bg-(--color-accent-hover) text-(--color-text-primary) rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0 active:scale-95"
+                className="mb-1 p-2 bg-(--color-accent) hover:bg-(--color-accent-hover) text-(--color-text-primary) rounded-(--radius-xl) transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0 active:scale-95"
             >
                 <Send size={18} />
             </button>

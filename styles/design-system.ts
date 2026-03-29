@@ -18,12 +18,26 @@ export const btn = {
   secondary:
     'bg-(--color-surface-raised) hover:bg-(--color-surface-raised)/80 text-(--color-text-primary) border border-(--color-border-default) rounded-(--radius-lg) px-4 py-2.5',
   ghost:
-    'text-(--color-text-secondary) hover:bg-white/5 hover:text-(--color-text-primary) rounded-(--radius-lg) px-3 py-2',
+    'text-(--color-text-secondary) hover:bg-(--color-surface-hover-subtle) hover:text-(--color-text-primary) rounded-(--radius-lg) px-3 py-2',
   danger:
     'bg-(--color-danger) hover:bg-(--color-danger-hover) text-(--color-text-primary) rounded-(--radius-lg) px-4 py-2.5',
-  icon: 'p-2 rounded-(--radius-lg) text-(--color-text-secondary) hover:bg-white/10 hover:text-(--color-text-primary)',
+  icon: 'p-2 rounded-(--radius-lg) text-(--color-text-secondary) hover:bg-(--color-surface-hover) hover:text-(--color-text-primary)',
   iconLg:
     'p-2.5 rounded-(--radius-xl) text-(--color-text-secondary) hover:text-(--color-text-primary) hover:bg-(--color-surface-raised) transition-colors active:scale-95',
+  // Small / compact variants (settings, toolbars, inline actions)
+  primarySm:
+    'bg-(--color-accent) hover:bg-(--color-accent-hover) text-(--color-text-primary) rounded-(--radius-lg) px-3 py-1.5 text-xs font-bold',
+  secondarySm:
+    'bg-(--color-surface-raised) hover:bg-(--color-surface-raised)/80 text-(--color-text-primary) rounded-(--radius-lg) px-3 py-1.5 text-xs font-medium',
+  dangerSm:
+    'bg-(--color-danger) hover:bg-(--color-danger-hover) text-(--color-text-primary) rounded-(--radius-lg) px-3 py-1.5 text-xs font-bold',
+  warningSm:
+    'bg-(--color-warning) hover:bg-(--color-warning)/80 text-(--color-text-primary) rounded-(--radius-lg) px-3 py-1.5 text-xs font-bold',
+  // Outlined / subtle variants (bordered, muted background)
+  outlinedSm:
+    'flex items-center gap-1.5 px-3 py-2 rounded-(--radius-lg) text-xs font-medium bg-(--color-surface-raised) text-(--color-text-secondary) border border-(--color-border-default) hover:border-(--color-border-default) hover:text-(--color-text-primary) transition-all active:scale-95',
+  outlinedDangerSm:
+    'flex items-center gap-1.5 px-3 py-2 rounded-(--radius-lg) text-xs font-medium bg-(--color-danger)/20 text-(--color-danger) border border-(--color-danger)/30 hover:border-(--color-danger)/50 hover:text-(--color-danger) transition-all active:scale-95',
 } as const;
 
 // ─── Cards ──────────────────────────────────────────────────
@@ -50,21 +64,25 @@ export const overlay = {
   backdrop:
     'fixed inset-0 bg-(--color-surface-overlay)/95 backdrop-blur-md',
   backdropLight:
-    'fixed inset-0 bg-black/80 backdrop-blur-sm',
+    'fixed inset-0 bg-(--color-surface-base)/80 backdrop-blur-sm',
   sheet:
-    'fixed inset-0 z-(--z-sheet) bg-(--color-surface-overlay)/95 backdrop-blur-md flex flex-col animate-in fade-in duration-300',
+    'fixed inset-0 z-(--z-sheet) bg-(--color-surface-overlay)/95 backdrop-blur-md flex flex-col animate-in fade-in duration-(--duration-slow)',
   sheetHeader:
     'sticky top-0 z-(--z-sticky) px-4 py-3 border-b border-(--color-border-default) flex items-center justify-between bg-(--color-surface-overlay)/80 backdrop-blur-xl pt-[var(--sat)]',
   modal:
-    'bg-(--color-surface-overlay) border border-(--color-border-default)/50 rounded-2xl shadow-2xl',
+    'bg-(--color-surface-overlay) border border-(--color-border-default)/50 rounded-(--radius-xl) shadow-2xl',
   dialogBackdrop:
     'fixed inset-0 z-(--z-modal) flex items-end sm:items-center justify-center',
   closeBtn:
     'p-3 -ml-3 rounded-full hover:bg-(--color-surface-raised) text-(--color-text-secondary) hover:text-(--color-text-primary) transition-colors active:scale-95',
   previewBackdrop:
-    'fixed inset-0 z-(--z-sheet) flex items-center justify-center p-4 bg-black/80 backdrop-blur-md',
+    'fixed inset-0 z-(--z-sheet) flex items-center justify-center p-4 bg-(--color-surface-base)/80 backdrop-blur-md',
   previewCloseBtn:
-    'mt-4 w-full py-3 bg-(--color-surface-raised) text-white rounded-(--radius-xl) font-bold shadow-xl border border-(--color-border-default) text-sm active:scale-95 shrink-0',
+    'mt-4 w-full py-3 bg-(--color-surface-raised) text-(--color-text-primary) rounded-(--radius-xl) font-bold shadow-xl border border-(--color-border-default) text-sm active:scale-95 shrink-0',
+  closeBtnRight:
+    'p-2 -mr-2 rounded-full hover:bg-(--color-surface-raised) text-(--color-text-secondary) hover:text-(--color-text-primary) transition-colors active:scale-95',
+  navBtn:
+    'absolute z-(--z-sticky) p-3 rounded-full bg-(--color-surface-base)/40 hover:bg-(--color-surface-base)/70 text-(--color-text-primary)/70 hover:text-(--color-text-primary) transition-all active:scale-90 backdrop-blur-sm',
 } as const;
 
 // ─── Typography ─────────────────────────────────────────────
@@ -117,16 +135,24 @@ export const zIndex = {
 
 export const checklist = {
   checkbox:
-    'w-5 h-5 border-2 rounded-md flex items-center justify-center transition-colors shrink-0',
+    'w-5 h-5 border-2 rounded-(--radius-sm) flex items-center justify-center transition-colors shrink-0',
   checkboxChecked: 'border-(--color-accent) bg-(--color-accent)/20',
   checkboxUnchecked: 'border-(--color-border-default)',
-  checkboxDot: 'w-2.5 h-2.5 bg-(--color-accent) rounded-sm',
+  checkboxDot: 'w-2.5 h-2.5 bg-(--color-accent) rounded-(--radius-xs)',
   itemRow: 'flex items-center gap-3',
   itemText: 'text-sm transition-all',
   itemTextDefault: 'text-(--color-text-primary)',
   itemTextChecked: 'line-through text-(--color-text-tertiary)',
   addBtn:
     'flex items-center gap-1.5 text-(--color-text-tertiary) hover:text-(--color-accent) text-sm transition-colors py-1 active:text-(--color-accent)',
+} as const;
+
+// ─── Confirmation Dialog ────────────────────────────────────
+
+export const confirm = {
+  backdrop: 'absolute inset-0 z-(--z-dropdown) bg-(--color-surface-overlay)/95 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-(--duration-fast)',
+  title: 'text-(--color-text-primary) font-bold mb-1',
+  message: 'text-xs text-(--color-text-secondary) mb-4',
 } as const;
 
 // ─── Layout Helpers ─────────────────────────────────────────

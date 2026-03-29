@@ -189,7 +189,7 @@ const ZoomableImage: React.FC<ZoomableImageProps> = ({ src, alt, onZoomChange, r
         ref={imgRef}
         src={src}
         alt={alt}
-        className="max-w-full max-h-full object-contain shadow-2xl rounded-lg select-none"
+        className="max-w-full max-h-full object-contain shadow-2xl rounded-(--radius-lg) select-none"
         draggable={false}
         style={{
           transform: `translate(${translate.x}px, ${translate.y}px) scale(${scale})`,

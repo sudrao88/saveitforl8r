@@ -1,7 +1,7 @@
 /**
  * ESLint rule: no-raw-tailwind-colors
  *
- * Disallows raw Tailwind color classes in className attributes.
+ * Disallows raw Tailwind color/radius/duration/z-index classes in className attributes.
  * Use CSS custom property tokens from the design system instead.
  */
 
@@ -38,6 +38,16 @@ var arbitraryZPattern = new RegExp('z-\\[\\d+\\]');
 // Arbitrary text size: text-[Npx]
 var arbitraryTextSizePattern = new RegExp('text-\\[\\d+(?:px|rem|em)\\]');
 
+// Raw border radius: rounded-sm, rounded-md, rounded-lg, rounded-xl, rounded-2xl, rounded-3xl
+// (rounded-full and rounded-none are fine — no token needed)
+var rawRadiusPattern = new RegExp('^(?:(?:hover|focus|active|sm|md|lg|xl|2xl):)*rounded-(sm|md|lg|xl|2xl|3xl)$');
+
+// Raw duration: duration-100, duration-200, duration-300, etc.
+var rawDurationPattern = new RegExp('^(?:(?:hover|focus|active|sm|md|lg|xl|2xl):)*duration-\\d+$');
+
+// Raw numeric z-index: z-10, z-20, z-30, z-40, z-50
+var rawZIndexPattern = new RegExp('^(?:(?:hover|focus|active|sm|md|lg|xl|2xl):)*z-\\d+$');
+
 function checkStringForViolations(value, context, node) {
   var classes = value.split(/\s+/);
 
@@ -68,6 +78,24 @@ function checkStringForViolations(value, context, node) {
       context.report({
         node: node,
         message: 'Use a standard text size (text-xs, text-sm, etc.) instead of "' + cls + '".',
+      });
+    }
+    if (rawRadiusPattern.test(cls)) {
+      context.report({
+        node: node,
+        message: 'Use a --radius-* token (e.g. rounded-(--radius-lg)) instead of "' + cls + '". See index.css @theme.',
+      });
+    }
+    if (rawDurationPattern.test(cls)) {
+      context.report({
+        node: node,
+        message: 'Use a --duration-* token (e.g. duration-(--duration-fast)) instead of "' + cls + '". See index.css @theme.',
+      });
+    }
+    if (rawZIndexPattern.test(cls)) {
+      context.report({
+        node: node,
+        message: 'Use a --z-* token (e.g. z-(--z-sticky)) instead of "' + cls + '". See index.css @theme.',
       });
     }
   }

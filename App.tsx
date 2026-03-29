@@ -14,6 +14,7 @@ import { Logo } from './components/icons';
 import QuickNoteBar, { QuickNoteBarHandle } from './components/QuickNoteBar';
 import GalleryViewer from './components/GalleryViewer';
 import { lazyWithRetry } from './utils/lazyWithRetry';
+import { btn, overlay } from './styles/design-system';
 
 // Lazy-load heavy components that aren't needed on initial render.
 // lazyWithRetry clears stale SW caches and reloads if a chunk fails to import.
@@ -848,7 +849,7 @@ const AppContent: React.FC = () => {
                 onClick={async () => {
                   await setNotificationsEnabled(true);
                 }}
-                className="shrink-0 px-3 py-1.5 text-xs font-medium bg-(--color-accent) hover:bg-(--color-accent-hover) text-(--color-text-primary) rounded-(--radius-lg) transition-colors duration-(--duration-fast) active:scale-95"
+                className={`${btn.base} ${btn.primarySm} shrink-0`}
               >
                 Enable
               </button>
@@ -877,7 +878,7 @@ const AppContent: React.FC = () => {
             {isLoading ? (
               <div className="columns-1 sm:columns-2 lg:columns-3 gap-4 space-y-4">
                 {[1, 2, 3, 4, 5, 6].map(i => (
-                  <div key={i} className="break-inside-avoid rounded-xl bg-(--color-surface-raised) border border-(--color-border-subtle) p-4 animate-pulse">
+                  <div key={i} className="break-inside-avoid rounded-(--radius-xl) bg-(--color-surface-raised) border border-(--color-border-subtle) p-4 animate-pulse">
                     <div className="h-4 bg-(--color-surface-raised)/50 rounded w-3/4 mb-3"></div>
                     <div className="h-3 bg-(--color-surface-raised)/30 rounded w-full mb-2"></div>
                     <div className="h-3 bg-(--color-surface-raised)/30 rounded w-5/6 mb-2"></div>
@@ -928,9 +929,9 @@ const AppContent: React.FC = () => {
 
       {liveExpandedMemory && (
         <div className="fixed inset-0 z-(--z-sheet) bg-black/90 backdrop-blur-md flex flex-col animate-in fade-in duration-(--duration-normal)">
-          <div className="sticky top-0 z-10 px-4 py-3 border-b border-(--color-border-default) flex items-center justify-between bg-black/50 backdrop-blur-xl pt-[var(--sat)]">
+          <div className="sticky top-0 z-(--z-sticky) px-4 py-3 border-b border-(--color-border-default) flex items-center justify-between bg-(--color-surface-base)/50 backdrop-blur-xl pt-[var(--sat)]">
              <div className="flex items-center gap-3">
-                <button onClick={() => setExpandedMemory(null)} className="p-3 -ml-3 rounded-full hover:bg-(--color-surface-raised) text-(--color-text-secondary) hover:text-(--color-text-primary) transition-colors active:scale-95">
+                <button onClick={() => setExpandedMemory(null)} className={overlay.closeBtn}>
                     <X size={24} />
                 </button>
                 <h2 className="text-lg font-bold text-(--color-text-primary) truncate max-w-[200px] sm:max-w-md">Memory Detail</h2>
@@ -1119,7 +1120,7 @@ const AppContent: React.FC = () => {
       )}
 
       {momentError && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-(--z-toast) bg-(--color-danger)/90 border border-(--color-danger)/50 text-(--color-text-primary) px-4 py-3 rounded-xl text-sm font-medium shadow-lg animate-in fade-in slide-in-from-top-2 duration-(--duration-normal) max-w-sm text-center backdrop-blur-md">
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-(--z-toast) bg-(--color-danger)/90 border border-(--color-danger)/50 text-(--color-text-primary) px-4 py-3 rounded-(--radius-xl) text-sm font-medium shadow-lg animate-in fade-in slide-in-from-top-2 duration-(--duration-normal) max-w-sm text-center backdrop-blur-md">
           {momentError}
         </div>
       )}

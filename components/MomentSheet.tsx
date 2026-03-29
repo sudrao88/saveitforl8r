@@ -241,7 +241,7 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
             </p>
             <button
               onClick={handleDeleteClick}
-              className="px-6 py-2.5 bg-(--color-danger)/20 text-(--color-danger) rounded-xl text-sm font-bold hover:bg-(--color-danger)/30 transition-colors active:scale-95"
+              className="px-6 py-2.5 bg-(--color-danger)/20 text-(--color-danger) rounded-(--radius-xl) text-sm font-bold hover:bg-(--color-danger)/30 transition-colors active:scale-95"
             >
               Remove
             </button>
@@ -292,7 +292,7 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
               </p>
               <button
                 onClick={handleRetry}
-                className="px-6 py-2.5 bg-(--color-accent) text-(--color-text-primary) rounded-xl text-sm font-bold hover:bg-(--color-accent-hover) transition-colors active:scale-95"
+                className={`${btn.base} ${btn.primary} px-6`}
               >
                 Retry
               </button>
@@ -320,14 +320,14 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
                 <div className="flex gap-2">
                   <button
                     onClick={handleRetry}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-(--color-surface-raised) text-(--color-text-secondary) border border-(--color-border-default) hover:border-(--color-border-default) hover:text-(--color-text-primary) transition-all active:scale-95"
+                    className={btn.outlinedSm}
                   >
                     <RefreshCw size={14} />
                     Re-synthesize
                   </button>
                   <button
                     onClick={handleDeleteClick}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-(--color-danger)/20 text-(--color-danger) border border-(--color-danger)/30 hover:border-(--color-danger)/50 hover:text-(--color-danger) transition-all active:scale-95"
+                    className={btn.outlinedDangerSm}
                   >
                     <Trash2 size={14} />
                     Delete moment
@@ -493,7 +493,7 @@ const ItemView: React.FC<{
   onPreviewNote?: () => void;
 }> = ({ item, isCompleted, completable, onToggle, sourceMemory, onPreviewNote }) => (
   <div
-    className={`flex items-start gap-3 p-3 rounded-xl border transition-all ${
+    className={`flex items-start gap-3 p-3 rounded-(--radius-xl) border transition-all ${
       isCompleted
         ? 'bg-(--color-surface-raised)/30 border-(--color-border-default) opacity-60'
         : 'bg-(--color-surface-raised)/50 border-(--color-border-subtle) hover:border-(--color-border-default)/50'
@@ -505,7 +505,7 @@ const ItemView: React.FC<{
         className="shrink-0 mt-0.5"
       >
         <div
-          className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-colors ${
+          className={`w-5 h-5 rounded-(--radius-md) border-2 flex items-center justify-center transition-colors ${
             isCompleted
               ? 'border-(--color-accent) bg-(--color-accent)/20'
               : 'border-(--color-border-default) hover:border-(--color-border-default)'

@@ -33,9 +33,9 @@ const ShareOnboardingModal: React.FC<ShareOnboardingModalProps> = ({ onClose }) 
 
             {/* iOS Specific Instructions */}
             {isIOS && (
-                <div className="bg-(--color-accent)/10 border border-(--color-accent)/20 rounded-xl p-4 space-y-3">
+                <div className="bg-(--color-accent)/10 border border-(--color-accent)/20 rounded-(--radius-xl) p-4 space-y-3">
                     <div className="flex items-start gap-3">
-                        <div className="bg-(--color-accent) rounded-lg p-2 mt-0.5">
+                        <div className="bg-(--color-accent) rounded-(--radius-lg) p-2 mt-0.5">
                             <Download size={16} className="text-(--color-text-primary)" />
                         </div>
                         <div>
@@ -49,7 +49,7 @@ const ShareOnboardingModal: React.FC<ShareOnboardingModalProps> = ({ onClose }) 
                         href="https://www.icloud.com/shortcuts/170db1a6c6be402c8d8c18ee8473ee87" 
                         target="_blank" 
                         rel="noopener noreferrer"
-                        className="flex items-center justify-center gap-2 w-full bg-(--color-accent) hover:bg-(--color-accent-hover) text-(--color-text-primary) text-sm font-bold py-2.5 rounded-lg transition-colors"
+                        className="flex items-center justify-center gap-2 w-full bg-(--color-accent) hover:bg-(--color-accent-hover) text-(--color-text-primary) text-sm font-bold py-2.5 rounded-(--radius-lg) transition-colors"
                     >
                         <span>Get Shortcut</span>
                         <ExternalLink size={14} />
@@ -62,7 +62,7 @@ const ShareOnboardingModal: React.FC<ShareOnboardingModalProps> = ({ onClose }) 
         <div className="p-4 bg-(--color-surface-overlay)/30 border-t border-(--color-border-default)">
             <button 
                 onClick={onClose}
-                className="w-full py-3 bg-(--color-surface-raised) hover:bg-(--color-surface-raised) text-(--color-text-primary) font-medium rounded-xl transition-colors"
+                className="w-full py-3 bg-(--color-surface-raised) hover:bg-(--color-surface-raised) text-(--color-text-primary) font-medium rounded-(--radius-xl) transition-colors"
             >
                 Got it
             </button>

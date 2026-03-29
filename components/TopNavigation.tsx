@@ -39,7 +39,7 @@ const TopNavigation: React.FC<TopNavigationProps> = ({
                 window.scrollTo({ top: 0, behavior: 'smooth' });
             }}
         >
-          <Logo className="w-8 h-8 rounded-lg shadow-sm group-hover:scale-105 transition-transform" />
+          <Logo className="w-8 h-8 rounded-(--radius-lg) shadow-sm group-hover:scale-105 transition-transform" />
           <span className="hidden sm:inline font-brand text-xl font-bold tracking-tight text-(--color-text-primary)">
             SaveItFor<span className="text-(--color-accent)">L8R</span>
           </span>
@@ -50,7 +50,7 @@ const TopNavigation: React.FC<TopNavigationProps> = ({
                <button
                 onClick={onUpdateApp}
                 disabled={isOtaDownloading}
-                className={`flex items-center gap-2 border transition-all rounded-xl px-4 py-2.5 group ${
+                className={`flex items-center gap-2 border transition-all rounded-(--radius-xl) px-4 py-2.5 group ${
                   isOtaDownloading
                     ? 'bg-(--color-surface-raised) border-(--color-border-default) text-(--color-text-tertiary) cursor-not-allowed'
                     : 'bg-(--color-danger)/20 hover:bg-(--color-danger)/30 border-(--color-danger)/50 hover:border-(--color-danger) text-(--color-danger) hover:text-(--color-danger) animate-pulse active:scale-95'

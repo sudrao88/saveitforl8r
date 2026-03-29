@@ -95,6 +95,8 @@ All UI components must follow these design standards. The source of truth is:
 | `--color-surface-base` | `#000000` | App background |
 | `--color-surface-raised` | `#1f2937` | Cards, inputs, elevated surfaces |
 | `--color-surface-overlay` | `#030712` | Modals, sheets, overlays |
+| `--color-surface-hover-subtle` | `rgba(255,255,255,0.05)` | Ghost button hover |
+| `--color-surface-hover` | `rgba(255,255,255,0.1)` | Icon button hover |
 | `--color-border-default` | `#374151` | Standard borders |
 | `--color-border-subtle` | `rgba(55,65,81,0.3)` | Card borders, subtle dividers |
 | `--color-text-primary` | `#f3f4f6` | Headings, primary text |
@@ -104,6 +106,7 @@ All UI components must follow these design standards. The source of truth is:
 | `--color-accent-hover` | `#3b82f6` | Hover state for accent |
 | `--color-accent-muted` | `rgba(37,99,235,0.2)` | Accent backgrounds |
 | `--color-danger` | `#dc2626` | Delete, errors |
+| `--color-danger-hover` | `#b91c1c` | Hover state for danger |
 | `--color-success` | `#22c55e` | Success states |
 | `--color-warning` | `#f59e0b` | Warnings |
 
@@ -121,6 +124,7 @@ Preferred scale: `1`, `1.5`, `2`, `3`, `4`, `6`, `8`. Avoid `2.5` except for but
 
 | Token | Value | Usage |
 |-------|-------|-------|
+| `--radius-xs` | `0.125rem` | Tiny decorative elements |
 | `--radius-sm` | `0.375rem` | Chips, tags, small badges |
 | `--radius-md` | `0.5rem` | List items, inline elements |
 | `--radius-lg` | `0.75rem` | Buttons, inputs |
@@ -154,28 +158,37 @@ Preferred scale: `1`, `1.5`, `2`, `3`, `4`, `6`, `8`. Avoid `2.5` except for but
 Import from `styles/design-system.ts`:
 
 ```tsx
-import { btn, card, overlay, text, chip, menu, zIndex } from '../styles/design-system';
+import { btn, card, overlay, confirm, text, chip, menu, zIndex } from '../styles/design-system';
 ```
 
-- **Buttons**: `${btn.base} ${btn.primary}` / `btn.secondary` / `btn.ghost` / `btn.danger` / `btn.icon`
+- **Buttons (standard)**: `${btn.base} ${btn.primary}` / `btn.secondary` / `btn.ghost` / `btn.danger`
+- **Buttons (compact)**: `${btn.base} ${btn.primarySm}` / `btn.secondarySm` / `btn.dangerSm` / `btn.warningSm`
+- **Buttons (outlined)**: `btn.outlinedSm` / `btn.outlinedDangerSm` (includes flex/gap, use directly)
+- **Buttons (icon)**: `btn.icon` / `btn.iconLg`
 - **Cards**: `card.base` / `card.interactive` / `card.elevated`
 - **Inputs**: `input.base` / `input.textarea`
 - **Sheets**: `overlay.sheet` + `overlay.sheetHeader` + `overlay.closeBtn`
-- **Modals**: `overlay.dialogBackdrop` + `overlay.modal`
+- **Modals**: `overlay.dialogBackdrop` + `overlay.modal` + `overlay.closeBtnRight`
+- **Gallery/Navigation**: `overlay.navBtn` (for prev/next arrows in viewers)
+- **Confirmation dialogs**: `confirm.backdrop` + `confirm.title` + `confirm.message`
 - **Menus**: `menu.panel` + `menu.item` / `menu.itemDanger`
 - **Chips**: `${chip.base} ${chip.active}` / `chip.inactive`
 - **Typography**: `text.heading` / `text.subheading` / `text.body` / `text.caption` / `text.label`
+
+**Button rule**: ALL `<button>` elements must compose from `btn.base` + a variant, `btn.icon`/`btn.iconLg`, `overlay.closeBtn`/`overlay.closeBtnRight`, `menu.item`, or `chip.base`. Never write raw button styles inline. For compact buttons in settings/toolbars, use `btn.primarySm`/`btn.secondarySm`/`btn.dangerSm`/`btn.warningSm`.
 
 ### Rules
 
 1. **Always import** from `styles/design-system.ts` for standard component patterns
 2. **Never introduce new color values** without adding them as tokens in `@theme`
-3. **Never use arbitrary z-index** — use named `--z-*` tokens
+3. **Never use arbitrary z-index** — use named `--z-*` tokens (e.g. `z-(--z-sticky)` not `z-10`)
 4. **Never use arbitrary text sizes** — use Tailwind's default scale
-5. **Use semantic border-radius tokens**, not ad-hoc `rounded-*` values
-6. **Prefer duration tokens** (`--duration-fast`, `--duration-normal`, `--duration-slow`) over arbitrary durations
+5. **Use semantic border-radius tokens** (e.g. `rounded-(--radius-lg)` not `rounded-lg`)
+6. **Use duration tokens** (e.g. `duration-(--duration-fast)` not `duration-150`)
 7. **Enrichment/content-type colors** (in `SECTION_CONFIG_MAP`) are exempt from token rules — they use Tailwind palette for variety
 8. **All UI changes must use semantic tokens** (`--color-*`, `--radius-*`, `--duration-*`, `--z-*`) instead of raw Tailwind color/radius/duration/z-index values. This applies to every component, not just new ones — when touching existing code, migrate any raw values to tokens.
+9. **All buttons must use design system exports** — compose from `btn.base` + variant. Never write raw button styles inline. The ESLint rule `design-system/no-raw-tailwind-colors` enforces token usage at lint time.
+10. **ESLint enforcement**: The custom rule in `eslint-rules/no-raw-tailwind-colors.js` catches raw Tailwind colors, raw border-radius, raw durations, raw z-index values, and arbitrary text sizes. Run `npx eslint components/ App.tsx` to verify compliance.
 
 ## Pull Request Policy
 
