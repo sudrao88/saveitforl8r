@@ -6,6 +6,10 @@ if (localPropertiesFile.exists()) {
     localProperties.load(new FileInputStream(localPropertiesFile))
 }
 
+def versionJson = new groovy.json.JsonSlurper().parseText(file('src/main/assets/public/version.json').text)
+def appVersionCode = versionJson.buildNumber
+def appVersionName = versionJson.version.replaceAll('saveitforl8r-v', '')
+
 android {
     namespace "com.saveitforl8r.app"
     compileSdk rootProject.ext.compileSdkVersion
@@ -23,8 +27,8 @@ android {
         applicationId "com.saveitforl8r.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode appVersionCode
+        versionName appVersionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
