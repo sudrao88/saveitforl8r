@@ -12,7 +12,7 @@ import {
     deleteRemoteNote,
     type DriveFile,
 } from '../services/googleDriveService';
-import { Memory, Moment, MomentSynthesis, CalendarEvent, TodoItem } from '../types';
+import { Memory, Attachment, Moment, MomentSynthesis, CalendarEvent, TodoItem } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { storage } from '../services/platform';
 import { enqueue as bgSyncEnqueue, peekAll as bgSyncPeekAll, remove as bgSyncRemove } from '../services/backgroundSyncQueue';
@@ -224,7 +224,7 @@ const executeSyncPlan = async (plan: SyncPlan, callbacks?: ExecuteSyncCallbacks)
                             if (hasAttachments) {
                                 const lightMemory: Memory = {
                                     ...content,
-                                    attachments: content.attachments?.map((a: any) => ({
+                                    attachments: content.attachments?.map((a: Attachment) => ({
                                         ...a, data: ''
                                     })) || [],
                                     image: content.image ? '' : undefined,
