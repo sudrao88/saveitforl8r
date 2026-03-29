@@ -14,13 +14,13 @@
 export const btn = {
   base: 'inline-flex items-center justify-center font-medium transition-colors duration-(--duration-fast) active:scale-95 disabled:opacity-50 disabled:pointer-events-none',
   primary:
-    'bg-(--color-accent) hover:bg-(--color-accent-hover) text-white rounded-(--radius-lg) px-4 py-2.5 shadow-lg',
+    'bg-(--color-accent) hover:bg-(--color-accent-hover) text-(--color-text-primary) rounded-(--radius-lg) px-4 py-2.5 shadow-lg',
   secondary:
     'bg-(--color-surface-raised) hover:bg-(--color-surface-raised)/80 text-(--color-text-primary) border border-(--color-border-default) rounded-(--radius-lg) px-4 py-2.5',
   ghost:
     'text-(--color-text-secondary) hover:bg-white/5 hover:text-(--color-text-primary) rounded-(--radius-lg) px-3 py-2',
   danger:
-    'bg-(--color-danger) hover:bg-(--color-danger-hover) text-white rounded-(--radius-lg) px-4 py-2.5',
+    'bg-(--color-danger) hover:bg-(--color-danger-hover) text-(--color-text-primary) rounded-(--radius-lg) px-4 py-2.5',
   icon: 'p-2 rounded-(--radius-lg) text-(--color-text-secondary) hover:bg-white/10 hover:text-(--color-text-primary)',
   iconLg:
     'p-2.5 rounded-(--radius-xl) text-(--color-text-secondary) hover:text-(--color-text-primary) hover:bg-(--color-surface-raised) transition-colors active:scale-95',
@@ -31,7 +31,7 @@ export const btn = {
 export const card = {
   base: 'bg-(--color-surface-raised)/40 border border-(--color-border-subtle) rounded-(--radius-xl)',
   interactive:
-    'bg-(--color-surface-raised)/40 border border-(--color-border-subtle) rounded-(--radius-xl) hover:bg-(--color-surface-raised)/60 hover:border-(--color-border-subtle) hover:shadow-lg transition-all',
+    'bg-(--color-surface-raised)/40 border border-(--color-border-subtle) rounded-(--radius-xl) hover:bg-(--color-surface-raised)/60 hover:border-(--color-border-default)/50 hover:shadow-lg transition-all',
   elevated:
     'bg-(--color-surface-raised)/50 border border-(--color-border-default)/50 rounded-(--radius-xl)',
 } as const;
@@ -83,7 +83,7 @@ export const text = {
 export const chip = {
   base: 'shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-(--radius-full) text-xs font-bold border transition-all active:scale-95 touch-manipulation',
   active:
-    'bg-(--color-accent) text-white border-(--color-accent-hover) shadow-lg shadow-(--color-accent)/20 animate-chip-pop',
+    'bg-(--color-accent) text-(--color-text-primary) border-(--color-accent-hover) shadow-lg shadow-(--color-accent)/20 animate-chip-pop',
   inactive:
     'bg-(--color-surface-raised) text-(--color-text-secondary) border-(--color-border-default) hover:border-(--color-border-default)',
   tag: 'text-xs text-(--color-text-tertiary) bg-(--color-surface-overlay)/50 px-2 py-1 rounded-(--radius-md)',

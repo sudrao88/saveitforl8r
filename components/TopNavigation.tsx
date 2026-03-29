@@ -75,7 +75,7 @@ const TopNavigation: React.FC<TopNavigationProps> = ({
 
           <button
             onClick={onSettingsClick}
-            className={`relative ${btn.base} ${btn.iconLg} bg-(--color-surface-raised) border border-(--color-border-default) hover:bg-(--color-surface-raised) hover:border-(--color-border-default) group shrink-0 touch-manipulation`}
+            className={`relative ${btn.base} ${btn.iconLg} bg-(--color-surface-raised) border border-(--color-border-default) hover:bg-white/5 hover:border-(--color-accent) group shrink-0 touch-manipulation`}
             title="Settings"
           >
             {isSyncingDownload ? (
