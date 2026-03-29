@@ -827,7 +827,7 @@ const AppContent: React.FC = () => {
                 onClick={async () => {
                   await setNotificationsEnabled(true);
                 }}
-                className="shrink-0 px-3 py-1.5 text-xs font-medium bg-(--color-accent) hover:bg-(--color-accent-hover) text-white rounded-(--radius-lg) transition-colors duration-(--duration-fast) active:scale-95"
+                className="shrink-0 px-3 py-1.5 text-xs font-medium bg-(--color-accent) hover:bg-(--color-accent-hover) text-(--color-text-primary) rounded-(--radius-lg) transition-colors duration-(--duration-fast) active:scale-95"
               >
                 Enable
               </button>
@@ -842,7 +842,7 @@ const AppContent: React.FC = () => {
           )}
 
           {availableTypes.length > 0 && (
-            <div className="sticky z-(--z-dropdown) bg-(--color-surface-base) backdrop-blur-md border-b border-gray-800/50" style={{ top: `${topNavHeight}px` }}>
+            <div className="sticky z-(--z-dropdown) bg-(--color-surface-base) backdrop-blur-md border-b border-(--color-border-default)/50" style={{ top: `${topNavHeight}px` }}>
               <FilterBar
                 availableTypes={availableTypes}
                 filterType={filterType}
@@ -857,10 +857,10 @@ const AppContent: React.FC = () => {
               <div className="columns-1 sm:columns-2 lg:columns-3 gap-4 space-y-4">
                 {[1, 2, 3, 4, 5, 6].map(i => (
                   <div key={i} className="break-inside-avoid rounded-xl bg-(--color-surface-raised) border border-(--color-border-subtle) p-4 animate-pulse">
-                    <div className="h-4 bg-gray-700/50 rounded w-3/4 mb-3"></div>
-                    <div className="h-3 bg-gray-700/30 rounded w-full mb-2"></div>
-                    <div className="h-3 bg-gray-700/30 rounded w-5/6 mb-2"></div>
-                    <div className="h-3 bg-gray-700/30 rounded w-2/3"></div>
+                    <div className="h-4 bg-(--color-surface-raised)/50 rounded w-3/4 mb-3"></div>
+                    <div className="h-3 bg-(--color-surface-raised)/30 rounded w-full mb-2"></div>
+                    <div className="h-3 bg-(--color-surface-raised)/30 rounded w-5/6 mb-2"></div>
+                    <div className="h-3 bg-(--color-surface-raised)/30 rounded w-2/3"></div>
                   </div>
                 ))}
               </div>
@@ -907,14 +907,14 @@ const AppContent: React.FC = () => {
 
       {liveExpandedMemory && (
         <div className="fixed inset-0 z-(--z-sheet) bg-black/90 backdrop-blur-md flex flex-col animate-in fade-in duration-(--duration-normal)">
-          <div className="sticky top-0 z-10 px-4 py-3 border-b border-gray-800 flex items-center justify-between bg-black/50 backdrop-blur-xl pt-[var(--sat)]">
+          <div className="sticky top-0 z-10 px-4 py-3 border-b border-(--color-border-default) flex items-center justify-between bg-black/50 backdrop-blur-xl pt-[var(--sat)]">
              <div className="flex items-center gap-3">
-                <button onClick={() => setExpandedMemory(null)} className="p-3 -ml-3 rounded-full hover:bg-gray-800 text-gray-400 hover:text-white transition-colors active:scale-95">
+                <button onClick={() => setExpandedMemory(null)} className="p-3 -ml-3 rounded-full hover:bg-(--color-surface-raised) text-(--color-text-secondary) hover:text-(--color-text-primary) transition-colors active:scale-95">
                     <X size={24} />
                 </button>
-                <h2 className="text-lg font-bold text-gray-100 truncate max-w-[200px] sm:max-w-md">Memory Detail</h2>
+                <h2 className="text-lg font-bold text-(--color-text-primary) truncate max-w-[200px] sm:max-w-md">Memory Detail</h2>
              </div>
-             <Logo className="w-8 h-8 text-blue-500 opacity-50" />
+             <Logo className="w-8 h-8 text-(--color-accent) opacity-50" />
           </div>
           <div className="flex-1 overflow-y-auto p-4 sm:p-8">
              <div className="max-w-2xl mx-auto pb-20">
@@ -1097,18 +1097,18 @@ const AppContent: React.FC = () => {
       )}
 
       {momentError && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-(--z-toast) bg-red-900/90 border border-red-700/50 text-red-200 px-4 py-3 rounded-xl text-sm font-medium shadow-lg animate-in fade-in slide-in-from-top-2 duration-(--duration-normal) max-w-sm text-center backdrop-blur-md">
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-(--z-toast) bg-(--color-danger)/90 border border-(--color-danger)/50 text-(--color-text-primary) px-4 py-3 rounded-xl text-sm font-medium shadow-lg animate-in fade-in slide-in-from-top-2 duration-(--duration-normal) max-w-sm text-center backdrop-blur-md">
           {momentError}
         </div>
       )}
 
       {isOtaDownloading && (
         <div className="fixed inset-0 z-(--z-tooltip) bg-black/95 backdrop-blur-md flex flex-col items-center justify-center gap-6">
-          <Logo className="w-16 h-16 text-blue-500" />
+          <Logo className="w-16 h-16 text-(--color-accent)" />
           <div className="flex flex-col items-center gap-3">
-            <RefreshCw size={32} className="text-blue-400 animate-spin" />
-            <h2 className="text-xl font-bold text-gray-100">Downloading Update</h2>
-            <p className="text-sm text-gray-400 text-center max-w-xs">
+            <RefreshCw size={32} className="text-(--color-accent) animate-spin" />
+            <h2 className="text-xl font-bold text-(--color-text-primary)">Downloading Update</h2>
+            <p className="text-sm text-(--color-text-secondary) text-center max-w-xs">
               Please wait while the latest version is downloaded. The app will reload automatically.
             </p>
           </div>

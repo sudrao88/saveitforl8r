@@ -49,15 +49,15 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
       const message = this.props.fallbackMessage || 'An unexpected error occurred. Your data is safe — try reloading the app.';
 
       return (
-        <div className={`fixed inset-0 bg-gray-900 flex items-center justify-center ${zIndex.tooltip} p-6`}>
+        <div className={`fixed inset-0 bg-(--color-surface-overlay) flex items-center justify-center ${zIndex.tooltip} p-6`}>
           <div className={`${overlay.modal} max-w-md w-full p-8 text-center`}>
-            <div className="w-14 h-14 mx-auto mb-5 bg-red-900/30 rounded-2xl flex items-center justify-center">
-              <AlertTriangle size={28} className="text-red-400" />
+            <div className="w-14 h-14 mx-auto mb-5 bg-(--color-danger)/30 rounded-2xl flex items-center justify-center">
+              <AlertTriangle size={28} className="text-(--color-danger)" />
             </div>
             <h2 className={`${text.heading} text-xl mb-2`}>{title}</h2>
             <p className={`${text.body} mb-6 leading-relaxed`}>{message}</p>
             {this.state.error && (
-              <pre className={`${text.caption} bg-gray-900 rounded-lg p-3 mb-6 text-left overflow-auto max-h-32 border border-gray-700`}>
+              <pre className={`${text.caption} bg-(--color-surface-overlay) rounded-lg p-3 mb-6 text-left overflow-auto max-h-32 border border-(--color-border-default)`}>
                 {this.state.error.message}
               </pre>
             )}

@@ -18,7 +18,7 @@ const ToolbarButton: React.FC<{
   <button
     onClick={onClick}
     onMouseDown={(e) => e.preventDefault()}
-    className={`${compact ? btn.icon : btn.iconLg} shrink-0 ${isActive ? 'bg-(--color-accent) text-white hover:bg-(--color-accent) hover:text-white' : ''}`}
+    className={`${compact ? btn.icon : btn.iconLg} shrink-0 ${isActive ? 'bg-(--color-accent) text-(--color-text-primary) hover:bg-(--color-accent) hover:text-(--color-text-primary)' : ''}`}
     title={title}
   >
     {children}

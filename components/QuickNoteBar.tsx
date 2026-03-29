@@ -502,7 +502,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
           <button
             onClick={() => setShowTags(prev => !prev)}
             onMouseDown={(e) => e.preventDefault()}
-            className={`${btn.iconLg} ${showTags ? 'bg-(--color-accent) text-white' : ''}`}
+            className={`${btn.iconLg} ${showTags ? 'bg-(--color-accent) text-(--color-text-primary)' : ''}`}
             title="Tags"
           >
             <Hash size={20} />
@@ -512,7 +512,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
             <button
               onClick={() => setShowFormatting(prev => !prev)}
               onMouseDown={(e) => e.preventDefault()}
-              className={`${btn.iconLg} ${showFormatting ? 'bg-(--color-accent) text-white' : ''}`}
+              className={`${btn.iconLg} ${showFormatting ? 'bg-(--color-accent) text-(--color-text-primary)' : ''}`}
               title="Formatting"
             >
               <Type size={20} />
@@ -522,7 +522,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
           <button
             onClick={toggleChecklistMode}
             onMouseDown={(e) => e.preventDefault()}
-            className={`${btn.iconLg} ${isChecklistMode ? 'bg-(--color-accent) text-white' : ''}`}
+            className={`${btn.iconLg} ${isChecklistMode ? 'bg-(--color-accent) text-(--color-text-primary)' : ''}`}
             title="Checklist Mode"
           >
             <CheckSquare size={20} />
@@ -546,9 +546,9 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
             disabled={!hasContent || isSaving}
             className={`p-2.5 rounded-(--radius-xl) transition-all duration-(--duration-fast) active:scale-95 ${
               saveSuccess
-                ? 'bg-(--color-success) text-white animate-save-success'
+                ? 'bg-(--color-success) text-(--color-text-primary) animate-save-success'
                 : hasContent && !isSaving
-                  ? 'bg-(--color-accent) text-white hover:bg-(--color-accent-hover) shadow-lg'
+                  ? 'bg-(--color-accent) text-(--color-text-primary) hover:bg-(--color-accent-hover) shadow-lg'
                   : 'bg-(--color-surface-raised) text-(--color-text-tertiary) cursor-not-allowed'
             }`}
             title="Save note (⌘+Enter)"

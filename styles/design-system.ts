@@ -16,7 +16,7 @@ export const btn = {
   primary:
     'bg-(--color-accent) hover:bg-(--color-accent-hover) text-white rounded-(--radius-lg) px-4 py-2.5 shadow-lg',
   secondary:
-    'bg-(--color-surface-raised) hover:bg-gray-700 text-(--color-text-primary) border border-(--color-border-default) rounded-(--radius-lg) px-4 py-2.5',
+    'bg-(--color-surface-raised) hover:bg-(--color-surface-raised)/80 text-(--color-text-primary) border border-(--color-border-default) rounded-(--radius-lg) px-4 py-2.5',
   ghost:
     'text-(--color-text-secondary) hover:bg-white/5 hover:text-(--color-text-primary) rounded-(--radius-lg) px-3 py-2',
   danger:
@@ -31,7 +31,7 @@ export const btn = {
 export const card = {
   base: 'bg-(--color-surface-raised)/40 border border-(--color-border-subtle) rounded-(--radius-xl)',
   interactive:
-    'bg-(--color-surface-raised)/40 border border-(--color-border-subtle) rounded-(--radius-xl) hover:bg-(--color-surface-raised)/60 hover:border-gray-600/50 hover:shadow-lg transition-all',
+    'bg-(--color-surface-raised)/40 border border-(--color-border-subtle) rounded-(--radius-xl) hover:bg-(--color-surface-raised)/60 hover:border-(--color-border-subtle) hover:shadow-lg transition-all',
   elevated:
     'bg-(--color-surface-raised)/50 border border-(--color-border-default)/50 rounded-(--radius-xl)',
 } as const;
@@ -54,7 +54,7 @@ export const overlay = {
   sheet:
     'fixed inset-0 z-(--z-sheet) bg-(--color-surface-overlay)/95 backdrop-blur-md flex flex-col animate-in fade-in duration-300',
   sheetHeader:
-    'sticky top-0 z-(--z-sticky) px-4 py-3 border-b border-gray-800 flex items-center justify-between bg-(--color-surface-overlay)/80 backdrop-blur-xl pt-[var(--sat)]',
+    'sticky top-0 z-(--z-sticky) px-4 py-3 border-b border-(--color-border-default) flex items-center justify-between bg-(--color-surface-overlay)/80 backdrop-blur-xl pt-[var(--sat)]',
   modal:
     'bg-(--color-surface-overlay) border border-(--color-border-default)/50 rounded-2xl shadow-2xl',
   dialogBackdrop:
@@ -83,9 +83,9 @@ export const text = {
 export const chip = {
   base: 'shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-(--radius-full) text-xs font-bold border transition-all active:scale-95 touch-manipulation',
   active:
-    'bg-(--color-accent) text-white border-(--color-accent-hover) shadow-lg shadow-blue-900/20 animate-chip-pop',
+    'bg-(--color-accent) text-white border-(--color-accent-hover) shadow-lg shadow-(--color-accent)/20 animate-chip-pop',
   inactive:
-    'bg-(--color-surface-raised) text-gray-300 border-(--color-border-default) hover:border-gray-500',
+    'bg-(--color-surface-raised) text-(--color-text-secondary) border-(--color-border-default) hover:border-(--color-border-default)',
   tag: 'text-xs text-(--color-text-tertiary) bg-(--color-surface-overlay)/50 px-2 py-1 rounded-(--radius-md)',
 } as const;
 
@@ -95,10 +95,10 @@ export const menu = {
   backdrop: 'fixed inset-0 cursor-default touch-manipulation',
   panel:
     'absolute bottom-full right-0 mb-1 w-40 bg-(--color-surface-overlay) border border-(--color-border-default) rounded-(--radius-xl) shadow-xl overflow-hidden animate-in slide-in-from-bottom-2 fade-in duration-200',
-  item: 'w-full px-4 py-3 text-left text-sm font-medium text-gray-300 hover:bg-(--color-surface-raised) hover:text-white flex items-center gap-3 active:bg-gray-700',
+  item: 'w-full px-4 py-3 text-left text-sm font-medium text-(--color-text-secondary) hover:bg-(--color-surface-raised) hover:text-(--color-text-primary) flex items-center gap-3 active:bg-(--color-surface-raised)',
   itemDanger:
-    'w-full px-4 py-3 text-left text-sm font-medium text-(--color-danger) hover:bg-red-900/10 hover:text-red-300 flex items-center gap-3 border-t border-gray-800 active:bg-red-900/20',
-  divider: 'border-t border-gray-800',
+    'w-full px-4 py-3 text-left text-sm font-medium text-(--color-danger) hover:bg-(--color-danger)/10 hover:text-(--color-danger) flex items-center gap-3 border-t border-(--color-border-default) active:bg-(--color-danger)/20',
+  divider: 'border-t border-(--color-border-default)',
 } as const;
 
 // ─── Z-Index Layers (as class string helpers) ───────────────
@@ -118,15 +118,15 @@ export const zIndex = {
 export const checklist = {
   checkbox:
     'w-5 h-5 border-2 rounded-md flex items-center justify-center transition-colors shrink-0',
-  checkboxChecked: 'border-blue-500 bg-blue-500/20',
-  checkboxUnchecked: 'border-gray-600',
-  checkboxDot: 'w-2.5 h-2.5 bg-blue-500 rounded-sm',
+  checkboxChecked: 'border-(--color-accent) bg-(--color-accent)/20',
+  checkboxUnchecked: 'border-(--color-border-default)',
+  checkboxDot: 'w-2.5 h-2.5 bg-(--color-accent) rounded-sm',
   itemRow: 'flex items-center gap-3',
   itemText: 'text-sm transition-all',
-  itemTextDefault: 'text-gray-200',
-  itemTextChecked: 'line-through text-gray-500',
+  itemTextDefault: 'text-(--color-text-primary)',
+  itemTextChecked: 'line-through text-(--color-text-tertiary)',
   addBtn:
-    'flex items-center gap-1.5 text-gray-500 hover:text-blue-400 text-sm transition-colors py-1 active:text-blue-500',
+    'flex items-center gap-1.5 text-(--color-text-tertiary) hover:text-(--color-accent) text-sm transition-colors py-1 active:text-(--color-accent)',
 } as const;
 
 // ─── Layout Helpers ─────────────────────────────────────────

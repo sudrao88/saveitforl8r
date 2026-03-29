@@ -14,7 +14,7 @@ interface EnrichmentSectionProps {
   bulletClass?: string;
 }
 
-const EnrichmentSection: React.FC<EnrichmentSectionProps> = ({ icon, label, items, textClass = 'text-gray-400', bulletClass = 'text-gray-600' }) => (
+const EnrichmentSection: React.FC<EnrichmentSectionProps> = ({ icon, label, items, textClass = 'text-(--color-text-secondary)', bulletClass = 'text-(--color-text-tertiary)' }) => (
   <div className="pt-1 space-y-1.5">
     <span className={`flex items-center gap-1.5 ${text.label}`}>
       {icon}
@@ -38,7 +38,7 @@ interface EnrichmentDetailProps {
   textClass?: string;
 }
 
-const EnrichmentDetail: React.FC<EnrichmentDetailProps> = ({ icon, label, value, textClass = 'text-gray-400' }) => (
+const EnrichmentDetail: React.FC<EnrichmentDetailProps> = ({ icon, label, value, textClass = 'text-(--color-text-secondary)' }) => (
   <div className="pt-1 space-y-1">
     <span className={`flex items-center gap-1.5 ${text.label}`}>
       {icon}
@@ -60,6 +60,8 @@ interface SectionDef {
 type EnrichmentFields = Record<string, string | string[] | undefined>;
 
 // Data-driven config map: contentType → section definitions
+// Enrichment/content-type colors are exempt from design system token rules (CLAUDE.md)
+/* eslint-disable design-system/no-raw-tailwind-colors */
 const SECTION_CONFIG_MAP: Record<string, SectionDef[]> = {
   recipe: [
     { key: 'ingredients', label: 'Ingredients', icon: <UtensilsCrossed size={12} className="text-orange-400" />, type: 'list', textClass: 'text-orange-300/80', bulletClass: 'text-orange-500/50' },
@@ -175,12 +177,15 @@ const SECTION_CONFIG_MAP: Record<string, SectionDef[]> = {
     { key: 'cons', label: 'Cons', icon: <ThumbsDown size={12} className="text-red-400" />, type: 'list', textClass: 'text-red-300/80', bulletClass: 'text-red-500/50' },
   ],
 };
+/* eslint-enable design-system/no-raw-tailwind-colors */
 
 // Default sections for content types without a specific config
+/* eslint-disable design-system/no-raw-tailwind-colors */
 const DEFAULT_SECTIONS: SectionDef[] = [
   { key: 'keyPoints', label: 'Key Points', icon: <Lightbulb size={12} className="text-amber-500" />, type: 'list' },
   { key: 'actionItems', label: 'Action Items', icon: <CircleCheck size={12} className="text-blue-400" />, type: 'list', textClass: 'text-blue-300/80', bulletClass: 'text-blue-500/50' },
 ];
+/* eslint-enable design-system/no-raw-tailwind-colors */
 
 const getContentTypeSections = (contentType: string | undefined, enrichment: EnrichmentFields): SectionDef[] => {
   const defs = (contentType && SECTION_CONFIG_MAP[contentType]) || DEFAULT_SECTIONS;
@@ -224,7 +229,7 @@ const linkifyHtml = (html: string): string => {
         }
         if (insideAnchor) return part;
         return part.replace(urlRegex,
-            '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-blue-400 underline break-all">$1</a>'
+            '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-(--color-accent) underline break-all">$1</a>'
         );
     }).join('');
 };
@@ -333,6 +338,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
     setIsMenuOpen(false);
   };
 
+  /* eslint-disable design-system/no-raw-tailwind-colors -- enrichment entity icons */
   const getEntityIcon = (type?: string) => {
     const t = type?.toLowerCase() || '';
     if (t.includes('movie') || t.includes('tv') || t.includes('show')) return <Tv size={14} className="text-purple-400" />;
@@ -340,6 +346,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
     if (t.includes('product')) return <ShoppingBag size={14} className="text-green-500" />;
     return <Star size={14} className="text-yellow-500" />;
   };
+  /* eslint-enable design-system/no-raw-tailwind-colors */
 
   const userAttachments = memory.attachments?.filter(a => a.type === 'image') || [];
   const hasLegacyImage = !memory.attachments && memory.image;
@@ -404,8 +411,8 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
       
       return (
           <div 
-            className={`prose prose-invert prose-sm max-w-none text-gray-200 font-normal leading-relaxed break-words 
-                prose-p:my-1 prose-headings:mb-1 prose-headings:mt-3 prose-headings:text-gray-100 prose-ul:my-1
+            className={`prose prose-invert prose-sm max-w-none text-(--color-text-primary) font-normal leading-relaxed break-words
+                prose-p:my-1 prose-headings:mb-1 prose-headings:mt-3 prose-headings:text-(--color-text-primary) prose-ul:my-1
                 text-sm
             `}
             dangerouslySetInnerHTML={{ __html: linkifyHtml(memory.content) }}
@@ -417,9 +424,9 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
     <>
       <div
         className={`group relative w-full rounded-xl transition-all duration-(--duration-normal) ${isDialog ? 'overflow-visible' : 'overflow-hidden'} flex flex-col
-        ${isDialog ? 'bg-gray-900 border border-gray-800' : card.interactive}
-        ${memory.isPending ? 'opacity-70 border-blue-900/30' : ''}
-        ${memory.processingError ? 'border-amber-900/30 bg-amber-900/5' : ''}
+        ${isDialog ? 'bg-(--color-surface-overlay) border border-(--color-border-default)' : card.interactive}
+        ${memory.isPending ? 'opacity-70 border-(--color-accent)/30' : ''}
+        ${memory.processingError ? 'border-(--color-warning)/30 bg-(--color-warning)/5' : ''}
         ${showErrorOverlay || showSignInOverlay ? 'min-h-[350px]' : ''}
         ${shouldAnimate ? 'animate-in fade-in slide-in-from-bottom-4 duration-(--duration-normal) fill-mode-backwards' : ''}
         ${isShaking ? 'animate-shake' : ''}
@@ -428,17 +435,17 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
       >
         {/* Sign In Overlay — shown when enrichment failed due to missing auth */}
         {showSignInOverlay && (
-            <div className="absolute inset-0 z-(--z-dropdown) bg-gray-900/95 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-(--duration-normal)">
-                <div className="w-12 h-12 bg-blue-900/50 border-4 border-blue-800 rounded-full mb-4 flex items-center justify-center">
-                    <LogIn size={24} className="text-blue-300" />
+            <div className="absolute inset-0 z-(--z-dropdown) bg-(--color-surface-overlay)/95 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-(--duration-normal)">
+                <div className="w-12 h-12 bg-(--color-accent)/50 border-4 border-(--color-accent) rounded-full mb-4 flex items-center justify-center">
+                    <LogIn size={24} className="text-(--color-accent)" />
                 </div>
-                <h4 className="text-gray-100 font-bold mb-1">Sign in for AI Enrichment</h4>
-                <p className="text-xs text-gray-400 mb-4">
+                <h4 className="text-(--color-text-primary) font-bold mb-1">Sign in for AI Enrichment</h4>
+                <p className="text-xs text-(--color-text-secondary) mb-4">
                     Sign in with your Google account to enable automatic summaries, tagging, and smart search for your memories.
                 </p>
                 <button
                     onClick={(e) => { e.stopPropagation(); onSignIn?.(); }}
-                    className="w-full max-w-[220px] py-3 text-sm font-bold text-white bg-blue-600 rounded-xl hover:bg-blue-500 transition-colors shadow-lg shadow-blue-500/20 active:scale-95 touch-manipulation flex items-center justify-center gap-2"
+                    className="w-full max-w-[220px] py-3 text-sm font-bold text-(--color-text-primary) bg-(--color-accent) rounded-xl hover:bg-(--color-accent-hover) transition-colors shadow-lg shadow-(--color-accent)/20 active:scale-95 touch-manipulation flex items-center justify-center gap-2"
                 >
                     <LogIn size={16} />
                     Sign in with Google
@@ -449,7 +456,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
         {/* Image Preview */}
         {displayImages.length > 0 && (
             <div 
-                className={`relative overflow-hidden rounded-t-xl bg-gray-900/50 group/image cursor-zoom-in aspect-video sm:aspect-[2/1] ${isDialog ? 'max-h-[50vh]' : ''}`}
+                className={`relative overflow-hidden rounded-t-xl bg-(--color-surface-overlay)/50 group/image cursor-zoom-in aspect-video sm:aspect-[2/1] ${isDialog ? 'max-h-[50vh]' : ''}`}
                 onClick={(e) => { e.stopPropagation(); onViewAttachment?.(displayImages[0], [...displayImages, ...documents]); }}
             >
                 <img
@@ -459,10 +466,10 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                     className="w-full h-full object-cover transition-transform duration-(--duration-slow) group-hover/image:scale-105"
                 />
                 <div className="absolute inset-0 bg-black/20 opacity-0 group-hover/image:opacity-100 transition-opacity flex items-center justify-center">
-                    <Maximize2 className="text-white" size={24} />
+                    <Maximize2 className="text-(--color-text-primary)" size={24} />
                 </div>
                 {displayImages.length > 1 && (
-                  <div className="absolute bottom-2 right-2 bg-black/60 text-white text-xs font-medium px-2 py-0.5 rounded-full backdrop-blur-md">
+                  <div className="absolute bottom-2 right-2 bg-black/60 text-(--color-text-primary) text-xs font-medium px-2 py-0.5 rounded-full backdrop-blur-md">
                       +{displayImages.length - 1}
                   </div>
                 )}
@@ -473,23 +480,23 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
           {/* Header */}
           <div className="flex items-center justify-between mb-3">
              <div className="flex items-center gap-2">
-                 {memory.isPinned && <Pin size={12} className="text-blue-400 rotate-45" />}
+                 {memory.isPinned && <Pin size={12} className="text-(--color-accent) rotate-45" />}
                  {entity?.type && (
                     <span className={`flex items-center gap-1.5 ${text.label}`}>
                         {getEntityIcon(entity.type)}
                         {entity.type}
                     </span>
                  )}
-                 {!entity?.type && <Clock size={12} className="text-gray-600" />}
-                 <span className="text-xs text-gray-600 font-medium">{dateStr}</span>
+                 {!entity?.type && <Clock size={12} className="text-(--color-text-tertiary)" />}
+                 <span className="text-xs text-(--color-text-tertiary) font-medium">{dateStr}</span>
              </div>
-             {memory.isPending && <span className="text-xs font-medium text-blue-400 animate-pulse">Enriching...</span>}
-             {memory.processingError && <WifiOff size={12} className="text-amber-500" />}
-             {syncStatus === 'syncing' && <RefreshCw size={12} className="text-blue-400 animate-spin" />}
-             {syncStatus === 'synced' && <CircleCheck size={12} className="text-green-400" />}
+             {memory.isPending && <span className="text-xs font-medium text-(--color-accent) animate-pulse">Enriching...</span>}
+             {memory.processingError && <WifiOff size={12} className="text-(--color-warning)" />}
+             {syncStatus === 'syncing' && <RefreshCw size={12} className="text-(--color-accent) animate-spin" />}
+             {syncStatus === 'synced' && <CircleCheck size={12} className="text-(--color-success)" />}
              {syncStatus === 'error' && (
                  <button onClick={(e) => { e.stopPropagation(); onSyncRetry?.(memory.id); }}
-                         className="flex items-center gap-1 text-red-400 hover:text-red-300 transition-colors">
+                         className="flex items-center gap-1 text-(--color-danger) hover:text-(--color-danger) transition-colors">
                      <AlertCircle size={14} />
                      <span className="text-xs font-medium">Retry sync</span>
                  </button>
@@ -499,9 +506,10 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
           {/* AI Title — below entity type, above user content */}
           {entity?.title && (
               <div className="mb-1">
-                  <h3 className="text-lg font-semibold text-gray-100 leading-tight">{entity.title}</h3>
+                  <h3 className="text-lg font-semibold text-(--color-text-primary) leading-tight">{entity.title}</h3>
                   <div className="flex items-center gap-2 mt-1">
-                      {entity.subtitle && <span className="text-xs text-gray-400">{entity.subtitle}</span>}
+                      {entity.subtitle && <span className="text-xs text-(--color-text-secondary)">{entity.subtitle}</span>}
+                      {/* eslint-disable-next-line design-system/no-raw-tailwind-colors -- enrichment content */}
                       {entity.rating && <span className="text-xs px-1.5 py-0.5 bg-yellow-500/10 text-yellow-500 rounded font-medium">★ {entity.rating}</span>}
                   </div>
               </div>
@@ -526,7 +534,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                         <div className="absolute bottom-0 left-0 right-0 flex justify-center pb-2">
                             <button 
                                 onClick={(e) => { e.stopPropagation(); onExpand?.(memory); }}
-                                className="flex items-center gap-2 px-4 py-2 bg-gray-800/90 backdrop-blur-md border border-gray-700 rounded-full text-xs font-bold text-blue-400 hover:text-blue-300 hover:bg-gray-700 transition-all shadow-lg active:scale-95"
+                                className="flex items-center gap-2 px-4 py-2 bg-(--color-surface-raised)/90 backdrop-blur-md border border-(--color-border-default) rounded-full text-xs font-bold text-(--color-accent) hover:text-(--color-accent-hover) hover:bg-(--color-surface-raised) transition-all shadow-lg active:scale-95"
                             >
                                 <Maximize2 size={12} /> READ FULL MEMORY
                             </button>
@@ -538,9 +546,9 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
             {/* Shimmer placeholder while AI enrichment is pending */}
             {memory.isPending && !enrichment && (
                 <div className="space-y-2 mt-2">
-                    <div className="h-3 w-3/4 rounded bg-gray-700/50 animate-shimmer" />
-                    <div className="h-3 w-1/2 rounded bg-gray-700/50 animate-shimmer" />
-                    <div className="h-3 w-2/3 rounded bg-gray-700/50 animate-shimmer" />
+                    <div className="h-3 w-3/4 rounded bg-(--color-surface-raised)/50 animate-shimmer" />
+                    <div className="h-3 w-1/2 rounded bg-(--color-surface-raised)/50 animate-shimmer" />
+                    <div className="h-3 w-2/3 rounded bg-(--color-surface-raised)/50 animate-shimmer" />
                 </div>
             )}
 
@@ -557,7 +565,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                                 <button
                                     onClick={(e) => { e.stopPropagation(); setShowSummary(!showSummary); }}
                                     title="Summary"
-                                    className={`p-2 rounded-lg transition-colors ${showSummary ? 'bg-gray-700/60 text-gray-200' : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'}`}
+                                    className={`p-2 rounded-lg transition-colors ${showSummary ? 'bg-(--color-surface-raised)/60 text-(--color-text-primary)' : 'text-(--color-text-tertiary) hover:text-(--color-text-secondary) hover:bg-white/5'}`}
                                 >
                                     <FileText size={16} />
                                 </button>
@@ -567,7 +575,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                                     key={section.key}
                                     onClick={(e) => { e.stopPropagation(); setExpandedSection(expandedSection === section.key ? null : section.key); }}
                                     title={section.label}
-                                    className={`p-2 rounded-lg transition-colors ${expandedSection === section.key ? 'bg-gray-700/60 text-gray-200' : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'}`}
+                                    className={`p-2 rounded-lg transition-colors ${expandedSection === section.key ? 'bg-(--color-surface-raised)/60 text-(--color-text-primary)' : 'text-(--color-text-tertiary) hover:text-(--color-text-secondary) hover:bg-white/5'}`}
                                 >
                                     {/* Icons in sections are size 12; scale up for button display */}
                                     <span className="[&>svg]:w-4 [&>svg]:h-4">{section.icon}</span>
@@ -580,7 +588,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                                     rel="noopener noreferrer"
                                     onClick={(e) => e.stopPropagation()}
                                     title="Open Link"
-                                    className="p-2 rounded-lg text-gray-500 hover:text-blue-400 hover:bg-white/5 transition-colors"
+                                    className="p-2 rounded-lg text-(--color-text-tertiary) hover:text-(--color-accent) hover:bg-white/5 transition-colors"
                                 >
                                     <ExternalLink size={16} />
                                 </a>
@@ -589,7 +597,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
 
                         {/* Expandable Summary */}
                         {showSummary && aiText && (
-                            <div className="text-sm text-gray-400 font-light leading-relaxed pl-1 animate-in fade-in slide-in-from-top-1 duration-(--duration-fast)">
+                            <div className="text-sm text-(--color-text-secondary) font-light leading-relaxed pl-1 animate-in fade-in slide-in-from-top-1 duration-(--duration-fast)">
                                 {String(aiText)}
                             </div>
                         )}
@@ -631,15 +639,15 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                         <div
                             key={doc.id}
                             onClick={(e) => { e.stopPropagation(); onViewAttachment?.(doc, [...displayImages, ...documents]); }}
-                            className="flex items-center gap-2 p-3 rounded-xl bg-gray-900/30 border border-gray-700/30 hover:bg-gray-700/50 transition-colors cursor-pointer group/doc active:scale-[0.98]"
+                            className="flex items-center gap-2 p-3 rounded-xl bg-(--color-surface-overlay)/30 border border-(--color-border-subtle) hover:bg-(--color-surface-raised)/50 transition-colors cursor-pointer group/doc active:scale-[0.98]"
                         >
-                            <FileText size={16} className="text-gray-500 group-hover/doc:text-blue-400" />
-                            <span className="text-sm text-gray-300 truncate flex-1 group-hover/doc:text-white">{doc.name}</span>
+                            <FileText size={16} className="text-(--color-text-tertiary) group-hover/doc:text-(--color-accent)" />
+                            <span className="text-sm text-(--color-text-secondary) truncate flex-1 group-hover/doc:text-(--color-text-primary)">{doc.name}</span>
                             <div className="flex items-center gap-2">
-                                <Eye size={16} className="text-gray-500 opacity-0 group-hover/doc:opacity-100" />
+                                <Eye size={16} className="text-(--color-text-tertiary) opacity-0 group-hover/doc:opacity-100" />
                                 <button
                                     onClick={async e => { e.stopPropagation(); try { await downloadDataUri(doc.data, doc.name, doc.mimeType); } catch (err) { console.error('Download failed:', err); } }}
-                                    className="p-2 -m-2 text-gray-500 hover:text-white transition-colors"
+                                    className="p-2 -m-2 text-(--color-text-tertiary) hover:text-(--color-text-primary) transition-colors"
                                 >
                                     <Paperclip size={16} />
                                 </button>
@@ -650,22 +658,22 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
             )}
 
             {/* Footer */}
-            <div className="flex flex-wrap items-center gap-y-2 gap-x-4 pt-2 border-t border-gray-700/20 mt-2">
+            <div className="flex flex-wrap items-center gap-y-2 gap-x-4 pt-2 border-t border-(--color-border-subtle) mt-2">
                 <div className="flex flex-wrap gap-1.5 flex-1">
                     {(memory.tags || []).map((tag) => (
-                        <span key={tag} className="text-xs text-gray-500 hover:text-gray-300 bg-gray-900/50 px-2 py-1 rounded-md">#{tag}</span>
+                        <span key={tag} className="text-xs text-(--color-text-tertiary) hover:text-(--color-text-secondary) bg-(--color-surface-overlay)/50 px-2 py-1 rounded-md">#{tag}</span>
                     ))}
                 </div>
                 <div className="flex items-center gap-2 ml-auto relative">
                     {onRetry && memory.processingError && (
-                        <button onClick={() => onRetry(memory.id)} className="p-2 text-amber-500 hover:text-amber-400 transition-colors rounded-lg hover:bg-amber-900/20">
+                        <button onClick={() => onRetry(memory.id)} className="p-2 text-(--color-warning) hover:text-(--color-warning) transition-colors rounded-lg hover:bg-(--color-warning)/20">
                             <RefreshCcw size={16} />
                         </button>
                     )}
                     <div className="relative">
                         <button 
                             onClick={(e) => { e.stopPropagation(); setIsMenuOpen(!isMenuOpen); }} 
-                            className={`p-2 rounded-lg hover:bg-gray-700/50 transition-colors ${isMenuOpen ? 'text-gray-200 bg-gray-700/50' : 'text-gray-500'}`}
+                            className={`p-2 rounded-lg hover:bg-(--color-surface-raised)/50 transition-colors ${isMenuOpen ? 'text-(--color-text-primary) bg-(--color-surface-raised)/50' : 'text-(--color-text-tertiary)'}`}
                         >
                             <MoreVertical size={20} />
                         </button>
@@ -700,15 +708,15 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
             </div>
             {/* Confirmation Dialog */}
             {isConfirming && (
-                <div className="absolute inset-0 z-(--z-dropdown) bg-gray-900/95 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-(--duration-fast)">
-                    <AlertTriangle size={32} className="text-amber-500 mb-3" />
-                    <h4 className="text-gray-100 font-bold mb-1">Delete Memory?</h4>
-                    <p className="text-xs text-gray-400 mb-4">This action cannot be undone.</p>
+                <div className="absolute inset-0 z-(--z-dropdown) bg-(--color-surface-overlay)/95 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-(--duration-fast)">
+                    <AlertTriangle size={32} className="text-(--color-warning) mb-3" />
+                    <h4 className="text-(--color-text-primary) font-bold mb-1">Delete Memory?</h4>
+                    <p className="text-xs text-(--color-text-secondary) mb-4">This action cannot be undone.</p>
                     <div className="flex gap-2 w-full">
-                        <button onClick={cancelDelete} className="flex-1 py-3 text-sm font-medium text-gray-300 bg-gray-800 rounded-xl hover:bg-gray-700 transition-colors active:scale-95">
+                        <button onClick={cancelDelete} className="flex-1 py-3 text-sm font-medium text-(--color-text-secondary) bg-(--color-surface-raised) rounded-xl hover:bg-(--color-surface-raised) transition-colors active:scale-95">
                             Cancel
                         </button>
-                        <button onClick={confirmDelete} className="flex-1 py-3 text-sm font-bold text-white bg-red-500 rounded-xl hover:bg-red-600 transition-colors shadow-lg shadow-red-500/20 active:scale-95">
+                        <button onClick={confirmDelete} className="flex-1 py-3 text-sm font-bold text-(--color-text-primary) bg-(--color-danger) rounded-xl hover:bg-(--color-danger-hover) transition-colors shadow-lg shadow-(--color-danger)/20 active:scale-95">
                             Delete
                         </button>
                     </div>

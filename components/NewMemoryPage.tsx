@@ -629,7 +629,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                 <button
                     onClick={() => setShowTags(prev => !prev)}
                     onMouseDown={(e) => e.preventDefault()}
-                    className={`${btn.iconLg} ${showTags ? 'bg-(--color-accent) text-white' : ''}`}
+                    className={`${btn.iconLg} ${showTags ? 'bg-(--color-accent) text-(--color-text-primary)' : ''}`}
                     title="Tags"
                 >
                     <Hash size={20} />
@@ -640,7 +640,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                     <button
                         onClick={() => setShowFormatting(prev => !prev)}
                         onMouseDown={(e) => e.preventDefault()}
-                        className={`${btn.iconLg} ${showFormatting ? 'bg-(--color-accent) text-white' : ''}`}
+                        className={`${btn.iconLg} ${showFormatting ? 'bg-(--color-accent) text-(--color-text-primary)' : ''}`}
                         title="Formatting"
                     >
                         <Type size={20} />
@@ -651,7 +651,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                 <button
                     onClick={toggleChecklistMode}
                     onMouseDown={(e) => e.preventDefault()}
-                    className={`${btn.iconLg} ${isChecklistMode ? 'bg-(--color-accent) text-white' : ''}`}
+                    className={`${btn.iconLg} ${isChecklistMode ? 'bg-(--color-accent) text-(--color-text-primary)' : ''}`}
                     title="Checklist Mode"
                 >
                     <CheckSquare size={20} />
@@ -692,7 +692,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
             <div className={`${overlay.dialogBackdrop} bg-(--color-surface-overlay)/90 backdrop-blur-md animate-in fade-in duration-(--duration-fast)`}>
                 <div className={`${overlay.modal} p-6 max-w-sm w-full mx-4 animate-in zoom-in-95 duration-(--duration-fast)`}>
                     <div className="flex flex-col items-center text-center">
-                        <div className="w-16 h-16 bg-amber-900/30 rounded-(--radius-full) flex items-center justify-center mb-4">
+                        <div className="w-16 h-16 bg-(--color-warning)/30 rounded-(--radius-full) flex items-center justify-center mb-4">
                             <AlertTriangle size={32} className="text-(--color-warning)" />
                         </div>
                         <h3 className="text-xl font-bold text-(--color-text-primary) mb-2">{discardTitle}</h3>

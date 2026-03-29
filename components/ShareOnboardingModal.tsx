@@ -13,12 +13,12 @@ const ShareOnboardingModal: React.FC<ShareOnboardingModalProps> = ({ onClose }) 
     <div className={`${overlay.backdropLight} z-(--z-overlay) flex items-center justify-center p-4 animate-in fade-in duration-(--duration-fast)`}>
       <div className={`${overlay.modal} max-w-sm w-full overflow-hidden flex flex-col`}>
         {/* Header */}
-        <div className="bg-gray-900/50 p-4 flex justify-between items-center border-b border-gray-700">
-           <h3 className="text-lg font-bold text-gray-100 flex items-center gap-2">
-               <Share size={20} className="text-blue-400" />
+        <div className="bg-(--color-surface-overlay)/50 p-4 flex justify-between items-center border-b border-(--color-border-default)">
+           <h3 className="text-lg font-bold text-(--color-text-primary) flex items-center gap-2">
+               <Share size={20} className="text-(--color-accent)" />
                Easy Sharing
            </h3>
-           <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
+           <button onClick={onClose} className="text-(--color-text-secondary) hover:text-(--color-text-primary) transition-colors">
                <X size={20} />
            </button>
         </div>
@@ -26,21 +26,21 @@ const ShareOnboardingModal: React.FC<ShareOnboardingModalProps> = ({ onClose }) 
         {/* Content */}
         <div className="p-6 space-y-6">
             <div className="space-y-2">
-                <p className="text-gray-300 leading-relaxed">
+                <p className="text-(--color-text-secondary) leading-relaxed">
                     Did you know? You can share images, text, and links directly to <b>SaveItForL8R</b> from other apps.
                 </p>
             </div>
 
             {/* iOS Specific Instructions */}
             {isIOS && (
-                <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4 space-y-3">
+                <div className="bg-(--color-accent)/10 border border-(--color-accent)/20 rounded-xl p-4 space-y-3">
                     <div className="flex items-start gap-3">
-                        <div className="bg-blue-500 rounded-lg p-2 mt-0.5">
-                            <Download size={16} className="text-white" />
+                        <div className="bg-(--color-accent) rounded-lg p-2 mt-0.5">
+                            <Download size={16} className="text-(--color-text-primary)" />
                         </div>
                         <div>
-                            <h4 className="font-bold text-blue-100 text-sm">iOS Shortcut Required</h4>
-                            <p className="text-xs text-blue-200/80 mt-1 leading-relaxed">
+                            <h4 className="font-bold text-(--color-text-primary) text-sm">iOS Shortcut Required</h4>
+                            <p className="text-xs text-(--color-text-secondary)/80 mt-1 leading-relaxed">
                                 To share seamlessly on iPhone & iPad, please install our official shortcut.
                             </p>
                         </div>
@@ -49,7 +49,7 @@ const ShareOnboardingModal: React.FC<ShareOnboardingModalProps> = ({ onClose }) 
                         href="https://www.icloud.com/shortcuts/170db1a6c6be402c8d8c18ee8473ee87" 
                         target="_blank" 
                         rel="noopener noreferrer"
-                        className="flex items-center justify-center gap-2 w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold py-2.5 rounded-lg transition-colors"
+                        className="flex items-center justify-center gap-2 w-full bg-(--color-accent) hover:bg-(--color-accent-hover) text-(--color-text-primary) text-sm font-bold py-2.5 rounded-lg transition-colors"
                     >
                         <span>Get Shortcut</span>
                         <ExternalLink size={14} />
@@ -59,10 +59,10 @@ const ShareOnboardingModal: React.FC<ShareOnboardingModalProps> = ({ onClose }) 
         </div>
 
         {/* Footer */}
-        <div className="p-4 bg-gray-900/30 border-t border-gray-700">
+        <div className="p-4 bg-(--color-surface-overlay)/30 border-t border-(--color-border-default)">
             <button 
                 onClick={onClose}
-                className="w-full py-3 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-xl transition-colors"
+                className="w-full py-3 bg-(--color-surface-raised) hover:bg-(--color-surface-raised) text-(--color-text-primary) font-medium rounded-xl transition-colors"
             >
                 Got it
             </button>

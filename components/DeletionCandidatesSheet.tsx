@@ -143,7 +143,7 @@ const DeletionCandidatesSheet: React.FC<DeletionCandidatesSheetProps> = ({
             <X size={24} />
           </button>
           <div className="flex items-center gap-2">
-            <Trash2 size={20} className="text-amber-400" />
+            <Trash2 size={20} className="text-(--color-warning)" />
             <h2 className="text-lg font-bold text-(--color-text-primary)">Stale Notes</h2>
           </div>
         </div>
@@ -281,7 +281,7 @@ const DeletionCandidatesSheet: React.FC<DeletionCandidatesSheetProps> = ({
             onClick={e => e.stopPropagation()}
           >
             <div className="flex flex-col items-center text-center gap-3">
-              <div className="w-12 h-12 rounded-full bg-red-900/30 flex items-center justify-center">
+              <div className="w-12 h-12 rounded-full bg-(--color-danger)/30 flex items-center justify-center">
                 <AlertTriangle size={24} className="text-(--color-danger)" />
               </div>
               <h3 className="text-lg font-bold text-(--color-text-primary)">
@@ -320,8 +320,8 @@ const DeletionCandidatesSheet: React.FC<DeletionCandidatesSheetProps> = ({
             onClick={e => e.stopPropagation()}
           >
             <div className="flex flex-col items-center text-center gap-3">
-              <div className="w-12 h-12 rounded-full bg-amber-900/30 flex items-center justify-center">
-                <EyeOff size={24} className="text-amber-400" />
+              <div className="w-12 h-12 rounded-full bg-(--color-warning)/30 flex items-center justify-center">
+                <EyeOff size={24} className="text-(--color-warning)" />
               </div>
               <h3 className="text-lg font-bold text-(--color-text-primary)">
                 Dismiss {selectedIds.size} {selectedIds.size === 1 ? 'Note' : 'Notes'}?

@@ -83,14 +83,14 @@ const MomentBubble: React.FC<MomentBubbleProps> = ({
   // Ring states
   let ringClass: string;
   if (isPending) {
-    ringClass = 'ring-2 ring-blue-500 animate-pulse';
+    ringClass = 'ring-2 ring-(--color-accent) animate-pulse';
   } else if (hasError) {
-    ringClass = 'ring-2 ring-red-500';
+    ringClass = 'ring-2 ring-(--color-danger)';
   } else {
     const hasUnseen = moment.inputHash !== moment.lastSeenInputHash;
     ringClass = hasUnseen
-      ? 'ring-2 ring-blue-500'
-      : 'ring-2 ring-gray-600';
+      ? 'ring-2 ring-(--color-accent)'
+      : 'ring-2 ring-(--color-border-default)';
   }
 
   return (
@@ -99,23 +99,23 @@ const MomentBubble: React.FC<MomentBubbleProps> = ({
       className="flex flex-col items-center gap-1.5 shrink-0 group touch-manipulation"
     >
       <div
-        className={`w-16 h-16 rounded-full flex items-center justify-center bg-gradient-to-br from-gray-800 to-gray-700 ${ringClass} transition-all group-active:scale-95 ${showGlow ? 'animate-glow-settle' : ''}`}
+        className={`w-16 h-16 rounded-full flex items-center justify-center bg-gradient-to-br from-(--color-surface-raised) to-(--color-surface-raised) ${ringClass} transition-all group-active:scale-95 ${showGlow ? 'animate-glow-settle' : ''}`}
       >
         {isPending ? (
-          <Loader2 size={24} className="text-blue-400 animate-spin" />
+          <Loader2 size={24} className="text-(--color-accent) animate-spin" />
         ) : (
           <span className="text-2xl" role="img" aria-label={moment.type}>
             {icon}
           </span>
         )}
       </div>
-      <span className="text-xs font-semibold text-gray-300 leading-tight text-center max-w-[72px] truncate">
+      <span className="text-xs font-semibold text-(--color-text-secondary) leading-tight text-center max-w-[72px] truncate">
         {label}
       </span>
       {isPending ? (
-        <span className={`${text.caption} text-blue-400 leading-tight`}>Creating…</span>
+        <span className={`${text.caption} text-(--color-accent) leading-tight`}>Creating…</span>
       ) : hasError ? (
-        <span className={`${text.caption} text-red-400 leading-tight`}>Failed</span>
+        <span className={`${text.caption} text-(--color-danger) leading-tight`}>Failed</span>
       ) : (
         <span className={`${text.caption} leading-tight`}>
           {noteCount} note{noteCount !== 1 ? 's' : ''}
