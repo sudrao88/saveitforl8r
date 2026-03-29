@@ -19,7 +19,7 @@ Follow these steps exactly:
 
 The default base branch is `native-app`. Only use a different base if the user explicitly specifies one.
 
-To verify, check the branch history:
+To confirm `native-app` is the correct base, check the commit history. If the output is unexpectedly long, ask the user to specify the base branch.
 
 ```bash
 git log --oneline --first-parent native-app..HEAD
@@ -82,7 +82,7 @@ When PR activity events arrive (wrapped in `<github-webhook-activity>` tags):
 
 For each fix:
 1. Make the code change
-2. Commit with a descriptive message referencing the review feedback
+2. Commit with a descriptive message referencing the review feedback (e.g., "fix: Address review comment on button alignment")
 3. Push to the same branch: `git push -u origin <branch-name>`
 
 ### 7. Report back
