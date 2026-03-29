@@ -147,13 +147,14 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
 
         Log.d(TAG, "Widget deep link received, mode: " + mode);
 
+        final String detail = eventDetail;
         // Dispatch immediately if JS is ready, otherwise queue it
         mainHandler.post(() -> {
             if (jsAppReady && bridge != null) {
-                bridge.triggerJSEvent("onWidgetQuickNote", "window", eventDetail);
+                bridge.triggerJSEvent("onWidgetQuickNote", "window", detail);
             } else {
                 // Queue and dispatch when app is ready
-                pendingWidgetEvent = eventDetail;
+                pendingWidgetEvent = detail;
             }
         });
     }
