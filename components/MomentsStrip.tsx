@@ -39,8 +39,8 @@ const MomentsStrip: React.FC<MomentsStripProps> = ({
   onDeletionCandidatesTap,
 }) => {
   return (
-    <div className={`${layout.pageContainer} ${layout.section} py-3`}>
-      <div className="flex items-start gap-4 overflow-x-auto no-scrollbar touch-pan-x p-1">
+    <div className={`${layout.pageContainer} py-3`}>
+      <div className="flex items-start gap-4 overflow-x-auto no-scrollbar touch-pan-x px-4 sm:px-8 py-1">
         {/* New Moment button — first in strip */}
         <button
           onClick={onNewMoment}
