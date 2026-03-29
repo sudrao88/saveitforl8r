@@ -173,6 +173,43 @@ export const downloadMultipleFiles = async (
     return { contents, failures };
 };
 
+/**
+ * Stream-download files with a per-file callback. Each file is downloaded
+ * and immediately passed to `onFile` for processing, rather than buffering
+ * all downloads in memory first. Uses sliding-window concurrency.
+ */
+export const downloadFilesStreaming = async (
+    fileIds: string[],
+    onFile: (fileId: string, content: any) => Promise<void>,
+): Promise<{ failures: string[] }> => {
+    const failures: string[] = [];
+    if (fileIds.length === 0) return { failures };
+
+    let nextIndex = 0;
+
+    const processNext = async (): Promise<void> => {
+        while (nextIndex < fileIds.length) {
+            const idx = nextIndex++;
+            const fileId = fileIds[idx];
+            try {
+                const content = await downloadFileContent(fileId);
+                await onFile(fileId, content);
+            } catch (e) {
+                console.error(`[Drive] Stream download failed for ${fileId}:`, e);
+                failures.push(fileId);
+            }
+        }
+    };
+
+    const workers = Array.from(
+        { length: Math.min(DOWNLOAD_CONCURRENCY, fileIds.length) },
+        () => processNext()
+    );
+    await Promise.all(workers);
+
+    return { failures };
+};
+
 export const uploadMultipleFiles = async (
     items: Array<{ filename: string; content: any; existingFileId?: string }>
 ): Promise<{ failures: string[] }> => {

@@ -49,6 +49,7 @@ vi.mock('../services/googleDriveService', () => ({
   listAllFiles: vi.fn().mockResolvedValue([]),
   downloadFileContent: vi.fn().mockResolvedValue({}),
   downloadMultipleFiles: vi.fn().mockResolvedValue({ contents: new Map(), failures: [] }),
+  downloadFilesStreaming: vi.fn().mockImplementation(async (_fileIds: string[], _onFile: any) => ({ failures: [] })),
   uploadFile: vi.fn().mockResolvedValue({ id: 'file-1' }),
   uploadMultipleFiles: vi.fn().mockResolvedValue({ failures: [] }),
   findFileByName: vi.fn().mockResolvedValue(null),
@@ -77,6 +78,28 @@ import { storage } from '../services/platform';
 const wrapper = ({ children }: { children: React.ReactNode }) => (
   <SyncProvider>{children}</SyncProvider>
 );
+
+/**
+ * Helper: set up both downloadMultipleFiles and downloadFilesStreaming mocks
+ * from a Map of fileId → content. The streaming mock calls onFile for each entry.
+ */
+const mockDownloads = (contentsMap: Map<string, any>, failures: string[] = []) => {
+  (driveService.downloadMultipleFiles as any).mockResolvedValue({
+    contents: contentsMap,
+    failures,
+  });
+  (driveService.downloadFilesStreaming as any).mockImplementation(
+    async (fileIds: string[], onFile: (fileId: string, content: any) => Promise<void>) => {
+      for (const fileId of fileIds) {
+        const content = contentsMap.get(fileId);
+        if (content) {
+          await onFile(fileId, content);
+        }
+      }
+      return { failures };
+    }
+  );
+};
 
 describe('SyncContext', () => {
   beforeEach(() => {
@@ -148,12 +171,8 @@ describe('SyncContext', () => {
       (driveService.listAllFiles as any).mockResolvedValue([
         { id: 'drive-file-1', name: 'remote-1.json', modifiedTime: '2024-01-01T00:00:00Z' },
       ]);
-      // downloadMultipleFiles returns a Map of fileId → content
-      const contentsMap = new Map([['drive-file-1', remoteContent]]);
-      (driveService.downloadMultipleFiles as any).mockResolvedValue({
-        contents: contentsMap,
-        failures: [],
-      });
+      // Set up streaming download mock
+      mockDownloads(new Map([['drive-file-1', remoteContent]]));
 
       const { result } = renderHook(() => useSync(), { wrapper });
 
@@ -163,7 +182,7 @@ describe('SyncContext', () => {
         await syncPromise;
       });
 
-      expect(driveService.downloadMultipleFiles).toHaveBeenCalledWith(['drive-file-1']);
+      expect(driveService.downloadFilesStreaming).toHaveBeenCalled();
       expect(storageService.saveMemory).toHaveBeenCalledWith(
         expect.objectContaining({ id: 'remote-1' })
       );
@@ -177,11 +196,7 @@ describe('SyncContext', () => {
       (driveService.listAllFiles as any).mockResolvedValue([
         { id: 'drive-file-1', name: 'mem-1.json', modifiedTime: '2024-01-02T00:00:00Z' },
       ]);
-      const contentsMap = new Map([['drive-file-1', remoteMem]]);
-      (driveService.downloadMultipleFiles as any).mockResolvedValue({
-        contents: contentsMap,
-        failures: [],
-      });
+      mockDownloads(new Map([['drive-file-1', remoteMem]]));
 
       const { result } = renderHook(() => useSync(), { wrapper });
 
@@ -202,11 +217,7 @@ describe('SyncContext', () => {
       (driveService.listAllFiles as any).mockResolvedValue([
         { id: 'drive-file-1', name: 'mem-1.json', modifiedTime: '2024-01-01T00:00:00Z' },
       ]);
-      const contentsMap = new Map([['drive-file-1', remoteMem]]);
-      (driveService.downloadMultipleFiles as any).mockResolvedValue({
-        contents: contentsMap,
-        failures: [],
-      });
+      mockDownloads(new Map([['drive-file-1', remoteMem]]));
 
       const { result } = renderHook(() => useSync(), { wrapper });
 
@@ -236,11 +247,7 @@ describe('SyncContext', () => {
       (driveService.listAllFiles as any).mockResolvedValue([
         { id: 'drive-file-1', name: 'mem-1.json', modifiedTime: '2024-01-02T00:00:00Z' },
       ]);
-      const contentsMap = new Map([['drive-file-1', deletedRemote]]);
-      (driveService.downloadMultipleFiles as any).mockResolvedValue({
-        contents: contentsMap,
-        failures: [],
-      });
+      mockDownloads(new Map([['drive-file-1', deletedRemote]]));
 
       const { result } = renderHook(() => useSync(), { wrapper });
 
@@ -274,7 +281,7 @@ describe('SyncContext', () => {
       });
 
       // Should NOT download since snapshot matches → no network call for content
-      expect(driveService.downloadMultipleFiles).toHaveBeenCalledWith([]);
+      expect(driveService.downloadFilesStreaming).toHaveBeenCalledWith([], expect.any(Function));
       // Should NOT upload since local timestamp (1000) < lastSyncTime (5000)
       expect(driveService.uploadMultipleFiles).toHaveBeenCalledWith([]);
     });
@@ -390,11 +397,7 @@ describe('SyncContext', () => {
       (driveService.listAllFiles as any).mockResolvedValue([
         { id: 'drive-mom-1', name: 'moment-mom-1.json', modifiedTime: '2024-01-01T00:00:00Z' },
       ]);
-      const contentsMap = new Map([['drive-mom-1', remoteMoment]]);
-      (driveService.downloadMultipleFiles as any).mockResolvedValue({
-        contents: contentsMap,
-        failures: [],
-      });
+      mockDownloads(new Map([['drive-mom-1', remoteMoment]]));
 
       const { result } = renderHook(() => useSync(), { wrapper });
 
@@ -416,11 +419,7 @@ describe('SyncContext', () => {
       (driveService.listAllFiles as any).mockResolvedValue([
         { id: 'drive-mom-1', name: 'moment-mom-1.json', modifiedTime: '2024-01-02T00:00:00Z' },
       ]);
-      const contentsMap = new Map([['drive-mom-1', remoteMoment]]);
-      (driveService.downloadMultipleFiles as any).mockResolvedValue({
-        contents: contentsMap,
-        failures: [],
-      });
+      mockDownloads(new Map([['drive-mom-1', remoteMoment]]));
 
       const { result } = renderHook(() => useSync(), { wrapper });
 
@@ -442,11 +441,7 @@ describe('SyncContext', () => {
       (driveService.listAllFiles as any).mockResolvedValue([
         { id: 'drive-mom-1', name: 'moment-mom-1.json', modifiedTime: '2024-01-01T00:00:00Z' },
       ]);
-      const contentsMap = new Map([['drive-mom-1', remoteMoment]]);
-      (driveService.downloadMultipleFiles as any).mockResolvedValue({
-        contents: contentsMap,
-        failures: [],
-      });
+      mockDownloads(new Map([['drive-mom-1', remoteMoment]]));
 
       const { result } = renderHook(() => useSync(), { wrapper });
 
@@ -523,11 +518,7 @@ describe('SyncContext', () => {
       (driveService.listAllFiles as any).mockResolvedValue([
         { id: 'drive-mom-1', name: 'moment-mom-1.json', modifiedTime: '2024-01-02T00:00:00Z' },
       ]);
-      const contentsMap = new Map([['drive-mom-1', remoteMoment]]);
-      (driveService.downloadMultipleFiles as any).mockResolvedValue({
-        contents: contentsMap,
-        failures: [],
-      });
+      mockDownloads(new Map([['drive-mom-1', remoteMoment]]));
 
       const { result } = renderHook(() => useSync(), { wrapper });
 
@@ -585,7 +576,7 @@ describe('SyncContext', () => {
       });
 
       // Should NOT download since snapshot matches
-      expect(driveService.downloadMultipleFiles).toHaveBeenCalledWith([]);
+      expect(driveService.downloadFilesStreaming).toHaveBeenCalledWith([], expect.any(Function));
       // Should NOT upload since moment updatedAt (1000) < lastSyncTime (5000)
       expect(driveService.uploadMultipleFiles).toHaveBeenCalledWith([]);
     });

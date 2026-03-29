@@ -453,9 +453,18 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
             </div>
         )}
 
-        {/* Image Preview */}
-        {displayImages.length > 0 && (
-            <div 
+        {/* Image Preview — show skeleton placeholder while attachments are deferred */}
+        {displayImages.length > 0 && memory._attachmentsDeferred ? (
+            <div className={`relative overflow-hidden rounded-t-(--radius-xl) bg-(--color-surface-overlay)/50 aspect-video sm:aspect-[2/1] flex items-center justify-center`}>
+                <Loader2 size={24} className="text-(--color-text-tertiary) animate-spin" />
+                {displayImages.length > 1 && (
+                  <div className="absolute bottom-2 right-2 bg-black/60 text-(--color-text-primary) text-xs font-medium px-2 py-0.5 rounded-full backdrop-blur-md">
+                      {displayImages.length} files loading...
+                  </div>
+                )}
+            </div>
+        ) : displayImages.length > 0 ? (
+            <div
                 className={`relative overflow-hidden rounded-t-(--radius-xl) bg-(--color-surface-overlay)/50 group/image cursor-zoom-in aspect-video sm:aspect-[2/1] ${isDialog ? 'max-h-[50vh]' : ''}`}
                 onClick={(e) => { e.stopPropagation(); onViewAttachment?.(displayImages[0], [...displayImages, ...documents]); }}
             >
@@ -474,7 +483,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                   </div>
                 )}
             </div>
-        )}
+        ) : null}
         
         <div className="p-5 flex-1 flex flex-col">
           {/* Header */}
@@ -633,7 +642,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
             })()}
 
             {/* Documents */}
-            {documents.length > 0 && (
+            {documents.length > 0 && !memory._attachmentsDeferred && (
                 <div className="flex flex-col gap-1.5 pt-1">
                     {documents.map((doc) => (
                         <div
@@ -654,6 +663,12 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                             </div>
                         </div>
                     ))}
+                </div>
+            )}
+            {documents.length > 0 && memory._attachmentsDeferred && (
+                <div className="flex items-center gap-2 p-3 rounded-(--radius-xl) bg-(--color-surface-overlay)/30 border border-(--color-border-subtle)">
+                    <Loader2 size={16} className="text-(--color-text-tertiary) animate-spin" />
+                    <span className="text-sm text-(--color-text-tertiary)">{documents.length} document{documents.length > 1 ? 's' : ''} loading...</span>
                 </div>
             )}
 

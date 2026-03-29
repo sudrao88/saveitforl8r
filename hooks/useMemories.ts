@@ -394,6 +394,35 @@ export const useMemories = () => {
       return Promise.resolve();
   }, [trySyncFile, startPolling]);
 
+  // Incremental upsert for sync-downloaded memories. Inserts new memories
+  // or updates existing ones in-place without a full IDB reload.
+  const upsertMemory = useCallback((memory: Memory) => {
+    if (memory.isDeleted) {
+      setMemories(prev => prev.filter(m => m.id !== memory.id));
+      return;
+    }
+    setMemories(prev => {
+      const idx = prev.findIndex(m => m.id === memory.id);
+      if (idx >= 0) {
+        // Update in-place — only replace if data actually changed
+        const existing = prev[idx];
+        if (existing.timestamp === memory.timestamp &&
+            existing._attachmentsDeferred === memory._attachmentsDeferred) {
+          return prev; // no change, avoid re-render
+        }
+        const next = [...prev];
+        next[idx] = memory;
+        return next;
+      }
+      // Insert new memory in sorted position (descending timestamp)
+      const insertIdx = prev.findIndex(m => m.timestamp < memory.timestamp);
+      if (insertIdx === -1) return [...prev, memory];
+      const next = [...prev];
+      next.splice(insertIdx, 0, memory);
+      return next;
+    });
+  }, []);
+
   // Online recovery — uses the extracted recoverPending instead of
   // re-implementing the completed/failed/processing logic inline.
   useEffect(() => {
@@ -424,6 +453,7 @@ export const useMemories = () => {
   return {
     memories,
     refreshMemories,
+    upsertMemory,
     handleDelete,
     handleRetry,
     createMemory,
