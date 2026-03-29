@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { X, Send, BrainCircuit, ExternalLink, Bot, Sparkles, WifiOff, Download, FileText } from 'lucide-react';
 import { Memory, Attachment, ChatMessage } from '../types';
 import MemoryPreviewModal from './MemoryPreviewModal';
-import { overlay } from '../styles/design-system';
+import { btn, overlay } from '../styles/design-system';
 
 interface ChatInterfaceProps {
   memories: Memory[];
@@ -295,12 +295,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
                     setTimeout(scrollToBottom, 300);
                 }}
             />
-            <button 
+            <button
                 onClick={handleSend}
                 disabled={!query.trim() || loading}
-                className="mb-1 p-2 bg-(--color-accent) hover:bg-(--color-accent-hover) text-(--color-text-primary) rounded-(--radius-xl) transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0 active:scale-95"
+                className={`${btn.base} ${btn.cta} mb-1`}
             >
-                <Send size={18} />
+                <Send size={20} />
             </button>
         </div>
       </div>

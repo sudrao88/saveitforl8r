@@ -544,12 +544,12 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
           <button
             onClick={handleSave}
             disabled={!hasContent || isSaving}
-            className={`p-2.5 rounded-(--radius-xl) transition-all duration-(--duration-fast) active:scale-95 ${
+            className={`${btn.base} ${
               saveSuccess
-                ? 'bg-(--color-success) text-(--color-text-primary) animate-save-success'
+                ? btn.ctaSuccess
                 : hasContent && !isSaving
-                  ? 'bg-(--color-accent) text-(--color-text-primary) hover:bg-(--color-accent-hover) shadow-lg'
-                  : 'bg-(--color-surface-raised) text-(--color-text-tertiary) cursor-not-allowed'
+                  ? btn.cta
+                  : btn.ctaDisabled
             }`}
             title="Save note (⌘+Enter)"
           >
