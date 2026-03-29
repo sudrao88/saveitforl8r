@@ -298,7 +298,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
             <button
                 onClick={handleSend}
                 disabled={!query.trim() || loading}
-                className={`${btn.base} ${btn.cta} mb-1`}
+                className={`${btn.base} ${(!query.trim() || loading) ? btn.ctaDisabled : btn.cta} mb-1`}
             >
                 <Send size={20} />
             </button>

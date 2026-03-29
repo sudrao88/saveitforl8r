@@ -164,7 +164,7 @@ import { btn, card, overlay, confirm, text, chip, menu, zIndex } from '../styles
 - **Buttons (standard)**: `${btn.base} ${btn.primary}` / `btn.secondary` / `btn.ghost` / `btn.danger`
 - **Buttons (compact)**: `${btn.base} ${btn.primarySm}` / `btn.secondarySm` / `btn.dangerSm` / `btn.warningSm`
 - **Buttons (outlined)**: `btn.outlinedSm` / `btn.outlinedDangerSm` (includes flex/gap, use directly)
-- **Buttons (CTA)**: `${btn.base} ${btn.cta}` / `btn.ctaDisabled` / `btn.ctaSuccess` (circular primary action buttons — save, send)
+- **Buttons (CTA)**: `${btn.base} ${btn.cta}` (states: `btn.ctaDisabled`, `btn.ctaSuccess`) (circular primary action buttons — save, send)
 - **Buttons (icon)**: `btn.icon` / `btn.iconLg`
 - **Cards**: `card.base` / `card.interactive` / `card.elevated`
 - **Inputs**: `input.base` / `input.textarea`
