@@ -143,7 +143,7 @@ const DeletionCandidatesSheet: React.FC<DeletionCandidatesSheetProps> = ({
             <X size={24} />
           </button>
           <div className="flex items-center gap-2">
-            <Trash2 size={20} className="text-(--color-warning)" />
+            <Trash2 size={20} className="text-(--color-danger)" />
             <h2 className="text-lg font-bold text-(--color-text-primary)">Stale Notes</h2>
           </div>
         </div>
