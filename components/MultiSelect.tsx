@@ -47,7 +47,7 @@ const MultiSelect: React.FC<MultiSelectProps> = ({ label, options, selected, onC
       <label className={`block ${text.label} mb-1`}>{label}</label>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full bg-(--color-surface-raised) text-left text-(--color-text-primary) text-sm rounded-lg px-3 py-2 border border-(--color-border-default) focus:border-(--color-accent) outline-none flex justify-between items-center hover:bg-(--color-surface-raised) transition-colors"
+        className="w-full bg-(--color-surface-raised) text-left text-(--color-text-primary) text-sm rounded-(--radius-lg) px-3 py-2 border border-(--color-border-default) focus:border-(--color-accent) outline-none flex justify-between items-center hover:bg-(--color-surface-raised) transition-colors"
       >
         <span className="truncate block pr-2">
           {selected.length === 0 
@@ -60,7 +60,7 @@ const MultiSelect: React.FC<MultiSelectProps> = ({ label, options, selected, onC
       </button>
 
       {isOpen && (
-        <div className={`absolute ${zIndex.overlay} w-full mt-1 bg-(--color-surface-raised) border border-(--color-border-default) rounded-lg shadow-xl max-h-60 overflow-y-auto overflow-x-hidden`}>
+        <div className={`absolute ${zIndex.overlay} w-full mt-1 bg-(--color-surface-raised) border border-(--color-border-default) rounded-(--radius-lg) shadow-xl max-h-60 overflow-y-auto overflow-x-hidden`}>
           {options.length > 0 && (
              <div 
                 onClick={handleSelectAll}

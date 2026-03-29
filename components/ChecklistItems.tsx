@@ -33,7 +33,7 @@ export function ChecklistDisplay({ items, onToggle }: ChecklistDisplayProps) {
       {items.map((item, idx) => (
         <div
           key={item.id}
-          className={`${checklist.itemRow} group/item cursor-pointer p-2 -mx-2 hover:bg-white/5 rounded-lg active:bg-white/10 transition-colors`}
+          className={`${checklist.itemRow} group/item cursor-pointer p-2 -mx-2 hover:bg-(--color-surface-hover-subtle) rounded-(--radius-lg) active:bg-(--color-surface-hover) transition-colors`}
           onClick={(e) => { e.stopPropagation(); onToggle(idx); }}
         >
           <Checkbox checked={item.checked} />

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { X, Download, ChevronLeft, ChevronRight, FileText, Share2 } from 'lucide-react';
 import { Attachment } from '../types';
-import { zIndex } from '../styles/design-system';
+import { btn, overlay, zIndex } from '../styles/design-system';
 import { downloadDataUri } from '../services/downloadService';
 import ZoomableImage from './ZoomableImage';
 import PdfViewer from './PdfViewer';
@@ -183,8 +183,8 @@ const GalleryViewer: React.FC<GalleryViewerProps> = ({ attachments, initialIndex
       );
     }
     return (
-      <div className="bg-(--color-surface-overlay) border border-(--color-border-default) p-8 rounded-2xl flex flex-col items-center gap-4 text-center max-w-sm">
-        <div className="w-16 h-16 bg-(--color-surface-raised) rounded-2xl flex items-center justify-center">
+      <div className="bg-(--color-surface-overlay) border border-(--color-border-default) p-8 rounded-(--radius-xl) flex flex-col items-center gap-4 text-center max-w-sm">
+        <div className="w-16 h-16 bg-(--color-surface-raised) rounded-(--radius-xl) flex items-center justify-center">
           <FileText size={32} className="text-(--color-accent)" />
         </div>
         <div>
@@ -194,7 +194,7 @@ const GalleryViewer: React.FC<GalleryViewerProps> = ({ attachments, initialIndex
         {safeUri && (
           <button
             onClick={() => handleDownload(attachment)}
-            className="w-full py-3 bg-(--color-accent) hover:bg-(--color-accent-hover) text-(--color-text-primary) rounded-xl font-bold transition-all shadow-lg active:scale-95 text-center"
+            className={`${btn.base} ${btn.primary} w-full py-3`}
           >
             Download to View
           </button>
@@ -204,13 +204,13 @@ const GalleryViewer: React.FC<GalleryViewerProps> = ({ attachments, initialIndex
   };
 
   return (
-    <div className={`fixed inset-0 ${zIndex.tooltip} bg-black/95 backdrop-blur-md flex flex-col animate-in fade-in zoom-in-95 duration-(--duration-fast)`}>
+    <div className={`fixed inset-0 ${zIndex.sheet} bg-(--color-surface-base)/95 backdrop-blur-md flex flex-col animate-in fade-in zoom-in-95 duration-(--duration-fast)`}>
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 bg-black/50 border-b border-white/10 pt-[var(--sat)]">
+      <div className="flex items-center justify-between px-4 py-3 bg-(--color-surface-base)/50 border-b border-(--color-border-subtle) pt-[var(--sat)]">
         <div className="flex items-center gap-3 flex-1 min-w-0 overflow-hidden">
           <button
             onClick={onClose}
-            className="p-3 -ml-3 rounded-full hover:bg-white/10 text-(--color-text-secondary) hover:text-(--color-text-primary) transition-colors active:scale-95 shrink-0"
+            className={`${overlay.closeBtn} shrink-0`}
           >
             <X size={24} />
           </button>
@@ -223,7 +223,7 @@ const GalleryViewer: React.FC<GalleryViewerProps> = ({ attachments, initialIndex
           {canShare && getSafeDataUri(current) && (
             <button
               onClick={handleShare}
-              className="flex items-center gap-2 px-4 py-2 bg-(--color-surface-raised) hover:bg-(--color-surface-raised) text-(--color-text-primary) rounded-xl text-xs font-bold transition-all active:scale-95"
+              className={`${btn.base} ${btn.secondarySm} gap-2`}
               aria-label="Share"
             >
               <Share2 size={14} /> Share
@@ -232,7 +232,7 @@ const GalleryViewer: React.FC<GalleryViewerProps> = ({ attachments, initialIndex
           {getSafeDataUri(current) && (
             <button
               onClick={() => handleDownload(current)}
-              className="flex items-center gap-2 px-4 py-2 bg-(--color-accent) hover:bg-(--color-accent-hover) text-(--color-text-primary) rounded-xl text-xs font-bold transition-all active:scale-95"
+              className={`${btn.base} ${btn.primarySm} gap-2`}
             >
               <Download size={14} /> Download
             </button>
@@ -251,7 +251,7 @@ const GalleryViewer: React.FC<GalleryViewerProps> = ({ attachments, initialIndex
         {hasPrev && !isPdf && (
           <button
             onClick={goPrev}
-            className="absolute left-2 sm:left-4 z-(--z-sticky) p-3 rounded-full bg-black/40 hover:bg-black/70 text-(--color-text-primary)/70 hover:text-(--color-text-primary) transition-all active:scale-90 backdrop-blur-sm"
+            className={`${overlay.navBtn} left-2 sm:left-4`}
           >
             <ChevronLeft size={24} />
           </button>
@@ -276,7 +276,7 @@ const GalleryViewer: React.FC<GalleryViewerProps> = ({ attachments, initialIndex
         {hasNext && !isPdf && (
           <button
             onClick={goNext}
-            className="absolute right-2 sm:right-4 z-(--z-sticky) p-3 rounded-full bg-black/40 hover:bg-black/70 text-(--color-text-primary)/70 hover:text-(--color-text-primary) transition-all active:scale-90 backdrop-blur-sm"
+            className={`${overlay.navBtn} right-2 sm:right-4`}
           >
             <ChevronRight size={24} />
           </button>

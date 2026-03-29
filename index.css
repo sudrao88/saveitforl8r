@@ -13,6 +13,8 @@
   --color-surface-base: #000000;
   --color-surface-raised: #1f2937;
   --color-surface-overlay: #030712;
+  --color-surface-hover-subtle: rgba(255, 255, 255, 0.05);
+  --color-surface-hover: rgba(255, 255, 255, 0.1);
 
   /* Border colors */
   --color-border-default: #374151;
@@ -44,6 +46,7 @@
   --z-tooltip: 90;
 
   /* Border radius */
+  --radius-xs: 0.125rem;
   --radius-sm: 0.375rem;
   --radius-md: 0.5rem;
   --radius-lg: 0.75rem;

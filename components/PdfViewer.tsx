@@ -181,21 +181,21 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ dataUri, fileName }) => {
         <button
           onClick={zoomOut}
           disabled={zoom <= MIN_ZOOM}
-          className="p-2 rounded-lg hover:bg-white/10 text-(--color-text-secondary) hover:text-(--color-text-primary) transition-colors active:scale-95 disabled:opacity-30 disabled:pointer-events-none"
+          className="p-2 rounded-(--radius-lg) hover:bg-white/10 text-(--color-text-secondary) hover:text-(--color-text-primary) transition-colors active:scale-95 disabled:opacity-30 disabled:pointer-events-none"
           aria-label="Zoom out"
         >
           <ZoomOut size={18} />
         </button>
         <button
           onClick={resetZoom}
-          className="px-3 py-1 rounded-lg hover:bg-white/10 text-(--color-text-secondary) text-xs font-medium transition-colors min-w-[4rem]"
+          className="px-3 py-1 rounded-(--radius-lg) hover:bg-white/10 text-(--color-text-secondary) text-xs font-medium transition-colors min-w-[4rem]"
         >
           {Math.round(zoom * 100)}%
         </button>
         <button
           onClick={zoomIn}
           disabled={zoom >= MAX_ZOOM}
-          className="p-2 rounded-lg hover:bg-white/10 text-(--color-text-secondary) hover:text-(--color-text-primary) transition-colors active:scale-95 disabled:opacity-30 disabled:pointer-events-none"
+          className="p-2 rounded-(--radius-lg) hover:bg-white/10 text-(--color-text-secondary) hover:text-(--color-text-primary) transition-colors active:scale-95 disabled:opacity-30 disabled:pointer-events-none"
           aria-label="Zoom in"
         >
           <ZoomIn size={18} />
@@ -220,7 +220,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ dataUri, fileName }) => {
               <img
                 src={page.dataUrl}
                 alt={`${fileName} - Page ${idx + 1}`}
-                className="w-full shadow-xl rounded-sm bg-white"
+                className="w-full shadow-xl rounded-(--radius-sm) bg-white"
                 draggable={false}
               />
               <div className="absolute bottom-2 right-2 bg-black/60 text-(--color-text-primary) text-xs px-2 py-0.5 rounded-full backdrop-blur-sm">

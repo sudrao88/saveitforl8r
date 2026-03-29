@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { Trash2, Loader2, Clock, ExternalLink, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, RefreshCw, WifiOff, FileText, Paperclip, MoreVertical, AlertTriangle, AlertCircle, LogIn, Maximize2, Eye, Pin, Pencil, Lightbulb, CircleCheck, UtensilsCrossed, ListOrdered, ThumbsUp, ThumbsDown, DollarSign, MapPin, CalendarDays, ClipboardList, MessageSquare, Users, Mic, Code, Heart, Scale, GraduationCap, Briefcase, Music, Film, BookOpenCheck, Bookmark, Phone, Mail, ScrollText, Tag, Clock3, Flame, Quote } from 'lucide-react';
 import { Memory, Attachment } from '../types.ts';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
-import { card, menu, overlay, text } from '../styles/design-system';
+import { btn, card, confirm, menu, overlay, text } from '../styles/design-system';
 import { downloadDataUri } from '../services/downloadService';
 import { ChecklistDisplay } from './ChecklistItems';
 
@@ -423,7 +423,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
   return (
     <>
       <div
-        className={`group relative w-full rounded-xl transition-all duration-(--duration-normal) ${isDialog ? 'overflow-visible' : 'overflow-hidden'} flex flex-col
+        className={`group relative w-full rounded-(--radius-xl) transition-all duration-(--duration-normal) ${isDialog ? 'overflow-visible' : 'overflow-hidden'} flex flex-col
         ${isDialog ? 'bg-(--color-surface-overlay) border border-(--color-border-default)' : card.interactive}
         ${memory.isPending ? 'opacity-70 border-(--color-accent)/30' : ''}
         ${memory.processingError ? 'border-(--color-warning)/30 bg-(--color-warning)/5' : ''}
@@ -445,7 +445,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                 </p>
                 <button
                     onClick={(e) => { e.stopPropagation(); onSignIn?.(); }}
-                    className="w-full max-w-[220px] py-3 text-sm font-bold text-(--color-text-primary) bg-(--color-accent) rounded-xl hover:bg-(--color-accent-hover) transition-colors shadow-lg shadow-(--color-accent)/20 active:scale-95 touch-manipulation flex items-center justify-center gap-2"
+                    className={`${btn.base} ${btn.primary} w-full max-w-[220px] py-3 text-sm gap-2 shadow-(--color-accent)/20 touch-manipulation`}
                 >
                     <LogIn size={16} />
                     Sign in with Google
@@ -456,7 +456,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
         {/* Image Preview */}
         {displayImages.length > 0 && (
             <div 
-                className={`relative overflow-hidden rounded-t-xl bg-(--color-surface-overlay)/50 group/image cursor-zoom-in aspect-video sm:aspect-[2/1] ${isDialog ? 'max-h-[50vh]' : ''}`}
+                className={`relative overflow-hidden rounded-t-(--radius-xl) bg-(--color-surface-overlay)/50 group/image cursor-zoom-in aspect-video sm:aspect-[2/1] ${isDialog ? 'max-h-[50vh]' : ''}`}
                 onClick={(e) => { e.stopPropagation(); onViewAttachment?.(displayImages[0], [...displayImages, ...documents]); }}
             >
                 <img
@@ -565,7 +565,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                                 <button
                                     onClick={(e) => { e.stopPropagation(); setShowSummary(!showSummary); }}
                                     title="Summary"
-                                    className={`p-2 rounded-lg transition-colors ${showSummary ? 'bg-(--color-surface-raised)/60 text-(--color-text-primary)' : 'text-(--color-text-tertiary) hover:text-(--color-text-secondary) hover:bg-white/5'}`}
+                                    className={`p-2 rounded-(--radius-lg) transition-colors ${showSummary ? 'bg-(--color-surface-raised)/60 text-(--color-text-primary)' : 'text-(--color-text-tertiary) hover:text-(--color-text-secondary) hover:bg-white/5'}`}
                                 >
                                     <FileText size={16} />
                                 </button>
@@ -575,7 +575,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                                     key={section.key}
                                     onClick={(e) => { e.stopPropagation(); setExpandedSection(expandedSection === section.key ? null : section.key); }}
                                     title={section.label}
-                                    className={`p-2 rounded-lg transition-colors ${expandedSection === section.key ? 'bg-(--color-surface-raised)/60 text-(--color-text-primary)' : 'text-(--color-text-tertiary) hover:text-(--color-text-secondary) hover:bg-white/5'}`}
+                                    className={`p-2 rounded-(--radius-lg) transition-colors ${expandedSection === section.key ? 'bg-(--color-surface-raised)/60 text-(--color-text-primary)' : 'text-(--color-text-tertiary) hover:text-(--color-text-secondary) hover:bg-white/5'}`}
                                 >
                                     {/* Icons in sections are size 12; scale up for button display */}
                                     <span className="[&>svg]:w-4 [&>svg]:h-4">{section.icon}</span>
@@ -588,7 +588,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                                     rel="noopener noreferrer"
                                     onClick={(e) => e.stopPropagation()}
                                     title="Open Link"
-                                    className="p-2 rounded-lg text-(--color-text-tertiary) hover:text-(--color-accent) hover:bg-white/5 transition-colors"
+                                    className="p-2 rounded-(--radius-lg) text-(--color-text-tertiary) hover:text-(--color-accent) hover:bg-white/5 transition-colors"
                                 >
                                     <ExternalLink size={16} />
                                 </a>
@@ -639,7 +639,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                         <div
                             key={doc.id}
                             onClick={(e) => { e.stopPropagation(); onViewAttachment?.(doc, [...displayImages, ...documents]); }}
-                            className="flex items-center gap-2 p-3 rounded-xl bg-(--color-surface-overlay)/30 border border-(--color-border-subtle) hover:bg-(--color-surface-raised)/50 transition-colors cursor-pointer group/doc active:scale-[0.98]"
+                            className="flex items-center gap-2 p-3 rounded-(--radius-xl) bg-(--color-surface-overlay)/30 border border-(--color-border-subtle) hover:bg-(--color-surface-raised)/50 transition-colors cursor-pointer group/doc active:scale-[0.98]"
                         >
                             <FileText size={16} className="text-(--color-text-tertiary) group-hover/doc:text-(--color-accent)" />
                             <span className="text-sm text-(--color-text-secondary) truncate flex-1 group-hover/doc:text-(--color-text-primary)">{doc.name}</span>
@@ -661,19 +661,19 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
             <div className="flex flex-wrap items-center gap-y-2 gap-x-4 pt-2 border-t border-(--color-border-subtle) mt-2">
                 <div className="flex flex-wrap gap-1.5 flex-1">
                     {(memory.tags || []).map((tag) => (
-                        <span key={tag} className="text-xs text-(--color-text-tertiary) hover:text-(--color-text-secondary) bg-(--color-surface-overlay)/50 px-2 py-1 rounded-md">#{tag}</span>
+                        <span key={tag} className="text-xs text-(--color-text-tertiary) hover:text-(--color-text-secondary) bg-(--color-surface-overlay)/50 px-2 py-1 rounded-(--radius-md)">#{tag}</span>
                     ))}
                 </div>
                 <div className="flex items-center gap-2 ml-auto relative">
                     {onRetry && memory.processingError && (
-                        <button onClick={() => onRetry(memory.id)} className="p-2 text-(--color-warning) hover:text-(--color-warning) transition-colors rounded-lg hover:bg-(--color-warning)/20">
+                        <button onClick={() => onRetry(memory.id)} className="p-2 text-(--color-warning) hover:text-(--color-warning) transition-colors rounded-(--radius-lg) hover:bg-(--color-warning)/20">
                             <RefreshCcw size={16} />
                         </button>
                     )}
                     <div className="relative">
                         <button 
                             onClick={(e) => { e.stopPropagation(); setIsMenuOpen(!isMenuOpen); }} 
-                            className={`p-2 rounded-lg hover:bg-(--color-surface-raised)/50 transition-colors ${isMenuOpen ? 'text-(--color-text-primary) bg-(--color-surface-raised)/50' : 'text-(--color-text-tertiary)'}`}
+                            className={`p-2 rounded-(--radius-lg) hover:bg-(--color-surface-raised)/50 transition-colors ${isMenuOpen ? 'text-(--color-text-primary) bg-(--color-surface-raised)/50' : 'text-(--color-text-tertiary)'}`}
                         >
                             <MoreVertical size={20} />
                         </button>
@@ -708,15 +708,15 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
             </div>
             {/* Confirmation Dialog */}
             {isConfirming && (
-                <div className="absolute inset-0 z-(--z-dropdown) bg-(--color-surface-overlay)/95 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-(--duration-fast)">
+                <div className={confirm.backdrop}>
                     <AlertTriangle size={32} className="text-(--color-warning) mb-3" />
-                    <h4 className="text-(--color-text-primary) font-bold mb-1">Delete Memory?</h4>
-                    <p className="text-xs text-(--color-text-secondary) mb-4">This action cannot be undone.</p>
+                    <h4 className={confirm.title}>Delete Memory?</h4>
+                    <p className={confirm.message}>This action cannot be undone.</p>
                     <div className="flex gap-2 w-full">
-                        <button onClick={cancelDelete} className="flex-1 py-3 text-sm font-medium text-(--color-text-secondary) bg-(--color-surface-raised) rounded-xl hover:bg-(--color-surface-raised) transition-colors active:scale-95">
+                        <button onClick={cancelDelete} className={`${btn.base} ${btn.secondary} flex-1 py-3 text-sm`}>
                             Cancel
                         </button>
-                        <button onClick={confirmDelete} className="flex-1 py-3 text-sm font-bold text-(--color-text-primary) bg-(--color-danger) rounded-xl hover:bg-(--color-danger-hover) transition-colors shadow-lg shadow-(--color-danger)/20 active:scale-95">
+                        <button onClick={confirmDelete} className={`${btn.base} ${btn.danger} flex-1 py-3 text-sm shadow-(--color-danger)/20`}>
                             Delete
                         </button>
                     </div>

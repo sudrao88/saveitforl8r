@@ -58,10 +58,10 @@ const MomentCreationDialog: React.FC<MomentCreationDialogProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-(--z-toast) flex items-end sm:items-center justify-center">
+    <div className={`${overlay.dialogBackdrop}`}>
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        className="absolute inset-0 bg-(--color-surface-base)/60 backdrop-blur-sm"
         onClick={isCreating ? undefined : onClose}
       />
 
@@ -76,7 +76,7 @@ const MomentCreationDialog: React.FC<MomentCreationDialogProps> = ({
           <button
             onClick={onClose}
             disabled={isCreating}
-            className="p-2 rounded-full hover:bg-(--color-surface-raised) text-(--color-text-secondary) hover:text-(--color-text-primary) transition-colors disabled:opacity-50"
+            className={`${overlay.closeBtnRight} disabled:opacity-50`}
           >
             <X size={18} />
           </button>
@@ -95,7 +95,7 @@ const MomentCreationDialog: React.FC<MomentCreationDialogProps> = ({
             onKeyDown={handleKeyDown}
             placeholder={PLACEHOLDER_EXAMPLES[placeholderIdx]}
             disabled={isCreating}
-            className="w-full px-4 py-3 bg-(--color-surface-raised) border border-(--color-border-default) rounded-xl text-(--color-text-primary) placeholder-(--color-text-tertiary) focus:outline-none focus:ring-2 focus:ring-(--color-accent)/50 focus:border-(--color-accent)/50 text-sm disabled:opacity-50"
+            className="w-full px-4 py-3 bg-(--color-surface-raised) border border-(--color-border-default) rounded-(--radius-xl) text-(--color-text-primary) placeholder-(--color-text-tertiary) focus:outline-none focus:ring-2 focus:ring-(--color-accent)/50 focus:border-(--color-accent)/50 text-sm disabled:opacity-50"
             maxLength={1000}
           />
           <p className="text-xs text-(--color-text-tertiary) mt-2">
@@ -108,7 +108,7 @@ const MomentCreationDialog: React.FC<MomentCreationDialogProps> = ({
           <button
             onClick={onClose}
             disabled={isCreating}
-            className="px-4 py-2 text-sm text-(--color-text-secondary) hover:text-(--color-text-primary) transition-colors disabled:opacity-50"
+            className={`${btn.base} ${btn.ghost} text-sm`}
           >
             Cancel
           </button>

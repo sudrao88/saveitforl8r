@@ -560,7 +560,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
 
         {/* Sticky bottom card */}
         <div
-          className="shrink-0 px-3 pt-1 max-w-3xl mx-auto w-full transition-[padding-bottom] duration-100"
+          className="shrink-0 px-3 pt-1 max-w-3xl mx-auto w-full transition-[padding-bottom] duration-(--duration-fast)"
           style={{ paddingBottom: keyboardHeight > 0 ? `${keyboardHeight}px` : 'max(0.75rem, var(--sab))' }}
         >
           <div className="bg-(--color-surface-overlay)/95 backdrop-blur-xl border border-(--color-border-default)/50 rounded-(--radius-xl) shadow-2xl shadow-black/40">

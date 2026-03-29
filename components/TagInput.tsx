@@ -37,12 +37,12 @@ const TagInput: React.FC<TagInputProps> = ({ tags, onTagsChange, compact = false
       <div className="space-y-2">
         <div className="flex flex-wrap items-center gap-1.5">
           {tags.map(tag => (
-            <span key={tag} className="bg-(--color-accent)/10 text-(--color-accent) border border-(--color-accent)/20 px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 animate-in fade-in zoom-in-50 duration-(--duration-fast)">
+            <span key={tag} className="bg-(--color-accent)/10 text-(--color-accent) border border-(--color-accent)/20 px-2.5 py-1 rounded-(--radius-lg) text-xs font-bold flex items-center gap-1.5 animate-in fade-in zoom-in-50 duration-(--duration-fast)">
               #{tag}
               <button onClick={() => removeTag(tag)} className="hover:text-(--color-accent) p-0.5 -m-0.5"><X size={12} /></button>
             </span>
           ))}
-          <div className="flex items-center gap-1.5 bg-(--color-surface-raised)/50 px-2.5 py-1 rounded-lg border border-(--color-border-subtle) focus-within:border-(--color-accent)/50 focus-within:bg-(--color-surface-raised) transition-all">
+          <div className="flex items-center gap-1.5 bg-(--color-surface-raised)/50 px-2.5 py-1 rounded-(--radius-lg) border border-(--color-border-subtle) focus-within:border-(--color-accent)/50 focus-within:bg-(--color-surface-raised) transition-all">
             <TagIcon size={14} className="text-(--color-text-tertiary)" />
             <input
               type="text"
@@ -83,12 +83,12 @@ const TagInput: React.FC<TagInputProps> = ({ tags, onTagsChange, compact = false
       <h3 className={text.label}>Tags</h3>
       <div className="flex flex-wrap items-center gap-2">
         {tags.map(tag => (
-          <span key={tag} className="bg-(--color-accent)/10 text-(--color-accent) border border-(--color-accent)/20 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 animate-in fade-in zoom-in-50 duration-(--duration-fast)">
+          <span key={tag} className="bg-(--color-accent)/10 text-(--color-accent) border border-(--color-accent)/20 px-4 py-2 rounded-(--radius-xl) text-sm font-bold flex items-center gap-2 animate-in fade-in zoom-in-50 duration-(--duration-fast)">
             #{tag}
             <button onClick={() => removeTag(tag)} className="hover:text-(--color-accent) p-1 -m-1"><X size={16} /></button>
           </span>
         ))}
-        <div className="flex items-center gap-2 bg-(--color-surface-raised)/50 px-4 py-2 rounded-2xl border border-(--color-border-subtle) focus-within:border-(--color-accent)/50 focus-within:bg-(--color-surface-raised) transition-all">
+        <div className="flex items-center gap-2 bg-(--color-surface-raised)/50 px-4 py-2 rounded-(--radius-xl) border border-(--color-border-subtle) focus-within:border-(--color-accent)/50 focus-within:bg-(--color-surface-raised) transition-all">
           <TagIcon size={18} className="text-(--color-text-tertiary)" />
           <input
             type="text"

@@ -11,7 +11,7 @@ const EmptyState: React.FC<EmptyStateProps> = ({ hasMemories, clearFilters }) =>
     <div className="h-[60vh] flex flex-col items-center justify-center text-center px-6 relative">
       {hasMemories ? (
         <div className="flex flex-col items-center animate-in fade-in zoom-in-95">
-          <div className="w-16 h-16 bg-(--color-surface-raised) rounded-2xl flex items-center justify-center mb-4 border border-(--color-border-default)">
+          <div className="w-16 h-16 bg-(--color-surface-raised) rounded-(--radius-xl) flex items-center justify-center mb-4 border border-(--color-border-default)">
              <span className="text-3xl">🔍</span>
           </div>
           <h3 className="text-xl font-bold text-(--color-text-primary)">No matching memories</h3>
