@@ -77,10 +77,10 @@ const MomentsStrip: React.FC<MomentsStripProps> = ({
           onClick={onCalendarTap}
           className="flex flex-col items-center gap-1.5 shrink-0 group touch-manipulation"
         >
-          <div className="w-16 h-16 rounded-full flex items-center justify-center bg-(--color-accent)/20 border-2 border-(--color-accent)/40 ring-2 ring-(--color-accent)/30 transition-all group-hover:ring-(--color-accent-hover) group-hover:bg-(--color-accent)/30 group-active:scale-95">
-            <Calendar size={22} className="text-(--color-accent)" />
+          <div className="w-16 h-16 rounded-full flex items-center justify-center bg-(--color-warning)/20 border-2 border-(--color-warning)/40 ring-2 ring-(--color-warning)/30 transition-all group-hover:ring-(--color-warning) group-hover:bg-(--color-warning)/30 group-active:scale-95">
+            <Calendar size={22} className="text-(--color-warning)" />
           </div>
-          <span className="text-xs font-semibold text-(--color-accent) leading-tight text-center">
+          <span className="text-xs font-semibold text-(--color-warning) leading-tight text-center">
             Calendar
           </span>
           <span className="text-xs text-(--color-text-tertiary) leading-tight">
