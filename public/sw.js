@@ -588,10 +588,52 @@ self.addEventListener('fetch', (event) => {
         return backgroundRevalidation.then(() => {
           return caches.match(shellUrl);
         }).then((response) => {
-          return response || new Response('Offline — please connect to the internet for initial setup.', {
-            status: 503,
-            headers: { 'Content-Type': 'text/plain' }
-          });
+          return response || new Response(
+            '<!DOCTYPE html>' +
+            '<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+            '<title>SaveItForL8R</title>' +
+            '<style>' +
+              'body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;' +
+                'background:#000;color:#f3f4f6;font-family:system-ui,sans-serif;text-align:center;padding:1.5rem}' +
+              '.container{max-width:24rem}' +
+              'h1{font-size:1.25rem;margin:0 0 .75rem}' +
+              'p{color:#9ca3af;font-size:.875rem;line-height:1.5;margin:0 0 1.5rem}' +
+              '.spinner{width:1.5rem;height:1.5rem;border:2px solid #374151;border-top-color:#2563eb;' +
+                'border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 1rem}' +
+              '@keyframes spin{to{transform:rotate(360deg)}}' +
+              'button{background:#2563eb;color:#f3f4f6;border:none;padding:.625rem 1.5rem;' +
+                'border-radius:.75rem;font-size:.875rem;cursor:pointer;transition:background .15s}' +
+              'button:hover{background:#3b82f6}' +
+              '.hidden{display:none}' +
+            '</style></head>' +
+            '<body><div class="container">' +
+              '<div class="spinner" id="spinner"></div>' +
+              '<h1>Connecting\u2026</h1>' +
+              '<p>The app is loading. This may take a moment if a deployment is in progress.</p>' +
+              '<p id="retry-msg" class="hidden">Still trying\u2026 <span id="countdown"></span></p>' +
+              '<button onclick="location.reload()">Retry Now</button>' +
+            '</div>' +
+            '<script>' +
+              'var attempt=0;' +
+              '(function retry(){' +
+                'attempt++;' +
+                'var delay=Math.min(3000*attempt,15000);' +
+                'if(attempt>1){' +
+                  'document.getElementById("retry-msg").classList.remove("hidden");' +
+                '}' +
+                'setTimeout(function(){' +
+                  'fetch("/",{cache:"no-store"}).then(function(r){' +
+                    'if(r.ok)location.reload();' +
+                    'else retry();' +
+                  '}).catch(retry);' +
+                '},delay);' +
+              '})();' +
+            '</script></body></html>',
+            {
+              status: 503,
+              headers: { 'Content-Type': 'text/html; charset=utf-8' }
+            }
+          );
         });
       })
     );
