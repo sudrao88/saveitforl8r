@@ -13,7 +13,7 @@ const config: CapacitorConfig = {
   },
   plugins: {
       Keyboard: {
-          resize: KeyboardResize.Body,
+          resize: KeyboardResize.None,
           style: KeyboardStyle.Dark,
           resizeOnFullScreen: true
       },

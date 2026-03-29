@@ -9,6 +9,8 @@ import { triggerHaptic } from '../services/platform';
 import FormattingToolbar from './FormattingToolbar';
 import TagInput from './TagInput';
 import { btn, zIndex } from '../styles/design-system';
+import { isNative } from '../services/platform';
+import { Keyboard } from '@capacitor/keyboard';
 import { ChecklistEditor } from './ChecklistItems';
 import useBeforeInputMarkdown from '../hooks/useBeforeInputMarkdown';
 
@@ -63,13 +65,24 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
     };
   }, []);
 
-  // Track iOS virtual keyboard via visualViewport API so the bar stays
-  // above the keyboard on the first open after a cold launch in standalone mode.
-  // We skip the initial measurement and only react to resize/scroll events to
-  // avoid a false-positive keyboard height during app startup in standalone mode
-  // (where visualViewport.height may momentarily differ from innerHeight).
-  // Debounced with rAF to avoid layout jitter during text selection on iOS.
+  // Track virtual keyboard height.
+  // Native apps use Capacitor Keyboard plugin events (visualViewport is unreliable
+  // in native webviews). PWA/browser falls back to the visualViewport API.
   useEffect(() => {
+    if (isNative()) {
+      const showHandle = Keyboard.addListener('keyboardWillShow', (info) => {
+        setKeyboardHeight(info.keyboardHeight);
+      });
+      const hideHandle = Keyboard.addListener('keyboardWillHide', () => {
+        setKeyboardHeight(0);
+      });
+      return () => {
+        showHandle.then(h => h.remove());
+        hideHandle.then(h => h.remove());
+      };
+    }
+
+    // PWA/browser: use visualViewport API
     const vv = window.visualViewport;
     if (!vv) return;
 
