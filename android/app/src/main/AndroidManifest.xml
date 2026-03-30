@@ -109,6 +109,7 @@
 
     <!-- Location hardware is optional (app works without it) -->
     <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+    <uses-feature android:name="android.hardware.location" android:required="false" />
 
     <!-- Camera hardware is optional (app works without it) -->
     <uses-feature android:name="android.hardware.camera" android:required="false" />
