@@ -201,11 +201,11 @@ export const useShareReceiver = () => {
         // Signal to iOS native code that the JS listener is ready.
         // If share data arrived before the listener was set up,
         // it will be stored on window.__pendingShareData — dispatch it now.
-        (window as any).__shareReceiverReady = true;
-        const pendingData = (window as any).__pendingShareData;
+        window.__shareReceiverReady = true;
+        const pendingData = window.__pendingShareData;
         if (pendingData) {
             console.log('[ShareReceiver] Found pending share data from native');
-            delete (window as any).__pendingShareData;
+            delete window.__pendingShareData;
             window.dispatchEvent(new CustomEvent('onShareReceived', { detail: pendingData }));
         }
 
@@ -216,7 +216,7 @@ export const useShareReceiver = () => {
 
         return () => {
             window.removeEventListener('onShareReceived', handleNativeShare);
-            (window as any).__shareReceiverReady = false;
+            window.__shareReceiverReady = false;
         };
     } else {
         checkForWebShare();
