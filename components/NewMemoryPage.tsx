@@ -125,9 +125,23 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
     }
   }, []);
 
-  // Track virtual keyboard via visualViewport API so toolbar stays above it.
-  // Debounced with rAF to avoid layout jitter during text selection on iOS.
+  // Track virtual keyboard height.
+  // Native apps use Capacitor Keyboard plugin events (visualViewport is unreliable
+  // in native webviews). PWA/browser falls back to the visualViewport API.
   useEffect(() => {
+    if (isNative()) {
+      const showHandle = Keyboard.addListener('keyboardWillShow', (info) => {
+        setKeyboardHeight(info.keyboardHeight);
+      });
+      const hideHandle = Keyboard.addListener('keyboardWillHide', () => {
+        setKeyboardHeight(0);
+      });
+      return () => {
+        showHandle.then(h => h.remove());
+        hideHandle.then(h => h.remove());
+      };
+    }
+
     const vv = window.visualViewport;
     if (!vv) return;
 

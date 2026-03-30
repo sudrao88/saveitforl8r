@@ -3,6 +3,8 @@ import { X, Send, BrainCircuit, ExternalLink, Bot, Sparkles, WifiOff, Download, 
 import { Memory, Attachment, ChatMessage } from '../types';
 import MemoryPreviewModal from './MemoryPreviewModal';
 import { btn, overlay } from '../styles/design-system';
+import { isNative } from '../services/platform';
+import { Keyboard } from '@capacitor/keyboard';
 
 interface ChatInterfaceProps {
   memories: Memory[];
@@ -36,6 +38,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [viewport, setViewport] = useState({ height: '100dvh', top: 0 });
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
 
   const scrollToBottom = () => {
     if (messagesEndRef.current) {
@@ -48,7 +51,26 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
     const originalStyle = window.getComputedStyle(document.body).overflow;
     document.body.style.overflow = 'hidden';
 
-    // Visual Viewport logic for mobile keyboards
+    if (isNative()) {
+      // Native: use Capacitor Keyboard plugin events
+      const showHandle = Keyboard.addListener('keyboardWillShow', (info) => {
+        setKeyboardHeight(info.keyboardHeight);
+        setTimeout(scrollToBottom, 100);
+      });
+      const hideHandle = Keyboard.addListener('keyboardWillHide', () => {
+        setKeyboardHeight(0);
+      });
+
+      setTimeout(scrollToBottom, 100);
+
+      return () => {
+        document.body.style.overflow = originalStyle;
+        showHandle.then(h => h.remove());
+        hideHandle.then(h => h.remove());
+      };
+    }
+
+    // PWA/browser: Visual Viewport logic for mobile keyboards
     const handleResize = () => {
         if (window.visualViewport) {
             setViewport({
@@ -272,10 +294,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
       </div>
 
       {/* Input Area */}
-      <div 
+      <div
         className="flex-none w-full bg-black border-t border-(--color-border-default) shrink-0 z-(--z-dropdown)"
-        style={{ 
-            paddingBottom: 'max(1rem, var(--sab))',
+        style={{
+            paddingBottom: keyboardHeight > 0 ? `${keyboardHeight}px` : 'max(1rem, var(--sab))',
             paddingTop: '1rem',
             paddingLeft: '1rem',
             paddingRight: '1rem'

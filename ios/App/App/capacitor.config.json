@@ -41,6 +41,7 @@
 		"LocalNotificationsPlugin",
 		"PreferencesPlugin",
 		"SharePlugin",
-		"StatusBarPlugin"
+		"StatusBarPlugin",
+		"PushNotificationsPlugin"
 	]
 }
