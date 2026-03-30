@@ -194,9 +194,20 @@ export const useShareReceiver = () => {
   useEffect(() => {
     if (isNative()) {
         console.log('[ShareReceiver] Setting up native listener');
-        
-        // Listen for the custom event dispatched by MainActivity
+
+        // Listen for the custom event dispatched by native code
         window.addEventListener('onShareReceived', handleNativeShare);
+
+        // Signal to iOS native code that the JS listener is ready.
+        // If share data arrived before the listener was set up,
+        // it will be stored on window.__pendingShareData — dispatch it now.
+        (window as any).__shareReceiverReady = true;
+        const pendingData = (window as any).__pendingShareData;
+        if (pendingData) {
+            console.log('[ShareReceiver] Found pending share data from native');
+            delete (window as any).__pendingShareData;
+            window.dispatchEvent(new CustomEvent('onShareReceived', { detail: pendingData }));
+        }
 
         if (!hasSignaledReady.current) {
             hasSignaledReady.current = true;
@@ -205,6 +216,7 @@ export const useShareReceiver = () => {
 
         return () => {
             window.removeEventListener('onShareReceived', handleNativeShare);
+            (window as any).__shareReceiverReady = false;
         };
     } else {
         checkForWebShare();
