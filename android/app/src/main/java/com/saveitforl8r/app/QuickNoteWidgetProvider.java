@@ -21,14 +21,14 @@ import android.widget.RemoteViews;
 public class QuickNoteWidgetProvider extends AppWidgetProvider {
 
     /**
-     * Custom action for widget quick-note intents. Using an explicit action
+     * Custom actions for widget quick-note intents. Using explicit actions
      * instead of ACTION_VIEW with a custom URI scheme avoids Samsung One UI
      * intercepting the intent through its link handler/browser.
+     * Separate actions per mode allow FLAG_IMMUTABLE PendingIntents.
      */
-    public static final String ACTION_QUICK_NOTE = "com.saveitforl8r.app.ACTION_QUICK_NOTE";
-
-    /** Intent extra key for the capture mode (camera, document, or absent for text). */
-    public static final String EXTRA_MODE = "com.saveitforl8r.app.EXTRA_MODE";
+    public static final String ACTION_QUICK_NOTE_TEXT = "com.saveitforl8r.app.ACTION_QUICK_NOTE_TEXT";
+    public static final String ACTION_QUICK_NOTE_CAMERA = "com.saveitforl8r.app.ACTION_QUICK_NOTE_CAMERA";
+    public static final String ACTION_QUICK_NOTE_DOCUMENT = "com.saveitforl8r.app.ACTION_QUICK_NOTE_DOCUMENT";
 
     @Override
     public void onUpdate(Context context, AppWidgetManager appWidgetManager, int[] appWidgetIds) {
@@ -65,9 +65,10 @@ public class QuickNoteWidgetProvider extends AppWidgetProvider {
     /**
      * Builds a PendingIntent that launches the app's quick-note handler.
      *
-     * Uses an explicit intent with a custom action and extras instead of
+     * Uses an explicit intent with a distinct action per mode instead of
      * ACTION_VIEW with a URI scheme. This is more reliable on Samsung One UI
      * devices which can intercept ACTION_VIEW intents through their link handler.
+     * Distinct actions allow using FLAG_IMMUTABLE for better security.
      *
      * @param context      Application context
      * @param requestCode  Unique request code for the PendingIntent
@@ -75,15 +76,20 @@ public class QuickNoteWidgetProvider extends AppWidgetProvider {
      */
     private static PendingIntent buildQuickNotePendingIntent(Context context, int requestCode, String mode) {
         Intent intent = new Intent(context, MainActivity.class);
-        intent.setAction(ACTION_QUICK_NOTE);
-        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
 
-        if (mode != null) {
-            intent.putExtra(EXTRA_MODE, mode);
+        String action;
+        if ("camera".equals(mode)) {
+            action = ACTION_QUICK_NOTE_CAMERA;
+        } else if ("document".equals(mode)) {
+            action = ACTION_QUICK_NOTE_DOCUMENT;
+        } else {
+            action = ACTION_QUICK_NOTE_TEXT;
         }
+        intent.setAction(action);
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
 
         return PendingIntent.getActivity(
                 context, requestCode, intent,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE);
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
 }
