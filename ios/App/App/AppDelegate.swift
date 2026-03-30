@@ -79,6 +79,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
         // Apply downloaded OTA update if available
         applyDownloadedUpdateIfExists(vc: vc)
+
+        // If share data arrived before the bridge was ready, dispatch it now
+        if pendingShareDispatch {
+            pendingShareDispatch = false
+            dispatchShareDataToJS()
+        }
     }
 
     // MARK: - OTA Update Management
@@ -209,12 +215,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
-        // Check for pending share data when app becomes active
-        if pendingShareDispatch {
+        // Check for pending share data when app becomes active.
+        // If the bridge is already set up, dispatch immediately.
+        // If not, leave the flag so setupBridge() dispatches after bridge init.
+        if pendingShareDispatch && bridgeSetUp {
             pendingShareDispatch = false
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-                self?.dispatchShareDataToJS()
-            }
+            dispatchShareDataToJS()
         }
 
         // Check for pending widget event
@@ -288,6 +294,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     // MARK: - Share Extension Data Dispatch
 
+    // Retry counter for share dispatch (JS listener may not be registered yet)
+    private var shareDispatchRetries = 0
+    private let maxShareDispatchRetries = 10  // 10 * 0.5s = 5 seconds max
+
     private func dispatchShareDataToJS() {
         guard let userDefaults = UserDefaults(suiteName: appGroupId),
               let jsonString = userDefaults.string(forKey: shareKey) else {
@@ -295,14 +305,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             return
         }
 
-        // Clear the share data immediately to prevent re-processing
-        userDefaults.removeObject(forKey: shareKey)
-
         print("[Share] Dispatching share data to JS: \(jsonString.prefix(100))...")
 
         // Dispatch to WebView via Capacitor bridge
-        guard let bridge = bridgeViewController?.bridge else {
-            print("[Share] Bridge not available")
+        guard let bridge = bridgeViewController?.bridge,
+              let webView = bridge.webView else {
+            print("[Share] Bridge not available, will retry after bridge setup")
+            pendingShareDispatch = true
             return
         }
 
@@ -313,12 +322,43 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         }
         let base64 = jsonData.base64EncodedString()
 
-        let js = "window.dispatchEvent(new CustomEvent('onShareReceived', { detail: JSON.parse(atob('\(base64)')) }));"
-        bridge.webView?.evaluateJavaScript(js) { _, error in
+        // Use a JS function that checks whether the listener is ready.
+        // If window.__shareReceiverReady is set, dispatch immediately.
+        // Otherwise, store on window for the listener to pick up on mount.
+        let js = """
+        (function() {
+            var data = JSON.parse(atob('\(base64)'));
+            if (window.__shareReceiverReady) {
+                window.dispatchEvent(new CustomEvent('onShareReceived', { detail: data }));
+                return 'dispatched';
+            } else {
+                window.__pendingShareData = data;
+                return 'queued';
+            }
+        })();
+        """
+        webView.evaluateJavaScript(js) { [weak self] result, error in
+            guard let self = self else { return }
             if let error = error {
                 print("[Share] JS dispatch error: \(error)")
-            } else {
-                print("[Share] Share data dispatched to JS successfully")
+                // Retry if WebView isn't ready yet (e.g., page still loading)
+                if self.shareDispatchRetries < self.maxShareDispatchRetries {
+                    self.shareDispatchRetries += 1
+                    print("[Share] Retrying dispatch (\(self.shareDispatchRetries)/\(self.maxShareDispatchRetries))...")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        self.dispatchShareDataToJS()
+                    }
+                }
+                return
+            }
+
+            let status = result as? String ?? "unknown"
+            print("[Share] Share data \(status) successfully")
+            self.shareDispatchRetries = 0
+
+            // Clear share data from UserDefaults only after successful dispatch/queue
+            if let userDefaults = UserDefaults(suiteName: self.appGroupId) {
+                userDefaults.removeObject(forKey: self.shareKey)
             }
         }
     }

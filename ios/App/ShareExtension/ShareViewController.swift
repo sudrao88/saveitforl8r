@@ -1,25 +1,21 @@
 import UIKit
-import Social
 import MobileCoreServices
 import UniformTypeIdentifiers
 
-class ShareViewController: SLComposeServiceViewController {
+class ShareViewController: UIViewController {
 
     private let appGroupId = "group.com.saveitforl8r.app"
     private let shareKey = "ShareExtensionData"
 
-    override func isContentValid() -> Bool {
-        return true
-    }
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        // Make the extension view fully transparent so the user sees
+        // a seamless transition to the main app without any popup.
+        view.backgroundColor = .clear
 
-    override func didSelectPost() {
         handleShare { [weak self] in
             self?.extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
         }
-    }
-
-    override func configurationItems() -> [Any]! {
-        return []
     }
 
     private func handleShare(completion: @escaping () -> Void) {
@@ -29,7 +25,7 @@ class ShareViewController: SLComposeServiceViewController {
         }
 
         let serialQueue = DispatchQueue(label: "com.saveitforl8r.share.serial")
-        var shareText = contentText ?? ""
+        var shareText = ""
         var attachments: [[String: String]] = []
         let group = DispatchGroup()
 
