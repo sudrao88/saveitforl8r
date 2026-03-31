@@ -55,9 +55,32 @@ export const useWidgetDeepLink = (handlers: WidgetDeepLinkHandlers) => {
   useEffect(() => {
     if (!isNative()) return;
 
-    window.addEventListener('onWidgetQuickNote', handleWidgetEvent);
+    // Unified handler for both warm launch (event listener) and cold launch
+    // (__pendingWidgetEvent). Always clears the window flag to prevent
+    // duplicate processing on remount.
+    const processWidgetEvent = (event?: Event) => {
+      const detail = event
+        ? (event as CustomEvent<WidgetQuickNoteEvent>).detail
+        : window.__pendingWidgetEvent;
+
+      if (window.__pendingWidgetEvent) {
+        delete window.__pendingWidgetEvent;
+      }
+
+      if (detail) {
+        handleWidgetEvent(new CustomEvent('onWidgetQuickNote', { detail }));
+      }
+    };
+
+    window.addEventListener('onWidgetQuickNote', processWidgetEvent);
+
+    // Handle events that arrived before the listener was attached (cold launch)
+    if (window.__pendingWidgetEvent) {
+      processWidgetEvent();
+    }
+
     return () => {
-      window.removeEventListener('onWidgetQuickNote', handleWidgetEvent);
+      window.removeEventListener('onWidgetQuickNote', processWidgetEvent);
     };
   }, [handleWidgetEvent]);
 };

@@ -288,7 +288,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     private func dispatchWidgetEvent(_ eventDetail: String) {
-        guard let bridge = bridgeViewController?.bridge else {
+        guard let bridge = bridgeViewController?.bridge,
+              let webView = bridge.webView else {
             // Queue for later dispatch
             pendingWidgetEvent = eventDetail
             return
@@ -296,14 +297,29 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
         // Special case: search deep link
         if eventDetail == "__search__" {
-            let js = "window.dispatchEvent(new CustomEvent('onWidgetSearch'));"
-            bridge.webView?.evaluateJavaScript(js, completionHandler: nil)
+            // Use the same handshake pattern as share data: store on window
+            // so the JS hook can pick it up if it hasn't mounted yet.
+            let js = """
+            (function() {
+                window.dispatchEvent(new CustomEvent('onWidgetSearch'));
+                window.__pendingWidgetSearch = true;
+            })();
+            """
+            webView.evaluateJavaScript(js, completionHandler: nil)
             return
         }
 
         let base64 = Data(eventDetail.utf8).base64EncodedString()
-        let js = "window.dispatchEvent(new CustomEvent('onWidgetQuickNote', { detail: JSON.parse(atob('\(base64)')) }));"
-        bridge.webView?.evaluateJavaScript(js) { _, error in
+        // Store on window AND dispatch event. If the JS listener is mounted,
+        // the event fires. If not, the hook picks up __pendingWidgetEvent on mount.
+        let js = """
+        (function() {
+            var data = JSON.parse(atob('\(base64)'));
+            window.__pendingWidgetEvent = data;
+            window.dispatchEvent(new CustomEvent('onWidgetQuickNote', { detail: data }));
+        })();
+        """
+        webView.evaluateJavaScript(js) { _, error in
             if let error = error {
                 print("[Widget] JS dispatch error: \(error)")
             } else {
@@ -339,12 +355,41 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             return
         }
 
-        // Encode as Base64 to avoid JS string injection issues with user-controlled content
-        guard let jsonData = jsonString.data(using: .utf8) else {
-            print("[Share] Failed to encode share data")
+        // Pre-process attachments: read files and convert to base64 data URLs
+        // on the native side so JS doesn't need to fetch file paths that may
+        // be cleaned up by iOS before JS can access them (cold-start race condition).
+        guard let jsonData = jsonString.data(using: .utf8),
+              var shareDict = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {
+            print("[Share] Failed to parse share data")
             return
         }
-        let base64 = jsonData.base64EncodedString()
+
+        if let attachments = shareDict["attachments"] as? [[String: String]] {
+            var enriched: [[String: String]] = []
+            for att in attachments {
+                var enrichedAtt = att
+                if let path = att["path"], let mimeType = att["mimeType"] {
+                    let fileURL = URL(fileURLWithPath: path)
+                    if let fileData = try? Data(contentsOf: fileURL) {
+                        let dataUrl = "data:\(mimeType);base64,\(fileData.base64EncodedString())"
+                        enrichedAtt["dataUrl"] = dataUrl
+                        print("[Share] Pre-encoded attachment: \(att["name"] ?? "unknown") (\(fileData.count) bytes)")
+                    } else {
+                        print("[Share] Failed to read attachment file: \(path)")
+                    }
+                }
+                enriched.append(enrichedAtt)
+            }
+            shareDict["attachments"] = enriched
+        }
+
+        guard let enrichedData = try? JSONSerialization.data(withJSONObject: shareDict),
+              let enrichedJson = String(data: enrichedData, encoding: .utf8) else {
+            print("[Share] Failed to re-encode share data")
+            return
+        }
+
+        let base64 = Data(enrichedJson.utf8).base64EncodedString()
 
         // Use a JS function that checks whether the listener is ready.
         // If window.__shareReceiverReady is set, dispatch immediately.

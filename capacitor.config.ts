@@ -24,10 +24,9 @@ const config: CapacitorConfig = {
       },
       SplashScreen: {
           launchShowDuration: 0,
-          launchAutoHide: true,
+          launchAutoHide: false,
           backgroundColor: "#000000",
           androidSplashResourceName: "splash",
-          iosSplashResourceName: "Splash",
           showSpinner: false,
       },
       LocalNotifications: {

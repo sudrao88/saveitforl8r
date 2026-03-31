@@ -12,13 +12,17 @@ export interface ShareData {
 
 // AndroidBridge global type is declared in index.tsx
 
+interface NativeShareAttachment {
+  name: string;
+  mimeType: string;
+  path: string;
+  /** Pre-encoded base64 data URL from native (iOS). When present, skip file fetch. */
+  dataUrl?: string;
+}
+
 interface NativeShareData {
   text?: string;
-  attachments?: Array<{
-    name: string;
-    mimeType: string;
-    path: string;
-  }>;
+  attachments?: NativeShareAttachment[];
 }
 
 // Maximum blob size for shared images (50MB)
@@ -62,26 +66,35 @@ export const useShareReceiver = () => {
 
     for (const att of rawAttachments) {
         try {
-            // Convert the file path to a web-accessible URL
-            // Android: file:///... paths, iOS: absolute paths from app group container
-            const filePath = att.path.startsWith('file://') ? att.path : `file://${att.path}`;
-            const webPath = Capacitor.convertFileSrc(filePath);
-            console.log('[ShareReceiver] Reading attachment from:', webPath);
+            let base64: string;
 
-            const response = await fetch(webPath);
-            const blob = await response.blob();
-            
-            if (blob.size > MAX_BLOB_SIZE) {
-                console.warn('[ShareReceiver] File too large, skipping:', blob.size);
-                continue;
+            if (att.dataUrl) {
+                // Pre-encoded by native (iOS) — no file I/O needed.
+                // This avoids the cold-start race where iOS cleans up
+                // app group files before JS can fetch them.
+                console.log('[ShareReceiver] Using pre-encoded data for:', att.name);
+                base64 = att.dataUrl;
+            } else {
+                // Fallback: fetch from file path (Android, or legacy iOS path)
+                const filePath = att.path.startsWith('file://') ? att.path : `file://${att.path}`;
+                const webPath = Capacitor.convertFileSrc(filePath);
+                console.log('[ShareReceiver] Reading attachment from:', webPath);
+
+                const response = await fetch(webPath);
+                const blob = await response.blob();
+
+                if (blob.size > MAX_BLOB_SIZE) {
+                    console.warn('[ShareReceiver] File too large, skipping:', blob.size);
+                    continue;
+                }
+
+                base64 = await new Promise<string>((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = e => resolve(e.target?.result as string);
+                    reader.onerror = () => reject(new Error('FileReader error'));
+                    reader.readAsDataURL(blob);
+                });
             }
-
-            const reader = new FileReader();
-            const base64 = await new Promise<string>((resolve, reject) => {
-                reader.onload = e => resolve(e.target?.result as string);
-                reader.onerror = () => reject(new Error('FileReader error'));
-                reader.readAsDataURL(blob);
-            });
 
             processedAttachments.push({
                 id: crypto.randomUUID(),
