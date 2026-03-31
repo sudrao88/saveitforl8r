@@ -36,6 +36,7 @@
 		"AppPlugin",
 		"CAPBrowserPlugin",
 		"FilesystemPlugin",
+		"GeolocationPlugin",
 		"HapticsPlugin",
 		"KeyboardPlugin",
 		"LocalNotificationsPlugin",

@@ -669,7 +669,32 @@ const AppContent: React.FC = () => {
   }, []);
 
   const handleQuickNoteSave = useCallback(async (text: string, attachments: Attachment[], tags: string[]) => {
-    await createMemory(text, attachments, tags);
+    let location: { latitude: number; longitude: number; accuracy?: number } | undefined;
+    try {
+      if (isNative()) {
+        const { Geolocation } = await import('@capacitor/geolocation');
+        const pos = await Promise.race([
+          Geolocation.getCurrentPosition({ timeout: 5000 }),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
+        ]);
+        if (pos) {
+          location = { latitude: pos.coords.latitude, longitude: pos.coords.longitude, accuracy: pos.coords.accuracy };
+        }
+      } else if (navigator.geolocation) {
+        const pos = await Promise.race([
+          new Promise<GeolocationPosition>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
+          }),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
+        ]) as GeolocationPosition | null;
+        if (pos) {
+          location = { latitude: pos.coords.latitude, longitude: pos.coords.longitude, accuracy: pos.coords.accuracy };
+        }
+      }
+    } catch (e) {
+      console.warn('QuickNote location unavailable', e);
+    }
+    await createMemory(text, attachments, tags, location);
     logEvent(ANALYTICS_EVENTS.QUICK_NOTE.CATEGORY, ANALYTICS_EVENTS.QUICK_NOTE.ACTION_SAVED);
   }, [createMemory]);
 

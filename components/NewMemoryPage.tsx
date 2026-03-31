@@ -5,6 +5,7 @@ import { marked } from 'marked';
 import { Attachment, Memory } from '../types';
 import { isNative } from '../services/platform';
 import { Keyboard } from '@capacitor/keyboard';
+import { Geolocation } from '@capacitor/geolocation';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { escapeHtml, looksLikeMarkdown, parseChecklistMarkdown, sanitizePastedHtml, hasRichFormatting, extractHashtags, mergeTagsWithHashtags, containsUrl, linkifyUrls, handleEditorKeyDown, checkActiveFormats, execFormatCommand, formatsEqual, isEditorEmpty } from '../utils/editorUtils';
 import { processFileInputs } from '../utils/attachmentUtils';
@@ -387,21 +388,34 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
       // Only fetch location for new memories, not edits
       if (!isEditMode) {
         try {
-          if (navigator.geolocation) {
-              const pos = await Promise.race([
-                  new Promise<GeolocationPosition>((resolve, reject) => {
-                      navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
-                  }),
-                  new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000))
-              ]) as GeolocationPosition | null;
-
-              if (pos) {
-                  location = {
-                      latitude: pos.coords.latitude,
-                      longitude: pos.coords.longitude,
-                      accuracy: pos.coords.accuracy
-                  };
-              }
+          if (isNative()) {
+            // Use Capacitor Geolocation plugin on native to trigger the
+            // iOS "While Using App" permission dialog and access native GPS
+            const pos = await Promise.race([
+              Geolocation.getCurrentPosition({ timeout: 5000 }),
+              new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000))
+            ]);
+            if (pos) {
+              location = {
+                latitude: pos.coords.latitude,
+                longitude: pos.coords.longitude,
+                accuracy: pos.coords.accuracy,
+              };
+            }
+          } else if (navigator.geolocation) {
+            const pos = await Promise.race([
+              new Promise<GeolocationPosition>((resolve, reject) => {
+                navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
+              }),
+              new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000))
+            ]) as GeolocationPosition | null;
+            if (pos) {
+              location = {
+                latitude: pos.coords.latitude,
+                longitude: pos.coords.longitude,
+                accuracy: pos.coords.accuracy,
+              };
+            }
           }
         } catch (e) {
           console.warn("Location access denied or unavailable", e);
