@@ -56,6 +56,15 @@ export const useWidgetDeepLink = (handlers: WidgetDeepLinkHandlers) => {
     if (!isNative()) return;
 
     window.addEventListener('onWidgetQuickNote', handleWidgetEvent);
+
+    // Check for a pending widget event that arrived before this hook mounted
+    // (e.g., cold launch from widget). Consume and clear it.
+    if (window.__pendingWidgetEvent) {
+      const pending = window.__pendingWidgetEvent;
+      delete window.__pendingWidgetEvent;
+      handleWidgetEvent(new CustomEvent('onWidgetQuickNote', { detail: pending }));
+    }
+
     return () => {
       window.removeEventListener('onWidgetQuickNote', handleWidgetEvent);
     };

@@ -740,6 +740,13 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     const handler = () => setView(ViewMode.RECALL);
     window.addEventListener('onWidgetSearch', handler);
+
+    // Check for pending search event from cold launch
+    if (window.__pendingWidgetSearch) {
+      delete window.__pendingWidgetSearch;
+      handler();
+    }
+
     return () => window.removeEventListener('onWidgetSearch', handler);
   }, []);
 

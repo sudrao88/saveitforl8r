@@ -26,6 +26,8 @@ declare global {
     };
     __shareReceiverReady?: boolean;
     __pendingShareData?: { text?: string; attachments?: Array<{ name: string; mimeType: string; path: string }> };
+    __pendingWidgetEvent?: { mode?: string };
+    __pendingWidgetSearch?: boolean;
   }
 }
 
@@ -43,8 +45,14 @@ root.render(
 
 // Dismiss native splash screen immediately after React mounts.
 // requestAnimationFrame ensures the first paint has been committed.
-requestAnimationFrame(() => {
+requestAnimationFrame(async () => {
   try {
     window.AndroidBridge?.signalAppReady();
   } catch (e) { console.warn('[Splash] Failed to signal app ready:', e); }
+
+  // Hide Capacitor splash screen on iOS after first paint
+  try {
+    const { SplashScreen } = await import('@capacitor/splash-screen');
+    SplashScreen.hide({ fadeOutDuration: 200 });
+  } catch (e) { /* not on native */ }
 });

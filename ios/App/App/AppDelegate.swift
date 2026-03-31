@@ -288,7 +288,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     private func dispatchWidgetEvent(_ eventDetail: String) {
-        guard let bridge = bridgeViewController?.bridge else {
+        guard let bridge = bridgeViewController?.bridge,
+              let webView = bridge.webView else {
             // Queue for later dispatch
             pendingWidgetEvent = eventDetail
             return
@@ -296,14 +297,29 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
         // Special case: search deep link
         if eventDetail == "__search__" {
-            let js = "window.dispatchEvent(new CustomEvent('onWidgetSearch'));"
-            bridge.webView?.evaluateJavaScript(js, completionHandler: nil)
+            // Use the same handshake pattern as share data: store on window
+            // so the JS hook can pick it up if it hasn't mounted yet.
+            let js = """
+            (function() {
+                window.dispatchEvent(new CustomEvent('onWidgetSearch'));
+                window.__pendingWidgetSearch = true;
+            })();
+            """
+            webView.evaluateJavaScript(js, completionHandler: nil)
             return
         }
 
         let base64 = Data(eventDetail.utf8).base64EncodedString()
-        let js = "window.dispatchEvent(new CustomEvent('onWidgetQuickNote', { detail: JSON.parse(atob('\(base64)')) }));"
-        bridge.webView?.evaluateJavaScript(js) { _, error in
+        // Store on window AND dispatch event. If the JS listener is mounted,
+        // the event fires. If not, the hook picks up __pendingWidgetEvent on mount.
+        let js = """
+        (function() {
+            var data = JSON.parse(atob('\(base64)'));
+            window.__pendingWidgetEvent = data;
+            window.dispatchEvent(new CustomEvent('onWidgetQuickNote', { detail: data }));
+        })();
+        """
+        webView.evaluateJavaScript(js) { _, error in
             if let error = error {
                 print("[Widget] JS dispatch error: \(error)")
             } else {
