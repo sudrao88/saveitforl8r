@@ -241,6 +241,23 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     private var pendingWidgetEvent: String? = nil
 
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
+        // Handle widget "open app" — just bring the app to foreground
+        if url.scheme == "com.saveitforl8r.app" && url.host == "open" {
+            return true
+        }
+
+        // Handle widget "search" — open chat interface
+        if url.scheme == "com.saveitforl8r.app" && url.host == "search" {
+            print("[Widget] Received search deep link")
+            let js = "window.dispatchEvent(new CustomEvent('onWidgetSearch'));"
+            if let webView = bridgeViewController?.bridge?.webView {
+                webView.evaluateJavaScript(js, completionHandler: nil)
+            } else {
+                pendingWidgetEvent = "__search__"
+            }
+            return true
+        }
+
         // Handle share extension URL scheme
         if url.scheme == "com.saveitforl8r.app" && url.host == "share" {
             print("[Share] Received share URL, will dispatch to JS")
@@ -274,6 +291,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         guard let bridge = bridgeViewController?.bridge else {
             // Queue for later dispatch
             pendingWidgetEvent = eventDetail
+            return
+        }
+
+        // Special case: search deep link
+        if eventDetail == "__search__" {
+            let js = "window.dispatchEvent(new CustomEvent('onWidgetSearch'));"
+            bridge.webView?.evaluateJavaScript(js, completionHandler: nil)
             return
         }
 

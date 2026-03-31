@@ -3,6 +3,8 @@ import { X, Send, BrainCircuit, ExternalLink, Bot, Sparkles, WifiOff, Download, 
 import { Memory, Attachment, ChatMessage } from '../types';
 import MemoryPreviewModal from './MemoryPreviewModal';
 import { btn, overlay } from '../styles/design-system';
+import { isNative } from '../services/platform';
+import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 
 interface ChatInterfaceProps {
   memories: Memory[];
@@ -43,36 +45,44 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
     }
   };
 
+  const keyboardHeight = useKeyboardHeight({
+    onShow: () => setTimeout(scrollToBottom, 100),
+  });
+
   useEffect(() => {
     // Lock body scroll
     const originalStyle = window.getComputedStyle(document.body).overflow;
     document.body.style.overflow = 'hidden';
 
-    // Visual Viewport logic for mobile keyboards
-    const handleResize = () => {
-        if (window.visualViewport) {
-            setViewport({
-                height: `${window.visualViewport.height}px`,
-                top: window.visualViewport.offsetTop
-            });
-            setTimeout(scrollToBottom, 100);
-        }
-    };
+    if (isNative()) {
+      // Focus after a tick so the keyboard listener in useKeyboardHeight
+      // is registered before the keyboard opens
+      setTimeout(() => textareaRef.current?.focus(), 100);
+    }
 
-    if (window.visualViewport) {
-        window.visualViewport.addEventListener('resize', handleResize);
-        window.visualViewport.addEventListener('scroll', handleResize);
-        handleResize();
+    if (!isNative() && window.visualViewport) {
+      const handleResize = () => {
+        setViewport({
+          height: `${window.visualViewport!.height}px`,
+          top: window.visualViewport!.offsetTop
+        });
+        setTimeout(scrollToBottom, 100);
+      };
+      window.visualViewport.addEventListener('resize', handleResize);
+      window.visualViewport.addEventListener('scroll', handleResize);
+      handleResize();
+
+      return () => {
+        document.body.style.overflow = originalStyle;
+        window.visualViewport?.removeEventListener('resize', handleResize);
+        window.visualViewport?.removeEventListener('scroll', handleResize);
+      };
     }
 
     setTimeout(scrollToBottom, 100);
 
     return () => {
       document.body.style.overflow = originalStyle;
-      if (window.visualViewport) {
-          window.visualViewport.removeEventListener('resize', handleResize);
-          window.visualViewport.removeEventListener('scroll', handleResize);
-      }
     };
   }, []);
 
@@ -177,7 +187,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
 
     <div
         className="fixed left-0 right-0 z-(--z-modal) flex flex-col overflow-hidden bg-black"
-        style={{ height: viewport.height, top: viewport.top }}
+        style={{
+          height: keyboardHeight > 0 ? `calc(100dvh - ${keyboardHeight}px)` : viewport.height,
+          top: viewport.top
+        }}
     >
       {/* Header */}
       <div className="flex-none border-b border-(--color-border-default) px-4 pb-3 pt-[calc(0.75rem+var(--sat))] flex items-center justify-between bg-black z-(--z-sticky) shadow-sm shrink-0">
@@ -272,10 +285,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
       </div>
 
       {/* Input Area */}
-      <div 
-        className="flex-none w-full bg-black border-t border-(--color-border-default) shrink-0 z-(--z-dropdown)"
-        style={{ 
-            paddingBottom: 'max(1rem, var(--sab))',
+      <div
+        className="flex-none w-full bg-black shrink-0 z-(--z-dropdown)"
+        style={{
+            paddingBottom: keyboardHeight > 0 ? '0.5rem' : 'max(1rem, var(--sab))',
             paddingTop: '1rem',
             paddingLeft: '1rem',
             paddingRight: '1rem'
@@ -284,7 +297,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
         <div className="max-w-4xl mx-auto flex items-end gap-3 bg-(--color-surface-raised) px-4 py-2 rounded-(--radius-xl) border border-(--color-border-default) focus-within:border-(--color-accent) focus-within:ring-1 focus-within:ring-(--color-accent) transition-all shadow-sm">
             <textarea
                 ref={textareaRef}
-                autoFocus
+                autoFocus={!isNative()}
                 rows={1}
                 className="w-full text-base font-medium focus:outline-none bg-transparent placeholder-(--color-text-tertiary) border-none text-(--color-text-primary) py-2 resize-none max-h-32"
                 placeholder="Ask your second brain..."

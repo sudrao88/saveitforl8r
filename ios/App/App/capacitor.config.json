@@ -10,9 +10,14 @@
 	},
 	"plugins": {
 		"Keyboard": {
-			"resize": "body",
+			"resize": "none",
 			"style": "DARK",
 			"resizeOnFullScreen": true
+		},
+		"StatusBar": {
+			"style": "DARK",
+			"backgroundColor": "#000000",
+			"overlaysWebView": true
 		},
 		"SplashScreen": {
 			"launchShowDuration": 0,
@@ -36,6 +41,7 @@
 		"LocalNotificationsPlugin",
 		"PreferencesPlugin",
 		"SharePlugin",
-		"StatusBarPlugin"
+		"StatusBarPlugin",
+		"PushNotificationsPlugin"
 	]
 }

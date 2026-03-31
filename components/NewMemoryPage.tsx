@@ -5,6 +5,7 @@ import { marked } from 'marked';
 import { Attachment, Memory } from '../types';
 import { isNative } from '../services/platform';
 import { Keyboard } from '@capacitor/keyboard';
+import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { escapeHtml, looksLikeMarkdown, parseChecklistMarkdown, sanitizePastedHtml, hasRichFormatting, extractHashtags, mergeTagsWithHashtags, containsUrl, linkifyUrls, handleEditorKeyDown, checkActiveFormats, execFormatCommand, formatsEqual, isEditorEmpty } from '../utils/editorUtils';
 import { processFileInputs } from '../utils/attachmentUtils';
 import FormattingToolbar from './FormattingToolbar';
@@ -115,7 +116,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
     return [];
   });
 
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const keyboardHeight = useKeyboardHeight();
 
   useEffect(() => {
     // Ensure keyboard pushes content up on native
@@ -123,28 +124,6 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
       Keyboard.setAccessoryBarVisible({ isVisible: true });
       Keyboard.setScroll({ isDisabled: false });
     }
-  }, []);
-
-  // Track virtual keyboard via visualViewport API so toolbar stays above it.
-  // Debounced with rAF to avoid layout jitter during text selection on iOS.
-  useEffect(() => {
-    const vv = window.visualViewport;
-    if (!vv) return;
-
-    let rafId = 0;
-    const updateKeyboardHeight = () => {
-      cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(() => {
-        const kbHeight = window.innerHeight - vv.height;
-        setKeyboardHeight(Math.max(0, kbHeight));
-      });
-    };
-
-    vv.addEventListener('resize', updateKeyboardHeight);
-    return () => {
-      vv.removeEventListener('resize', updateKeyboardHeight);
-      cancelAnimationFrame(rafId);
-    };
   }, []);
 
   // Populate editor content: pending mode-switch content takes priority, then one-time init

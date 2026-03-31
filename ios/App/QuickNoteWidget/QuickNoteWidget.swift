@@ -12,9 +12,11 @@ private enum WidgetColors {
 }
 
 private enum DeepLinks {
+    static let openApp   = URL(string: "com.saveitforl8r.app://open")!
     static let quickNote = URL(string: "com.saveitforl8r.app://quick-note")!
     static let camera    = URL(string: "com.saveitforl8r.app://quick-note?mode=camera")!
     static let document  = URL(string: "com.saveitforl8r.app://quick-note?mode=document")!
+    static let search    = URL(string: "com.saveitforl8r.app://search")!
 }
 
 // MARK: - Timeline Provider
@@ -63,104 +65,137 @@ struct QuickNoteWidgetView: View {
     }
 
     // MARK: - Small Widget (2x2)
-    // Shows a grid of 3 quick actions: Note, Camera, Document
+    // Clean 2x2 grid: App logo, Note, Camera, Document
     private var smallWidget: some View {
-        VStack(spacing: 10) {
-            // Quick note — primary action
-            Link(destination: DeepLinks.quickNote) {
-                HStack(spacing: 6) {
-                    Image(systemName: "square.and.pencil")
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(WidgetColors.accent)
-                    Text("Quick Note")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(WidgetColors.textPrimary)
-                    Spacer()
+        VStack(spacing: 12) {
+            HStack(spacing: 12) {
+                // App logo — opens app
+                Link(destination: DeepLinks.openApp) {
+                    Image("WidgetIcon")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 28, height: 28)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(WidgetColors.surfaceInput)
+                        .clipShape(Circle())
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .background(WidgetColors.surfaceInput)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+
+                // Note — focus quick note
+                Link(destination: DeepLinks.quickNote) {
+                    Image(systemName: "square.and.pencil")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundColor(WidgetColors.textPrimary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(WidgetColors.surfaceInput)
+                        .clipShape(Circle())
+                }
             }
 
-            // Camera + Document row
-            HStack(spacing: 8) {
+            HStack(spacing: 12) {
+                // Camera — open image capture
                 Link(destination: DeepLinks.camera) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "camera.fill")
-                            .font(.system(size: 14))
-                        Text("Photo")
-                            .font(.system(size: 12, weight: .medium))
-                    }
-                    .foregroundColor(WidgetColors.textSecondary)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
-                    .background(WidgetColors.surfaceInput)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    Image(systemName: "camera.fill")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundColor(WidgetColors.textPrimary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(WidgetColors.surfaceInput)
+                        .clipShape(Circle())
                 }
 
+                // Document — open file picker
                 Link(destination: DeepLinks.document) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "doc.fill")
-                            .font(.system(size: 14))
-                        Text("File")
-                            .font(.system(size: 12, weight: .medium))
-                    }
-                    .foregroundColor(WidgetColors.textSecondary)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
-                    .background(WidgetColors.surfaceInput)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    Image(systemName: "doc.fill")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundColor(WidgetColors.textPrimary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(WidgetColors.surfaceInput)
+                        .clipShape(Circle())
                 }
             }
         }
-        .padding(12)
+        .padding(16)
         .containerBackground(for: .widget) {
             WidgetColors.surfaceRaised
         }
     }
 
     // MARK: - Medium Widget (4x2)
-    // Search-bar style with camera and document buttons
+    // Text bar on top, 4 action buttons below
     private var mediumWidget: some View {
-        HStack(spacing: 8) {
-            // App icon area
-            Image("WidgetIcon")
-                .resizable()
-                .frame(width: 28, height: 28)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-
-            // Tappable "input" area
+        VStack(spacing: 12) {
+            // Tappable text bar — opens quick note
             Link(destination: DeepLinks.quickNote) {
-                HStack {
+                HStack(spacing: 10) {
+                    Image("WidgetIcon")
+                        .resizable()
+                        .frame(width: 24, height: 24)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
                     Text("Save a thought…")
-                        .font(.system(size: 14))
+                        .font(.system(size: 15))
                         .foregroundColor(WidgetColors.textSecondary)
                     Spacer()
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
                 .background(WidgetColors.surfaceInput)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .clipShape(RoundedRectangle(cornerRadius: 22))
             }
 
-            // Camera button
-            Link(destination: DeepLinks.camera) {
-                Image(systemName: "camera.fill")
-                    .font(.system(size: 16))
-                    .foregroundColor(WidgetColors.textSecondary)
-                    .frame(width: 36, height: 36)
-            }
+            // 4 action buttons
+            HStack(spacing: 0) {
+                // App logo — open home
+                Link(destination: DeepLinks.openApp) {
+                    Image("WidgetIcon")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 22, height: 22)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                        .background(WidgetColors.surfaceInput)
+                        .clipShape(Circle())
+                }
 
-            // Document button
-            Link(destination: DeepLinks.document) {
-                Image(systemName: "doc.fill")
-                    .font(.system(size: 16))
-                    .foregroundColor(WidgetColors.textSecondary)
-                    .frame(width: 36, height: 36)
+                Spacer()
+
+                // Camera — image capture
+                Link(destination: DeepLinks.camera) {
+                    Image(systemName: "camera.fill")
+                        .font(.system(size: 17))
+                        .foregroundColor(WidgetColors.textPrimary)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                        .background(WidgetColors.surfaceInput)
+                        .clipShape(Circle())
+                }
+
+                Spacer()
+
+                // Search — open chat interface
+                Link(destination: DeepLinks.search) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundColor(WidgetColors.textPrimary)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                        .background(WidgetColors.surfaceInput)
+                        .clipShape(Circle())
+                }
+
+                Spacer()
+
+                // Document — file picker
+                Link(destination: DeepLinks.document) {
+                    Image(systemName: "doc.fill")
+                        .font(.system(size: 17))
+                        .foregroundColor(WidgetColors.textPrimary)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                        .background(WidgetColors.surfaceInput)
+                        .clipShape(Circle())
+                }
             }
         }
-        .padding(.horizontal, 12)
+        .padding(16)
         .containerBackground(for: .widget) {
             WidgetColors.surfaceRaised
         }

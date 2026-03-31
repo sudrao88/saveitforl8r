@@ -9,6 +9,7 @@ import { triggerHaptic } from '../services/platform';
 import FormattingToolbar from './FormattingToolbar';
 import TagInput from './TagInput';
 import { btn, zIndex } from '../styles/design-system';
+import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { ChecklistEditor } from './ChecklistItems';
 import useBeforeInputMarkdown from '../hooks/useBeforeInputMarkdown';
 
@@ -24,6 +25,7 @@ export interface QuickNoteBarHandle {
   focus: () => void;
   triggerCamera: () => void;
   triggerDocument: () => void;
+  setContent: (text: string, attachments: Attachment[]) => void;
 }
 
 interface ChecklistItem {
@@ -45,7 +47,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
   const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([]);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const keyboardHeight = useKeyboardHeight({ includeOffsetTop: true });
 
   const editorRef = useRef<HTMLDivElement>(null);
   const focusItemIdRef = useRef<string | null>(null);
@@ -63,38 +65,23 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
     };
   }, []);
 
-  // Track iOS virtual keyboard via visualViewport API so the bar stays
-  // above the keyboard on the first open after a cold launch in standalone mode.
-  // We skip the initial measurement and only react to resize/scroll events to
-  // avoid a false-positive keyboard height during app startup in standalone mode
-  // (where visualViewport.height may momentarily differ from innerHeight).
-  // Debounced with rAF to avoid layout jitter during text selection on iOS.
-  useEffect(() => {
-    const vv = window.visualViewport;
-    if (!vv) return;
-
-    let rafId = 0;
-    const update = () => {
-      cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(() => {
-        const kbHeight = window.innerHeight - vv.height - vv.offsetTop;
-        setKeyboardHeight(kbHeight > 0 ? kbHeight : 0);
-      });
-    };
-
-    vv.addEventListener('resize', update);
-    vv.addEventListener('scroll', update);
-    return () => {
-      vv.removeEventListener('resize', update);
-      vv.removeEventListener('scroll', update);
-      cancelAnimationFrame(rafId);
-    };
-  }, []);
-
   useImperativeHandle(ref, () => ({
     focus: () => editorRef.current?.focus(),
     triggerCamera: () => widgetCameraRef.current?.click(),
     triggerDocument: () => widgetDocRef.current?.click(),
+    setContent: (text: string, newAttachments: Attachment[]) => {
+      // Reset checklist mode so shared content is visible in rich-text editor
+      setIsChecklistMode(false);
+      setChecklistItems([]);
+      if (editorRef.current) {
+        editorRef.current.innerHTML = escapeHtml(text || '').replace(/\n/g, '<br>');
+        setIsEmpty(!text);
+      }
+      if (newAttachments.length > 0) {
+        setAttachments(prev => [...prev, ...newAttachments]);
+      }
+      editorRef.current?.focus();
+    },
   }));
 
   // Autofocus the editor on mount for devices with a fine pointer (keyboard-attached)
