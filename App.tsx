@@ -736,18 +736,23 @@ const AppContent: React.FC = () => {
     }, []),
   });
 
-  // Handle widget search deep link
+  // Handle widget search deep link (cold + warm launch)
   useEffect(() => {
-    const handler = () => setView(ViewMode.RECALL);
-    window.addEventListener('onWidgetSearch', handler);
+    const processWidgetSearch = () => {
+      if (window.__pendingWidgetSearch) {
+        delete window.__pendingWidgetSearch;
+      }
+      setView(ViewMode.RECALL);
+    };
 
-    // Check for pending search event from cold launch
+    window.addEventListener('onWidgetSearch', processWidgetSearch);
+
+    // Handle events that arrived before the listener was attached (cold launch)
     if (window.__pendingWidgetSearch) {
-      delete window.__pendingWidgetSearch;
-      handler();
+      processWidgetSearch();
     }
 
-    return () => window.removeEventListener('onWidgetSearch', handler);
+    return () => window.removeEventListener('onWidgetSearch', processWidgetSearch);
   }, []);
 
   const displayMemories = useMemo(() => {
