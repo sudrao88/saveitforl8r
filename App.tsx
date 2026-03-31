@@ -533,6 +533,7 @@ const AppContent: React.FC = () => {
         clearShareData();
       } else {
         setIsCaptureOpen(true);
+        clearShareData();
       }
     }
   }, [shareData, clearShareData]);

@@ -5,6 +5,7 @@ import { marked } from 'marked';
 import { Attachment, Memory } from '../types';
 import { isNative } from '../services/platform';
 import { Keyboard } from '@capacitor/keyboard';
+import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { escapeHtml, looksLikeMarkdown, parseChecklistMarkdown, sanitizePastedHtml, hasRichFormatting, extractHashtags, mergeTagsWithHashtags, containsUrl, linkifyUrls, handleEditorKeyDown, checkActiveFormats, execFormatCommand, formatsEqual, isEditorEmpty } from '../utils/editorUtils';
 import { processFileInputs } from '../utils/attachmentUtils';
 import FormattingToolbar from './FormattingToolbar';
@@ -115,7 +116,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
     return [];
   });
 
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const keyboardHeight = useKeyboardHeight();
 
   useEffect(() => {
     // Ensure keyboard pushes content up on native
@@ -123,42 +124,6 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
       Keyboard.setAccessoryBarVisible({ isVisible: true });
       Keyboard.setScroll({ isDisabled: false });
     }
-  }, []);
-
-  // Track virtual keyboard height.
-  // Native apps use Capacitor Keyboard plugin events (visualViewport is unreliable
-  // in native webviews). PWA/browser falls back to the visualViewport API.
-  useEffect(() => {
-    if (isNative()) {
-      const showHandle = Keyboard.addListener('keyboardWillShow', (info) => {
-        setKeyboardHeight(info.keyboardHeight);
-      });
-      const hideHandle = Keyboard.addListener('keyboardWillHide', () => {
-        setKeyboardHeight(0);
-      });
-      return () => {
-        showHandle.then(h => h.remove());
-        hideHandle.then(h => h.remove());
-      };
-    }
-
-    const vv = window.visualViewport;
-    if (!vv) return;
-
-    let rafId = 0;
-    const updateKeyboardHeight = () => {
-      cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(() => {
-        const kbHeight = window.innerHeight - vv.height;
-        setKeyboardHeight(Math.max(0, kbHeight));
-      });
-    };
-
-    vv.addEventListener('resize', updateKeyboardHeight);
-    return () => {
-      vv.removeEventListener('resize', updateKeyboardHeight);
-      cancelAnimationFrame(rafId);
-    };
   }, []);
 
   // Populate editor content: pending mode-switch content takes priority, then one-time init

@@ -4,7 +4,7 @@ import { Memory, Attachment, ChatMessage } from '../types';
 import MemoryPreviewModal from './MemoryPreviewModal';
 import { btn, overlay } from '../styles/design-system';
 import { isNative } from '../services/platform';
-import { Keyboard } from '@capacitor/keyboard';
+import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 
 interface ChatInterfaceProps {
   memories: Memory[];
@@ -38,7 +38,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [viewport, setViewport] = useState({ height: '100dvh', top: 0 });
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
 
   const scrollToBottom = () => {
     if (messagesEndRef.current) {
@@ -46,57 +45,44 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
     }
   };
 
+  const keyboardHeight = useKeyboardHeight({
+    onShow: () => setTimeout(scrollToBottom, 100),
+  });
+
   useEffect(() => {
     // Lock body scroll
     const originalStyle = window.getComputedStyle(document.body).overflow;
     document.body.style.overflow = 'hidden';
 
     if (isNative()) {
-      // Native: use Capacitor Keyboard plugin events
-      const showHandle = Keyboard.addListener('keyboardWillShow', (info) => {
-        setKeyboardHeight(info.keyboardHeight);
-        setTimeout(scrollToBottom, 100);
-      });
-      const hideHandle = Keyboard.addListener('keyboardWillHide', () => {
-        setKeyboardHeight(0);
-      });
+      // Focus after a tick so the keyboard listener in useKeyboardHeight
+      // is registered before the keyboard opens
+      setTimeout(() => textareaRef.current?.focus(), 100);
+    }
 
-      // Delay focus so the keyboard listener is registered before the keyboard opens
-      setTimeout(() => textareaRef.current?.focus(), 300);
-      setTimeout(scrollToBottom, 100);
+    if (!isNative() && window.visualViewport) {
+      const handleResize = () => {
+        setViewport({
+          height: `${window.visualViewport!.height}px`,
+          top: window.visualViewport!.offsetTop
+        });
+        setTimeout(scrollToBottom, 100);
+      };
+      window.visualViewport.addEventListener('resize', handleResize);
+      window.visualViewport.addEventListener('scroll', handleResize);
+      handleResize();
 
       return () => {
         document.body.style.overflow = originalStyle;
-        showHandle.then(h => h.remove());
-        hideHandle.then(h => h.remove());
+        window.visualViewport?.removeEventListener('resize', handleResize);
+        window.visualViewport?.removeEventListener('scroll', handleResize);
       };
-    }
-
-    // PWA/browser: Visual Viewport logic for mobile keyboards
-    const handleResize = () => {
-        if (window.visualViewport) {
-            setViewport({
-                height: `${window.visualViewport.height}px`,
-                top: window.visualViewport.offsetTop
-            });
-            setTimeout(scrollToBottom, 100);
-        }
-    };
-
-    if (window.visualViewport) {
-        window.visualViewport.addEventListener('resize', handleResize);
-        window.visualViewport.addEventListener('scroll', handleResize);
-        handleResize();
     }
 
     setTimeout(scrollToBottom, 100);
 
     return () => {
       document.body.style.overflow = originalStyle;
-      if (window.visualViewport) {
-          window.visualViewport.removeEventListener('resize', handleResize);
-          window.visualViewport.removeEventListener('scroll', handleResize);
-      }
     };
   }, []);
 

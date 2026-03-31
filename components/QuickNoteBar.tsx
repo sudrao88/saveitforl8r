@@ -9,8 +9,7 @@ import { triggerHaptic } from '../services/platform';
 import FormattingToolbar from './FormattingToolbar';
 import TagInput from './TagInput';
 import { btn, zIndex } from '../styles/design-system';
-import { isNative } from '../services/platform';
-import { Keyboard } from '@capacitor/keyboard';
+import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { ChecklistEditor } from './ChecklistItems';
 import useBeforeInputMarkdown from '../hooks/useBeforeInputMarkdown';
 
@@ -48,7 +47,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
   const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([]);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const keyboardHeight = useKeyboardHeight({ includeOffsetTop: true });
 
   const editorRef = useRef<HTMLDivElement>(null);
   const focusItemIdRef = useRef<string | null>(null);
@@ -66,52 +65,16 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
     };
   }, []);
 
-  // Track virtual keyboard height.
-  // Native apps use Capacitor Keyboard plugin events (visualViewport is unreliable
-  // in native webviews). PWA/browser falls back to the visualViewport API.
-  useEffect(() => {
-    if (isNative()) {
-      const showHandle = Keyboard.addListener('keyboardWillShow', (info) => {
-        setKeyboardHeight(info.keyboardHeight);
-      });
-      const hideHandle = Keyboard.addListener('keyboardWillHide', () => {
-        setKeyboardHeight(0);
-      });
-      return () => {
-        showHandle.then(h => h.remove());
-        hideHandle.then(h => h.remove());
-      };
-    }
-
-    // PWA/browser: use visualViewport API
-    const vv = window.visualViewport;
-    if (!vv) return;
-
-    let rafId = 0;
-    const update = () => {
-      cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(() => {
-        const kbHeight = window.innerHeight - vv.height - vv.offsetTop;
-        setKeyboardHeight(kbHeight > 0 ? kbHeight : 0);
-      });
-    };
-
-    vv.addEventListener('resize', update);
-    vv.addEventListener('scroll', update);
-    return () => {
-      vv.removeEventListener('resize', update);
-      vv.removeEventListener('scroll', update);
-      cancelAnimationFrame(rafId);
-    };
-  }, []);
-
   useImperativeHandle(ref, () => ({
     focus: () => editorRef.current?.focus(),
     triggerCamera: () => widgetCameraRef.current?.click(),
     triggerDocument: () => widgetDocRef.current?.click(),
     setContent: (text: string, newAttachments: Attachment[]) => {
+      // Reset checklist mode so shared content is visible in rich-text editor
+      setIsChecklistMode(false);
+      setChecklistItems([]);
       if (editorRef.current) {
-        editorRef.current.innerHTML = escapeHtml(text).replace(/\n/g, '<br>');
+        editorRef.current.innerHTML = escapeHtml(text || '').replace(/\n/g, '<br>');
         setIsEmpty(!text);
       }
       if (newAttachments.length > 0) {
