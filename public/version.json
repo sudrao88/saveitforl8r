@@ -1,7 +1,7 @@
 {
   "version": "saveitforl8r-v57",
   "buildNumber": 57,
-  "buildDate": "2026-03-31T03:00:15.237Z",
+  "buildDate": "2026-03-31T16:29:03.196Z",
   "minNativeVersion": "1.0.0",
   "changelog": "Capture location in QuickNote saves, native geolocation for iOS/Android"
 }

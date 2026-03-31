@@ -355,12 +355,41 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             return
         }
 
-        // Encode as Base64 to avoid JS string injection issues with user-controlled content
-        guard let jsonData = jsonString.data(using: .utf8) else {
-            print("[Share] Failed to encode share data")
+        // Pre-process attachments: read files and convert to base64 data URLs
+        // on the native side so JS doesn't need to fetch file paths that may
+        // be cleaned up by iOS before JS can access them (cold-start race condition).
+        guard let jsonData = jsonString.data(using: .utf8),
+              var shareDict = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {
+            print("[Share] Failed to parse share data")
             return
         }
-        let base64 = jsonData.base64EncodedString()
+
+        if let attachments = shareDict["attachments"] as? [[String: String]] {
+            var enriched: [[String: String]] = []
+            for att in attachments {
+                var enrichedAtt = att
+                if let path = att["path"], let mimeType = att["mimeType"] {
+                    let fileURL = URL(fileURLWithPath: path)
+                    if let fileData = try? Data(contentsOf: fileURL) {
+                        let dataUrl = "data:\(mimeType);base64,\(fileData.base64EncodedString())"
+                        enrichedAtt["dataUrl"] = dataUrl
+                        print("[Share] Pre-encoded attachment: \(att["name"] ?? "unknown") (\(fileData.count) bytes)")
+                    } else {
+                        print("[Share] Failed to read attachment file: \(path)")
+                    }
+                }
+                enriched.append(enrichedAtt)
+            }
+            shareDict["attachments"] = enriched
+        }
+
+        guard let enrichedData = try? JSONSerialization.data(withJSONObject: shareDict),
+              let enrichedJson = String(data: enrichedData, encoding: .utf8) else {
+            print("[Share] Failed to re-encode share data")
+            return
+        }
+
+        let base64 = Data(enrichedJson.utf8).base64EncodedString()
 
         // Use a JS function that checks whether the listener is ready.
         // If window.__shareReceiverReady is set, dispatch immediately.

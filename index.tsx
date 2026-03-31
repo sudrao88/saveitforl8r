@@ -25,7 +25,7 @@ declare global {
       };
     };
     __shareReceiverReady?: boolean;
-    __pendingShareData?: { text?: string; attachments?: Array<{ name: string; mimeType: string; path: string }> };
+    __pendingShareData?: { text?: string; attachments?: Array<{ name: string; mimeType: string; path: string; dataUrl?: string }> };
     __pendingWidgetEvent?: { mode?: string };
     __pendingWidgetSearch?: boolean;
   }
