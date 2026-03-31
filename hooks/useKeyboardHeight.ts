@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { isNative } from '../services/platform';
 import { Keyboard } from '@capacitor/keyboard';
+import { Capacitor } from '@capacitor/core';
 
 /**
  * Track virtual keyboard height across native and PWA.
@@ -19,8 +20,15 @@ export function useKeyboardHeight(options?: {
 
   useEffect(() => {
     if (isNative()) {
+      const isAndroid = Capacitor.getPlatform() === 'android';
       const showHandle = Keyboard.addListener('keyboardWillShow', (info) => {
-        setKeyboardHeight(info.keyboardHeight);
+        // On Android, Capacitor reports keyboardHeight in physical pixels
+        // rather than CSS/dp pixels. Divide by devicePixelRatio to get the
+        // correct CSS pixel value for use in style.bottom.
+        const height = isAndroid
+          ? Math.round(info.keyboardHeight / window.devicePixelRatio)
+          : info.keyboardHeight;
+        setKeyboardHeight(height);
         options?.onShow?.();
       });
       const hideHandle = Keyboard.addListener('keyboardWillHide', () => {
