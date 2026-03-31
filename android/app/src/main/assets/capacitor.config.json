@@ -10,7 +10,7 @@
 	},
 	"plugins": {
 		"Keyboard": {
-			"resize": "body",
+			"resize": "none",
 			"style": "DARK",
 			"resizeOnFullScreen": true
 		},

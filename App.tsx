@@ -527,9 +527,15 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     if (shareData) {
       logEvent(ANALYTICS_EVENTS.SHARE.CATEGORY, ANALYTICS_EVENTS.SHARE.ACTION_RECEIVED, ANALYTICS_EVENTS.SHARE.LABEL_EXTERNAL);
-      setIsCaptureOpen(true);
+      // Route shared content to the QuickNote bar instead of opening full editor
+      if (quickNoteBarRef.current) {
+        quickNoteBarRef.current.setContent(shareData.text, shareData.attachments);
+        clearShareData();
+      } else {
+        setIsCaptureOpen(true);
+      }
     }
-  }, [shareData]);
+  }, [shareData, clearShareData]);
 
 
   const {
@@ -703,6 +709,13 @@ const AppContent: React.FC = () => {
       logEvent(ANALYTICS_EVENTS.NAVIGATION.CATEGORY, ANALYTICS_EVENTS.NAVIGATION.ACTION_CAPTURE_OPENED, 'Widget-Document');
     }, []),
   });
+
+  // Handle widget search deep link
+  useEffect(() => {
+    const handler = () => setView(ViewMode.RECALL);
+    window.addEventListener('onWidgetSearch', handler);
+    return () => window.removeEventListener('onWidgetSearch', handler);
+  }, []);
 
   const displayMemories = useMemo(() => {
     const active = filteredMemories.filter(m => !m.isDeleting);

@@ -61,6 +61,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
         setKeyboardHeight(0);
       });
 
+      // Delay focus so the keyboard listener is registered before the keyboard opens
+      setTimeout(() => textareaRef.current?.focus(), 300);
       setTimeout(scrollToBottom, 100);
 
       return () => {
@@ -199,7 +201,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
 
     <div
         className="fixed left-0 right-0 z-(--z-modal) flex flex-col overflow-hidden bg-black"
-        style={{ height: viewport.height, top: viewport.top }}
+        style={{
+          height: keyboardHeight > 0 ? `calc(100dvh - ${keyboardHeight}px)` : viewport.height,
+          top: viewport.top
+        }}
     >
       {/* Header */}
       <div className="flex-none border-b border-(--color-border-default) px-4 pb-3 pt-[calc(0.75rem+var(--sat))] flex items-center justify-between bg-black z-(--z-sticky) shadow-sm shrink-0">
@@ -295,9 +300,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
 
       {/* Input Area */}
       <div
-        className="flex-none w-full bg-black border-t border-(--color-border-default) shrink-0 z-(--z-dropdown)"
+        className="flex-none w-full bg-black shrink-0 z-(--z-dropdown)"
         style={{
-            paddingBottom: keyboardHeight > 0 ? `${keyboardHeight}px` : 'max(1rem, var(--sab))',
+            paddingBottom: keyboardHeight > 0 ? '0.5rem' : 'max(1rem, var(--sab))',
             paddingTop: '1rem',
             paddingLeft: '1rem',
             paddingRight: '1rem'
@@ -306,7 +311,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
         <div className="max-w-4xl mx-auto flex items-end gap-3 bg-(--color-surface-raised) px-4 py-2 rounded-(--radius-xl) border border-(--color-border-default) focus-within:border-(--color-accent) focus-within:ring-1 focus-within:ring-(--color-accent) transition-all shadow-sm">
             <textarea
                 ref={textareaRef}
-                autoFocus
+                autoFocus={!isNative()}
                 rows={1}
                 className="w-full text-base font-medium focus:outline-none bg-transparent placeholder-(--color-text-tertiary) border-none text-(--color-text-primary) py-2 resize-none max-h-32"
                 placeholder="Ask your second brain..."

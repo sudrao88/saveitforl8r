@@ -26,6 +26,7 @@ export interface QuickNoteBarHandle {
   focus: () => void;
   triggerCamera: () => void;
   triggerDocument: () => void;
+  setContent: (text: string, attachments: Attachment[]) => void;
 }
 
 interface ChecklistItem {
@@ -108,6 +109,16 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
     focus: () => editorRef.current?.focus(),
     triggerCamera: () => widgetCameraRef.current?.click(),
     triggerDocument: () => widgetDocRef.current?.click(),
+    setContent: (text: string, newAttachments: Attachment[]) => {
+      if (editorRef.current) {
+        editorRef.current.innerHTML = escapeHtml(text).replace(/\n/g, '<br>');
+        setIsEmpty(!text);
+      }
+      if (newAttachments.length > 0) {
+        setAttachments(prev => [...prev, ...newAttachments]);
+      }
+      editorRef.current?.focus();
+    },
   }));
 
   // Autofocus the editor on mount for devices with a fine pointer (keyboard-attached)
