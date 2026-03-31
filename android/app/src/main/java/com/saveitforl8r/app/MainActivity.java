@@ -2,7 +2,6 @@ package com.saveitforl8r.app;
 
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -115,13 +114,13 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
     }
 
     /**
-     * Check if this intent is a widget deep-link (quick-note://).
+     * Check if this intent is a widget quick-note action.
+     * Uses custom action strings instead of URI scheme to avoid Samsung One UI
+     * intercepting ACTION_VIEW intents through its link handler.
      */
     private boolean isWidgetDeepLink(Intent intent) {
-        if (intent == null || intent.getData() == null) return false;
-        Uri data = intent.getData();
-        return QuickNoteWidgetProvider.DEEP_LINK_SCHEME.equals(data.getScheme())
-                && "quick-note".equals(data.getHost());
+        if (intent == null || intent.getAction() == null) return false;
+        return intent.getAction().startsWith("com.saveitforl8r.app.ACTION_QUICK_NOTE_");
     }
 
     /**
@@ -130,8 +129,13 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
      * open a specific capture mode (e.g., camera).
      */
     private void handleWidgetDeepLink(Intent intent) {
-        Uri data = intent.getData();
-        String mode = data != null ? data.getQueryParameter("mode") : null;
+        String mode = null;
+        String action = intent.getAction();
+        if (QuickNoteWidgetProvider.ACTION_QUICK_NOTE_CAMERA.equals(action)) {
+            mode = "camera";
+        } else if (QuickNoteWidgetProvider.ACTION_QUICK_NOTE_DOCUMENT.equals(action)) {
+            mode = "document";
+        }
 
         String eventDetail;
         try {

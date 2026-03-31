@@ -24,6 +24,8 @@ declare global {
         };
       };
     };
+    __shareReceiverReady?: boolean;
+    __pendingShareData?: { text?: string; attachments?: Array<{ name: string; mimeType: string; path: string }> };
   }
 }
 
