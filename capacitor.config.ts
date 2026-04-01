@@ -13,6 +13,11 @@ const config: CapacitorConfig = {
   },
   plugins: {
       Keyboard: {
+          // iOS uses None — keyboard height is tracked via Capacitor events
+          // and applied manually in useKeyboardHeight.
+          // Android overrides this to Native (adjustResize) in
+          // android/app/src/main/assets/capacitor.config.json so the
+          // viewport shrinks automatically and sticky positioning works.
           resize: KeyboardResize.None,
           style: KeyboardStyle.Dark,
           resizeOnFullScreen: true
