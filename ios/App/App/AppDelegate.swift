@@ -39,12 +39,52 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // Register background task identifiers before launch sequence ends
         BackgroundSyncTask.register()
 
+        // Handle cold-start URL (share extension, widget deep links).
+        // On cold start, application(_:open:) is NOT called — the URL is
+        // delivered here in launchOptions instead.
+        if let url = launchOptions?[.url] as? URL {
+            print("[ColdStart] Received URL: \(url)")
+            handleColdStartURL(url)
+        }
+
         // Wait for the Capacitor bridge to initialize, then set up OTA + IOSBridge.
         // Both require the bridge to be ready, so we use a single retry loop.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
             self?.setupBridge()
         }
         return true
+    }
+
+    /// Process a URL that arrived during cold start (from launchOptions).
+    /// Sets the same flags as application(_:open:) so the existing dispatch
+    /// mechanisms pick them up once the bridge is ready.
+    private func handleColdStartURL(_ url: URL) {
+        guard url.scheme == "com.saveitforl8r.app" else { return }
+
+        switch url.host {
+        case "share":
+            print("[ColdStart] Share URL — will dispatch after bridge setup")
+            pendingShareDispatch = true
+        case "quick-note":
+            let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+            let mode = components?.queryItems?.first(where: { $0.name == "mode" })?.value
+            var dict: [String: String] = [:]
+            if let mode = mode { dict["mode"] = mode }
+            if let data = try? JSONSerialization.data(withJSONObject: dict),
+               let str = String(data: data, encoding: .utf8) {
+                pendingWidgetEvent = str
+            } else {
+                pendingWidgetEvent = "{}"
+            }
+            print("[ColdStart] Widget quick-note — queued mode: \(mode ?? "text")")
+        case "search":
+            pendingWidgetEvent = "__search__"
+            print("[ColdStart] Widget search — queued")
+        case "open":
+            break // Just open the app
+        default:
+            break
+        }
     }
 
     // MARK: - Bridge Setup (OTA + IOSBridge)
@@ -77,13 +117,27 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         bridgeSetUp = true
         print("[OTA] IOSBridge registered")
 
-        // Apply downloaded OTA update if available
-        applyDownloadedUpdateIfExists(vc: vc)
+        // Apply downloaded OTA update if available.
+        // OTA triggers a WebView reload — share dispatch must wait for new page.
+        let otaApplied = applyDownloadedUpdateIfExists(vc: vc)
 
-        // If share data arrived before the bridge was ready, dispatch it now
+        // If share data arrived before the bridge was ready, dispatch it now.
+        // If OTA was applied, the WebView is reloading — delay dispatch so the
+        // JS context isn't lost when the new page replaces the old one.
         if pendingShareDispatch {
-            pendingShareDispatch = false
-            dispatchShareDataToJS()
+            if otaApplied {
+                print("[Share] OTA reload in progress — delaying share dispatch")
+                // Don't clear pendingShareDispatch; dispatchShareDataToJS will
+                // be called after the new page finishes loading via the delayed retry.
+                shareDispatchRetries = 0
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+                    self?.pendingShareDispatch = false
+                    self?.dispatchShareDataToJS()
+                }
+            } else {
+                pendingShareDispatch = false
+                dispatchShareDataToJS()
+            }
         }
     }
 
@@ -93,13 +147,15 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     /// to serve files from the download directory instead of the bundled assets.
     /// Uses setServerBasePath which keeps the capacitor://localhost origin —
     /// preserving IndexedDB, localStorage, and Capacitor plugins.
-    private func applyDownloadedUpdateIfExists(vc: CAPBridgeViewController) {
+    /// Returns true if OTA was applied (which triggers a WebView reload).
+    @discardableResult
+    private func applyDownloadedUpdateIfExists(vc: CAPBridgeViewController) -> Bool {
         let defaults = UserDefaults.standard
         let useRemote = defaults.string(forKey: prefsPrefix + prefUseRemote) ?? "false"
 
         guard useRemote == "true" else {
             print("[OTA] Using bundled assets (OTA not active)")
-            return
+            return false
         }
 
         if let updatePath = OTADownloadManager.getExistingUpdatePath() {
@@ -112,14 +168,16 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                 print("[OTA] Bundled assets (build \(bundledBuild)) are newer than OTA (build \(otaBuild)) — discarding OTA")
                 defaults.set("false", forKey: prefsPrefix + prefUseRemote)
                 OTADownloadManager.clearUpdate()
-                return
+                return false
             }
 
             print("[OTA] Applying previously downloaded OTA update from: \(updatePath) (OTA build \(otaBuild), bundled build \(bundledBuild))")
             vc.setServerBasePath(path: updatePath)
+            return true
         } else {
             print("[OTA] OTA preference is true but no downloaded update found — resetting")
             defaults.set("false", forKey: prefsPrefix + prefUseRemote)
+            return false
         }
     }
 
@@ -221,6 +279,19 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         if pendingShareDispatch && bridgeSetUp {
             pendingShareDispatch = false
             dispatchShareDataToJS()
+        }
+
+        // Fallback: check UserDefaults for undelivered share data.
+        // Handles cases where the share extension saved data but the URL
+        // wasn't delivered on cold start (openMainApp() can be unreliable
+        // on modern iOS). Without this, share data sits in UserDefaults
+        // and is never processed.
+        if !pendingShareDispatch && bridgeSetUp {
+            if let userDefaults = UserDefaults(suiteName: appGroupId),
+               userDefaults.string(forKey: shareKey) != nil {
+                print("[Share] Found undelivered share data in UserDefaults (fallback)")
+                dispatchShareDataToJS()
+            }
         }
 
         // Check for pending widget event
@@ -352,6 +423,22 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
               let webView = bridge.webView else {
             print("[Share] Bridge not available, will retry after bridge setup")
             pendingShareDispatch = true
+            return
+        }
+
+        // Wait for the page to finish loading before evaluating JS.
+        // If we dispatch while loading, __pendingShareData may be set on a
+        // temporary context that gets replaced when the page commits.
+        if webView.isLoading {
+            if shareDispatchRetries < maxShareDispatchRetries {
+                shareDispatchRetries += 1
+                print("[Share] WebView still loading, retrying (\(shareDispatchRetries)/\(maxShareDispatchRetries))...")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                    self?.dispatchShareDataToJS()
+                }
+            } else {
+                print("[Share] WebView loading timed out, attempting dispatch anyway")
+            }
             return
         }
 
