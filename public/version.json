@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v57",
-  "buildNumber": 57,
-  "buildDate": "2026-03-31T16:36:08.569Z",
+  "version": "saveitforl8r-v58",
+  "buildNumber": 58,
+  "buildDate": "2026-03-31T12:00:00.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Capture location in QuickNote saves, native geolocation for iOS/Android"
+  "changelog": "Fix splash flicker, cold-start deep links, and shared attachments on iOS"
 }
