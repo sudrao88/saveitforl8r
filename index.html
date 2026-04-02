@@ -106,13 +106,13 @@
     </noscript>
     <script type="module" src="/index.tsx"></script>
     <script>
-       // Stuck-state detection: if React hasn't mounted within 5s, the JS bundles
-       // likely failed to load (offline/lie-fi). Show an offline message so the
-       // user knows the app is alive and can retry or wait for network recovery.
-       // Skipped on native platforms where assets load from local filesystem.
+       // Stuck-state detection: if React hasn't mounted within 5s, show a
+       // message so the user knows the app is alive and can retry.
+       // On web this usually means JS bundles failed to load (offline/lie-fi).
+       // On native this can happen if the WebView reload (OTA) breaks assets.
        (function() {
-         if (window.Capacitor && window.Capacitor.isNativePlatform()) return;
-         var STUCK_TIMEOUT = 5000;
+         var isNative = window.Capacitor && window.Capacitor.isNativePlatform();
+         var STUCK_TIMEOUT = isNative ? 8000 : 5000;
          var timer = setTimeout(function() {
            var root = document.getElementById('root');
            // React replaces the splash-container children on mount.
@@ -120,9 +120,15 @@
            if (root && root.querySelector('.splash-logo')) {
              var msg = document.createElement('div');
              msg.className = 'splash-offline-msg';
-             msg.innerHTML = '<p>Waiting for network\u2026</p>'
-               + '<p class="splash-offline-subtext">The app will load automatically when connection improves</p>'
-               + '<button onclick="location.reload()" class="splash-retry-btn">Retry Now</button>';
+             if (isNative) {
+               msg.innerHTML = '<p>Having trouble loading\u2026</p>'
+                 + '<p class="splash-offline-subtext">Tap below to reload the app</p>'
+                 + '<button onclick="location.reload()" class="splash-retry-btn">Reload</button>';
+             } else {
+               msg.innerHTML = '<p>Waiting for network\u2026</p>'
+                 + '<p class="splash-offline-subtext">The app will load automatically when connection improves</p>'
+                 + '<button onclick="location.reload()" class="splash-retry-btn">Retry Now</button>';
+             }
              root.appendChild(msg);
            }
          }, STUCK_TIMEOUT);

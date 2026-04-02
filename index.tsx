@@ -3,6 +3,8 @@ import ReactDOM from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 
+import { SplashScreen } from '@capacitor/splash-screen';
+
 // Signal to Android native code that the WebView has rendered content,
 // dismissing the native splash screen as early as possible. This runs
 // synchronously after React's first commit, before effects settle.
@@ -43,16 +45,21 @@ root.render(
   </React.StrictMode>
 );
 
-// Dismiss native splash screen immediately after React mounts.
-// requestAnimationFrame ensures the first paint has been committed.
-requestAnimationFrame(async () => {
-  try {
-    window.AndroidBridge?.signalAppReady();
-  } catch (e) { console.warn('[Splash] Failed to signal app ready:', e); }
+// Dismiss native splash screen after React has been scheduled to render.
+// IMPORTANT: Use setTimeout instead of requestAnimationFrame — iOS WKWebView
+// throttles/suspends rAF callbacks when the view is obscured by the native
+// Capacitor splash overlay, creating a deadlock where the splash can never
+// be hidden. setTimeout(0) defers to the next task-queue turn which fires
+// regardless of view visibility.
+setTimeout(() => {
+  try { window.AndroidBridge?.signalAppReady(); }
+  catch (e) { console.warn('[Splash] Failed to signal app ready:', e); }
 
-  // Hide Capacitor splash screen on iOS after first paint
-  try {
-    const { SplashScreen } = await import('@capacitor/splash-screen');
-    SplashScreen.hide({ fadeOutDuration: 200 });
-  } catch (e) { /* not on native */ }
-});
+  SplashScreen.hide({ fadeOutDuration: 200 }).catch(() => { /* not on native */ });
+}, 0);
+
+// Safety net: if the splash still hasn't been hidden after 4 seconds
+// (e.g. the first setTimeout was somehow blocked), force-hide it.
+setTimeout(() => {
+  SplashScreen.hide({ fadeOutDuration: 0 }).catch(() => {});
+}, 4000);

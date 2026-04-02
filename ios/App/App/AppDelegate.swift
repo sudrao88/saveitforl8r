@@ -55,7 +55,25 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
             self?.setupBridge()
         }
+
+        // Safety net: force-hide the Capacitor splash screen after 5 seconds.
+        // If JS fails to load or requestAnimationFrame is throttled while the
+        // WKWebView is obscured by the native splash overlay, SplashScreen.hide()
+        // from JS may never fire. This ensures the user always reaches the WebView.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { [weak self] in
+            self?.forceHideSplashScreen()
+        }
+
         return true
+    }
+
+    /// Force-hides the Capacitor splash screen via JS evaluation as a safety net.
+    private func forceHideSplashScreen() {
+        guard let webView = bridgeViewController?.bridge?.webView else { return }
+        webView.evaluateJavaScript(
+            "try { window.Capacitor.Plugins.SplashScreen.hide({ fadeOutDuration: 0 }); } catch(e) {}",
+            completionHandler: nil
+        )
     }
 
     /// Process a URL that arrived during cold start (from launchOptions).
