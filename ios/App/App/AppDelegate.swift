@@ -16,6 +16,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     // Preference keys (must match useNativeOTA.ts)
     private let prefUseRemote = "ota_use_remote"
 
+    // Custom URL scheme for deep links (widgets, share extension)
+    private let urlScheme = "com.saveitforl8r.app"
+
     // App Group for Share Extension
     private let appGroupId = "group.com.saveitforl8r.app"
     private let shareKey = "ShareExtensionData"
@@ -59,24 +62,15 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     /// Sets the same flags as application(_:open:) so the existing dispatch
     /// mechanisms pick them up once the bridge is ready.
     private func handleColdStartURL(_ url: URL) {
-        guard url.scheme == "com.saveitforl8r.app" else { return }
+        guard url.scheme == urlScheme else { return }
 
         switch url.host {
         case "share":
             print("[ColdStart] Share URL — will dispatch after bridge setup")
             pendingShareDispatch = true
         case "quick-note":
-            let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
-            let mode = components?.queryItems?.first(where: { $0.name == "mode" })?.value
-            var dict: [String: String] = [:]
-            if let mode = mode { dict["mode"] = mode }
-            if let data = try? JSONSerialization.data(withJSONObject: dict),
-               let str = String(data: data, encoding: .utf8) {
-                pendingWidgetEvent = str
-            } else {
-                pendingWidgetEvent = "{}"
-            }
-            print("[ColdStart] Widget quick-note — queued mode: \(mode ?? "text")")
+            pendingWidgetEvent = quickNotePayload(from: url)
+            print("[ColdStart] Widget quick-note — queued")
         case "search":
             pendingWidgetEvent = "__search__"
             print("[ColdStart] Widget search — queued")
@@ -85,6 +79,19 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         default:
             break
         }
+    }
+
+    /// Extracts the quick-note mode from a deep link URL and returns a JSON payload string.
+    private func quickNotePayload(from url: URL) -> String {
+        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        let mode = components?.queryItems?.first(where: { $0.name == "mode" })?.value
+        var dict: [String: String] = [:]
+        if let mode = mode { dict["mode"] = mode }
+        if let data = try? JSONSerialization.data(withJSONObject: dict),
+           let str = String(data: data, encoding: .utf8) {
+            return str
+        }
+        return "{}"
     }
 
     // MARK: - Bridge Setup (OTA + IOSBridge)
@@ -137,6 +144,19 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             } else {
                 pendingShareDispatch = false
                 dispatchShareDataToJS()
+            }
+        }
+
+        // If a widget deep link arrived before the bridge was ready, dispatch it now.
+        if let widgetEvent = pendingWidgetEvent {
+            pendingWidgetEvent = nil
+            if otaApplied {
+                print("[Widget] OTA reload in progress — delaying widget dispatch")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+                    self?.dispatchWidgetEvent(widgetEvent)
+                }
+            } else {
+                dispatchWidgetEvent(widgetEvent)
             }
         }
     }
@@ -313,12 +333,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
         // Handle widget "open app" — just bring the app to foreground
-        if url.scheme == "com.saveitforl8r.app" && url.host == "open" {
+        if url.scheme == urlScheme && url.host == "open" {
             return true
         }
 
         // Handle widget "search" — open chat interface
-        if url.scheme == "com.saveitforl8r.app" && url.host == "search" {
+        if url.scheme == urlScheme && url.host == "search" {
             print("[Widget] Received search deep link")
             let js = "window.dispatchEvent(new CustomEvent('onWidgetSearch'));"
             if let webView = bridgeViewController?.bridge?.webView {
@@ -330,27 +350,16 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         }
 
         // Handle share extension URL scheme
-        if url.scheme == "com.saveitforl8r.app" && url.host == "share" {
+        if url.scheme == urlScheme && url.host == "share" {
             print("[Share] Received share URL, will dispatch to JS")
             pendingShareDispatch = true
             return true
         }
 
         // Handle widget deep link
-        if url.scheme == "com.saveitforl8r.app" && url.host == "quick-note" {
+        if url.scheme == urlScheme && url.host == "quick-note" {
             print("[Widget] Received quick-note deep link")
-            let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
-            let mode = components?.queryItems?.first(where: { $0.name == "mode" })?.value
-            var dict: [String: String] = [:]
-            if let mode = mode { dict["mode"] = mode }
-            let eventDetail: String
-            if let data = try? JSONSerialization.data(withJSONObject: dict),
-               let str = String(data: data, encoding: .utf8) {
-                eventDetail = str
-            } else {
-                eventDetail = "{}"
-            }
-            dispatchWidgetEvent(eventDetail)
+            dispatchWidgetEvent(quickNotePayload(from: url))
             return true
         }
 

@@ -149,7 +149,6 @@ class ShareViewController: UIViewController {
         if let jsonData = try? JSONSerialization.data(withJSONObject: shareData),
            let jsonString = String(data: jsonData, encoding: .utf8) {
             userDefaults.set(jsonString, forKey: shareKey)
-            userDefaults.synchronize()  // Force flush for cross-process visibility on cold start
             print("[ShareExtension] Saved share data: \(text.prefix(50))... with \(attachments.count) attachments")
         }
     }
