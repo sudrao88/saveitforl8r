@@ -15,6 +15,7 @@ import rateLimit from 'express-rate-limit';
 import { authenticateRequest } from '../middleware/auth.js';
 import { sanitizeUserInput, sanitizeForPromptEmbedding } from '../lib/sanitize.js';
 import { sendSilentPush } from '../lib/silentPush.js';
+import { fetchAllNotes } from '../services/googleDrive.js';
 
 const SYNTHESIS_THINKING_BUDGET = 4096;
 
@@ -319,16 +320,12 @@ export const createMomentRouter = ({
   // --- Validation ---
 
   const validateCreateInput = (req, res, next) => {
-    const { objective, notes, momentId } = req.body;
+    const { objective, momentId } = req.body;
 
     if (!objective || typeof objective !== 'string')
       return res.status(400).json({ error: 'objective is required and must be a string' });
     if (objective.length > 1000)
       return res.status(400).json({ error: 'objective exceeds maximum length (1000 chars)' });
-    if (!notes || !Array.isArray(notes))
-      return res.status(400).json({ error: 'notes is required and must be an array' });
-    if (notes.length > 500)
-      return res.status(400).json({ error: 'Too many notes (max 500)' });
     if (momentId !== undefined) {
       if (typeof momentId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(momentId))
         return res.status(400).json({ error: 'momentId must be a valid UUID' });
@@ -361,8 +358,9 @@ export const createMomentRouter = ({
     validateCreateInput,
     momentLimiter,
     async (req, res) => {
-      const { objective, notes, momentId } = req.body;
+      const { objective, momentId } = req.body;
       const id = momentId || crypto.randomUUID();
+      const accessToken = req.accessToken;
 
       // Persist "processing" status
       persistMomentResult(id, req.userId, 'processing', null);
@@ -373,6 +371,23 @@ export const createMomentRouter = ({
       // --- Background 3-step pipeline (concurrency-limited) ---
       aiLimiter.run(async () => {
       const startTime = Date.now();
+
+      // Fetch notes from Google Drive
+      let notes;
+      try {
+        notes = await fetchAllNotes(accessToken);
+      } catch (driveError) {
+        console.error(`[CreateMoment] [${req.requestId}] Drive fetch failed:`, driveError.message);
+        persistMomentResult(id, req.userId, 'failed', null);
+        return;
+      }
+
+      if (notes.length === 0) {
+        console.warn(`[CreateMoment] [${req.requestId}] No notes found on Drive`);
+        persistMomentResult(id, req.userId, 'failed', null);
+        return;
+      }
+
       console.log(`[CreateMoment] [${req.requestId}] ASYNC user=${req.userId} momentId=${id} objective="${objective?.substring(0, 50)}" notes=${notes.length}`);
 
       try {
