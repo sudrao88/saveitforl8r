@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v59",
-  "buildNumber": 59,
-  "buildDate": "2026-04-02T00:00:00.000Z",
+  "version": "saveitforl8r-v60",
+  "buildNumber": 60,
+  "buildDate": "2026-04-03T00:00:00.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Fix cold-start deep links, share dispatch reliability, and widget event handling on iOS"
+  "changelog": "Bump cache version"
 }
