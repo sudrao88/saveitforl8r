@@ -297,13 +297,15 @@ const AppContent: React.FC = () => {
 
   const syncRef = useRef(sync);
   const refreshRef = useRef(handleFullRefresh);
+  const handleRetryRef = useRef(handleRetry);
   const topNavRef = useRef<HTMLDivElement>(null);
   const [topNavHeight, setTopNavHeight] = useState(0);
 
   useEffect(() => {
     syncRef.current = sync;
     refreshRef.current = handleFullRefresh;
-  }, [sync, handleFullRefresh]);
+    handleRetryRef.current = handleRetry;
+  }, [sync, handleFullRefresh, handleRetry]);
 
   useLayoutEffect(() => {
     const el = topNavRef.current;
@@ -401,14 +403,13 @@ const AppContent: React.FC = () => {
                 .map(m => m.id);
               if (pendingIds.length > 0) {
                   console.log(`[App] Auth linked — auto-retrying ${pendingIds.length} failed memories`);
-                  pendingIds.forEach(id => handleRetry(id));
+                  pendingIds.forEach(id => handleRetryRef.current(id));
               }
           }).catch(err => {
               console.error('[App] Initial sync failed:', err);
           });
       }
     }, 0);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- handleRetry is stable but changes identity; we only want this to run when authStatus changes
   }, [authStatus]);
 
   // Incrementally render cards as they are downloaded during sync.
