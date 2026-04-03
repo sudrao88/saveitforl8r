@@ -7,8 +7,18 @@ const DRIVE_API_BASE = 'https://www.googleapis.com/drive/v3';
 const DOWNLOAD_CONCURRENCY = 100;
 const MAX_PAGE_SIZE = 1000;
 
-// Prefixes used by non-note files in appDataFolder
-const NON_NOTE_PREFIXES = ['moment-', 'event-', 'todo-'];
+// Non-note file prefixes in appDataFolder. Used to build the Drive query
+// filter so that the API only returns note files, avoiding unnecessary
+// data transfer for moments, events, todos, syntheses, and key backups.
+const NON_NOTE_PREFIXES = ['moment-', 'event-', 'todo-', 'saveitforl8r-key-'];
+
+// Drive `q` filter that excludes all non-note files server-side.
+// Drive files API applies this before returning results, so we never
+// receive metadata for files we don't need.
+const NOTE_FILES_QUERY = NON_NOTE_PREFIXES
+  .map((p) => `not name contains '${p}'`)
+  .join(' and ')
+  + " and name contains '.json'";
 
 /**
  * Make an authenticated request to the Google Drive API.
@@ -27,24 +37,30 @@ const driveFetch = async (url, accessToken) => {
 };
 
 /**
- * List all note files in appDataFolder, handling pagination.
- * Returns array of { id, name } objects (Drive file metadata).
+ * List note files in appDataFolder, handling pagination.
+ * Uses Drive's `q` parameter to filter server-side so only note JSON files
+ * are returned — no moments, events, todos, or key backups.
+ *
+ * @param {string} accessToken
+ * @param {string} [extraQuery] - Additional `q` clause to append (e.g. name filters).
+ * @returns {Promise<Array<{id: string, name: string}>>}
  */
-const listNoteFiles = async (accessToken) => {
+const listNoteFiles = async (accessToken, extraQuery) => {
   const allFiles = [];
   let pageToken = null;
 
+  const q = extraQuery
+    ? `${NOTE_FILES_QUERY} and ${extraQuery}`
+    : NOTE_FILES_QUERY;
+
   do {
-    let url = `${DRIVE_API_BASE}/files?spaces=appDataFolder&fields=files(id,name)&pageSize=${MAX_PAGE_SIZE}`;
+    let url = `${DRIVE_API_BASE}/files?spaces=appDataFolder&fields=files(id,name)&pageSize=${MAX_PAGE_SIZE}&q=${encodeURIComponent(q)}`;
     if (pageToken) url += `&pageToken=${encodeURIComponent(pageToken)}`;
 
     const res = await driveFetch(url, accessToken);
     const data = await res.json();
 
-    const noteFiles = (data.files || []).filter(
-      (f) => f.name.endsWith('.json') && !NON_NOTE_PREFIXES.some((p) => f.name.startsWith(p))
-    );
-    allFiles.push(...noteFiles);
+    allFiles.push(...(data.files || []));
 
     pageToken = data.nextPageToken || null;
   } while (pageToken);
@@ -128,17 +144,26 @@ export const fetchAllNotes = async (accessToken) => {
     .map(toLightMemory);
 };
 
+// Drive `q` clauses have a practical length limit. We chunk name-based
+// queries into groups to stay well under it.
+const NAME_QUERY_CHUNK_SIZE = 50;
+
 /**
  * Fetch specific notes by their IDs from Google Drive.
- * Looks up each noteId as `{noteId}.json` in appDataFolder.
+ * Builds a Drive `q` filter like `(name = 'a.json' or name = 'b.json')`
+ * so Drive only returns the files we need — no full listing required.
  */
 export const fetchNotesByIds = async (accessToken, noteIds) => {
   if (!noteIds || noteIds.length === 0) return [];
 
-  // List all files and filter to matching IDs
-  const allFiles = await listNoteFiles(accessToken);
-  const targetFilenames = new Set(noteIds.map((id) => `${id}.json`));
-  const matchingFiles = allFiles.filter((f) => targetFilenames.has(f.name));
+  // Chunk noteIds into groups and query Drive for each chunk
+  const matchingFiles = [];
+  for (let i = 0; i < noteIds.length; i += NAME_QUERY_CHUNK_SIZE) {
+    const chunk = noteIds.slice(i, i + NAME_QUERY_CHUNK_SIZE);
+    const nameFilter = '(' + chunk.map((id) => `name = '${id}.json'`).join(' or ') + ')';
+    const files = await listNoteFiles(accessToken, nameFilter);
+    matchingFiles.push(...files);
+  }
 
   if (matchingFiles.length === 0) return [];
 

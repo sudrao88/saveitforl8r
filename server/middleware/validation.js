@@ -139,8 +139,8 @@ export const validateSynthesizeInput = (req, res, next) => {
       return res.status(400).json({ error: 'noteIds must be an array' });
     if (noteIds.length > 500)
       return res.status(400).json({ error: 'Too many noteIds (max 500)' });
-    if (noteIds.some((id) => typeof id !== 'string'))
-      return res.status(400).json({ error: 'Each noteId must be a string' });
+    if (noteIds.some((id) => typeof id !== 'string' || !UUID_REGEX.test(id)))
+      return res.status(400).json({ error: 'Each noteId must be a valid UUID' });
   }
   if (!momentType || typeof momentType !== 'string')
     return res.status(400).json({ error: 'momentType is required and must be a string' });

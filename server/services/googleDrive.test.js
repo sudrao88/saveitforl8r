@@ -108,52 +108,24 @@ describe('fetchAllNotes', () => {
     expect(result).toEqual([]);
   });
 
-  it('should filter out non-note files (moment-, event-, todo-)', async () => {
-    const note = makeNote('real-note');
+  it('should send Drive q parameter to exclude non-note prefixes', async () => {
     const mockFetch = buildMockFetch([
-      [
-        'spaces=appDataFolder',
-        {
-          files: [
-            driveFile('moment-abc.json'),
-            driveFile('event-xyz.json'),
-            driveFile('todo-123.json'),
-            driveFile('real-note.json'),
-          ],
-        },
-      ],
-      ['alt=media', note],
+      ['spaces=appDataFolder', { files: [] }],
     ]);
     vi.stubGlobal('fetch', mockFetch);
 
-    const result = await fetchAllNotes(TOKEN);
+    await fetchAllNotes(TOKEN);
 
-    expect(result).toHaveLength(1);
-    expect(result[0].id).toBe('real-note');
+    const listUrl = decodeURIComponent(mockFetch.mock.calls[0][0]);
+    // Verify the q parameter excludes all non-note prefixes
+    expect(listUrl).toContain("not name contains 'moment-'");
+    expect(listUrl).toContain("not name contains 'event-'");
+    expect(listUrl).toContain("not name contains 'todo-'");
+    expect(listUrl).toContain("not name contains 'saveitforl8r-key-'");
+    expect(listUrl).toContain("name contains '.json'");
   });
 
-  it('should filter out non-JSON files', async () => {
-    const note = makeNote('note-1');
-    const mockFetch = buildMockFetch([
-      [
-        'spaces=appDataFolder',
-        {
-          files: [
-            driveFile('note-1.json'),
-            driveFile('readme.txt'),
-            driveFile('image.png'),
-          ],
-        },
-      ],
-      ['alt=media', note],
-    ]);
-    vi.stubGlobal('fetch', mockFetch);
-
-    const result = await fetchAllNotes(TOKEN);
-    expect(result).toHaveLength(1);
-  });
-
-  it('should filter out deleted notes', async () => {
+  it('should filter out deleted notes after download', async () => {
     const deleted = makeNote('deleted-1', { isDeleted: true });
     const active = makeNote('active-1');
     const mockFetch = buildMockFetch([
@@ -171,7 +143,7 @@ describe('fetchAllNotes', () => {
     expect(result[0].id).toBe('active-1');
   });
 
-  it('should filter out pending notes', async () => {
+  it('should filter out pending notes after download', async () => {
     const pending = makeNote('pending-1', { isPending: true });
     const active = makeNote('active-1');
     const mockFetch = buildMockFetch([
@@ -189,7 +161,7 @@ describe('fetchAllNotes', () => {
     expect(result[0].id).toBe('active-1');
   });
 
-  it('should filter out notes with no content', async () => {
+  it('should filter out notes with no content after download', async () => {
     const empty = makeNote('empty-1', { content: '' });
     const valid = makeNote('valid-1');
     const mockFetch = buildMockFetch([
@@ -269,7 +241,6 @@ describe('fetchAllNotes', () => {
 
   it('should skip failed individual file downloads gracefully', async () => {
     const good = makeNote('good-1');
-    let downloadCount = 0;
     const mockFetch = vi.fn(async (url) => {
       if (url.includes('spaces=appDataFolder')) {
         return {
@@ -280,7 +251,6 @@ describe('fetchAllNotes', () => {
           text: async () => '',
         };
       }
-      downloadCount++;
       if (url.includes('file-bad')) {
         return errorResponse(404, 'Not found');
       }
@@ -288,8 +258,6 @@ describe('fetchAllNotes', () => {
     });
     vi.stubGlobal('fetch', mockFetch);
 
-    // fetchAllNotes uses Promise.allSettled, so one failure shouldn't break everything
-    // However, driveFetch throws on !res.ok, and Promise.allSettled catches rejected promises
     const result = await fetchAllNotes(TOKEN);
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe('good-1');
@@ -330,7 +298,6 @@ describe('fetchAllNotes', () => {
     vi.stubGlobal('fetch', mockFetch);
 
     const result = await fetchAllNotes(TOKEN);
-    // Should only have name, not data
     expect(result[0].attachments[0]).toEqual({ name: 'photo.jpg' });
     expect(result[0].attachments[0].data).toBeUndefined();
   });
@@ -361,7 +328,24 @@ describe('fetchNotesByIds', () => {
     expect(result).toEqual([]);
   });
 
-  it('should fetch only the requested notes by filename match', async () => {
+  it('should send name-based q filter to Drive for requested IDs', async () => {
+    const note = makeNote('aaa');
+    const mockFetch = buildMockFetch([
+      ['spaces=appDataFolder', { files: [driveFile('aaa.json', 'file-aaa')] }],
+      ['alt=media', note],
+    ]);
+    vi.stubGlobal('fetch', mockFetch);
+
+    await fetchNotesByIds(TOKEN, ['aaa', 'bbb']);
+
+    const listUrl = decodeURIComponent(mockFetch.mock.calls[0][0]);
+    expect(listUrl).toContain("name = 'aaa.json'");
+    expect(listUrl).toContain("name = 'bbb.json'");
+    // Should use OR to combine
+    expect(listUrl).toMatch(/name = 'aaa\.json' or name = 'bbb\.json'/);
+  });
+
+  it('should fetch and return only matched notes', async () => {
     const note1 = makeNote('aaa');
     const note2 = makeNote('bbb');
     const mockFetch = vi.fn(async (url) => {
@@ -372,7 +356,6 @@ describe('fetchNotesByIds', () => {
             files: [
               driveFile('aaa.json', 'file-aaa'),
               driveFile('bbb.json', 'file-bbb'),
-              driveFile('ccc.json', 'file-ccc'), // not requested
             ],
           }),
           text: async () => '',
@@ -387,14 +370,13 @@ describe('fetchNotesByIds', () => {
 
     expect(result).toHaveLength(2);
     expect(result.map((r) => r.id).sort()).toEqual(['aaa', 'bbb']);
-    // Should NOT have downloaded ccc
     const downloadCalls = mockFetch.mock.calls.filter(([u]) => u.includes('alt=media'));
     expect(downloadCalls).toHaveLength(2);
   });
 
-  it('should return empty array when no matching files found on Drive', async () => {
+  it('should return empty array when Drive returns no matching files', async () => {
     const mockFetch = buildMockFetch([
-      ['spaces=appDataFolder', { files: [driveFile('other.json')] }],
+      ['spaces=appDataFolder', { files: [] }],
     ]);
     vi.stubGlobal('fetch', mockFetch);
 
@@ -402,8 +384,32 @@ describe('fetchNotesByIds', () => {
     expect(result).toEqual([]);
   });
 
-  it('should not filter out deleted/pending notes (fetchNotesByIds is explicit)', async () => {
-    // fetchNotesByIds filters on m.id && m.content but NOT isDeleted/isPending
+  it('should chunk large noteId lists into multiple Drive queries', async () => {
+    // NAME_QUERY_CHUNK_SIZE is 50, so 75 IDs should produce 2 list calls
+    const noteIds = Array.from({ length: 75 }, (_, i) => `id-${i}`);
+    const mockFetch = vi.fn(async (url) => {
+      if (url.includes('spaces=appDataFolder')) {
+        return { ok: true, json: async () => ({ files: [] }), text: async () => '' };
+      }
+      return { ok: false, status: 404, text: async () => 'Not found' };
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    await fetchNotesByIds(TOKEN, noteIds);
+
+    const listCalls = mockFetch.mock.calls.filter(([u]) => u.includes('spaces=appDataFolder'));
+    expect(listCalls).toHaveLength(2);
+
+    // First chunk should have 50 name filters, second should have 25
+    const url1 = decodeURIComponent(listCalls[0][0]);
+    const url2 = decodeURIComponent(listCalls[1][0]);
+    const count1 = (url1.match(/name = '/g) || []).length;
+    const count2 = (url2.match(/name = '/g) || []).length;
+    expect(count1).toBe(50);
+    expect(count2).toBe(25);
+  });
+
+  it('should not filter out deleted/pending notes (explicit ID fetch)', async () => {
     const note = makeNote('del-note', { isDeleted: true });
     const mockFetch = buildMockFetch([
       ['spaces=appDataFolder', { files: [driveFile('del-note.json')] }],
@@ -412,7 +418,6 @@ describe('fetchNotesByIds', () => {
     vi.stubGlobal('fetch', mockFetch);
 
     const result = await fetchNotesByIds(TOKEN, ['del-note']);
-    // fetchNotesByIds intentionally doesn't filter isDeleted — the server explicitly requested these IDs
     expect(result).toHaveLength(1);
   });
 
@@ -436,7 +441,20 @@ describe('fetchNotesByIds', () => {
     expect(result[0]).toHaveProperty('tags');
     expect(result[0]).toHaveProperty('enrichment');
     expect(result[0]).toHaveProperty('attachments');
-    // Should not have raw attachment data
     expect(result[0].attachments[0].data).toBeUndefined();
+  });
+
+  it('should also apply non-note prefix exclusion in q filter', async () => {
+    const mockFetch = buildMockFetch([
+      ['spaces=appDataFolder', { files: [] }],
+    ]);
+    vi.stubGlobal('fetch', mockFetch);
+
+    await fetchNotesByIds(TOKEN, ['some-id']);
+
+    const listUrl = decodeURIComponent(mockFetch.mock.calls[0][0]);
+    // Even for ID-based fetch, the base query excludes non-note prefixes
+    expect(listUrl).toContain("not name contains 'moment-'");
+    expect(listUrl).toContain("name contains '.json'");
   });
 });

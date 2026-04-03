@@ -116,8 +116,9 @@ describe('validateQueryInput', () => {
 // ── validateSynthesizeInput ──────────────────────────────────────────
 
 describe('validateSynthesizeInput', () => {
+  const VALID_UUID_2 = 'abcdef01-2345-6789-abcd-ef0123456789';
   const validBody = {
-    noteIds: ['id-1', 'id-2'],
+    noteIds: [VALID_UUID, VALID_UUID_2],
     momentType: 'general',
     momentTitle: 'My Moment',
     momentId: VALID_UUID,
@@ -149,8 +150,11 @@ describe('validateSynthesizeInput', () => {
 
   it('should reject too many noteIds', () => {
     const res = mockRes();
+    const manyUuids = Array.from({ length: 501 }, (_, i) =>
+      `${String(i).padStart(8, '0')}-0000-0000-0000-000000000000`
+    );
     validateSynthesizeInput(
-      mockReq({ ...validBody, noteIds: Array.from({ length: 501 }, (_, i) => `id-${i}`) }),
+      mockReq({ ...validBody, noteIds: manyUuids }),
       res,
       mockNext
     );
@@ -166,7 +170,28 @@ describe('validateSynthesizeInput', () => {
       mockNext
     );
     expect(res.statusCode).toBe(400);
-    expect(res.body.error).toMatch(/Each noteId must be a string/);
+    expect(res.body.error).toMatch(/Each noteId must be a valid UUID/);
+  });
+
+  it('should reject noteIds that are not valid UUIDs', () => {
+    const res = mockRes();
+    validateSynthesizeInput(
+      mockReq({ ...validBody, noteIds: ['not-a-uuid'] }),
+      res,
+      mockNext
+    );
+    expect(res.statusCode).toBe(400);
+    expect(res.body.error).toMatch(/Each noteId must be a valid UUID/);
+  });
+
+  it('should accept noteIds that are valid UUIDs', () => {
+    const next = vi.fn();
+    validateSynthesizeInput(
+      mockReq({ ...validBody, noteIds: [VALID_UUID, 'abcdef01-2345-6789-abcd-ef0123456789'] }),
+      mockRes(),
+      next
+    );
+    expect(next).toHaveBeenCalled();
   });
 
   it('should reject missing momentType', () => {
