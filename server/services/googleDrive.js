@@ -4,7 +4,7 @@
  */
 
 const DRIVE_API_BASE = 'https://www.googleapis.com/drive/v3';
-const DOWNLOAD_CONCURRENCY = 10;
+const DOWNLOAD_CONCURRENCY = 100;
 const MAX_PAGE_SIZE = 1000;
 
 // Prefixes used by non-note files in appDataFolder
@@ -62,21 +62,32 @@ const downloadFile = async (fileId, accessToken) => {
 };
 
 /**
- * Download multiple files with a concurrency limit.
+ * Download multiple files with a sliding-window concurrency pool.
+ * Unlike batch-and-wait, this starts a new download as soon as any slot
+ * frees up, keeping all `concurrency` slots busy at all times.
  */
 const downloadFilesWithConcurrency = async (files, accessToken, concurrency = DOWNLOAD_CONCURRENCY) => {
   const results = [];
-  for (let i = 0; i < files.length; i += concurrency) {
-    const batch = files.slice(i, i + concurrency);
-    const batchResults = await Promise.allSettled(
-      batch.map((f) => downloadFile(f.id, accessToken))
-    );
-    for (const result of batchResults) {
-      if (result.status === 'fulfilled' && result.value) {
-        results.push(result.value);
-      }
+  let index = 0;
+
+  const next = async () => {
+    const i = index++;
+    if (i >= files.length) return;
+    try {
+      const data = await downloadFile(files[i].id, accessToken);
+      if (data) results.push(data);
+    } catch {
+      // Individual download failures are silently skipped
     }
-  }
+    await next();
+  };
+
+  const workers = Array.from(
+    { length: Math.min(concurrency, files.length) },
+    () => next()
+  );
+  await Promise.all(workers);
+
   return results;
 };
 
