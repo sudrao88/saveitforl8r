@@ -1,19 +1,17 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Send, Paperclip, Hash, Type, FileText, X, Loader2, ArrowLeft, CheckSquare, Plus, AlertTriangle } from 'lucide-react';
 import AttachmentMenu from './AttachmentMenu';
-import { marked } from 'marked';
 import { Attachment, Memory } from '../types';
 import { isNative } from '../services/platform';
 import { Keyboard } from '@capacitor/keyboard';
 import { Geolocation } from '@capacitor/geolocation';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
-import { escapeHtml, looksLikeMarkdown, parseChecklistMarkdown, sanitizePastedHtml, hasRichFormatting, extractHashtags, mergeTagsWithHashtags, containsUrl, linkifyUrls, handleEditorKeyDown, checkActiveFormats, execFormatCommand, formatsEqual, isEditorEmpty } from '../utils/editorUtils';
-import { processFileInputs } from '../utils/attachmentUtils';
+import { escapeHtml, extractHashtags, mergeTagsWithHashtags } from '../utils/editorUtils';
 import FormattingToolbar from './FormattingToolbar';
 import TagInput from './TagInput';
 import { btn, overlay } from '../styles/design-system';
 import { ChecklistEditor } from './ChecklistItems';
-import useBeforeInputMarkdown from '../hooks/useBeforeInputMarkdown';
+import { useMemoryEditor } from '../hooks/useMemoryEditor';
 
 interface NewMemoryPageProps {
   onClose: () => void;
@@ -39,9 +37,6 @@ interface NewMemoryPageProps {
   editMemory?: Memory;
 }
 
-// Configure marked for clean output with line-break support
-marked.setOptions({ breaks: true, gfm: true });
-
 const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpdate, initialContent, editMemory }) => {
   const isEditMode = !!editMemory;
 
@@ -64,8 +59,21 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
     return '';
   };
 
-  const [attachments, setAttachments] = useState<Attachment[]>(getInitialAttachments);
-  const [tags, setTags] = useState<string[]>(getInitialTags);
+  const {
+    editorRef, activeFormats, isEmpty, isChecklistMode, checklistItems,
+    setChecklistItems, attachments, setAttachments, tags, setTags,
+    showTags, setShowTags, showFormatting, setShowFormatting,
+    showAttachMenu, setShowAttachMenu, checkFormats, execFormat,
+    handlePaste, handleEditorKeyDown: onEditorKeyDown, handleFileSelect,
+    removeAttachment, closeAttachMenu, toggleChecklistMode: toggleChecklistModeBase,
+    updateChecklistItem, addChecklistItem, removeChecklistItem,
+    getEditorContent, setEditorHTML, resetEditor, setIsEmpty, setIsChecklistMode,
+  } = useMemoryEditor({
+    initialContent: getInitialContent(),
+    initialAttachments: getInitialAttachments(),
+    initialTags: getInitialTags(),
+  });
+
   const [isProcessing, setIsProcessing] = useState(false);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
 
@@ -73,54 +81,16 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
   const initialValuesRef = useRef({
     content: getInitialContent(),
     attachments: JSON.stringify(getInitialAttachments().map(a => a.id).sort()),
-    tags: JSON.stringify([...getInitialTags()].sort())
+    tags: JSON.stringify([...getInitialTags()].sort()),
   });
 
-  // Editor States
-  const [isChecklistMode, setIsChecklistMode] = useState(() => {
-    const content = getInitialContent();
-    return content.startsWith('<ul class="checklist">');
-  });
-  const [activeFormats, setActiveFormats] = useState<string[]>([]);
-  const [isEmpty, setIsEmpty] = useState(() => !getInitialContent());
-
-  // Bottom card panel toggles
-  const [showTags, setShowTags] = useState(false);
-  const [showFormatting, setShowFormatting] = useState(false);
-  const [showAttachMenu, setShowAttachMenu] = useState(false);
-
-  // For Rich Text Mode
-  const editorRef = useRef<HTMLDivElement>(null);
+  // Track whether the editor DOM has been initialized with content
   const isInitialized = useRef(false);
   const pendingEditorContent = useRef<string | null>(null);
-  const formatRafRef = useRef<number>(0);
-  const prevFormatsRef = useRef<string[]>([]);
-
-  // For Checklist Mode
-  interface ChecklistItem {
-    id: string;
-    text: string;
-    checked: boolean;
-  }
-  const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>(() => {
-    const content = getInitialContent();
-    if (content.startsWith('<ul class="checklist">')) {
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(content, 'text/html');
-      const items = Array.from(doc.querySelectorAll('li'));
-      return items.map(item => ({
-        id: crypto.randomUUID(),
-        text: item.textContent || '',
-        checked: item.getAttribute('data-checked') === 'true'
-      }));
-    }
-    return [];
-  });
 
   const keyboardHeight = useKeyboardHeight();
 
   useEffect(() => {
-    // Ensure keyboard pushes content up on native
     if (isNative()) {
       Keyboard.setAccessoryBarVisible({ isVisible: true });
       Keyboard.setScroll({ isDisabled: false });
@@ -132,251 +102,59 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
     if (isChecklistMode || !editorRef.current) return;
 
     if (pendingEditorContent.current !== null) {
-        editorRef.current.innerHTML = pendingEditorContent.current;
-        setIsEmpty(!pendingEditorContent.current);
-        pendingEditorContent.current = null;
-        isInitialized.current = true;
-        return;
+      setEditorHTML(pendingEditorContent.current);
+      pendingEditorContent.current = null;
+      isInitialized.current = true;
+      return;
     }
 
     if (!isInitialized.current) {
-        let initialText = '';
-        if (editMemory?.content && !editMemory.content.startsWith('<ul class="checklist">')) {
-            initialText = editMemory.content;
-        } else if (initialContent?.text) {
-            initialText = initialContent.text.replace(/\n/g, '<br>');
-        }
-        editorRef.current.innerHTML = initialText;
-        setIsEmpty(!initialText);
-        isInitialized.current = true;
+      let initialText = '';
+      if (editMemory?.content && !editMemory.content.startsWith('<ul class="checklist">')) {
+        initialText = editMemory.content;
+      } else if (initialContent?.text) {
+        initialText = initialContent.text.replace(/\n/g, '<br>');
+      }
+      setEditorHTML(initialText);
+      isInitialized.current = true;
     }
-  }, [isChecklistMode, initialContent, editMemory]);
+  }, [isChecklistMode, setEditorHTML, editorRef, initialContent, editMemory]);
 
   // Focus editor on mount
   useEffect(() => {
     if (!isChecklistMode && editorRef.current) {
-        setTimeout(() => {
-            editorRef.current?.focus();
-        }, 100);
+      setTimeout(() => {
+        editorRef.current?.focus();
+      }, 100);
     }
-  }, [isChecklistMode]);
+  }, [isChecklistMode, editorRef]);
 
-  const handlePaste = (e: React.ClipboardEvent) => {
-    const clipboardData = e.clipboardData;
-
-    // Handle image paste — add as attachment
-    for (const item of clipboardData.items) {
-        if (item.type.startsWith('image/')) {
-            const blob = item.getAsFile();
-            if (blob) {
-                e.preventDefault();
-                const reader = new FileReader();
-                reader.onload = (evt) => {
-                    setAttachments(prev => [...prev, {
-                        id: crypto.randomUUID(),
-                        type: 'image',
-                        mimeType: blob.type,
-                        data: evt.target?.result as string,
-                        name: 'Pasted Image'
-                    }]);
-                };
-                reader.readAsDataURL(blob);
-            }
-            return;
-        }
-    }
-
-    // Handle text paste — preserve rich formatting or convert markdown
-    const html = clipboardData.getData('text/html');
-    const plainText = clipboardData.getData('text/plain');
-
-    if (!html && !plainText) return;
-
-    e.preventDefault();
-
-    let htmlToInsert = '';
-
-    // Checklist markdown — switch to checklist mode with parsed items
-    if (plainText) {
-        const checklistItems = parseChecklistMarkdown(plainText);
-        if (checklistItems) {
-            setChecklistItems(checklistItems.map(item => ({
-                id: crypto.randomUUID(),
-                text: item.text,
-                checked: item.checked
-            })));
-            if (editorRef.current) editorRef.current.innerHTML = '';
-            setIsChecklistMode(true);
-            setShowFormatting(false);
-            setIsEmpty(false);
-            return;
-        }
-    }
-
-    if (plainText && containsUrl(plainText)) {
-        // Prefer plain text when it contains URLs — clipboard HTML from messaging
-        // apps often wraps URLs in preview cards that lose the actual URL text
-        htmlToInsert = linkifyUrls(escapeHtml(plainText).replace(/\n/g, '<br>'));
-    } else if (html && hasRichFormatting(html)) {
-        // Rich text paste (Word, Google Docs, web pages) — sanitize & preserve formatting
-        htmlToInsert = sanitizePastedHtml(html);
-    } else if (plainText && looksLikeMarkdown(plainText)) {
-        // Plain text with markdown syntax — convert to HTML, then sanitize to prevent XSS
-        htmlToInsert = sanitizePastedHtml(marked.parse(plainText) as string);
-    } else if (plainText) {
-        // Plain text without markdown — insert with line breaks preserved
-        htmlToInsert = escapeHtml(plainText).replace(/\n/g, '<br>');
-    }
-
-    if (htmlToInsert) {
-        const selection = window.getSelection();
-        if (selection && selection.rangeCount > 0) {
-            const range = selection.getRangeAt(0);
-            range.deleteContents();
-            const fragment = range.createContextualFragment(htmlToInsert);
-            range.insertNode(fragment);
-            // Move cursor to end of inserted content
-            range.collapse(false);
-            selection.removeAllRanges();
-            selection.addRange(range);
-        }
-    }
-
-    setIsEmpty(isEditorEmpty(editorRef.current));
-    checkFormats();
-  };
-
-  const closeAttachMenu = useCallback(() => setShowAttachMenu(false), []);
-
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      const newAttachments = await processFileInputs(e.target.files);
-      setAttachments(prev => [...prev, ...newAttachments]);
-      e.target.value = '';
-    }
-  };
-
-  const removeAttachment = (id: string) => {
-    setAttachments(prev => prev.filter(a => a.id !== id));
-  };
-
-
-  // Rich Text Formatting — rAF-debounced to coalesce multiple calls per frame
-  const checkFormats = useCallback(() => {
-      cancelAnimationFrame(formatRafRef.current);
-      formatRafRef.current = requestAnimationFrame(() => {
-          if (!editorRef.current) return;
-          const formats = checkActiveFormats(editorRef.current);
-          if (!formatsEqual(formats, prevFormatsRef.current)) {
-              prevFormatsRef.current = formats;
-              setActiveFormats(formats);
-          }
-          setIsEmpty(isEditorEmpty(editorRef.current));
-      });
-  }, []);
-
-  // Cleanup rAF on unmount
-  useEffect(() => () => cancelAnimationFrame(formatRafRef.current), []);
-
-  useBeforeInputMarkdown(editorRef, checkFormats);
-
-  const execFormat = useCallback((command: string, value?: string) => {
-      execFormatCommand(command, value);
-      editorRef.current?.focus();
-      checkFormats();
-  }, [checkFormats]);
-
-  const handleFormat = useCallback((command: string, value?: string) => {
-    execFormat(command, value);
-  }, [execFormat]);
-
-  // Toggle Checklist Mode
+  // Override toggleChecklistMode to use pendingEditorContent for NewMemoryPage's
+  // deferred content hydration pattern
   const toggleChecklistMode = () => {
-      if (isChecklistMode) {
-          const text = checklistItems.map(item => escapeHtml(item.text)).join('<br>');
-          pendingEditorContent.current = text;
-          setIsChecklistMode(false);
-      } else {
-          const text = editorRef.current?.innerText || '';
-          const lines = text.split('\n').filter(l => l.trim().length > 0);
-
-          if (lines.length === 0) {
-              setChecklistItems([{ id: crypto.randomUUID(), text: '', checked: false }]);
-          } else {
-              setChecklistItems(lines.map(line => ({
-                  id: crypto.randomUUID(),
-                  text: line,
-                  checked: false
-              })));
-          }
-          // Clear editor content before switching so the browser-managed
-          // contentEditable text doesn't persist in the reused DOM node.
-          if (editorRef.current) {
-              editorRef.current.innerHTML = '';
-          }
-          setIsChecklistMode(true);
-          setShowFormatting(false);
-      }
-  };
-
-  const updateChecklistItem = (id: string, text: string) => {
-      setChecklistItems(prev => prev.map(item => item.id === id ? { ...item, text } : item));
-  };
-
-  const addChecklistItem = (afterId?: string) => {
-      setChecklistItems(prev => {
-          const index = prev.findIndex(item => item.id === afterId);
-          const newItem = { id: crypto.randomUUID(), text: '', checked: false };
-          if (index === -1) return [...prev, newItem];
-          const newItems = [...prev];
-          newItems.splice(index + 1, 0, newItem);
-          return newItems;
-      });
-  };
-  
-  const removeChecklistItem = (id: string) => {
-      if (checklistItems.length <= 1) return;
-      setChecklistItems(prev => prev.filter(item => item.id !== id));
+    if (isChecklistMode) {
+      const text = checklistItems.map(item => escapeHtml(item.text)).join('<br>');
+      pendingEditorContent.current = text;
+      setIsChecklistMode(false);
+      setChecklistItems([]);
+    } else {
+      toggleChecklistModeBase();
+    }
   };
 
   // Check if there are unsaved changes
   const hasChanges = useCallback((): boolean => {
-    // Get current content
-    let currentContent = '';
-    if (isChecklistMode) {
-      const listItems = checklistItems.map(item =>
-        `<li data-checked="${item.checked}">${escapeHtml(item.text)}</li>`
-      ).join('');
-      currentContent = checklistItems.length > 0 ? `<ul class="checklist">${listItems}</ul>` : '';
-    } else {
-      currentContent = editorRef.current?.innerHTML || '';
-    }
-
-    // Compare content
+    const currentContent = getEditorContent();
     if (currentContent !== initialValuesRef.current.content) return true;
-
-    // Compare attachments
     const currentAttachments = JSON.stringify(attachments.map(a => a.id).sort());
     if (currentAttachments !== initialValuesRef.current.attachments) return true;
-
-    // Compare tags
     const currentTags = JSON.stringify([...tags].sort());
     if (currentTags !== initialValuesRef.current.tags) return true;
-
     return false;
-  }, [isChecklistMode, checklistItems, attachments, tags]);
+  }, [getEditorContent, attachments, tags]);
 
   const handleSubmit = async () => {
-    let finalContent = '';
-
-    if (isChecklistMode) {
-        const listItems = checklistItems.map(item =>
-            `<li data-checked="${item.checked}">${escapeHtml(item.text)}</li>`
-        ).join('');
-        finalContent = `<ul class="checklist">${listItems}</ul>`;
-    } else {
-        finalContent = editorRef.current?.innerHTML || '';
-    }
+    const finalContent = getEditorContent();
 
     if ((!finalContent.trim() && attachments.length === 0) || isProcessing) return;
 
@@ -389,11 +167,9 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
       if (!isEditMode) {
         try {
           if (isNative()) {
-            // Use Capacitor Geolocation plugin on native to trigger the
-            // iOS "While Using App" permission dialog and access native GPS
             const pos = await Promise.race([
               Geolocation.getCurrentPosition({ timeout: 5000 }),
-              new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000))
+              new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
             ]);
             if (pos) {
               location = {
@@ -407,7 +183,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
               new Promise<GeolocationPosition>((resolve, reject) => {
                 navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
               }),
-              new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000))
+              new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
             ]) as GeolocationPosition | null;
             if (pos) {
               location = {
@@ -426,31 +202,26 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
       const allTags = mergeTagsWithHashtags(tags, extractedTags);
 
       if (isEditMode && onUpdate && editMemory) {
-        // Update existing memory
         await onUpdate(editMemory.id, finalContent, attachments, allTags, editMemory.location);
       } else {
-        // Create new memory
         await onCreate(finalContent, attachments, allTags, location);
       }
       handleCloseConfirmed();
-
     } catch (error) {
-        console.error("Error saving memory:", error);
-        setIsProcessing(false);
-        alert(`Failed to ${isEditMode ? 'update' : 'save'} memory. Please try again.`);
+      console.error("Error saving memory:", error);
+      setIsProcessing(false);
+      alert(`Failed to ${isEditMode ? 'update' : 'save'} memory. Please try again.`);
     }
   };
 
   const handleCloseConfirmed = () => {
-    setChecklistItems([]);
-    setTags([]);
+    resetEditor();
     setIsProcessing(false);
     setShowDiscardConfirm(false);
     onClose();
   };
 
   const handleClose = () => {
-    // Check for unsaved changes in edit mode, or any content in create mode
     if (isEditMode ? hasChanges() : hasContent) {
       setShowDiscardConfirm(true);
       return;
@@ -460,7 +231,9 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
 
   // Keyboard shortcut: ⌘+Enter or Ctrl+Enter to save
   const handleSubmitRef = useRef(handleSubmit);
-  handleSubmitRef.current = handleSubmit;
+  useEffect(() => {
+    handleSubmitRef.current = handleSubmit;
+  });
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -499,10 +272,8 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
         <main
             className="flex-1 overflow-y-auto p-4 sm:p-8 max-w-3xl mx-auto w-full"
             onClick={(e) => {
-                // Focus the editor when tapping empty space in the main area
                 if (!isChecklistMode && editorRef.current && !editorRef.current.contains(e.target as Node)) {
                     editorRef.current.focus();
-                    // Place cursor at end of content
                     const selection = window.getSelection();
                     if (selection && editorRef.current.childNodes.length > 0) {
                         selection.selectAllChildren(editorRef.current);
@@ -530,11 +301,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                             rich-editor
                             text-left touch-manipulation"
                             dir="ltr"
-                            onKeyDown={(e) => {
-                                if (editorRef.current) {
-                                    handleEditorKeyDown(e, editorRef.current, checkFormats);
-                                }
-                            }}
+                            onKeyDown={onEditorKeyDown}
                             onKeyUp={checkFormats}
                             onMouseUp={checkFormats}
                             onInput={checkFormats}
@@ -595,7 +362,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
             {/* Formatting toolbar (expandable) */}
             {showFormatting && !isChecklistMode && (
                 <div className="px-4 pt-3 pb-1 animate-in slide-in-from-bottom-2 duration-(--duration-fast)">
-                    <FormattingToolbar activeFormats={activeFormats} onFormat={handleFormat} compact />
+                    <FormattingToolbar activeFormats={activeFormats} onFormat={execFormat} compact />
                 </div>
             )}
 

@@ -1,20 +1,15 @@
 import React, { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { Paperclip, Hash, Type, Maximize2, Plus, X, FileText, Loader2, CheckSquare, Check } from 'lucide-react';
 import AttachmentMenu from './AttachmentMenu';
-import { marked } from 'marked';
 import { Attachment, QuickNoteState } from '../types';
-import { escapeHtml, looksLikeMarkdown, parseChecklistMarkdown, sanitizePastedHtml, hasRichFormatting, extractHashtags, mergeTagsWithHashtags, containsUrl, linkifyUrls, handleEditorKeyDown, checkActiveFormats, execFormatCommand, formatsEqual, isEditorEmpty } from '../utils/editorUtils';
-import { processFileInputs } from '../utils/attachmentUtils';
+import { escapeHtml, sanitizePastedHtml, extractHashtags, mergeTagsWithHashtags } from '../utils/editorUtils';
 import { triggerHaptic } from '../services/platform';
 import FormattingToolbar from './FormattingToolbar';
 import TagInput from './TagInput';
-import { btn, zIndex } from '../styles/design-system';
+import { btn } from '../styles/design-system';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { ChecklistEditor } from './ChecklistItems';
-import useBeforeInputMarkdown from '../hooks/useBeforeInputMarkdown';
-
-// Configure marked for clean output
-marked.setOptions({ breaks: true, gfm: true });
+import { useMemoryEditor } from '../hooks/useMemoryEditor';
 
 interface QuickNoteBarProps {
   onSave: (text: string, attachments: Attachment[], tags: string[]) => Promise<void>;
@@ -28,40 +23,32 @@ export interface QuickNoteBarHandle {
   setContent: (text: string, attachments: Attachment[]) => void;
 }
 
-interface ChecklistItem {
-  id: string;
-  text: string;
-  checked: boolean;
-}
-
 const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave, onExpand }, ref) => {
-  const [attachments, setAttachments] = useState<Attachment[]>([]);
-  const [tags, setTags] = useState<string[]>([]);
-  const [showTags, setShowTags] = useState(false);
-  const [showFormatting, setShowFormatting] = useState(false);
-  const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const {
+    editorRef, activeFormats, isEmpty, isChecklistMode, checklistItems,
+    setChecklistItems, attachments, setAttachments, tags, setTags,
+    showTags, setShowTags, showFormatting, setShowFormatting,
+    showAttachMenu, setShowAttachMenu, checkFormats, execFormat,
+    handlePaste, handleEditorKeyDown: onEditorKeyDown, handleFileSelect,
+    removeAttachment, closeAttachMenu, toggleChecklistMode: toggleChecklistModeBase,
+    updateChecklistItem, removeChecklistItem,
+    getEditorContent, setEditorHTML, resetEditor, setIsEmpty, setIsChecklistMode,
+  } = useMemoryEditor();
+
   const [isSaving, setIsSaving] = useState(false);
-  const [isEmpty, setIsEmpty] = useState(true);
-  const [activeFormats, setActiveFormats] = useState<string[]>([]);
-  const [isChecklistMode, setIsChecklistMode] = useState(false);
-  const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([]);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
   const keyboardHeight = useKeyboardHeight({ includeOffsetTop: true });
 
-  const editorRef = useRef<HTMLDivElement>(null);
   const focusItemIdRef = useRef<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const saveSuccessTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const formatRafRef = useRef<number>(0);
-  const prevFormatsRef = useRef<string[]>([]);
   const widgetCameraRef = useRef<HTMLInputElement>(null);
   const widgetDocRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     return () => {
       if (saveSuccessTimeoutRef.current) clearTimeout(saveSuccessTimeoutRef.current);
-      cancelAnimationFrame(formatRafRef.current);
     };
   }, []);
 
@@ -73,10 +60,8 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
       // Reset checklist mode so shared content is visible in rich-text editor
       setIsChecklistMode(false);
       setChecklistItems([]);
-      if (editorRef.current) {
-        editorRef.current.innerHTML = escapeHtml(text || '').replace(/\n/g, '<br>');
-        setIsEmpty(!text);
-      }
+      setEditorHTML(escapeHtml(text || '').replace(/\n/g, '<br>'));
+      if (!text) setIsEmpty(true);
       if (newAttachments.length > 0) {
         setAttachments(prev => [...prev, ...newAttachments]);
       }
@@ -85,151 +70,16 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
   }));
 
   // Autofocus the editor on mount for devices with a fine pointer (keyboard-attached)
-  // This avoids triggering the virtual keyboard on touch-only mobile devices
   useEffect(() => {
     if (window.matchMedia('(pointer: fine)').matches) {
       editorRef.current?.focus();
     }
-  }, []);
-
-  // rAF-debounced format checking — coalesces multiple calls per frame and
-  // skips re-renders when the active formats haven't actually changed.
-  const checkFormats = useCallback(() => {
-    cancelAnimationFrame(formatRafRef.current);
-    formatRafRef.current = requestAnimationFrame(() => {
-      if (!editorRef.current) return;
-      const formats = checkActiveFormats(editorRef.current);
-      if (!formatsEqual(formats, prevFormatsRef.current)) {
-        prevFormatsRef.current = formats;
-        setActiveFormats(formats);
-      }
-      setIsEmpty(isEditorEmpty(editorRef.current));
-    });
-  }, []);
-
-  useBeforeInputMarkdown(editorRef, checkFormats);
-
-  const execFormat = useCallback((command: string, value?: string) => {
-    execFormatCommand(command, value);
-    editorRef.current?.focus();
-    checkFormats();
-  }, [checkFormats]);
-
-  const handlePaste = useCallback((e: React.ClipboardEvent) => {
-    const clipboardData = e.clipboardData;
-
-    // Handle image paste
-    for (const item of clipboardData.items) {
-      if (item.type.startsWith('image/')) {
-        const blob = item.getAsFile();
-        if (blob) {
-          e.preventDefault();
-          const reader = new FileReader();
-          reader.onload = (evt) => {
-            setAttachments(prev => [...prev, {
-              id: crypto.randomUUID(),
-              type: 'image',
-              mimeType: blob.type,
-              data: evt.target?.result as string,
-              name: 'Pasted Image'
-            }]);
-          };
-          reader.readAsDataURL(blob);
-        }
-        return;
-      }
-    }
-
-    // Handle text paste
-    const html = clipboardData.getData('text/html');
-    const plainText = clipboardData.getData('text/plain');
-
-    if (!html && !plainText) return;
-
-    e.preventDefault();
-
-    let htmlToInsert = '';
-
-    // Checklist markdown — switch to checklist mode with parsed items
-    if (plainText) {
-        const parsedChecklist = parseChecklistMarkdown(plainText);
-        if (parsedChecklist) {
-            setChecklistItems(parsedChecklist.map(item => ({
-                id: crypto.randomUUID(),
-                text: item.text,
-                checked: item.checked
-            })));
-            if (editorRef.current) editorRef.current.innerHTML = '';
-            setIsChecklistMode(true);
-            setIsEmpty(false);
-            setShowFormatting(false);
-            return;
-        }
-    }
-
-    if (plainText && containsUrl(plainText)) {
-      // Prefer plain text when it contains URLs — clipboard HTML from messaging
-      // apps often wraps URLs in preview cards that lose the actual URL text
-      htmlToInsert = linkifyUrls(escapeHtml(plainText).replace(/\n/g, '<br>'));
-    } else if (html && hasRichFormatting(html)) {
-      htmlToInsert = sanitizePastedHtml(html);
-    } else if (plainText && looksLikeMarkdown(plainText)) {
-      htmlToInsert = sanitizePastedHtml(marked.parse(plainText) as string);
-    } else if (plainText) {
-      htmlToInsert = escapeHtml(plainText).replace(/\n/g, '<br>');
-    }
-
-    if (htmlToInsert) {
-      const selection = window.getSelection();
-      if (selection && selection.rangeCount > 0) {
-        const range = selection.getRangeAt(0);
-        range.deleteContents();
-        const fragment = range.createContextualFragment(htmlToInsert);
-        range.insertNode(fragment);
-        range.collapse(false);
-        selection.removeAllRanges();
-        selection.addRange(range);
-      }
-    }
-
-    setIsEmpty(isEditorEmpty(editorRef.current));
-    checkFormats();
-  }, [checkFormats]);
-
-  const closeAttachMenu = useCallback(() => setShowAttachMenu(false), []);
-
-  const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      const newAttachments = await processFileInputs(e.target.files);
-      setAttachments(prev => [...prev, ...newAttachments]);
-      e.target.value = '';
-    }
-  }, []);
-
-  const removeAttachment = useCallback((id: string) => {
-    setAttachments(prev => prev.filter(a => a.id !== id));
-  }, []);
-
-  const resetState = useCallback(() => {
-    if (editorRef.current) editorRef.current.innerHTML = '';
-    setAttachments([]);
-    setTags([]);
-    setShowTags(false);
-    setShowFormatting(false);
-    setShowAttachMenu(false);
-    setIsEmpty(true);
-    setActiveFormats([]);
-    setIsChecklistMode(false);
-    setChecklistItems([]);
-  }, []);
+  }, [editorRef]);
 
   const handleSave = useCallback(async () => {
     let content = '';
     if (isChecklistMode) {
-      const listItems = checklistItems.map(item =>
-        `<li data-checked="${item.checked}">${escapeHtml(item.text)}</li>`
-      ).join('');
-      content = `<ul class="checklist">${listItems}</ul>`;
+      content = getEditorContent();
     } else {
       const rawContent = editorRef.current?.innerHTML || '';
       content = sanitizePastedHtml(rawContent);
@@ -242,7 +92,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
       const extractedTags = extractHashtags(content);
       const allTags = mergeTagsWithHashtags(tags, extractedTags);
       await onSave(content, attachments, allTags);
-      resetState();
+      resetEditor();
       setSaveSuccess(true);
       triggerHaptic();
       if (saveSuccessTimeoutRef.current) clearTimeout(saveSuccessTimeoutRef.current);
@@ -255,87 +105,51 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
     } finally {
       setIsSaving(false);
     }
-  }, [isChecklistMode, checklistItems, attachments, tags, isSaving, onSave, resetState]);
+  }, [isChecklistMode, getEditorContent, editorRef, attachments, tags, isSaving, onSave, resetEditor]);
 
   const handleExpand = useCallback(() => {
     let content = '';
     if (isChecklistMode) {
-      const listItems = checklistItems.map(item =>
-        `<li data-checked="${item.checked}">${escapeHtml(item.text)}</li>`
-      ).join('');
-      content = `<ul class="checklist">${listItems}</ul>`;
+      content = getEditorContent();
     } else {
       const rawContent = editorRef.current?.innerHTML || '';
       content = sanitizePastedHtml(rawContent);
     }
     onExpand({ content, attachments, tags });
-    resetState();
-  }, [isChecklistMode, checklistItems, attachments, tags, onExpand, resetState]);
+    resetEditor();
+  }, [isChecklistMode, getEditorContent, editorRef, attachments, tags, onExpand, resetEditor]);
 
   // Explicitly focus the editor on touch/click to work around iOS standalone
   // mode where the first tap on a contentEditable after a cold launch may not
-  // trigger the virtual keyboard. Skip if user has an active text selection
-  // to avoid disrupting drag-select on mobile.
+  // trigger the virtual keyboard.
   const handleEditorTap = useCallback(() => {
     const sel = window.getSelection();
-    if (sel && sel.toString()) return; // Don't disrupt active selection
+    if (sel && sel.toString()) return;
     if (editorRef.current && document.activeElement !== editorRef.current) {
       editorRef.current.focus();
     }
-  }, []);
+  }, [editorRef]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    // Cmd/Ctrl + Enter to save
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       handleSave();
       return;
     }
-    // Rich text auto-formatting
-    if (editorRef.current) {
-      handleEditorKeyDown(e, editorRef.current, checkFormats);
-    }
-  }, [handleSave, checkFormats]);
+    onEditorKeyDown(e);
+  }, [handleSave, onEditorKeyDown]);
 
+  // Override toggleChecklistMode to focus last input after switching
   const toggleChecklistMode = useCallback(() => {
-    if (isChecklistMode) {
-      // Switch back to rich text: put checklist text into the editor
-      const text = checklistItems.map(item => escapeHtml(item.text)).join('<br>');
-      if (editorRef.current) {
-        editorRef.current.innerHTML = text;
-        setIsEmpty(!text);
-      }
-      setChecklistItems([]);
-      setIsChecklistMode(false);
-    } else {
-      // Switch to checklist mode: convert editor text to checklist items
-      const text = editorRef.current?.innerText || '';
-      const lines = text.split('\n').filter(l => l.trim().length > 0);
-      if (lines.length === 0) {
-        setChecklistItems([{ id: crypto.randomUUID(), text: '', checked: false }]);
-      } else {
-        setChecklistItems(lines.map(line => ({
-          id: crypto.randomUUID(),
-          text: line,
-          checked: false
-        })));
-      }
-      if (editorRef.current) editorRef.current.innerHTML = '';
-      setIsChecklistMode(true);
-      setIsEmpty(false);
-      setShowFormatting(false);
-      // Focus the last checklist input after render so the keyboard stays open
-      requestAnimationFrame(() => {
-        const inputs = containerRef.current?.querySelectorAll<HTMLInputElement>('[data-checklist-id]');
-        if (inputs?.length) inputs[inputs.length - 1].focus();
-      });
-    }
-  }, [isChecklistMode, checklistItems]);
+    toggleChecklistModeBase();
+    // Focus the last checklist input after render so the keyboard stays open
+    requestAnimationFrame(() => {
+      const inputs = containerRef.current?.querySelectorAll<HTMLInputElement>('[data-checklist-id]');
+      if (inputs?.length) inputs[inputs.length - 1].focus();
+    });
+  }, [toggleChecklistModeBase]);
 
-  const updateChecklistItem = useCallback((id: string, text: string) => {
-    setChecklistItems(prev => prev.map(item => item.id === id ? { ...item, text } : item));
-  }, []);
-
+  // Override addChecklistItem to track focus
   const addChecklistItem = useCallback((afterId?: string) => {
     const newId = crypto.randomUUID();
     focusItemIdRef.current = newId;
@@ -347,25 +161,13 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
       newItems.splice(index + 1, 0, newItem);
       return newItems;
     });
-  }, []);
-
-  const removeChecklistItem = useCallback((id: string) => {
-    setChecklistItems(prev => {
-      if (prev.length <= 1) return prev;
-      return prev.filter(item => item.id !== id);
-    });
-  }, []);
-
-  const toggleChecklistItemChecked = useCallback((id: string) => {
-    setChecklistItems(prev => prev.map(i => i.id === id ? { ...i, checked: !i.checked } : i));
-  }, []);
+  }, [setChecklistItems]);
 
   // Focus the newly added checklist item
   useEffect(() => {
     if (focusItemIdRef.current) {
       const id = focusItemIdRef.current;
       focusItemIdRef.current = null;
-      // Use requestAnimationFrame to wait for DOM update
       requestAnimationFrame(() => {
         const input = containerRef.current?.querySelector<HTMLInputElement>(`[data-checklist-id="${id}"]`);
         input?.focus();
@@ -433,7 +235,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
             <div className="w-full max-h-[10em] overflow-y-auto bg-(--color-surface-raised) rounded-(--radius-xl) px-3 py-2.5 border border-(--color-border-default)">
               <ChecklistEditor
                 items={checklistItems}
-                onToggle={toggleChecklistItemChecked}
+                onToggle={(id) => setChecklistItems(prev => prev.map(i => i.id === id ? { ...i, checked: !i.checked } : i))}
                 onUpdate={updateChecklistItem}
                 onAdd={addChecklistItem}
                 onRemove={removeChecklistItem}
