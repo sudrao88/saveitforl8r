@@ -84,7 +84,7 @@ interface GalleryViewerProps {
 const GalleryViewer: React.FC<GalleryViewerProps> = ({ attachments, initialIndex, onClose }) => {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [isZoomed, setIsZoomed] = useState(false);
-  const [canShare, setCanShare] = useState(false);
+  const [canShare] = useState(() => typeof navigator.share === 'function');
   const touchStartX = useRef<number | null>(null);
   const touchDeltaX = useRef(0);
   const [swipeOffset, setSwipeOffset] = useState(0);
@@ -95,10 +95,6 @@ const GalleryViewer: React.FC<GalleryViewerProps> = ({ attachments, initialIndex
   const isPdf = current.mimeType === 'application/pdf';
   const isImage = current.type === 'image';
 
-  // Check share API support
-  useEffect(() => {
-    setCanShare(typeof navigator.share === 'function');
-  }, []);
 
   const goTo = useCallback((index: number) => {
     if (index >= 0 && index < attachments.length) {

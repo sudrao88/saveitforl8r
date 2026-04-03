@@ -6,7 +6,7 @@
  * Displays a pulsing "Creating..." state for pending moments.
  */
 
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Moment } from '../types';
 import { text } from '../styles/design-system';
@@ -62,17 +62,23 @@ const MomentBubble: React.FC<MomentBubbleProps> = ({
 }) => {
   const isPending = moment.isPending || isResynthesizing;
   const hasError = moment.processingError;
-  const wasCreationPendingRef = useRef(moment.isPending);
+  const [wasPending, setWasPending] = useState(moment.isPending ?? false);
   const [showGlow, setShowGlow] = useState(false);
 
-  useEffect(() => {
-    if (wasCreationPendingRef.current && !moment.isPending && !hasError) {
+  // Detect pending→complete transition during render (React-approved pattern)
+  if (wasPending !== (moment.isPending ?? false)) {
+    setWasPending(moment.isPending ?? false);
+    if (wasPending && !moment.isPending && !hasError) {
       setShowGlow(true);
-      const timer = setTimeout(() => setShowGlow(false), 800);
-      return () => clearTimeout(timer);
     }
-    wasCreationPendingRef.current = moment.isPending;
-  }, [moment.isPending, hasError]);
+  }
+
+  // Auto-clear glow after animation
+  useEffect(() => {
+    if (!showGlow) return;
+    const timer = setTimeout(() => setShowGlow(false), 800);
+    return () => clearTimeout(timer);
+  }, [showGlow]);
 
   const icon = moment.emoji || getMomentIcon(moment.type, moment.objective);
   const label = isPending

@@ -408,6 +408,7 @@ const AppContent: React.FC = () => {
           });
       }
     }, 0);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- handleRetry is stable but changes identity; we only want this to run when authStatus changes
   }, [authStatus]);
 
   // Incrementally render cards as they are downloaded during sync.
@@ -522,7 +523,7 @@ const AppContent: React.FC = () => {
       // Since addListener is async in some versions, but usually returns PluginListenerHandle
       listener.then(handle => handle.remove()).catch(e => console.error(e));
     };
-  }, [viewingGallery, expandedMemory, isSettingsOpen, editingMemory, isCaptureOpen, view, activeMoment, showAllMoments, showCalendarAgenda, showTodoList, handleCaptureClose, handleEditClose]);
+  }, [viewingGallery, expandedMemory, isSettingsOpen, setIsSettingsOpen, editingMemory, isCaptureOpen, view, activeMoment, showAllMoments, showCalendarAgenda, showTodoList, handleCaptureClose, handleEditClose]);
 
   useEffect(() => {
     if (shareData) {

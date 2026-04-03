@@ -34,11 +34,18 @@ const MomentCreationDialog: React.FC<MomentCreationDialogProps> = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const [placeholderIdx] = useState(() => Math.floor(Math.random() * PLACEHOLDER_EXAMPLES.length));
 
+  // Reset objective when dialog closes (React-approved setState-during-render pattern)
+  const [prevIsOpen, setPrevIsOpen] = useState(isOpen);
+  if (prevIsOpen !== isOpen) {
+    setPrevIsOpen(isOpen);
+    if (!isOpen) {
+      setObjective('');
+    }
+  }
+
   useEffect(() => {
     if (isOpen) {
       setTimeout(() => inputRef.current?.focus(), 100);
-    } else {
-      setObjective('');
     }
   }, [isOpen]);
 

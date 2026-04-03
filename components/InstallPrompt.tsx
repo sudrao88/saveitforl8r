@@ -4,8 +4,15 @@ import { Logo } from './icons';
 import { btn } from '../styles/design-system';
 
 export const InstallPrompt = () => {
-  const [showPrompt, setShowPrompt] = useState(false);
-  const [isIOS, setIsIOS] = useState(false);
+  const [showPrompt, setShowPrompt] = useState(() => {
+    if (window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone) {
+      return false;
+    }
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    const dismissed = localStorage.getItem('install_prompt_dismissed');
+    return isMobile && !dismissed;
+  });
+  const [isIOS] = useState(() => /iPhone|iPad|iPod/i.test(navigator.userAgent));
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [showInstructions, setShowInstructions] = useState(false);
 
@@ -21,17 +28,6 @@ export const InstallPrompt = () => {
     };
 
     window.addEventListener('beforeinstallprompt', handler);
-
-    // Check platform
-    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    const iOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-    setIsIOS(iOS);
-
-    // Show prompt logic (simplified: show if mobile and not dismissed)
-    const dismissed = localStorage.getItem('install_prompt_dismissed');
-    if (isMobile && !dismissed) {
-        setShowPrompt(true);
-    }
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handler);

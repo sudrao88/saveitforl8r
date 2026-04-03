@@ -110,7 +110,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ dataUri, fileName }) => {
 
   // Pinch-to-zoom via native event listeners (passive: false needed to prevent iOS native zoom)
   const zoomRef = useRef(zoom);
-  zoomRef.current = zoom;
+  useEffect(() => { zoomRef.current = zoom; });
 
   useEffect(() => {
     const el = containerRef.current;

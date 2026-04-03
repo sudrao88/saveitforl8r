@@ -31,12 +31,14 @@ const ZoomableImage: React.FC<ZoomableImageProps> = ({ src, alt, onZoomChange, r
   const isPinching = useRef(false);
   const isPanning = useRef(false);
 
-  // Reset zoom when navigating to a different image
-  useEffect(() => {
+  // Reset zoom when navigating to a different image (React-approved setState-during-render pattern)
+  const [prevResetKey, setPrevResetKey] = useState(resetKey);
+  if (prevResetKey !== resetKey) {
+    setPrevResetKey(resetKey);
     setScale(1);
     setTranslate({ x: 0, y: 0 });
     onZoomChange?.(false);
-  }, [resetKey, onZoomChange]);
+  }
 
   const clampTranslate = useCallback((tx: number, ty: number, s: number) => {
     if (s <= 1) return { x: 0, y: 0 };
