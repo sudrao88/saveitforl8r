@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy - SaveItForL8R</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #000;
+      color: #f3f4f6;
+      line-height: 1.7;
+      padding: 2rem 1rem;
+    }
+    .container {
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    h1 {
+      font-size: 2rem;
+      margin-bottom: 0.5rem;
+    }
+    .updated {
+      color: #9ca3af;
+      font-size: 0.875rem;
+      margin-bottom: 2rem;
+    }
+    h2 {
+      font-size: 1.25rem;
+      margin-top: 2rem;
+      margin-bottom: 0.75rem;
+      color: #f3f4f6;
+    }
+    p, li {
+      color: #d1d5db;
+      margin-bottom: 0.75rem;
+    }
+    ul {
+      padding-left: 1.5rem;
+      margin-bottom: 1rem;
+    }
+    a {
+      color: #3b82f6;
+      text-decoration: none;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Privacy Policy</h1>
+    <p class="updated">Last updated: April 3, 2026</p>
+
+    <p>SaveItForL8R ("the App") is a personal memory capture application. Your privacy is important to us. This policy explains what data we collect, how we use it, and your rights.</p>
+
+    <h2>1. Information We Collect</h2>
+    <p><strong>Account Information:</strong> When you sign in with Google, we receive your name, email address, and profile picture from Google OAuth 2.0. We do not store your Google password.</p>
+    <p><strong>Memories &amp; Content:</strong> Text, images, and files you save are stored locally on your device using encrypted storage (AES-256-GCM). If you enable Google Drive sync, your encrypted data is stored in your personal Google Drive appDataFolder.</p>
+    <p><strong>Location Data:</strong> If you grant permission, the App may access your device location to provide context when enriching memories with AI. Location data is not stored on our servers beyond the duration of the request.</p>
+
+    <h2>2. How We Use Your Information</h2>
+    <ul>
+      <li><strong>AI Enrichment:</strong> When you save a memory, its content is sent to our secure server proxy, which forwards it to the Google Gemini API for AI-powered tagging, summarization, and categorization. Your content is processed in real time and is not retained by our servers after the response is returned.</li>
+      <li><strong>Natural Language Search:</strong> When you use the search feature, your query and relevant memories are sent to our server proxy to generate AI-powered search results.</li>
+      <li><strong>Authentication:</strong> Your Google OAuth token is validated server-side to authorize API requests. Validated tokens are cached for up to 5 minutes for performance.</li>
+    </ul>
+
+    <h2>3. Data Storage &amp; Encryption</h2>
+    <p>All memories are encrypted on your device before being stored in IndexedDB or synced to Google Drive. Encryption uses AES-GCM with a 256-bit key derived from your account. We cannot read your encrypted data.</p>
+
+    <h2>4. Third-Party Services</h2>
+    <ul>
+      <li><strong>Google OAuth 2.0:</strong> Used for authentication. Subject to <a href="https://policies.google.com/privacy">Google's Privacy Policy</a>.</li>
+      <li><strong>Google Gemini API:</strong> Used for AI enrichment and search. Content is processed per <a href="https://ai.google.dev/terms">Google's AI Terms</a>.</li>
+      <li><strong>Google Drive:</strong> Optional sync stores encrypted data in your personal appDataFolder. Subject to <a href="https://policies.google.com/privacy">Google's Privacy Policy</a>.</li>
+    </ul>
+
+    <h2>5. Data Sharing</h2>
+    <p>We do not sell, rent, or share your personal data with third parties. Data is only transmitted to Google services as described above to provide core App functionality.</p>
+
+    <h2>6. Data Retention</h2>
+    <p>Your data remains on your device and/or your Google Drive until you delete it. We do not maintain copies of your memories on our servers. Server-side request logs are retained for up to 30 days for debugging purposes and do not contain memory content.</p>
+
+    <h2>7. Your Rights</h2>
+    <p>You can:</p>
+    <ul>
+      <li>Delete individual memories or all data from within the App at any time.</li>
+      <li>Revoke Google account access through your <a href="https://myaccount.google.com/permissions">Google Account permissions</a>.</li>
+      <li>Request deletion of any server-side data by contacting us.</li>
+    </ul>
+
+    <h2>8. Children's Privacy</h2>
+    <p>The App is not directed at children under 13. We do not knowingly collect personal information from children under 13.</p>
+
+    <h2>9. Changes to This Policy</h2>
+    <p>We may update this policy from time to time. Changes will be posted on this page with an updated revision date.</p>
+
+    <h2>10. Contact Us</h2>
+    <p>If you have questions about this Privacy Policy, please contact us at <a href="mailto:support@saveitforl8r.com">support@saveitforl8r.com</a>.</p>
+  </div>
+</body>
+</html>
