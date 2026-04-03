@@ -188,8 +188,24 @@ const queueMemoriesForEmbedding = async (memories: Memory[]) => {
         }
     }
 
-    if (queueItems.length > 0) {
-        await db.processingQueue.bulkPut(queueItems);
+    // Split text and blob items into separate batches.
+    // iOS WKWebView has known issues storing Blob objects in IndexedDB —
+    // a single failed Blob write aborts the entire bulkPut transaction,
+    // which would prevent text embeddings from being queued too.
+    const textItems = queueItems.filter(item => typeof item.contentOrPath === 'string');
+    const blobItems = queueItems.filter(item => item.contentOrPath instanceof Blob);
+
+    if (textItems.length > 0) {
+        await db.processingQueue.bulkPut(textItems);
+    }
+
+    // Store blob items individually so one failure doesn't block the rest
+    for (const item of blobItems) {
+        try {
+            await db.processingQueue.put(item);
+        } catch (e) {
+            console.error(`[RAG] Failed to queue blob item for ${item.noteId}:`, e);
+        }
     }
 };
 

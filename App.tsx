@@ -80,7 +80,7 @@ const AppContent: React.FC = () => {
   const { sync, isSyncing, isSyncingDownload, syncError, getSyncStatusMap, syncStatusVersion, retrySyncFile, setOnSyncProgress, setOnMemorySynced } = useSync();
   const { authStatus, login, unlink, recheckAuth } = useAuth();
 
-  const { modelStatus, downloadProgress, retryDownload, search, embeddingStats, retryFailedEmbeddings, deleteNoteFromIndex, lastError, closeWorkerDB } = useAdaptiveSearch();
+  const { modelStatus, downloadProgress, retryDownload, search, embeddingStats, retryFailedEmbeddings, deleteNoteFromIndex, rebuildIndex, lastError, closeWorkerDB } = useAdaptiveSearch();
 
   const {
     memories,
@@ -1036,7 +1036,9 @@ const AppContent: React.FC = () => {
                 totalMemories={activeMemoryCount}
                 lastError={lastError}
                 closeWorkerDB={closeWorkerDB}
+                rebuildIndex={rebuildIndex}
                 reconcileReport={reconcileReport}
+                onUpdateReport={setReconcileReport}
                 notificationsSupported={notificationsSupported}
                 notificationsEnabled={notificationsEnabled}
                 notificationPermission={notificationPermission}
