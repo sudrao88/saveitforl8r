@@ -28,7 +28,7 @@ const MemoryPreviewModal: React.FC<MemoryPreviewModalProps> = ({
   onTogglePin,
 }) => {
   const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
+  useEffect(() => { onCloseRef.current = onClose; });
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

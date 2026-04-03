@@ -297,13 +297,15 @@ const AppContent: React.FC = () => {
 
   const syncRef = useRef(sync);
   const refreshRef = useRef(handleFullRefresh);
+  const handleRetryRef = useRef(handleRetry);
   const topNavRef = useRef<HTMLDivElement>(null);
   const [topNavHeight, setTopNavHeight] = useState(0);
 
   useEffect(() => {
     syncRef.current = sync;
     refreshRef.current = handleFullRefresh;
-  }, [sync, handleFullRefresh]);
+    handleRetryRef.current = handleRetry;
+  }, [sync, handleFullRefresh, handleRetry]);
 
   useLayoutEffect(() => {
     const el = topNavRef.current;
@@ -401,7 +403,7 @@ const AppContent: React.FC = () => {
                 .map(m => m.id);
               if (pendingIds.length > 0) {
                   console.log(`[App] Auth linked — auto-retrying ${pendingIds.length} failed memories`);
-                  pendingIds.forEach(id => handleRetry(id));
+                  pendingIds.forEach(id => handleRetryRef.current(id));
               }
           }).catch(err => {
               console.error('[App] Initial sync failed:', err);
@@ -522,7 +524,7 @@ const AppContent: React.FC = () => {
       // Since addListener is async in some versions, but usually returns PluginListenerHandle
       listener.then(handle => handle.remove()).catch(e => console.error(e));
     };
-  }, [viewingGallery, expandedMemory, isSettingsOpen, editingMemory, isCaptureOpen, view, activeMoment, showAllMoments, showCalendarAgenda, showTodoList, handleCaptureClose, handleEditClose]);
+  }, [viewingGallery, expandedMemory, isSettingsOpen, setIsSettingsOpen, editingMemory, isCaptureOpen, view, activeMoment, showAllMoments, showCalendarAgenda, showTodoList, handleCaptureClose, handleEditClose]);
 
   useEffect(() => {
     if (shareData) {

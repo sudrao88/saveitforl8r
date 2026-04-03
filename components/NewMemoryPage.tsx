@@ -246,7 +246,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
     checkFormats();
   };
 
-  const closeAttachMenu = useCallback(() => setShowAttachMenu(false), []);
+  const closeAttachMenu = () => setShowAttachMenu(false);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -262,7 +262,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
 
 
   // Rich Text Formatting — rAF-debounced to coalesce multiple calls per frame
-  const checkFormats = useCallback(() => {
+  const checkFormats = () => {
       cancelAnimationFrame(formatRafRef.current);
       formatRafRef.current = requestAnimationFrame(() => {
           if (!editorRef.current) return;
@@ -273,22 +273,22 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
           }
           setIsEmpty(isEditorEmpty(editorRef.current));
       });
-  }, []);
+  };
 
   // Cleanup rAF on unmount
   useEffect(() => () => cancelAnimationFrame(formatRafRef.current), []);
 
   useBeforeInputMarkdown(editorRef, checkFormats);
 
-  const execFormat = useCallback((command: string, value?: string) => {
+  const execFormat = (command: string, value?: string) => {
       execFormatCommand(command, value);
       editorRef.current?.focus();
       checkFormats();
-  }, [checkFormats]);
+  };
 
-  const handleFormat = useCallback((command: string, value?: string) => {
+  const handleFormat = (command: string, value?: string) => {
     execFormat(command, value);
-  }, [execFormat]);
+  };
 
   // Toggle Checklist Mode
   const toggleChecklistMode = () => {
@@ -460,7 +460,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
 
   // Keyboard shortcut: ⌘+Enter or Ctrl+Enter to save
   const handleSubmitRef = useRef(handleSubmit);
-  handleSubmitRef.current = handleSubmit;
+  useEffect(() => { handleSubmitRef.current = handleSubmit; });
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
