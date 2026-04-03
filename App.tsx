@@ -1017,19 +1017,6 @@ const AppContent: React.FC = () => {
         </div>
       )}
 
-      {viewingGallery && (
-          <ErrorBoundary
-            fallbackTitle="Gallery encountered an error"
-            fallbackMessage="Something went wrong displaying media. Your data is safe — try reloading."
-          >
-            <GalleryViewer
-              attachments={viewingGallery.attachments}
-              initialIndex={viewingGallery.currentIndex}
-              onClose={() => setViewingGallery(null)}
-            />
-          </ErrorBoundary>
-      )}
-
       {isSettingsOpen && (
           <Suspense fallback={null}>
             <SettingsModal
@@ -1175,6 +1162,19 @@ const AppContent: React.FC = () => {
             onTogglePin={handleTogglePin}
           />
         </Suspense>
+      )}
+
+      {viewingGallery && (
+          <ErrorBoundary
+            fallbackTitle="Gallery encountered an error"
+            fallbackMessage="Something went wrong displaying media. Your data is safe — try reloading."
+          >
+            <GalleryViewer
+              attachments={viewingGallery.attachments}
+              initialIndex={viewingGallery.currentIndex}
+              onClose={() => setViewingGallery(null)}
+            />
+          </ErrorBoundary>
       )}
 
       {momentError && (

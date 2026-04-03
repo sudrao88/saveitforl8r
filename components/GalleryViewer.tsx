@@ -204,7 +204,7 @@ const GalleryViewer: React.FC<GalleryViewerProps> = ({ attachments, initialIndex
   };
 
   return (
-    <div className={`fixed inset-0 ${zIndex.sheet} bg-(--color-surface-base)/95 backdrop-blur-md flex flex-col animate-in fade-in zoom-in-95 duration-(--duration-fast)`}>
+    <div className={`fixed inset-0 ${zIndex.toast} bg-(--color-surface-base)/95 backdrop-blur-md flex flex-col animate-in fade-in zoom-in-95 duration-(--duration-fast)`}>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 bg-(--color-surface-base)/50 border-b border-(--color-border-subtle) pt-[var(--sat)]">
         <div className="flex items-center gap-3 flex-1 min-w-0 overflow-hidden">
