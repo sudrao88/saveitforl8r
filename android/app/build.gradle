@@ -70,6 +70,9 @@ dependencies {
     // WorkManager for periodic background sync (12-hour interval)
     implementation "androidx.work:work-runtime:2.9.0"
 
+    // TensorFlow Lite for native embedding generation (bge-base-en-v1.5)
+    implementation "org.tensorflow:tensorflow-lite:2.16.1"
+
     // Fix for Duplicate class kotlin.collections.jdk8.CollectionsJDK8Kt
     constraints {
         implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22") {

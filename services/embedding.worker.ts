@@ -13,8 +13,20 @@ env.useBrowserCache = true;
 // Track online/offline status (updated via messages from main thread)
 let isOnline = true;
 
-// Model name constant for cache checking
-const MODEL_NAME = 'Xenova/bge-small-en-v1.5';
+// Whether to use native embeddings (Core ML / TFLite) instead of WASM.
+// Set via SET_NATIVE_MODE message from main thread.
+let useNativeEmbeddings = false;
+
+// Dimensions for the current model (384 for web, 768 for native)
+let embeddingDimensions = 384;
+
+// Model name constant for cache checking (web WASM fallback)
+const WEB_MODEL_NAME = 'Xenova/bge-small-en-v1.5';
+const WEB_DIMENSIONS = 384;
+const NATIVE_DIMENSIONS = 768;
+
+// Pending native embedding requests: requestId -> resolve callback
+const nativeEmbeddingResolvers = new Map<string, (embedding: number[]) => void>();
 
 // Check if model files are already in the browser cache
 // This allows us to know if we can work offline before attempting to load
@@ -29,8 +41,8 @@ const isModelCached = async (): Promise<boolean> => {
     // The model files are stored with URLs like:
     // https://huggingface.co/Xenova/bge-small-en-v1.5/resolve/main/...
     const modelFiles = keys.filter(req =>
-      req.url.includes(MODEL_NAME.replace('/', '/')) ||
-      req.url.includes(encodeURIComponent(MODEL_NAME))
+      req.url.includes(WEB_MODEL_NAME.replace('/', '/')) ||
+      req.url.includes(encodeURIComponent(WEB_MODEL_NAME))
     );
 
     // We need at least the config and model files (onnx, tokenizer, etc.)
@@ -44,9 +56,14 @@ const isModelCached = async (): Promise<boolean> => {
   }
 };
 
-// Singleton for the embedding pipeline
+// Singleton for the embedding pipeline (web WASM only)
 let embeddingPipeline: any = null;
 const getPipeline = async (forceOffline?: boolean) => {
+  if (useNativeEmbeddings) {
+    // Native mode: no local pipeline needed
+    return null;
+  }
+
   if (!embeddingPipeline) {
     const useOfflineMode = forceOffline ?? !isOnline;
 
@@ -67,7 +84,7 @@ const getPipeline = async (forceOffline?: boolean) => {
     try {
         // Switched to bge-small-en-v1.5 (~33MB) for iOS stability
         // When offline, use local_files_only to prevent network requests
-        embeddingPipeline = await pipeline('feature-extraction', MODEL_NAME, {
+        embeddingPipeline = await pipeline('feature-extraction', WEB_MODEL_NAME, {
             progress_callback: (data: any) => {
                 if (data.status === 'progress') {
                     self.postMessage({ type: 'MODEL_DOWNLOAD_PROGRESS', payload: data });
@@ -89,26 +106,67 @@ const getPipeline = async (forceOffline?: boolean) => {
   return embeddingPipeline;
 };
 
+/**
+ * Generate an embedding for the given text.
+ * On native: delegates to the main thread via message passing.
+ * On web: uses the local ONNX pipeline.
+ */
+const generateEmbedding = async (text: string): Promise<number[]> => {
+  if (useNativeEmbeddings) {
+    return requestNativeEmbedding(text);
+  }
+  const pipe = await getPipeline();
+  const output = await pipe(text, { pooling: 'mean', normalize: true });
+  return Array.from(output.data) as number[];
+};
+
+/**
+ * Request an embedding from the native side via the main thread.
+ * The worker posts a NATIVE_EMBEDDING_REQUEST message, and the main
+ * thread responds with a NATIVE_EMBEDDING_RESPONSE message.
+ */
+const requestNativeEmbedding = (text: string): Promise<number[]> => {
+  return new Promise((resolve) => {
+    const requestId = `native_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    nativeEmbeddingResolvers.set(requestId, resolve);
+
+    self.postMessage({
+      type: 'NATIVE_EMBEDDING_REQUEST',
+      payload: { text, requestId }
+    });
+
+    // Safety timeout (60s for native model loading + inference)
+    setTimeout(() => {
+      if (nativeEmbeddingResolvers.has(requestId)) {
+        console.warn(`[RAG] Native embedding request ${requestId} timed out`);
+        nativeEmbeddingResolvers.delete(requestId);
+        // Return zero vector on timeout so processing doesn't hang forever
+        resolve(new Array(embeddingDimensions).fill(0));
+      }
+    }, 60_000);
+  });
+};
+
 // Singleton for Orama index (in-memory)
 let oramaDb: any = null;
 
-const ORAMA_SCHEMA = {
+const getOramaSchema = () => ({
     id: 'string' as const,
     text: 'string' as const,
-    embedding: 'vector[384]' as const, // bge-small uses 384 dimensions
+    embedding: `vector[${embeddingDimensions}]` as const,
     originalId: 'string' as const,
     chunkIndex: 'number' as const
-};
+});
 
 const initOrama = async () => {
   if (!oramaDb) {
-    oramaDb = await create({ schema: ORAMA_SCHEMA });
+    oramaDb = await create({ schema: getOramaSchema() });
     // Load existing vectors from Dexie into Orama on startup
     const vectors = await db.vectors.toArray();
     const invalidIds: string[] = [];
 
     for (const v of vectors) {
-        if (v.vector.length === 384) {
+        if (v.vector.length === embeddingDimensions) {
              await insert(oramaDb, {
                 id: v.id,
                 text: v.extractedText,
@@ -124,7 +182,7 @@ const initOrama = async () => {
 
     // Auto-cleanup incompatible vectors
     if (invalidIds.length > 0) {
-        console.log(`[RAG] Removing ${invalidIds.length} incompatible vectors.`);
+        console.log(`[RAG] Removing ${invalidIds.length} incompatible vectors (expected ${embeddingDimensions}-dim).`);
         await db.vectors.bulkDelete(invalidIds);
     }
   }
@@ -274,8 +332,13 @@ const handleExtraction = async (item: ProcessingQueueItem) => {
 };
 
 const handleEmbedding = async (item: ProcessingQueueItem) => {
-    const pipe = await getPipeline();
     const odb = await initOrama();
+
+    // On web, ensure the pipeline is loaded (on native, generateEmbedding
+    // delegates to the main thread so no local pipeline is needed)
+    if (!useNativeEmbeddings) {
+        await getPipeline();
+    }
 
     const text = item.contentOrPath as string;
     const chunks = text.match(new RegExp(`.{1,1000}`, 'g')) || [text];
@@ -285,8 +348,7 @@ const handleEmbedding = async (item: ProcessingQueueItem) => {
 
     for (let i = 0; i < chunks.length; i++) {
         const chunk = chunks[i];
-        const output = await pipe(chunk, { pooling: 'mean', normalize: true });
-        const embedding = Array.from(output.data) as number[];
+        const embedding = await generateEmbedding(chunk);
         const vectorId = `${item.noteId}_${i}`;
 
         await db.vectors.put({
@@ -324,9 +386,7 @@ self.onmessage = async (e) => {
   } else if (type === 'SEARCH') {
     const { query, limit = 10, threshold = 0.3, queryId } = payload;
     try {
-        const pipe = await getPipeline();
-        const output = await pipe(query, { pooling: 'mean', normalize: true });
-        const queryEmbedding = Array.from(output.data) as number[];
+        const queryEmbedding = await generateEmbedding(query);
         const odb = await initOrama();
 
         const searchResult = await search(odb, {
@@ -348,8 +408,14 @@ self.onmessage = async (e) => {
         self.postMessage({ type: 'SEARCH_ERROR', error: err, queryId: queryId });
     }
   } else if (type === 'CHECK_MODEL_STATUS') {
-      if (embeddingPipeline) self.postMessage({ type: 'MODEL_STATUS', payload: 'ready' });
-      else getPipeline().catch(() => {});
+      if (useNativeEmbeddings) {
+          // In native mode, model status is managed by the main thread
+          self.postMessage({ type: 'MODEL_STATUS', payload: 'ready' });
+      } else if (embeddingPipeline) {
+          self.postMessage({ type: 'MODEL_STATUS', payload: 'ready' });
+      } else {
+          getPipeline().catch(() => {});
+      }
   } else if (type === 'RETRY_FAILED') {
       await db.processingQueue.where('status').equals('failed').modify((item: any) => {
           item.retryCount = 0;
@@ -385,13 +451,44 @@ self.onmessage = async (e) => {
       console.log(`[RAG] Online status updated: ${isOnline}`);
 
       // If we just came online and model isn't loaded, try to load it
-      if (!wasOnline && isOnline && !embeddingPipeline) {
+      if (!wasOnline && isOnline && !embeddingPipeline && !useNativeEmbeddings) {
           getPipeline().catch(() => {});
       }
   } else if (type === 'CHECK_MODEL_CACHE') {
-      // Check if model is cached without attempting to load
-      const cached = await isModelCached();
-      self.postMessage({ type: 'MODEL_CACHE_STATUS', payload: { isCached: cached } });
+      if (useNativeEmbeddings) {
+          // Native mode: cache is managed by the native side
+          self.postMessage({ type: 'MODEL_CACHE_STATUS', payload: { isCached: true } });
+      } else {
+          // Check if model is cached without attempting to load
+          const cached = await isModelCached();
+          self.postMessage({ type: 'MODEL_CACHE_STATUS', payload: { isCached: cached } });
+      }
+  } else if (type === 'SET_NATIVE_MODE') {
+      // Configure the worker to use native embeddings (Core ML / TFLite)
+      // instead of the local ONNX pipeline. The main thread will handle
+      // embedding generation and respond via NATIVE_EMBEDDING_RESPONSE.
+      useNativeEmbeddings = payload.enabled;
+      embeddingDimensions = payload.enabled ? NATIVE_DIMENSIONS : WEB_DIMENSIONS;
+      console.log(`[RAG] Native embedding mode: ${payload.enabled} (${embeddingDimensions}-dim)`);
+
+      // If switching modes, rebuild the Orama index since dimensions changed
+      if (oramaDb) {
+          console.log('[RAG] Rebuilding Orama index for new dimensions...');
+          oramaDb = null;
+          await initOrama();
+      }
+
+      if (payload.enabled) {
+          self.postMessage({ type: 'MODEL_STATUS', payload: 'ready' });
+      }
+  } else if (type === 'NATIVE_EMBEDDING_RESPONSE') {
+      // Response from main thread with native embedding result
+      const { requestId, embedding } = payload;
+      const resolver = nativeEmbeddingResolvers.get(requestId);
+      if (resolver) {
+          nativeEmbeddingResolvers.delete(requestId);
+          resolver(embedding);
+      }
   }
 };
 

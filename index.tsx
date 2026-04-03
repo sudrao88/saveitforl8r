@@ -18,11 +18,15 @@ declare global {
       startForegroundSync: (totalItems: number) => void;
       updateSyncProgress: (current: number, total: number) => void;
       stopForegroundSync: () => void;
+      embeddingModelStatus: (requestId: number) => void;
+      embeddingDownloadModel: (requestId: number) => void;
+      embeddingGenerate: (requestId: number, text: string) => void;
+      embeddingGenerateBatch: (requestId: number, textsJson: string) => void;
     };
     webkit?: {
       messageHandlers: {
         IOSBridge: {
-          postMessage: (message: { action: string }) => void;
+          postMessage: (message: { action: string; [key: string]: unknown }) => void;
         };
       };
     };

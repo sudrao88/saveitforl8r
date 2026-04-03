@@ -36,6 +36,7 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
     private ShareIntentHandler shareHandler;
     private JSObject pendingShareData = null;
     private String pendingInsetsJs = null;
+    private NativeEmbeddingPlugin nativeEmbeddingPlugin;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
@@ -205,6 +206,9 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
             }
 
             WebView webView = bridge.getWebView();
+
+            // Initialize native embedding plugin (TFLite + NNAPI)
+            nativeEmbeddingPlugin = new NativeEmbeddingPlugin(this, webView);
 
             // Add JS Interface for app-ready signaling from React
             webView.addJavascriptInterface(new AppReadyInterface(this), "AndroidBridge");
@@ -493,6 +497,36 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
                     Log.e(TAG, "Failed to stop foreground sync service", e);
                 }
             });
+        }
+
+        // ── Native Embedding Methods ─────────────────────────────────────
+
+        @JavascriptInterface
+        public void embeddingModelStatus(int requestId) {
+            if (activity != null && activity.nativeEmbeddingPlugin != null) {
+                activity.nativeEmbeddingPlugin.handleModelStatus(requestId);
+            }
+        }
+
+        @JavascriptInterface
+        public void embeddingDownloadModel(int requestId) {
+            if (activity != null && activity.nativeEmbeddingPlugin != null) {
+                activity.nativeEmbeddingPlugin.handleDownloadModel(requestId);
+            }
+        }
+
+        @JavascriptInterface
+        public void embeddingGenerate(int requestId, String text) {
+            if (activity != null && activity.nativeEmbeddingPlugin != null) {
+                activity.nativeEmbeddingPlugin.handleGenerate(requestId, text);
+            }
+        }
+
+        @JavascriptInterface
+        public void embeddingGenerateBatch(int requestId, String textsJson) {
+            if (activity != null && activity.nativeEmbeddingPlugin != null) {
+                activity.nativeEmbeddingPlugin.handleGenerateBatch(requestId, textsJson);
+            }
         }
 
         /**

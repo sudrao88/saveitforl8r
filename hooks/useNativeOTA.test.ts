@@ -74,6 +74,10 @@ function setupAndroidBridge() {
     startForegroundSync: vi.fn(),
     updateSyncProgress: vi.fn(),
     stopForegroundSync: vi.fn(),
+    embeddingModelStatus: vi.fn(),
+    embeddingDownloadModel: vi.fn(),
+    embeddingGenerate: vi.fn(),
+    embeddingGenerateBatch: vi.fn(),
   };
 }
 

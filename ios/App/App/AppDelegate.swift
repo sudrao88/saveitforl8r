@@ -26,6 +26,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     // Flag to dispatch share data once WebView is ready
     private var pendingShareDispatch = false
 
+    // Native embedding plugin for Core ML inference
+    var nativeEmbeddingPlugin: NativeEmbeddingPlugin?
+
     // Whether bridge setup (IOSBridge + OTA) is complete
     private var bridgeSetUp = false
 
@@ -142,6 +145,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             }
             return
         }
+
+        // Initialize native embedding plugin with access to the WebView
+        nativeEmbeddingPlugin = NativeEmbeddingPlugin(webView: webView)
 
         // Register IOSBridge message handler (mirrors Android's AndroidBridge)
         webView.configuration.userContentController.add(
@@ -584,6 +590,9 @@ class IOSBridgeHandler: NSObject, WKScriptMessageHandler {
         case "syncCompleted":
             let success = (body["success"] as? Bool) ?? false
             BackgroundSyncTask.syncCompleted(success: success)
+        case "embeddingModelStatus", "embeddingDownloadModel", "embeddingGenerate", "embeddingGenerateBatch":
+            let requestId = body["requestId"] as? Int ?? 0
+            appDelegate?.nativeEmbeddingPlugin?.handleAction(action, body: body, requestId: requestId)
         default:
             print("[IOSBridge] Unknown action: \(action)")
         }

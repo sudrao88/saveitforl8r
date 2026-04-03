@@ -2,6 +2,12 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { queryBrain } from '../services/geminiService';
 import { Memory, ChatMessage } from '../types';
 import { v4 as uuidv4 } from 'uuid';
+import {
+  isNativeEmbeddingAvailable,
+  generateNativeEmbedding,
+  getNativeModelStatus,
+  downloadNativeModel,
+} from '../services/nativeEmbedding';
 
 export interface SearchResultItem {
   id: string;
@@ -34,6 +40,7 @@ export const useAdaptiveSearch = () => {
   const workerRef = useRef<Worker | null>(null);
   const searchResolvers = useRef<Map<string, (results: any) => void>>(new Map());
   const searchTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const isNative = useRef(isNativeEmbeddingAvailable());
 
   // Initialize Worker
   useEffect(() => {
@@ -68,15 +75,24 @@ export const useAdaptiveSearch = () => {
           console.error("Worker Search Error:", error);
         } else if (type === 'MODEL_CACHE_STATUS') {
           setIsModelCached(payload.isCached);
+        } else if (type === 'NATIVE_EMBEDDING_REQUEST') {
+          // Worker is requesting a native embedding — fulfill via bridge
+          handleNativeEmbeddingRequest(payload);
         }
       };
 
       // Send initial online status to worker
       workerRef.current.postMessage({ type: 'SET_ONLINE_STATUS', payload: { isOnline: navigator.onLine } });
-      // Check if model is cached (useful for offline status display)
-      workerRef.current.postMessage({ type: 'CHECK_MODEL_CACHE' });
-      // Check model status on init
-      workerRef.current.postMessage({ type: 'CHECK_MODEL_STATUS' });
+
+      // If on native platform, tell the worker to use native embeddings
+      if (isNative.current) {
+        initNativeMode();
+      } else {
+        // Web: check model cache and status as before
+        workerRef.current.postMessage({ type: 'CHECK_MODEL_CACHE' });
+        workerRef.current.postMessage({ type: 'CHECK_MODEL_STATUS' });
+      }
+
       // Start processing queue
       workerRef.current.postMessage({ type: 'START_PROCESSING' });
     }
@@ -109,6 +125,82 @@ export const useAdaptiveSearch = () => {
       workerRef.current = null;
     };
   }, []);
+
+  /**
+   * Initialize native embedding mode: check model status, download if
+   * needed, then tell the worker to use native embeddings.
+   */
+  const initNativeMode = async () => {
+    try {
+      const status = await getNativeModelStatus();
+
+      if (status.status === 'ready') {
+        activateNativeMode();
+      } else if (status.status === 'not_downloaded') {
+        setModelStatus('downloading');
+        const result = await downloadNativeModel();
+        if (result.status === 'ready') {
+          activateNativeMode();
+        } else {
+          console.warn('[NativeEmbedding] Download did not result in ready status:', result);
+          setModelStatus('error');
+          setLastError(result.error || 'Failed to download native model');
+          // Fall back to web mode
+          workerRef.current?.postMessage({ type: 'CHECK_MODEL_CACHE' });
+          workerRef.current?.postMessage({ type: 'CHECK_MODEL_STATUS' });
+        }
+      } else if (status.status === 'error') {
+        console.warn('[NativeEmbedding] Native model error, falling back to web:', status.error);
+        setLastError(status.error || 'Native model error');
+        // Fall back to web mode
+        workerRef.current?.postMessage({ type: 'CHECK_MODEL_CACHE' });
+        workerRef.current?.postMessage({ type: 'CHECK_MODEL_STATUS' });
+      }
+    } catch (err: any) {
+      console.warn('[NativeEmbedding] Failed to init native mode, falling back to web:', err);
+      // Fall back to web mode
+      workerRef.current?.postMessage({ type: 'CHECK_MODEL_CACHE' });
+      workerRef.current?.postMessage({ type: 'CHECK_MODEL_STATUS' });
+    }
+  };
+
+  const activateNativeMode = () => {
+    console.log('[NativeEmbedding] Activating native embedding mode (768-dim)');
+    workerRef.current?.postMessage({
+      type: 'SET_NATIVE_MODE',
+      payload: { enabled: true }
+    });
+    setModelStatus('ready');
+    setIsModelCached(true);
+  };
+
+  /**
+   * Handle a NATIVE_EMBEDDING_REQUEST from the worker.
+   * Generate the embedding via the native bridge and send it back.
+   */
+  const handleNativeEmbeddingRequest = async (payload: { text: string; requestId: string }) => {
+    try {
+      const result = await generateNativeEmbedding(payload.text);
+      workerRef.current?.postMessage({
+        type: 'NATIVE_EMBEDDING_RESPONSE',
+        payload: {
+          requestId: payload.requestId,
+          embedding: result.embedding
+        }
+      });
+    } catch (err: any) {
+      console.error('[NativeEmbedding] Failed to generate embedding:', err);
+      // Send zero vector so the worker doesn't hang
+      const dimensions = 768;
+      workerRef.current?.postMessage({
+        type: 'NATIVE_EMBEDDING_RESPONSE',
+        payload: {
+          requestId: payload.requestId,
+          embedding: new Array(dimensions).fill(0)
+        }
+      });
+    }
+  };
 
   // Resolve a search query and clean up its timeout timer
   const resolveSearch = (queryId: string, results: any) => {
@@ -188,7 +280,11 @@ export const useAdaptiveSearch = () => {
 
   const retryDownload = () => {
        setLastError(null); // Clear error on retry
-       workerRef.current?.postMessage({ type: 'CHECK_MODEL_STATUS' });
+       if (isNative.current) {
+           initNativeMode();
+       } else {
+           workerRef.current?.postMessage({ type: 'CHECK_MODEL_STATUS' });
+       }
   };
 
   const retryFailedEmbeddings = () => {
