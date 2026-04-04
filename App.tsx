@@ -275,14 +275,14 @@ const AppContent: React.FC = () => {
 
   const handleCreateMomentSubmit = useCallback(async (objective: string) => {
     setMomentError(null);
-    const moment = await createNewMoment(objective);
+    const moment = await createNewMoment(objective, memories);
     setShowCreateMoment(false);
     if (moment) {
       setActiveMoment(moment);
     } else {
       setMomentError('Failed to create moment. Please check your connection and try again.');
     }
-  }, [createNewMoment]);
+  }, [createNewMoment, memories]);
 
   const handleFullRefresh = useCallback(async () => {
       const [, , , , report] = await Promise.all([

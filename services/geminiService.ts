@@ -137,10 +137,27 @@ export const fetchPendingEnrichments = async (
   }
 };
 
+interface LightMemory {
+  id: string;
+  timestamp: number;
+  content: string;
+  tags: string[];
+  enrichment?: EnrichmentData;
+  attachments: { name: string }[];
+  isPending?: boolean;
+  processingError?: boolean;
+}
+
 interface QueryPayload {
   query: string;
+  memories: LightMemory[];
   history: ChatMessage[];
 }
+
+// Cap the number of memories sent in query context.
+// Keeps payload under ~1 MB even with large collections.
+// Memories are already sorted by recency, so this sends the most relevant.
+const MAX_QUERY_MEMORIES = 200;
 
 // --- Async Moment Creation ---
 
@@ -157,10 +174,27 @@ interface SubmitMomentCreationResponse {
  */
 export const submitMomentCreation = async (
   objective: string,
+  memories: Memory[],
   momentId: string,
 ): Promise<{ momentId: string }> => {
+  const lightNotes = memories
+    .filter(m => !m.isPending && !m.processingError && !m.isDeleted)
+    .map(m => ({
+      id: m.id,
+      content: m.content,
+      tags: m.tags,
+      enrichment: m.enrichment
+        ? {
+            summary: m.enrichment.summary,
+            locationContext: m.enrichment.locationContext,
+            entityContext: m.enrichment.entityContext,
+          }
+        : undefined,
+    }));
+
   const result = await postProxy<SubmitMomentCreationResponse>('/api/create-moment', {
     objective,
+    notes: lightNotes,
     momentId,
   });
 
@@ -238,9 +272,26 @@ interface SubmitResynthesisResponse {
  */
 export const submitResynthesis = async (
   moment: Moment,
+  memories: Memory[]
 ): Promise<{ momentId: string }> => {
+  const notes = moment.noteIds
+    .map(id => memories.find(m => m.id === id))
+    .filter((m): m is Memory => !!m)
+    .map(m => ({
+      id: m.id,
+      content: m.content,
+      tags: m.tags,
+      enrichment: m.enrichment
+        ? {
+            summary: m.enrichment.summary,
+            locationContext: m.enrichment.locationContext,
+            entityContext: m.enrichment.entityContext,
+          }
+        : undefined,
+    }));
+
   const result = await postProxy<SubmitResynthesisResponse>('/api/synthesize', {
-    noteIds: moment.noteIds,
+    notes,
     momentType: moment.type,
     momentTitle: moment.title,
     objective: moment.objective,
@@ -370,14 +421,32 @@ export const pollSynthesisResult = async (
  */
 export const queryBrain = async (
   query: string,
+  memories: Memory[],
   history: ChatMessage[] = []
 ): Promise<QueryResponse> => {
   try {
+    // Strip attachment data and cap count to keep payload manageable.
+    const lightMemories: LightMemory[] = memories
+      .filter(m => !m.isPending && !m.processingError)
+      .slice(0, MAX_QUERY_MEMORIES)
+      .map(m => ({
+        id: m.id,
+        timestamp: m.timestamp,
+        content: m.content,
+        tags: m.tags,
+        enrichment: m.enrichment,
+        attachments: (m.attachments || []).map(a => ({ name: a.name })),
+        isPending: m.isPending,
+        processingError: m.processingError,
+      }));
+
     const payload: QueryPayload = {
       query,
+      memories: lightMemories,
       history,
     };
 
+    // Explicitly cast the response
     const result = await postProxy<QueryResponse>('/api/query', payload as unknown as Record<string, unknown>);
     return result;
   } catch (error) {
