@@ -27,6 +27,7 @@ import { validateSynthesizeInput, validateSynthesizeResultsInput } from './middl
 import { sanitizeUserInput } from './lib/sanitize.js';
 import { createConcurrencyLimiter } from './lib/concurrency.js';
 import { sendSilentPush } from './lib/silentPush.js';
+import { fetchNotesByIds, fetchAllNotes } from './services/googleDrive.js';
 
 const app = express();
 const PORT = process.env.PORT || 8081;
@@ -348,7 +349,8 @@ app.post(
   validateSynthesizeInput,
   synthesizeLimiter,
   async (req, res) => {
-    const { notes, momentType, momentTitle, objective, momentId } = req.body;
+    const { noteIds, momentType, momentTitle, objective, momentId } = req.body;
+    const accessToken = req.accessToken;
 
     // Persist "processing" status before responding so that any concurrent
     // polling requests see "processing" rather than a stale "completed" result.
@@ -360,6 +362,25 @@ app.post(
     // --- Background synthesis (concurrency-limited) ---
     aiLimiter.run(async () => {
     const startTime = Date.now();
+
+    // Fetch notes from Google Drive
+    let notes;
+    try {
+      notes = noteIds && noteIds.length > 0
+        ? await fetchNotesByIds(accessToken, noteIds)
+        : await fetchAllNotes(accessToken);
+    } catch (driveError) {
+      console.error(`[Synthesize] [${req.requestId}] Drive fetch failed:`, driveError.message);
+      persistSynthesisResult(momentId, req.userId, 'failed', null);
+      return;
+    }
+
+    if (notes.length === 0) {
+      console.warn(`[Synthesize] [${req.requestId}] No notes found on Drive`);
+      persistSynthesisResult(momentId, req.userId, 'failed', null);
+      return;
+    }
+
     console.log(
       `[Synthesize] [${req.requestId}] ASYNC user=${req.userId} momentId=${momentId} momentType="${momentType}" objective="${(objective || momentTitle)?.substring(0, 50)}" notes=${notes.length}`
     );

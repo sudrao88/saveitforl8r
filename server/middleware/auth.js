@@ -24,6 +24,7 @@ export const authenticateRequest = async (req, res, next) => {
     return res.status(401).json({ error: 'Auth required' });
   }
   const accessToken = authHeader.slice(7);
+  req.accessToken = accessToken;
 
   const tokenHash = crypto
     .createHash('sha256')

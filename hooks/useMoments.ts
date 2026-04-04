@@ -36,7 +36,7 @@ interface UseMomentsReturn {
   /** All active moments */
   moments: Moment[];
   /** Create a new moment from an objective (returns immediately with pending placeholder) */
-  createNewMoment: (objective: string, memories: Memory[]) => Promise<Moment | null>;
+  createNewMoment: (objective: string) => Promise<Moment | null>;
   /** Load synthesis for a moment (cache-aware, triggers re-synthesis if new notes) */
   loadSynthesis: (moment: Moment, memories: Memory[], signal?: AbortSignal) => Promise<SynthesisResponse | null>;
   /** Set of moment IDs currently loading synthesis */
@@ -136,7 +136,7 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
 
   // Create a new moment (async — returns pending placeholder immediately)
   const createNewMoment = useCallback(
-    async (objective: string, currentMemories: Memory[]): Promise<Moment | null> => {
+    async (objective: string): Promise<Moment | null> => {
       setCreating(true);
       try {
         const momentId = crypto.randomUUID();
@@ -160,7 +160,7 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
 
         // Submit to server (fire-and-forget with error handling)
         try {
-          await submitMomentCreation(objective, currentMemories, momentId);
+          await submitMomentCreation(objective, momentId);
           startPolling();
         } catch (submitErr) {
           console.error('[Moments] Submit failed:', submitErr);
@@ -238,7 +238,7 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
         // running from the first open).
         let pollingPromise = inFlightPolling.current.get(moment.id);
         if (!pollingPromise) {
-          await submitResynthesis(moment, currentMemories);
+          await submitResynthesis(moment);
           pollingPromise = pollSynthesisResult(moment.id);
           inFlightPolling.current.set(moment.id, pollingPromise);
         }
