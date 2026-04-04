@@ -239,8 +239,9 @@ describe('fetchAllNotes', () => {
     await expect(fetchAllNotes(TOKEN)).rejects.toThrow('Drive API error 500');
   });
 
-  it('should skip failed individual file downloads gracefully', async () => {
+  it('should skip failed individual file downloads gracefully and log warnings', async () => {
     const good = makeNote('good-1');
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const mockFetch = vi.fn(async (url) => {
       if (url.includes('spaces=appDataFolder')) {
         return {
@@ -261,6 +262,11 @@ describe('fetchAllNotes', () => {
     const result = await fetchAllNotes(TOKEN);
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe('good-1');
+
+    // Should log per-file warning and summary
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Failed to download file'));
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('1/2 file downloads failed'));
+    warnSpy.mockRestore();
   });
 
   it('should handle notes without enrichment', async () => {

@@ -84,6 +84,7 @@ const downloadFile = async (fileId, accessToken) => {
  */
 const downloadFilesWithConcurrency = async (files, accessToken, concurrency = DOWNLOAD_CONCURRENCY) => {
   const results = [];
+  let skipped = 0;
   let index = 0;
 
   const next = async () => {
@@ -92,8 +93,9 @@ const downloadFilesWithConcurrency = async (files, accessToken, concurrency = DO
     try {
       const data = await downloadFile(files[i].id, accessToken);
       if (data) results.push(data);
-    } catch {
-      // Individual download failures are silently skipped
+    } catch (err) {
+      skipped++;
+      console.warn(`[Drive] Failed to download file ${files[i].name} (${files[i].id}): ${err.message}`);
     }
     await next();
   };
@@ -103,6 +105,10 @@ const downloadFilesWithConcurrency = async (files, accessToken, concurrency = DO
     () => next()
   );
   await Promise.all(workers);
+
+  if (skipped > 0) {
+    console.warn(`[Drive] ${skipped}/${files.length} file downloads failed, ${results.length} succeeded`);
+  }
 
   return results;
 };
