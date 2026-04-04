@@ -85,12 +85,19 @@ const MAX_HISTORY_TURNS = 10;
 const MAX_TURN_TEXT_LENGTH = 4000;
 
 export const validateQueryInput = (req, res, next) => {
-  const { query, history } = req.body;
+  const { query, memories, history } = req.body;
 
   if (!query || typeof query !== 'string')
     return res.status(400).json({ error: 'query is required and must be a string' });
   if (query.length > 2_000)
     return res.status(400).json({ error: 'query too long (max 2000 chars)' });
+
+  if (memories !== undefined) {
+    if (!Array.isArray(memories))
+      return res.status(400).json({ error: 'memories must be an array' });
+    if (memories.length > 200)
+      return res.status(400).json({ error: 'Too many memories (max 200)' });
+  }
 
   if (history !== undefined) {
     if (!Array.isArray(history))
@@ -132,16 +139,12 @@ export const validateResultsInput = (req, res, next) => {
 };
 
 export const validateSynthesizeInput = (req, res, next) => {
-  const { noteIds, momentType, momentTitle, objective, momentId } = req.body;
+  const { notes, momentType, momentTitle, objective, momentId } = req.body;
 
-  if (noteIds !== undefined) {
-    if (!Array.isArray(noteIds))
-      return res.status(400).json({ error: 'noteIds must be an array' });
-    if (noteIds.length > 500)
-      return res.status(400).json({ error: 'Too many noteIds (max 500)' });
-    if (noteIds.some((id) => typeof id !== 'string' || !UUID_REGEX.test(id)))
-      return res.status(400).json({ error: 'Each noteId must be a valid UUID' });
-  }
+  if (!notes || !Array.isArray(notes))
+    return res.status(400).json({ error: 'notes is required and must be an array' });
+  if (notes.length > 500)
+    return res.status(400).json({ error: 'Too many notes (max 500)' });
   if (!momentType || typeof momentType !== 'string')
     return res.status(400).json({ error: 'momentType is required and must be a string' });
   if (!momentTitle || typeof momentTitle !== 'string')

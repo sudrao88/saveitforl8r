@@ -134,7 +134,7 @@ export const useAdaptiveSearch = () => {
     try {
       if (isOnline) {
         // Online: use server proxy for AI-powered search
-        const result = await queryBrain(query, history);
+        const result = await queryBrain(query, memories, history);
         setIsSearching(false);
         return { mode: 'online', result };
       } else {

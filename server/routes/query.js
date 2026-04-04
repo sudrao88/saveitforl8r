@@ -11,7 +11,6 @@ import {
   QUERY_SYSTEM_PROMPT,
   normalizeHistory,
 } from '../services/gemini.js';
-import { fetchAllNotes } from '../services/googleDrive.js';
 
 /** Sanitize parsed LLM query response to strip any injected HTML. */
 const sanitizeQueryResponse = (parsed) => {
@@ -43,18 +42,9 @@ export const createQueryRouter = ({ ai, MODEL_NAME, FALLBACK_MODEL_NAME, GEMINI_
     queryLimiter,
     async (req, res) => {
       try {
-        const { query, history = [] } = req.body;
+        const { query, memories, history = [] } = req.body;
 
-        let memories;
-        try {
-          memories = await fetchAllNotes(req.accessToken);
-        } catch (driveError) {
-          console.error(`[Query] [${req.requestId}] Drive fetch failed:`, driveError.message);
-          const status = driveError.status === 401 ? 401 : 503;
-          return res.status(status).json({ error: 'Failed to fetch notes from Google Drive' });
-        }
-
-        if (!memories || memories.length === 0) {
+        if (!memories || !Array.isArray(memories) || memories.length === 0) {
           return res.json({
             answer: "I don't have any memories to search through yet. Try adding some memories first!",
             sources: [],
