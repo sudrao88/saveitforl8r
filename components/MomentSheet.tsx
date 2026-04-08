@@ -524,13 +524,13 @@ const ItemView: React.FC<{
         {item.label}
       </p>
       {item.detail && (
-        <p className="text-xs text-(--color-text-secondary) mt-0.5">{item.detail}</p>
+        <p className="text-xs text-(--color-text-secondary) mt-0.5 break-all">{item.detail}</p>
       )}
       {/* Source note citation */}
       {sourceMemory && (
         <button
           onClick={(e) => { e.stopPropagation(); onPreviewNote?.(); }}
-          className="flex items-center gap-1.5 mt-1.5 group/cite hover:opacity-80 transition-opacity text-left"
+          className="flex items-center gap-1.5 mt-1.5 max-w-full overflow-hidden group/cite hover:opacity-80 transition-opacity text-left"
         >
           <FileText size={10} className="text-(--color-text-tertiary) shrink-0 group-hover/cite:text-(--color-accent)" />
           <span className="text-xs text-(--color-text-tertiary) truncate group-hover/cite:text-(--color-accent)">
