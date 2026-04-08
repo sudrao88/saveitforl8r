@@ -24,7 +24,7 @@ const EnrichmentSection: React.FC<EnrichmentSectionProps> = ({ icon, label, item
       {items.map((item, idx) => (
         <li key={`${label}-${idx}-${item.slice(0, 30)}`} className={`flex items-start gap-2 text-sm ${textClass} font-light leading-relaxed`}>
           <span className={`${bulletClass} mt-1.5 shrink-0`}>&#8226;</span>
-          <span>{item}</span>
+          <span className="break-all">{item}</span>
         </li>
       ))}
     </ul>
@@ -44,7 +44,7 @@ const EnrichmentDetail: React.FC<EnrichmentDetailProps> = ({ icon, label, value,
       {icon}
       {label}
     </span>
-    <p className={`text-sm ${textClass} font-light leading-relaxed`}>{value}</p>
+    <p className={`text-sm ${textClass} font-light leading-relaxed break-all`}>{value}</p>
   </div>
 );
 
