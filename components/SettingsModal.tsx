@@ -1,5 +1,6 @@
 
 import React, { useState, useRef } from 'react';
+import { useBackButton } from '../hooks/useBackButton';
 
 import { X, Download, Upload, Info, RefreshCw, Cloud, AlertTriangle, AlertCircle, ShieldCheck, LogOut, Settings, Cpu, CheckCircle2, Loader2, Database, ChevronDown, Trash2, Bell, BellOff } from 'lucide-react';
 
@@ -137,6 +138,9 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
   
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [isReindexing, setIsReindexing] = useState(false);
+
+  // Dismiss factory reset dialog on Android back button
+  useBackButton(() => setIsResetModalOpen(false), isResetModalOpen);
 
   // All hooks and their logic are preserved from the original component
   const { sync, isSyncing } = useSync();

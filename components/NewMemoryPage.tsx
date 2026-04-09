@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useBackButton } from '../hooks/useBackButton';
 import { Send, Paperclip, Hash, Type, FileText, X, Loader2, ArrowLeft, CheckSquare, Plus, AlertTriangle } from 'lucide-react';
 import AttachmentMenu from './AttachmentMenu';
 import { marked } from 'marked';
@@ -88,6 +89,9 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
   const [showTags, setShowTags] = useState(false);
   const [showFormatting, setShowFormatting] = useState(false);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
+
+  // Dismiss discard confirmation on Android back button
+  useBackButton(() => setShowDiscardConfirm(false), showDiscardConfirm);
 
   // For Rich Text Mode
   const editorRef = useRef<HTMLDivElement>(null);

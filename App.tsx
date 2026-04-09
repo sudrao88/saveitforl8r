@@ -44,6 +44,7 @@ import { useDeletionCandidates } from './hooks/useDeletionCandidates';
 import { useNotifications } from './hooks/useNotifications';
 import useNativeOTA from './hooks/useNativeOTA';
 import { useWidgetDeepLink } from './hooks/useWidgetDeepLink';
+import { tryBackHandlers } from './hooks/useBackButton';
 import { SyncProvider } from './context/SyncContext';
 import { reconcileEmbeddings, ReconcileReport, getMemories as getStoredMemories } from './services/storageService';
 import { ViewMode, Memory, Attachment, Moment, QuickNoteState, CalendarEvent } from './types';
@@ -490,12 +491,20 @@ const AppContent: React.FC = () => {
     if (!isNative()) return;
 
     const handleBackButton = ({ canGoBack }: { canGoBack: boolean }) => {
+      // First, let component-level handlers try (nested dialogs, previews, confirmations)
+      if (tryBackHandlers()) return;
+
+      // Then app-level state checks (outermost overlays first)
       if (viewingGallery) {
         setViewingGallery(null);
+      } else if (showDeletionCandidates) {
+        setShowDeletionCandidates(false);
       } else if (showTodoList) {
         setShowTodoList(false);
       } else if (showCalendarAgenda) {
         setShowCalendarAgenda(false);
+      } else if (showCreateMoment) {
+        setShowCreateMoment(false);
       } else if (activeMoment) {
         setActiveMoment(null);
       } else if (showAllMoments) {
@@ -524,7 +533,7 @@ const AppContent: React.FC = () => {
       // Since addListener is async in some versions, but usually returns PluginListenerHandle
       listener.then(handle => handle.remove()).catch(e => console.error(e));
     };
-  }, [viewingGallery, expandedMemory, isSettingsOpen, setIsSettingsOpen, editingMemory, isCaptureOpen, view, activeMoment, showAllMoments, showCalendarAgenda, showTodoList, handleCaptureClose, handleEditClose]);
+  }, [viewingGallery, expandedMemory, isSettingsOpen, setIsSettingsOpen, editingMemory, isCaptureOpen, view, activeMoment, showAllMoments, showCalendarAgenda, showTodoList, showDeletionCandidates, showCreateMoment, handleCaptureClose, handleEditClose]);
 
   useEffect(() => {
     if (shareData) {
