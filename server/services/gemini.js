@@ -384,7 +384,7 @@ const CONTENT_TYPES_LIST = `- 'meeting_notes': Meeting minutes, standup notes, 1
 - 'travel': Trip planning, itineraries, packing lists, destination research
 - 'learning': Study notes, lecture summaries, TIL, course notes
 - 'contact': People/networking notes, CRM-style notes about individuals
-- 'event': Calendar-adjacent notes about events, concerts, appointments
+- 'event': Calendar-adjacent notes about events the user will attend or track — concerts, appointments, meetings, reservations. NOT for articles/news about events happening in the world
 - 'wishlist': Want-to-buy lists, gift ideas, items to acquire
 - 'project': Project docs, tech specs, architecture decisions, status updates
 - 'health': Workout logs, symptom tracking, meal logs, health observations
@@ -523,7 +523,7 @@ Search for the items being compared to provide factual context. Preserve the use
 - 'purpose': What the code does in plain English.
 - 'dependencies': Any required libraries, packages, or tools.
 Do not search externally.`,
-  article_blog: `This is a news article or blog post. Focus on extracting the main argument or narrative. Populate 'keyPoints' with the most important takeaways. Identify the author in 'author' if available.`,
+  article_blog: `This is a news article or blog post. Focus on extracting the main argument or narrative. Populate 'keyPoints' with the most important takeaways. Identify the author in 'author' if available. Do NOT extract calendar events from text that appears to be pasted from an article (e.g. journalistic style, third-person narrative). Only extract events when the text expresses a first-person intent to attend or track something (e.g. "I should go to this", "My appointment is...", "Reminder to buy tickets for this").`,
   product: `This is a product page or product reference. You MUST extract and populate these fields:
 - 'pros': Key advantages or standout features.
 - 'cons': Known drawbacks or limitations.
@@ -650,7 +650,7 @@ Use the URL Context tool to retrieve the content from the URL(s) above. If the U
 
   systemPrompt += `
 
-EVENT DETECTION: If the content mentions any events, appointments, meetings, deadlines, conferences, parties, reservations, or date-specific activities, extract them into 'detectedEvents'. Rules:
+EVENT DETECTION: If the content mentions events, appointments, meetings, deadlines, conferences, parties, reservations, or date-specific activities that the USER personally needs to track or attend, extract them into 'detectedEvents'. Rules:
 - Parse relative dates ("next Tuesday", "this weekend", "tomorrow") using today's date as reference. Today is ${new Date().toISOString().split('T')[0]}.
 - Use ISO 8601 format for dates (e.g. "2026-06-15" or "2026-06-15T16:00:00").
 - If only a date is mentioned with no time, set allDay to true.
@@ -658,6 +658,10 @@ EVENT DETECTION: If the content mentions any events, appointments, meetings, dea
 - Infer status: "confirmed" for definite events, "tentative" for maybes/uncertain dates, "cancelled" for explicitly cancelled events.
 - A single note can contain multiple events (e.g. a conference schedule).
 - If no date-bound events are present, omit detectedEvents entirely.
+- DO NOT extract events from content that appears to be from an article, blog, or news post (e.g. journalistic style, third-person narrative). Only extract events when the text expresses a first-person intent to attend or track something (e.g. "I should go to this", "My appointment is...", "Reminder to buy tickets"). This applies especially to contentTypes 'article_blog', 'research_academic', 'social_media_post'.
+- DO NOT treat publication dates, release dates, or "when an article was written/published" as events. These are metadata about the content, not user calendar events.
+- DO NOT extract historical events, news happenings, or things that occurred in the world as described by journalists or authors. Only extract events that are actionable for the user (something they will attend, participate in, or need to remember the date of).
+- When the content is a saved URL/article, ask: "Is this something the user needs on their calendar?" If the answer is no, omit detectedEvents entirely.
 - RECURRENCE DETECTION: If the content describes a repeating/recurring event (e.g. "every Monday", "monthly", "annual birthday", "weekly standup", "rent due on the 1st"), set isRecurring to true and recurrenceFrequency to the appropriate value ('daily', 'weekly', 'monthly', or 'yearly').
 - For weekly recurring events, also set recurrenceDayOfWeek to the day number (0=Sunday, 1=Monday, ..., 6=Saturday).
 - The startDate for a recurring event should be the NEXT upcoming occurrence relative to today's date.
