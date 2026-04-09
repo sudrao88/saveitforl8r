@@ -658,7 +658,7 @@ EVENT DETECTION: If the content mentions events, appointments, meetings, deadlin
 - Infer status: "confirmed" for definite events, "tentative" for maybes/uncertain dates, "cancelled" for explicitly cancelled events.
 - A single note can contain multiple events (e.g. a conference schedule).
 - If no date-bound events are present, omit detectedEvents entirely.
-- DO NOT extract events from articles, blog posts, or news content (contentType 'article_blog', 'research_academic', 'social_media_post') UNLESS the user's own text (not the article content) explicitly indicates they plan to attend or track an event mentioned in the article.
+- DO NOT extract events from content that appears to be from an article, blog, or news post (e.g. journalistic style, third-person narrative). Only extract events when the text expresses a first-person intent to attend or track something (e.g. "I should go to this", "My appointment is...", "Reminder to buy tickets"). This applies especially to contentTypes 'article_blog', 'research_academic', 'social_media_post'.
 - DO NOT treat publication dates, release dates, or "when an article was written/published" as events. These are metadata about the content, not user calendar events.
 - DO NOT extract historical events, news happenings, or things that occurred in the world as described by journalists or authors. Only extract events that are actionable for the user (something they will attend, participate in, or need to remember the date of).
 - When the content is a saved URL/article, ask: "Is this something the user needs on their calendar?" If the answer is no, omit detectedEvents entirely.
