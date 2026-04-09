@@ -523,7 +523,7 @@ Search for the items being compared to provide factual context. Preserve the use
 - 'purpose': What the code does in plain English.
 - 'dependencies': Any required libraries, packages, or tools.
 Do not search externally.`,
-  article_blog: `This is a news article or blog post. Focus on extracting the main argument or narrative. Populate 'keyPoints' with the most important takeaways. Identify the author in 'author' if available. Do NOT extract calendar events from article content — publication dates, events described in the article, and historical happenings are NOT user calendar events. Only extract events if the user's own note text (not the article) indicates they plan to attend something.`,
+  article_blog: `This is a news article or blog post. Focus on extracting the main argument or narrative. Populate 'keyPoints' with the most important takeaways. Identify the author in 'author' if available. Do NOT extract calendar events from text that appears to be pasted from an article (e.g. journalistic style, third-person narrative). Only extract events when the text expresses a first-person intent to attend or track something (e.g. "I should go to this", "My appointment is...", "Reminder to buy tickets for this").`,
   product: `This is a product page or product reference. You MUST extract and populate these fields:
 - 'pros': Key advantages or standout features.
 - 'cons': Known drawbacks or limitations.
