@@ -7,6 +7,7 @@
  */
 
 import React, { useState, useMemo, useCallback } from 'react';
+import { useBackButton } from '../hooks/useBackButton';
 import {
   X,
   Trash2,
@@ -131,6 +132,10 @@ const DeletionCandidatesSheet: React.FC<DeletionCandidatesSheetProps> = ({
     });
     setConfirmMode(null);
   }, [selectedIds, onDismiss]);
+
+  // Dismiss nested dialogs on Android back button (before the sheet itself closes)
+  useBackButton(() => setPreviewMemoryId(null), previewMemoryId !== null);
+  useBackButton(() => setConfirmMode(null), confirmMode !== null);
 
   const previewMemory = previewMemoryId ? candidates.find(c => c.id === previewMemoryId) ?? null : null;
 

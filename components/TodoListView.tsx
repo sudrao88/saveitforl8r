@@ -7,6 +7,7 @@
  */
 
 import React, { useMemo, useCallback, useState } from 'react';
+import { useBackButton } from '../hooks/useBackButton';
 import {
   X,
   XCircle,
@@ -290,6 +291,9 @@ const TodoListView: React.FC<TodoListViewProps> = ({
   );
 
   const previewMemory = previewMemoryId ? memoryMap.get(previewMemoryId) ?? null : null;
+
+  // Dismiss preview modal on Android back button
+  useBackButton(() => setPreviewMemoryId(null), previewMemoryId !== null);
 
   const handleViewMemory = useCallback(
     (memory: Memory) => {

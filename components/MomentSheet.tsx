@@ -7,6 +7,7 @@
  */
 
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { useBackButton } from '../hooks/useBackButton';
 import {
   X,
   Loader2,
@@ -118,6 +119,10 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
   }, [memories]);
 
   const previewMemory = previewMemoryId ? memoriesMap.get(previewMemoryId) : undefined;
+
+  // Dismiss nested dialogs on Android back button
+  useBackButton(() => setPreviewMemoryId(null), previewMemoryId !== null);
+  useBackButton(() => setDeleteConfirmStep(null), deleteConfirmStep !== null);
 
   // Keep refs to latest props so the effect always uses current values
   const momentRef = useRef(moment);

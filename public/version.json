@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v62",
-  "buildNumber": 62,
-  "buildDate": "2026-04-08T02:32:46.730Z",
+  "version": "saveitforl8r-v63",
+  "buildNumber": 63,
+  "buildDate": "2026-04-09T11:30:00.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Revert server-side Drive fetch; client sends notes for query/synthesis"
+  "changelog": "Fix Android back button not dismissing sheets and nested dialogs"
 }

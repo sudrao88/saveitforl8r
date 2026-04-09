@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useBackButton } from '../hooks/useBackButton';
 import { X, Send, BrainCircuit, ExternalLink, Bot, Sparkles, WifiOff, Download, FileText } from 'lucide-react';
 import { Memory, Attachment, ChatMessage } from '../types';
 import MemoryPreviewModal from './MemoryPreviewModal';
@@ -34,7 +35,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const [previewMemoryId, setPreviewMemoryId] = useState<string | null>(null);
-  
+
+  // Dismiss preview modal on Android back button
+  useBackButton(() => setPreviewMemoryId(null), previewMemoryId !== null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [viewport, setViewport] = useState({ height: '100dvh', top: 0 });
