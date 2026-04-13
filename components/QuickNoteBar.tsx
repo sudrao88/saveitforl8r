@@ -4,7 +4,7 @@ import AttachmentMenu from './AttachmentMenu';
 import { marked } from 'marked';
 import { Attachment, QuickNoteState } from '../types';
 import { escapeHtml, looksLikeMarkdown, parseChecklistMarkdown, sanitizePastedHtml, hasRichFormatting, extractHashtags, mergeTagsWithHashtags, containsUrl, linkifyUrls, handleEditorKeyDown, checkActiveFormats, execFormatCommand, formatsEqual, isEditorEmpty } from '../utils/editorUtils';
-import { processFileInputs } from '../utils/attachmentUtils';
+import { processFileInputs, MAX_FILE_SIZE_BYTES } from '../utils/attachmentUtils';
 import { triggerHaptic } from '../services/platform';
 import FormattingToolbar from './FormattingToolbar';
 import TagInput from './TagInput';
@@ -46,6 +46,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
   const [isChecklistMode, setIsChecklistMode] = useState(false);
   const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([]);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [rejectedFiles, setRejectedFiles] = useState<{ name: string; size: number }[]>([]);
 
   const keyboardHeight = useKeyboardHeight({ includeOffsetTop: true });
 
@@ -200,8 +201,12 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
 
   const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      const newAttachments = await processFileInputs(e.target.files);
+      const { attachments: newAttachments, rejected } = await processFileInputs(e.target.files);
       setAttachments(prev => [...prev, ...newAttachments]);
+      if (rejected.length > 0) {
+        setRejectedFiles(rejected);
+        setTimeout(() => setRejectedFiles([]), 5000);
+      }
       e.target.value = '';
     }
   }, []);
@@ -385,6 +390,22 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
       }}
     >
       <div className="bg-(--color-surface-overlay)/95 backdrop-blur-xl border-2 border-(--color-accent) rounded-(--radius-xl) shadow-[0_0_16px_rgba(156,163,175,0.3)]">
+        {/* File too large warning */}
+        {rejectedFiles.length > 0 && (
+          <div className="px-4 pt-3 pb-1">
+            <div className="flex items-start gap-2 text-xs text-(--color-danger) bg-(--color-danger)/10 border border-(--color-danger)/30 rounded-(--radius-md) px-3 py-2">
+              <span className="shrink-0 mt-0.5">
+                <X size={12} />
+              </span>
+              <span>
+                {rejectedFiles.length === 1
+                  ? `"${rejectedFiles[0].name}" exceeds the ${Math.round(MAX_FILE_SIZE_BYTES / (1024 * 1024))}MB limit`
+                  : `${rejectedFiles.length} files exceed the ${Math.round(MAX_FILE_SIZE_BYTES / (1024 * 1024))}MB limit`}
+              </span>
+            </div>
+          </div>
+        )}
+
         {/* Attachment previews */}
         {attachments.length > 0 && (
           <div className="px-4 pt-3 pb-1">

@@ -194,12 +194,34 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
       aiLimiter.run(async () => {
       const startTime = Date.now();
       const parts = [];
+      const uploadedFileNames = []; // Track Gemini File API uploads for cleanup
+
+      const FILE_API_THRESHOLD = 4_000_000; // Use File API for attachments > 4MB base64 chars
 
       if (attachments && Array.isArray(attachments)) {
         for (const att of attachments) {
           if (!att.data) continue;
           const base64Data = att.data.includes(',') ? att.data.split(',')[1] : att.data;
-          if (base64Data) {
+          if (!base64Data) continue;
+
+          if (base64Data.length > FILE_API_THRESHOLD) {
+            // Large attachment — upload via Gemini File API
+            try {
+              const buffer = Buffer.from(base64Data, 'base64');
+              const blob = new Blob([buffer], { type: att.mimeType });
+              const uploadResult = await ai.files.upload({
+                file: blob,
+                config: { mimeType: att.mimeType },
+              });
+              uploadedFileNames.push(uploadResult.name);
+              parts.push({ fileData: { fileUri: uploadResult.uri, mimeType: att.mimeType } });
+              console.log(`[Enrich] [${req.requestId}] Uploaded large attachment via File API: ${uploadResult.name} (${base64Data.length} base64 chars)`);
+            } catch (uploadErr) {
+              console.warn(`[Enrich] [${req.requestId}] File API upload failed, falling back to inlineData:`, uploadErr.message);
+              parts.push({ inlineData: { data: base64Data, mimeType: att.mimeType } });
+            }
+          } else {
+            // Small attachment — inline as before
             parts.push({ inlineData: { data: base64Data, mimeType: att.mimeType } });
           }
         }
@@ -403,6 +425,11 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
         } catch (fallbackError) {
           console.error(`[Enrich] [${req.requestId}] Fallback also failed:`, fallbackError.message);
           persistEnrichmentResult(memoryId, req.userId, 'failed', null);
+        }
+      } finally {
+        // Clean up any files uploaded via Gemini File API (best-effort)
+        for (const name of uploadedFileNames) {
+          ai.files.delete({ name }).catch(() => {});
         }
       }
       }).catch((err) => console.error(`[Enrich] Limiter error:`, err.message));

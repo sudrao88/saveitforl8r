@@ -40,8 +40,8 @@ export const validateEnrichInput = (req, res, next) => {
           error: `Unsupported attachment type. Allowed: ${ALLOWED_MIME_TYPES.join(', ')}`,
         });
       }
-      if (att.data && att.data.length > 10_000_000) {
-        return res.status(400).json({ error: 'Attachment too large (max ~7.5MB)' });
+      if (att.data && att.data.length > 70_000_000) {
+        return res.status(400).json({ error: 'Attachment too large (max 50MB)' });
       }
     }
   }

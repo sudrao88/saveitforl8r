@@ -3,6 +3,7 @@ import { Attachment } from '../types';
 import { isNative } from '../services/platform';
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
+import { MAX_FILE_SIZE_BYTES, compressImage } from '../utils/attachmentUtils';
 
 export interface ShareData {
   text: string;
@@ -25,8 +26,8 @@ interface NativeShareData {
   attachments?: NativeShareAttachment[];
 }
 
-// Maximum blob size for shared images (50MB)
-const MAX_BLOB_SIZE = 50 * 1024 * 1024;
+// Image compression threshold — compress shared images larger than this
+const IMAGE_COMPRESSION_THRESHOLD = 2 * 1024 * 1024;
 
 /**
  * Signal to Android native code that the React app is ready to receive share intents.
@@ -83,16 +84,23 @@ export const useShareReceiver = () => {
                 const response = await fetch(webPath);
                 const blob = await response.blob();
 
-                if (blob.size > MAX_BLOB_SIZE) {
+                if (blob.size > MAX_FILE_SIZE_BYTES) {
                     console.warn('[ShareReceiver] File too large, skipping:', blob.size);
                     continue;
+                }
+
+                // Compress large images before converting to base64
+                let fileForRead: Blob = blob;
+                if (att.mimeType.startsWith('image/') && blob.size > IMAGE_COMPRESSION_THRESHOLD) {
+                    const file = new File([blob], att.name || 'shared-image', { type: att.mimeType });
+                    fileForRead = await compressImage(file);
                 }
 
                 base64 = await new Promise<string>((resolve, reject) => {
                     const reader = new FileReader();
                     reader.onload = e => resolve(e.target?.result as string);
                     reader.onerror = () => reject(new Error('FileReader error'));
-                    reader.readAsDataURL(blob);
+                    reader.readAsDataURL(fileForRead);
                 });
             }
 

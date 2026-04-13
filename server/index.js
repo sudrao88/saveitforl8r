@@ -109,7 +109,7 @@ app.use(
 );
 
 app.use(compression());
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '75mb' }));
 
 // Attach an anonymous request ID for log correlation
 app.use((req, _res, next) => {
