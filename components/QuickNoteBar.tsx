@@ -4,7 +4,7 @@ import AttachmentMenu from './AttachmentMenu';
 import { marked } from 'marked';
 import { Attachment, QuickNoteState } from '../types';
 import { escapeHtml, looksLikeMarkdown, parseChecklistMarkdown, sanitizePastedHtml, hasRichFormatting, extractHashtags, mergeTagsWithHashtags, containsUrl, linkifyUrls, handleEditorKeyDown, checkActiveFormats, execFormatCommand, formatsEqual, isEditorEmpty } from '../utils/editorUtils';
-import { processFileInputs, MAX_FILE_SIZE_BYTES } from '../utils/attachmentUtils';
+import { processFileInputs, MAX_FILE_SIZE_BYTES, MAX_ATTACHMENTS } from '../utils/attachmentUtils';
 import { triggerHaptic } from '../services/platform';
 import FormattingToolbar from './FormattingToolbar';
 import TagInput from './TagInput';
@@ -202,7 +202,11 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
   const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const { attachments: newAttachments, rejected } = await processFileInputs(e.target.files);
-      setAttachments(prev => [...prev, ...newAttachments]);
+      setAttachments(prev => {
+        const remaining = MAX_ATTACHMENTS - prev.length;
+        if (remaining <= 0) return prev;
+        return [...prev, ...newAttachments.slice(0, remaining)];
+      });
       if (rejected.length > 0) {
         setRejectedFiles(rejected);
         setTimeout(() => setRejectedFiles([]), 5000);
