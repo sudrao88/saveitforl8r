@@ -193,8 +193,10 @@ export interface Attachment {
   id: string;
   type: 'image' | 'file';
   mimeType: string;
-  data: string; // Base64 Data URI
+  data?: string; // Base64 Data URI — optional when fileUri is used
   name: string;
+  fileUri?: string;       // Gemini File API URI (set after chunked upload)
+  geminiFileName?: string; // Gemini file name (for cleanup tracking)
 }
 
 export interface QuickNoteState {
@@ -219,6 +221,12 @@ export interface Memory {
   isPinned?: boolean;
   isDeletionDismissed?: boolean; // User dismissed this note from deletion suggestions
   _attachmentsDeferred?: boolean; // Transient UI flag: attachment data not yet loaded
+}
+
+export interface UploadProgress {
+  status: 'uploading' | 'processing' | 'completed' | 'failed';
+  bytesUploaded: number;
+  totalBytes: number;
 }
 
 export interface ChatMessage {

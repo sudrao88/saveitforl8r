@@ -22,6 +22,7 @@ import { createEnrichRouter } from './routes/enrich.js';
 import { createQueryRouter } from './routes/query.js';
 import { createMomentRouter } from './routes/moment.js';
 import { createPushRouter } from './routes/push.js';
+import { createUploadRouter } from './routes/upload.js';
 import { authenticateRequest } from './middleware/auth.js';
 import { validateSynthesizeInput, validateSynthesizeResultsInput } from './middleware/validation.js';
 import { sanitizeUserInput } from './lib/sanitize.js';
@@ -102,14 +103,14 @@ app.use(
         callback(new Error('Not allowed by CORS'));
       }
     },
-    methods: ['GET', 'POST', 'DELETE'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     maxAge: 86400,
   })
 );
 
 app.use(compression());
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '75mb' }));
 
 // Attach an anonymous request ID for log correlation
 app.use((req, _res, next) => {
@@ -152,6 +153,7 @@ const sharedDeps = { ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GEMINI_TIMEOUT_MS,
 app.use('/api/enrich', createEnrichRouter(sharedDeps));
 app.use('/api/query', createQueryRouter(sharedDeps));
 app.use('/api/push', createPushRouter({ db }));
+app.use('/api/upload', createUploadRouter({ ai, db }));
 
 // --- Moment schemas & routes ---
 

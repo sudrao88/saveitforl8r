@@ -9,7 +9,7 @@ import { Keyboard } from '@capacitor/keyboard';
 import { Geolocation } from '@capacitor/geolocation';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { escapeHtml, looksLikeMarkdown, parseChecklistMarkdown, sanitizePastedHtml, hasRichFormatting, extractHashtags, mergeTagsWithHashtags, containsUrl, linkifyUrls, handleEditorKeyDown, checkActiveFormats, execFormatCommand, formatsEqual, isEditorEmpty } from '../utils/editorUtils';
-import { processFileInputs } from '../utils/attachmentUtils';
+import { processFileInputs, MAX_FILE_SIZE_BYTES } from '../utils/attachmentUtils';
 import FormattingToolbar from './FormattingToolbar';
 import TagInput from './TagInput';
 import { btn, overlay } from '../styles/design-system';
@@ -89,6 +89,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
   const [showTags, setShowTags] = useState(false);
   const [showFormatting, setShowFormatting] = useState(false);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const [rejectedFiles, setRejectedFiles] = useState<{ name: string; size: number }[]>([]);
 
   // Dismiss discard confirmation on Android back button
   useBackButton(() => setShowDiscardConfirm(false), showDiscardConfirm);
@@ -254,8 +255,12 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      const newAttachments = await processFileInputs(e.target.files);
+      const { attachments: newAttachments, rejected } = await processFileInputs(e.target.files);
       setAttachments(prev => [...prev, ...newAttachments]);
+      if (rejected.length > 0) {
+        setRejectedFiles(rejected);
+        setTimeout(() => setRejectedFiles([]), 5000);
+      }
       e.target.value = '';
     }
   };
@@ -561,6 +566,20 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
           style={{ paddingBottom: keyboardHeight > 0 ? `${keyboardHeight}px` : 'max(0.75rem, var(--sab))' }}
         >
           <div className="bg-(--color-surface-overlay)/95 backdrop-blur-xl border border-(--color-border-default)/50 rounded-(--radius-xl) shadow-2xl shadow-black/40">
+            {/* File too large warning */}
+            {rejectedFiles.length > 0 && (
+              <div className="px-4 pt-3 pb-1">
+                <div className="flex items-start gap-2 text-xs text-(--color-danger) bg-(--color-danger)/10 border border-(--color-danger)/30 rounded-(--radius-md) px-3 py-2">
+                  <AlertTriangle size={12} className="shrink-0 mt-0.5" />
+                  <span>
+                    {rejectedFiles.length === 1
+                      ? `"${rejectedFiles[0].name}" exceeds the ${Math.round(MAX_FILE_SIZE_BYTES / (1024 * 1024))}MB limit`
+                      : `${rejectedFiles.length} files exceed the ${Math.round(MAX_FILE_SIZE_BYTES / (1024 * 1024))}MB limit`}
+                  </span>
+                </div>
+              </div>
+            )}
+
             {/* Attachment previews */}
             {attachments.length > 0 && (
                 <div className="px-4 pt-3 pb-1">

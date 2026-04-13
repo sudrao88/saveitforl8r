@@ -51,9 +51,17 @@ export const submitEnrichment = async (
   memoryId?: string,
   moments?: { id: string; objective: string; refinedObjective?: string; title: string; type: string }[]
 ): Promise<void> => {
+  // Strip base64 data from attachments that were uploaded via chunked upload
+  // to avoid sending the massive payload — the server uses fileUri instead
+  const enrichAttachments = attachments.map(a =>
+    a.fileUri
+      ? { id: a.id, type: a.type, mimeType: a.mimeType, name: a.name, fileUri: a.fileUri, geminiFileName: a.geminiFileName }
+      : a
+  );
+
   const payload: EnrichmentInput = {
     text,
-    attachments,
+    attachments: enrichAttachments,
     location,
     tags,
     memoryId,

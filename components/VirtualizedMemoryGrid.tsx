@@ -1,6 +1,6 @@
 import React from 'react';
 import MemoryCard from './MemoryCard';
-import { Memory, Attachment } from '../types';
+import { Memory, Attachment, UploadProgress } from '../types';
 
 interface VirtualizedMemoryGridProps {
   memories: Memory[];
@@ -15,6 +15,7 @@ interface VirtualizedMemoryGridProps {
   onSignIn: () => void;
   syncStatusMap?: Map<string, 'syncing' | 'synced' | 'error'>;
   onSyncRetry?: (id: string) => void;
+  uploadProgressMap?: Map<string, UploadProgress>;
 }
 
 const VirtualizedMemoryGrid: React.FC<VirtualizedMemoryGridProps> = ({
@@ -30,6 +31,7 @@ const VirtualizedMemoryGrid: React.FC<VirtualizedMemoryGridProps> = ({
   onSignIn,
   syncStatusMap,
   onSyncRetry,
+  uploadProgressMap,
 }) => {
   return (
     <div
@@ -57,6 +59,7 @@ const VirtualizedMemoryGrid: React.FC<VirtualizedMemoryGridProps> = ({
             onSignIn={onSignIn}
             syncStatus={syncStatusMap?.get(mem.id)}
             onSyncRetry={onSyncRetry}
+            uploadProgress={uploadProgressMap?.get(mem.id)}
           />
         </div>
       ))}

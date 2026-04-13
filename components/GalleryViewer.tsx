@@ -15,6 +15,7 @@ const SAFE_IMAGE_MIMES = new Set([
 /** Returns a safe src URL for the attachment, or empty string if the data URI is suspicious. */
 function getSafeDataUri(attachment: Attachment): string {
   const { data, mimeType } = attachment;
+  if (!data) return '';
   // Block javascript:, vbscript:, and other dangerous schemes
   if (!/^data:/i.test(data)) return '';
   if (attachment.type === 'image') {
