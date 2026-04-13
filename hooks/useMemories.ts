@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getMemories, deleteMemory, saveMemory, getMemory } from '../services/storageService';
 import { submitEnrichment } from '../services/geminiService';
-import { Memory, Attachment, Moment, CalendarEvent, TodoItem } from '../types';
+import { Memory, Attachment, Moment, CalendarEvent, TodoItem, UploadProgress } from '../types';
+import { uploadFileChunked } from '../services/chunkUploadService';
 import { useSync } from './useSync';
 import { useAuth } from './useAuth';
 import { useEnrichmentPolling } from './useEnrichmentPolling';
@@ -62,6 +63,21 @@ export const useMemories = () => {
   const setOnCalendarEventsSync = useCallback((cb: (events: CalendarEvent[]) => Promise<void>) => {
     onCalendarEventsSyncRef.current = cb;
   }, []);
+
+  // Upload progress tracking — mirrors the syncStatusMap pattern
+  const [uploadProgressVersion, setUploadProgressVersion] = useState(0);
+  const uploadProgressMapRef = useRef<Map<string, UploadProgress>>(new Map());
+
+  const updateUploadProgress = useCallback((memoryId: string, progress: UploadProgress | null) => {
+    if (progress === null) {
+      uploadProgressMapRef.current.delete(memoryId);
+    } else {
+      uploadProgressMapRef.current.set(memoryId, progress);
+    }
+    setUploadProgressVersion(v => v + 1);
+  }, []);
+
+  const getUploadProgressMap = useCallback(() => uploadProgressMapRef.current, []);
 
   const recoveryAttemptedRef = useRef(false);
   const memoriesRef = useRef(memories);
@@ -198,11 +214,91 @@ export const useMemories = () => {
     }
   }, [refreshMemories, trySyncFile]);
 
-  // FIX: handleRetry previously captured stale `memories` state via closure.
-  // Now reads from memoriesRef to always get the latest state, preventing
-  // retry failures when the memories array has been updated between renders.
+  // Threshold for chunked upload — base64 data longer than this is uploaded in chunks
+  const CHUNKED_UPLOAD_THRESHOLD = 5_000_000; // ~3.75MB decoded
+
+  /**
+   * Upload large attachments in chunks, then submit enrichment.
+   * Small attachments are sent inline with the enrichment request as before.
+   */
+  const uploadAndEnrich = useCallback(async (
+    memoryId: string,
+    text: string,
+    attachments: Attachment[],
+    location: { latitude: number; longitude: number; accuracy?: number } | undefined,
+    tags: string[],
+    newMemory: Memory,
+  ) => {
+    const largeAtts = attachments.filter(a => a.data && a.data.length > CHUNKED_UPLOAD_THRESHOLD);
+    let enrichmentAttachments = [...attachments];
+
+    if (largeAtts.length > 0) {
+      // Calculate total bytes for progress (approximate from base64 length)
+      const totalBytes = largeAtts.reduce((sum, a) => {
+        const b64 = a.data.includes(',') ? a.data.split(',')[1] : a.data;
+        return sum + Math.ceil(b64.length * 3 / 4);
+      }, 0);
+
+      updateUploadProgress(memoryId, { status: 'uploading', bytesUploaded: 0, totalBytes });
+
+      try {
+        let cumulativeUploaded = 0;
+        const uploadedMap = new Map<string, { fileUri: string; geminiFileName: string }>();
+
+        for (const att of largeAtts) {
+          const b64 = att.data.includes(',') ? att.data.split(',')[1] : att.data;
+          const binary = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+          const blob = new Blob([binary], { type: att.mimeType });
+          const prevUploaded = cumulativeUploaded;
+
+          const result = await uploadFileChunked(
+            blob, att.mimeType, att.name, memoryId,
+            (bytes, total) => {
+              updateUploadProgress(memoryId, {
+                status: 'uploading',
+                bytesUploaded: prevUploaded + bytes,
+                totalBytes,
+              });
+            },
+          );
+
+          cumulativeUploaded += blob.size;
+          uploadedMap.set(att.id, result);
+        }
+
+        // Replace large attachments with fileUri references for the enrichment request
+        enrichmentAttachments = attachments.map(a => {
+          const uploaded = uploadedMap.get(a.id);
+          if (uploaded) return { ...a, fileUri: uploaded.fileUri, geminiFileName: uploaded.geminiFileName } as any;
+          return a;
+        });
+
+        updateUploadProgress(memoryId, { status: 'processing', bytesUploaded: totalBytes, totalBytes });
+      } catch (uploadErr) {
+        console.error('[Upload] Chunked upload failed:', uploadErr);
+        updateUploadProgress(memoryId, { status: 'failed', bytesUploaded: 0, totalBytes });
+        const failedMemory: Memory = { ...newMemory, isPending: false, processingError: true };
+        await saveMemory(failedMemory);
+        setMemories(prev => prev.map(m => m.id === memoryId ? failedMemory : m));
+        return;
+      }
+    }
+
+    // Submit enrichment (fileUri for uploaded attachments, inline data for small ones)
+    startPolling();
+    try {
+      await submitEnrichment(text, enrichmentAttachments, location, tags, memoryId, buildMomentsMeta(momentsRef.current));
+      updateUploadProgress(memoryId, null);
+    } catch (err) {
+      console.error('Enrichment submission failed:', err);
+      updateUploadProgress(memoryId, null);
+      const failedMemory: Memory = { ...newMemory, isPending: false, processingError: true };
+      await saveMemory(failedMemory);
+      setMemories(prev => prev.map(m => m.id === memoryId ? failedMemory : m));
+    }
+  }, [startPolling, updateUploadProgress]);
+
   const handleRetry = useCallback(async (id: string) => {
-    // Show "Enriching..." immediately
     const memory = memoriesRef.current.find(m => m.id === id);
     if (!memory) return;
 
@@ -225,24 +321,10 @@ export const useMemories = () => {
     };
     await saveMemory(pendingMemory);
     setMemories(prev => prev.map(m => m.id === id ? pendingMemory : m));
-    startPolling();
 
-    try {
-        await submitEnrichment(
-            memory.content,
-            attachments,
-            memory.location,
-            memory.tags,
-            memory.id,
-            buildMomentsMeta(momentsRef.current)
-        );
-    } catch (error) {
-        console.error("Retry failed for memory", id, error);
-        const failedMemory = { ...memory, isPending: false, processingError: true };
-        await saveMemory(failedMemory);
-        setMemories(prev => prev.map(m => m.id === id ? failedMemory : m));
-    }
-  }, [trySyncFile, startPolling]);
+    // Use the same upload-then-enrich flow as createMemory
+    await uploadAndEnrich(id, memory.content, attachments, memory.location, memory.tags, pendingMemory);
+  }, [uploadAndEnrich]);
 
   const createMemory = useCallback(async (
     text: string,
@@ -250,7 +332,7 @@ export const useMemories = () => {
     tags: string[],
     location?: { latitude: number; longitude: number; accuracy?: number }
   ) => {
-      // 1. Prepare initial memory object — show "Enriching..." immediately
+      // 1. Prepare initial memory object — show card immediately
       const memoryId = crypto.randomUUID();
       const timestamp = Date.now();
 
@@ -265,31 +347,17 @@ export const useMemories = () => {
         processingError: false
       };
 
-      // 2. Show the card immediately with "Enriching..." state and save locally
+      // 2. Save locally and show card
       setMemories(prev => [newMemory, ...prev]);
       await saveMemory(newMemory);
-      trySyncFile(newMemory);  // Sync immediately on save, before enrichment
+      trySyncFile(newMemory);
 
-      // 3. Submit enrichment to server with moments metadata and start polling
-      startPolling();
-      submitEnrichment(text, attachments, location, tags, memoryId, buildMomentsMeta(momentsRef.current))
-        .catch(async (err) => {
-            console.error("Enrichment submission failed:", err);
-            const current = await getMemory(memoryId);
-            if (!current || current.isDeleted) return;
-
-            const failedMemory: Memory = {
-                ...newMemory,
-                isPending: false,
-                processingError: true
-            };
-            await saveMemory(failedMemory);
-            setMemories(prev => prev.map(m => m.id === memoryId ? failedMemory : m));
-        });
+      // 3. Upload large attachments (if any) then submit enrichment
+      uploadAndEnrich(memoryId, text, attachments, location, tags, newMemory);
 
       // Return immediately so the modal can close
       return Promise.resolve();
-  }, [trySyncFile, startPolling]);
+  }, [trySyncFile, uploadAndEnrich]);
 
   const updateMemoryContent = useCallback(async (id: string, newContent: string) => {
       setMemories(prev => prev.map(m => m.id === id ? { ...m, content: newContent } : m));
@@ -468,5 +536,7 @@ export const useMemories = () => {
     setOnCalendarEventsSync,
     setOnEnrichmentCompleteTodo,
     setOnTodoItemsSync,
+    getUploadProgressMap,
+    uploadProgressVersion,
   };
 };

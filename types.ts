@@ -221,6 +221,12 @@ export interface Memory {
   _attachmentsDeferred?: boolean; // Transient UI flag: attachment data not yet loaded
 }
 
+export interface UploadProgress {
+  status: 'uploading' | 'processing' | 'completed' | 'failed';
+  bytesUploaded: number;
+  totalBytes: number;
+}
+
 export interface ChatMessage {
   role: 'user' | 'model';
   text: string;

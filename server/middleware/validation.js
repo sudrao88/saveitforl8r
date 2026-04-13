@@ -40,8 +40,15 @@ export const validateEnrichInput = (req, res, next) => {
           error: `Unsupported attachment type. Allowed: ${ALLOWED_MIME_TYPES.join(', ')}`,
         });
       }
+      // Attachment must have either inline data or a fileUri from chunked upload
+      if (!att.data && !att.fileUri) {
+        return res.status(400).json({ error: 'Attachment must have either data or fileUri' });
+      }
       if (att.data && att.data.length > 70_000_000) {
         return res.status(400).json({ error: 'Attachment too large (max 50MB)' });
+      }
+      if (att.fileUri && typeof att.fileUri !== 'string') {
+        return res.status(400).json({ error: 'fileUri must be a string' });
       }
     }
   }
@@ -173,5 +180,36 @@ export const validateSynthesizeResultsInput = (req, res, next) => {
       return res.status(400).json({ error: `Invalid momentId: ${id}` });
   }
 
+  next();
+};
+
+export const validateUploadInit = (req, res, next) => {
+  const { fileName, fileSize, mimeType, totalChunks, memoryId } = req.body;
+
+  if (!fileName || typeof fileName !== 'string' || fileName.length > 256)
+    return res.status(400).json({ error: 'fileName is required (max 256 chars)' });
+  if (typeof fileSize !== 'number' || fileSize <= 0 || fileSize > 55_000_000)
+    return res.status(400).json({ error: 'fileSize must be between 1 and 55000000 bytes' });
+  if (!mimeType || !ALLOWED_MIME_TYPES.includes(mimeType))
+    return res.status(400).json({ error: `Unsupported mimeType. Allowed: ${ALLOWED_MIME_TYPES.join(', ')}` });
+  if (typeof totalChunks !== 'number' || totalChunks < 1 || totalChunks > 60 || !Number.isInteger(totalChunks))
+    return res.status(400).json({ error: 'totalChunks must be an integer between 1 and 60' });
+  if (!memoryId || typeof memoryId !== 'string' || !UUID_REGEX.test(memoryId))
+    return res.status(400).json({ error: 'memoryId must be a valid UUID' });
+
+  next();
+};
+
+export const validateUploadChunk = (req, res, next) => {
+  const { sessionId, chunkIndex } = req.params;
+
+  if (!sessionId || !UUID_REGEX.test(sessionId))
+    return res.status(400).json({ error: 'Invalid sessionId' });
+
+  const idx = parseInt(chunkIndex, 10);
+  if (isNaN(idx) || idx < 0 || idx > 59)
+    return res.status(400).json({ error: 'chunkIndex must be an integer between 0 and 59' });
+
+  req.chunkIndex = idx;
   next();
 };

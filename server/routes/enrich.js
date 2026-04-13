@@ -200,12 +200,21 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
 
       if (attachments && Array.isArray(attachments)) {
         for (const att of attachments) {
+          // Case 1: Pre-uploaded via chunked upload — use fileUri directly
+          if (att.fileUri) {
+            parts.push({ fileData: { fileUri: att.fileUri, mimeType: att.mimeType } });
+            if (att.geminiFileName) uploadedFileNames.push(att.geminiFileName);
+            console.log(`[Enrich] [${req.requestId}] Using pre-uploaded file: ${att.fileUri}`);
+            continue;
+          }
+
+          // Case 2: Inline data
           if (!att.data) continue;
           const base64Data = att.data.includes(',') ? att.data.split(',')[1] : att.data;
           if (!base64Data) continue;
 
           if (base64Data.length > FILE_API_THRESHOLD) {
-            // Large attachment — upload via Gemini File API
+            // Large inline attachment — upload via Gemini File API
             try {
               const buffer = Buffer.from(base64Data, 'base64');
               const blob = new Blob([buffer], { type: att.mimeType });

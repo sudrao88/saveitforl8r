@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { Trash2, Loader2, Clock, ExternalLink, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, RefreshCw, WifiOff, FileText, Paperclip, MoreVertical, AlertTriangle, AlertCircle, LogIn, Maximize2, Eye, Pin, Pencil, Lightbulb, CircleCheck, UtensilsCrossed, ListOrdered, ThumbsUp, ThumbsDown, DollarSign, MapPin, CalendarDays, ClipboardList, MessageSquare, Users, Mic, Code, Heart, Scale, GraduationCap, Briefcase, Music, Film, BookOpenCheck, Bookmark, Phone, Mail, ScrollText, Tag, Clock3, Flame, Quote } from 'lucide-react';
-import { Memory, Attachment } from '../types.ts';
+import { Memory, Attachment, UploadProgress } from '../types.ts';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { btn, card, confirm, menu, overlay, text } from '../styles/design-system';
 import { downloadDataUri } from '../services/downloadService';
@@ -210,6 +210,7 @@ interface MemoryCardProps {
   onSignIn?: () => void;
   syncStatus?: 'syncing' | 'synced' | 'error';
   onSyncRetry?: (id: string) => void;
+  uploadProgress?: UploadProgress;
   /** Index in the feed grid for staggered entrance animation */
   index?: number;
 }
@@ -234,7 +235,7 @@ const linkifyHtml = (html: string): string => {
     }).join('');
 };
 
-const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUpdate, onExpand, onViewAttachment, onTogglePin, onEdit, isDialog, isAuthenticated = true, onSignIn, syncStatus, onSyncRetry, index }) => {
+const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUpdate, onExpand, onViewAttachment, onTogglePin, onEdit, isDialog, isAuthenticated = true, onSignIn, syncStatus, onSyncRetry, uploadProgress, index }) => {
   const [isConfirming, setIsConfirming] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -433,6 +434,16 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
         `}
         style={shouldAnimate && index != null ? { animationDelay: `${index * 60}ms` } : undefined}
       >
+        {/* Upload progress bar */}
+        {uploadProgress?.status === 'uploading' && (
+          <div className="h-1 w-full bg-(--color-surface-raised) overflow-hidden">
+            <div
+              className="h-full bg-(--color-accent) transition-all duration-(--duration-fast)"
+              style={{ width: `${Math.round((uploadProgress.bytesUploaded / uploadProgress.totalBytes) * 100)}%` }}
+            />
+          </div>
+        )}
+
         {/* Sign In Overlay — shown when enrichment failed due to missing auth */}
         {showSignInOverlay && (
             <div className="absolute inset-0 z-(--z-dropdown) bg-(--color-surface-overlay)/95 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-(--duration-normal)">
@@ -499,7 +510,18 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                  {!entity?.type && <Clock size={12} className="text-(--color-text-tertiary)" />}
                  <span className="text-xs text-(--color-text-tertiary) font-medium">{dateStr}</span>
              </div>
-             {memory.isPending && <span className="text-xs font-medium text-(--color-accent) animate-pulse">Enriching...</span>}
+             {uploadProgress?.status === 'uploading' && (
+               <span className="text-xs font-medium text-(--color-accent)">
+                 Uploading... {Math.round((uploadProgress.bytesUploaded / uploadProgress.totalBytes) * 100)}%
+               </span>
+             )}
+             {uploadProgress?.status === 'processing' && (
+               <span className="text-xs font-medium text-(--color-accent) animate-pulse">Processing...</span>
+             )}
+             {uploadProgress?.status === 'failed' && (
+               <span className="text-xs font-medium text-(--color-warning)">Upload failed</span>
+             )}
+             {!uploadProgress && memory.isPending && <span className="text-xs font-medium text-(--color-accent) animate-pulse">Enriching...</span>}
              {memory.processingError && <WifiOff size={12} className="text-(--color-warning)" />}
              {syncStatus === 'syncing' && <RefreshCw size={12} className="text-(--color-accent) animate-spin" />}
              {syncStatus === 'synced' && <CircleCheck size={12} className="text-(--color-success)" />}

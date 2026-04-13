@@ -101,6 +101,8 @@ const AppContent: React.FC = () => {
     setOnCalendarEventsSync,
     setOnEnrichmentCompleteTodo,
     setOnTodoItemsSync,
+    getUploadProgressMap,
+    uploadProgressVersion,
   } = useMemories();
 
   const {
@@ -780,6 +782,9 @@ const AppContent: React.FC = () => {
   // Snapshot the sync status map so components re-render when statuses change
   const syncStatusMap = useMemo(() => new Map(getSyncStatusMap()), [syncStatusVersion]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Snapshot the upload progress map so memory cards show upload progress
+  const uploadProgressMap = useMemo(() => new Map(getUploadProgressMap()), [uploadProgressVersion]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Keep expanded memory in sync with the memories array so checklist
   // toggles and other content updates are reflected immediately.
   const liveExpandedMemory = useMemo(() => {
@@ -974,6 +979,7 @@ const AppContent: React.FC = () => {
                 onSignIn={login}
                 syncStatusMap={syncStatusMap}
                 onSyncRetry={retrySyncFile}
+                uploadProgressMap={uploadProgressMap}
               />
             )}
           </main>
@@ -1022,6 +1028,7 @@ const AppContent: React.FC = () => {
                     onSignIn={login}
                     syncStatus={syncStatusMap.get(liveExpandedMemory.id)}
                     onSyncRetry={retrySyncFile}
+                    uploadProgress={uploadProgressMap.get(liveExpandedMemory.id)}
                 />
              </div>
           </div>
