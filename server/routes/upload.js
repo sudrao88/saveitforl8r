@@ -15,6 +15,7 @@ import { Router } from 'express';
 import express from 'express';
 import crypto from 'crypto';
 import rateLimit from 'express-rate-limit';
+import { FieldValue } from '@google-cloud/firestore';
 import { authenticateRequest } from '../middleware/auth.js';
 import { validateUploadInit, validateUploadChunk, UUID_REGEX } from '../middleware/validation.js';
 
@@ -152,7 +153,6 @@ export const createUploadRouter = ({ ai, db }) => {
         });
 
         // Update received chunks list
-        const { FieldValue } = await import('@google-cloud/firestore');
         await sessionRef.update({
           receivedChunks: FieldValue.arrayUnion(chunkIndex),
         });

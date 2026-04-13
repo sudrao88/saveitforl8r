@@ -126,7 +126,7 @@ const uploadChunkWithRetry = async (
       // Exponential backoff: 1s, 2s, 4s
       await new Promise((r) => setTimeout(r, BASE_BACKOFF_MS * Math.pow(2, attempt)));
       // Refresh token in case it expired during retries
-      try { token = await getValidToken(); } catch { /* use old token */ }
+      try { token = await getValidToken(); } catch (e) { console.warn('[ChunkUpload] Token refresh failed during retry:', e); }
     }
   }
   return token;

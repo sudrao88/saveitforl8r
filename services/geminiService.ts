@@ -54,14 +54,14 @@ export const submitEnrichment = async (
   // Strip base64 data from attachments that were uploaded via chunked upload
   // to avoid sending the massive payload — the server uses fileUri instead
   const enrichAttachments = attachments.map(a =>
-    (a as any).fileUri
-      ? { id: a.id, type: a.type, mimeType: a.mimeType, name: a.name, fileUri: (a as any).fileUri, geminiFileName: (a as any).geminiFileName }
+    a.fileUri
+      ? { id: a.id, type: a.type, mimeType: a.mimeType, name: a.name, fileUri: a.fileUri, geminiFileName: a.geminiFileName }
       : a
   );
 
   const payload: EnrichmentInput = {
     text,
-    attachments: enrichAttachments as Attachment[],
+    attachments: enrichAttachments,
     location,
     tags,
     memoryId,

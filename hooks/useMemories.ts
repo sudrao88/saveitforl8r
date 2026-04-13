@@ -234,8 +234,9 @@ export const useMemories = () => {
 
     if (largeAtts.length > 0) {
       // Calculate total bytes for progress (approximate from base64 length)
+      // data is guaranteed present — largeAtts is filtered by a.data above
       const totalBytes = largeAtts.reduce((sum, a) => {
-        const b64 = a.data.includes(',') ? a.data.split(',')[1] : a.data;
+        const b64 = a.data!.includes(',') ? a.data!.split(',')[1] : a.data!;
         return sum + Math.ceil(b64.length * 3 / 4);
       }, 0);
 
@@ -246,7 +247,7 @@ export const useMemories = () => {
         const uploadedMap = new Map<string, { fileUri: string; geminiFileName: string }>();
 
         for (const att of largeAtts) {
-          const b64 = att.data.includes(',') ? att.data.split(',')[1] : att.data;
+          const b64 = att.data!.includes(',') ? att.data!.split(',')[1] : att.data!;
           const binary = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
           const blob = new Blob([binary], { type: att.mimeType });
           const prevUploaded = cumulativeUploaded;
@@ -269,7 +270,7 @@ export const useMemories = () => {
         // Replace large attachments with fileUri references for the enrichment request
         enrichmentAttachments = attachments.map(a => {
           const uploaded = uploadedMap.get(a.id);
-          if (uploaded) return { ...a, fileUri: uploaded.fileUri, geminiFileName: uploaded.geminiFileName } as any;
+          if (uploaded) return { ...a, fileUri: uploaded.fileUri, geminiFileName: uploaded.geminiFileName };
           return a;
         });
 
