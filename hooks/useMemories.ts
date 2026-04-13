@@ -326,7 +326,7 @@ export const useMemories = () => {
     try {
         const current = await getMemory(id);
         if (current) {
-            const updated = { ...current, isPinned };
+            const updated = { ...current, isPinned, timestamp: Date.now() };
             await saveMemory(updated);
             await trySyncFile(updated);
         }
