@@ -5,6 +5,9 @@
  * associated calendar events are in the past and all todo items are completed.
  * Memories with no events AND no todos are excluded.
  * Memories the user has previously dismissed are excluded.
+ * Memories with recurring events are excluded — even if all expanded
+ * occurrences are in the past, future occurrences may not have been
+ * generated yet.
  *
  * Note: useMemo is intentionally avoided here because the calculation depends
  * on the current time (new Date()). Memoizing would cause stale results if
@@ -59,6 +62,11 @@ export const useDeletionCandidates = (
 
     // Must have at least one event or todo to be considered
     if (events.length === 0 && todos.length === 0) continue;
+
+    // Recurring events may not have all future occurrences generated yet,
+    // so never suggest deletion for memories with recurring events.
+    const hasRecurringEvent = events.some(e => e.recurrenceRule);
+    if (hasRecurringEvent) continue;
 
     const allEventsPast = events.length === 0 || events.every(e => isEventPast(e, now));
     const allTodosCompleted = todos.length === 0 || todos.every(t => t.isCompleted);
