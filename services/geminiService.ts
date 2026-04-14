@@ -77,19 +77,26 @@ export const submitEnrichment = async (
     // Queue for Background Sync retry on network errors (TypeError from fetch failures).
     // Server errors (4xx/5xx) throw Error with "Proxy error" prefix — don't queue those.
     if (err instanceof TypeError) {
-      try {
-        // Include full URL (SW may not have VITE_PROXY_URL) and auth token
-        // so the service worker can retry with proper authentication
-        let token: string | null = null;
-        try { token = await getValidToken(); } catch { /* best-effort */ }
-        await bgSyncEnqueue({
-          type: 'enrich',
-          payload: { path: `${getProxyUrl()}/api/enrich`, body: payload, token },
-        });
-        console.log('[Enrichment] Queued for Background Sync retry');
-      } catch (queueErr) {
-        // Background Sync queue is best-effort — don't mask the original error
-        console.warn('[Enrichment] Failed to queue for Background Sync:', queueErr);
+      // Don't queue requests with large inline attachment data — they would
+      // bloat IndexedDB and can't be retried without the chunked upload flow.
+      const hasLargeInlineData = enrichAttachments.some(a => !a.fileUri && a.data && a.data.length > 1_000_000);
+      if (hasLargeInlineData) {
+        console.warn('[Enrichment] Skipping Background Sync queue — payload contains large inline attachments');
+      } else {
+        try {
+          // Include full URL (SW may not have VITE_PROXY_URL) and auth token
+          // so the service worker can retry with proper authentication
+          let token: string | null = null;
+          try { token = await getValidToken(); } catch { /* best-effort */ }
+          await bgSyncEnqueue({
+            type: 'enrich',
+            payload: { path: `${getProxyUrl()}/api/enrich`, body: payload, token },
+          });
+          console.log('[Enrichment] Queued for Background Sync retry');
+        } catch (queueErr) {
+          // Background Sync queue is best-effort — don't mask the original error
+          console.warn('[Enrichment] Failed to queue for Background Sync:', queueErr);
+        }
       }
     }
     throw err;

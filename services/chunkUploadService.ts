@@ -16,7 +16,7 @@ const getProxyUrl = (): string => {
   return url.replace(/\/+$/, '');
 };
 
-const CHUNK_SIZE = 1 * 1024 * 1024; // 1MB
+const CHUNK_SIZE = 900 * 1024; // 900KB — must stay under Firestore's 1 MiB document size limit
 const MAX_RETRIES = 3;
 const BASE_BACKOFF_MS = 1000;
 const POLL_INTERVAL_MS = 1000;

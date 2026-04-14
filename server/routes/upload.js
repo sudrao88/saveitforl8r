@@ -15,13 +15,14 @@ import { Router } from 'express';
 import express from 'express';
 import crypto from 'crypto';
 import rateLimit from 'express-rate-limit';
-import { FieldValue } from '@google-cloud/firestore';
+
 import { authenticateRequest } from '../middleware/auth.js';
 import { validateUploadInit, validateUploadChunk, UUID_REGEX } from '../middleware/validation.js';
 
 const UPLOAD_COLLECTION = 'upload-sessions';
 const UPLOAD_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
-const MAX_CHUNK_BYTES = 1.1 * 1024 * 1024; // 1.1MB (slight buffer)
+const MAX_CHUNK_BYTES = 950 * 1024; // 950KB — allows ~50KB overhead for Firestore doc metadata
+const MAX_ACTIVE_SESSIONS_PER_USER = 5;
 
 export const createUploadRouter = ({ ai, db }) => {
   const router = Router();
@@ -73,6 +74,16 @@ export const createUploadRouter = ({ ai, db }) => {
       const sessionId = crypto.randomUUID();
 
       try {
+        // Enforce per-user concurrent session limit
+        const activeSnap = await db.collection(UPLOAD_COLLECTION)
+          .where('userId', '==', req.userId)
+          .where('status', 'in', ['uploading', 'assembling'])
+          .limit(MAX_ACTIVE_SESSIONS_PER_USER + 1)
+          .get();
+        if (activeSnap.size >= MAX_ACTIVE_SESSIONS_PER_USER) {
+          return res.status(429).json({ error: `Too many active upload sessions (max ${MAX_ACTIVE_SESSIONS_PER_USER})` });
+        }
+
         await db.collection(UPLOAD_COLLECTION).doc(sessionId).set({
           userId: req.userId,
           fileName,
@@ -104,7 +115,7 @@ export const createUploadRouter = ({ ai, db }) => {
     authenticateRequest,
     validateUploadChunk,
     chunkLimiter,
-    express.raw({ type: 'application/octet-stream', limit: '1.2mb' }),
+    express.raw({ type: 'application/octet-stream', limit: '960kb' }),
     async (req, res) => {
       const { sessionId } = req.params;
       const chunkIndex = req.chunkIndex; // Set by validateUploadChunk
@@ -152,20 +163,35 @@ export const createUploadRouter = ({ ai, db }) => {
           receivedAt: Date.now(),
         });
 
-        // Update received chunks list
-        await sessionRef.update({
-          receivedChunks: FieldValue.arrayUnion(chunkIndex),
+        // Atomically update receivedChunks and check if assembly should start.
+        // Uses a transaction to prevent the race where two concurrent final-chunk
+        // requests both see all chunks received and both trigger assembly.
+        let shouldAssemble = false;
+        await db.runTransaction(async (txn) => {
+          const freshDoc = await txn.get(sessionRef);
+          const freshSession = freshDoc.data();
+          if (freshSession.status !== 'uploading') {
+            // Another request already transitioned to assembling
+            shouldAssemble = false;
+            return;
+          }
+          const isNewChunk = !freshSession.receivedChunks.includes(chunkIndex);
+          const updated = isNewChunk
+            ? [...freshSession.receivedChunks, chunkIndex]
+            : freshSession.receivedChunks;
+
+          if (isNewChunk) {
+            txn.update(sessionRef, { receivedChunks: updated });
+          }
+
+          if (updated.length >= freshSession.totalChunks) {
+            txn.update(sessionRef, { status: 'assembling' });
+            shouldAssemble = true;
+          }
         });
 
-        // Check if all chunks have been received
-        const updatedDoc = await sessionRef.get();
-        const updatedSession = updatedDoc.data();
-
-        if (updatedSession.receivedChunks.length >= session.totalChunks) {
-          // All chunks received — start assembly
-          await sessionRef.update({ status: 'assembling' });
+        if (shouldAssemble) {
           console.log(`[Upload] [${req.requestId}] All ${session.totalChunks} chunks received for ${sessionId}, starting assembly`);
-
           res.json({ status: 'assembling' });
 
           // Assembly runs after response is sent
@@ -218,6 +244,45 @@ export const createUploadRouter = ({ ai, db }) => {
       } catch (err) {
         console.error(`[Upload] [${req.requestId}] Status check failed for ${sessionId}:`, err.message);
         res.status(500).json({ error: 'Failed to check upload status' });
+      }
+    }
+  );
+
+  // --- DELETE /cleanup — Remove expired upload sessions (called by Cloud Scheduler or authenticated admin) ---
+
+  router.delete(
+    '/cleanup',
+    authenticateRequest,
+    async (_req, res) => {
+      try {
+        const now = new Date();
+        const expiredSnap = await db.collection(UPLOAD_COLLECTION)
+          .where('expireAt', '<', now)
+          .limit(100)
+          .get();
+
+        if (expiredSnap.empty) {
+          return res.json({ deleted: 0 });
+        }
+
+        let deleted = 0;
+        for (const doc of expiredSnap.docs) {
+          // Delete chunk subcollection first (best-effort)
+          const chunksSnap = await doc.ref.collection('chunks').get();
+          if (!chunksSnap.empty) {
+            const batch = db.batch();
+            chunksSnap.docs.forEach((chunkDoc) => batch.delete(chunkDoc.ref));
+            await batch.commit().catch(() => {});
+          }
+          await doc.ref.delete();
+          deleted++;
+        }
+
+        console.log(`[Upload] Cleanup: deleted ${deleted} expired session(s)`);
+        res.json({ deleted });
+      } catch (err) {
+        console.error('[Upload] Cleanup failed:', err.message);
+        res.status(500).json({ error: 'Cleanup failed' });
       }
     }
   );

@@ -79,6 +79,17 @@ export const useMemories = () => {
 
   const getUploadProgressMap = useCallback(() => uploadProgressMapRef.current, []);
 
+  // Abort controllers for in-progress chunked uploads, keyed by memoryId
+  const uploadAbortControllersRef = useRef<Map<string, AbortController>>(new Map());
+
+  // Cancel all in-progress uploads on unmount
+  useEffect(() => {
+    return () => {
+      uploadAbortControllersRef.current.forEach(controller => controller.abort());
+      uploadAbortControllersRef.current.clear();
+    };
+  }, []);
+
   const recoveryAttemptedRef = useRef(false);
   const memoriesRef = useRef(memories);
 
@@ -218,6 +229,22 @@ export const useMemories = () => {
   const CHUNKED_UPLOAD_THRESHOLD = 5_000_000; // ~3.75MB decoded
 
   /**
+   * Convert a base64 data URI to a Blob efficiently using fetch(),
+   * which avoids the large intermediate string copies of atob().
+   */
+  const dataUriToBlob = async (dataUri: string, mimeType: string): Promise<Blob> => {
+    try {
+      const res = await fetch(dataUri);
+      return await res.blob();
+    } catch {
+      // Fallback for environments where fetch(dataUri) is unsupported
+      const b64 = dataUri.includes(',') ? dataUri.split(',')[1] : dataUri;
+      const binary = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+      return new Blob([binary], { type: mimeType });
+    }
+  };
+
+  /**
    * Upload large attachments in chunks, then submit enrichment.
    * Small attachments are sent inline with the enrichment request as before.
    */
@@ -242,25 +269,28 @@ export const useMemories = () => {
 
       updateUploadProgress(memoryId, { status: 'uploading', bytesUploaded: 0, totalBytes });
 
+      // Create an AbortController so uploads can be cancelled on unmount
+      const abortController = new AbortController();
+      uploadAbortControllersRef.current.set(memoryId, abortController);
+
       try {
         let cumulativeUploaded = 0;
         const uploadedMap = new Map<string, { fileUri: string; geminiFileName: string }>();
 
         for (const att of largeAtts) {
-          const b64 = att.data!.includes(',') ? att.data!.split(',')[1] : att.data!;
-          const binary = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-          const blob = new Blob([binary], { type: att.mimeType });
+          const blob = await dataUriToBlob(att.data!, att.mimeType);
           const prevUploaded = cumulativeUploaded;
 
           const result = await uploadFileChunked(
             blob, att.mimeType, att.name, memoryId,
-            (bytes, total) => {
+            (bytes, _total) => {
               updateUploadProgress(memoryId, {
                 status: 'uploading',
                 bytesUploaded: prevUploaded + bytes,
                 totalBytes,
               });
             },
+            abortController.signal,
           );
 
           cumulativeUploaded += blob.size;
@@ -276,12 +306,18 @@ export const useMemories = () => {
 
         updateUploadProgress(memoryId, { status: 'processing', bytesUploaded: totalBytes, totalBytes });
       } catch (uploadErr) {
-        console.error('[Upload] Chunked upload failed:', uploadErr);
+        if (abortController.signal.aborted) {
+          console.log('[Upload] Chunked upload cancelled for', memoryId);
+        } else {
+          console.error('[Upload] Chunked upload failed:', uploadErr);
+        }
         updateUploadProgress(memoryId, { status: 'failed', bytesUploaded: 0, totalBytes });
         const failedMemory: Memory = { ...newMemory, isPending: false, processingError: true };
         await saveMemory(failedMemory);
         setMemories(prev => prev.map(m => m.id === memoryId ? failedMemory : m));
         return;
+      } finally {
+        uploadAbortControllersRef.current.delete(memoryId);
       }
     }
 
@@ -314,17 +350,23 @@ export const useMemories = () => {
         });
     }
 
+    // Guard: skip attachments whose data was not loaded (e.g. deferred from sync)
+    const validAttachments = attachments.filter(a => a.data || a.fileUri);
+    if (validAttachments.length < attachments.length) {
+      console.warn(`[Retry] Skipping ${attachments.length - validAttachments.length} attachment(s) with missing data for memory ${id}`);
+    }
+
     const pendingMemory: Memory = {
         ...memory,
         isPending: true,
         processingError: false,
-        attachments: attachments.filter(a => a.id !== 'legacy-img'),
+        attachments: validAttachments.filter(a => a.id !== 'legacy-img'),
     };
     await saveMemory(pendingMemory);
     setMemories(prev => prev.map(m => m.id === id ? pendingMemory : m));
 
     // Use the same upload-then-enrich flow as createMemory
-    await uploadAndEnrich(id, memory.content, attachments, memory.location, memory.tags, pendingMemory);
+    await uploadAndEnrich(id, memory.content, validAttachments, memory.location, memory.tags, pendingMemory);
   }, [uploadAndEnrich]);
 
   const createMemory = useCallback(async (

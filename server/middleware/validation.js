@@ -8,9 +8,14 @@ export const ALLOWED_MIME_TYPES = [
   'image/webp',
   'image/gif',
   'application/pdf',
+  'text/plain',
+  'text/markdown',
 ];
 
 export const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Gemini File API URIs follow this pattern. */
+const GEMINI_FILE_URI_RE = /^https:\/\/generativelanguage\.googleapis\.com\//;
 
 export const validateEnrichInput = (req, res, next) => {
   const { text, attachments, tags, location, memoryId } = req.body;
@@ -45,10 +50,15 @@ export const validateEnrichInput = (req, res, next) => {
         return res.status(400).json({ error: 'Attachment must have either data or fileUri' });
       }
       if (att.data && att.data.length > 70_000_000) {
-        return res.status(400).json({ error: 'Attachment too large (max 50MB)' });
+        return res.status(400).json({ error: 'Attachment data too large (max ~52MB base64)' });
       }
-      if (att.fileUri && typeof att.fileUri !== 'string') {
-        return res.status(400).json({ error: 'fileUri must be a string' });
+      if (att.fileUri) {
+        if (typeof att.fileUri !== 'string') {
+          return res.status(400).json({ error: 'fileUri must be a string' });
+        }
+        if (!GEMINI_FILE_URI_RE.test(att.fileUri)) {
+          return res.status(400).json({ error: 'fileUri must be a valid Gemini File API URI' });
+        }
       }
     }
   }
@@ -194,6 +204,14 @@ export const validateUploadInit = (req, res, next) => {
     return res.status(400).json({ error: `Unsupported mimeType. Allowed: ${ALLOWED_MIME_TYPES.join(', ')}` });
   if (typeof totalChunks !== 'number' || totalChunks < 1 || totalChunks > 60 || !Number.isInteger(totalChunks))
     return res.status(400).json({ error: 'totalChunks must be an integer between 1 and 60' });
+
+  // Cross-validate: totalChunks must be plausible for the given fileSize.
+  // 900KB chunk size on client → expect ceil(fileSize / 921600) chunks.
+  const EXPECTED_CHUNK_SIZE = 900 * 1024;
+  const expectedChunks = Math.ceil(fileSize / EXPECTED_CHUNK_SIZE);
+  if (totalChunks < expectedChunks || totalChunks > expectedChunks + 1)
+    return res.status(400).json({ error: `totalChunks (${totalChunks}) is inconsistent with fileSize (${fileSize})` });
+
   if (!memoryId || typeof memoryId !== 'string' || !UUID_REGEX.test(memoryId))
     return res.status(400).json({ error: 'memoryId must be a valid UUID' });
 

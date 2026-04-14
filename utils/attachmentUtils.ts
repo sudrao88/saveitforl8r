@@ -3,6 +3,9 @@ import { Attachment } from '../types';
 /** Maximum file size allowed for upload (50MB). */
 export const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
 
+/** Maximum number of attachments per memory (must match server limit). */
+export const MAX_ATTACHMENTS = 5;
+
 /** Max width or height for compressed images. */
 const IMAGE_MAX_DIMENSION = 2048;
 
@@ -115,12 +118,18 @@ export const processFileInputs = async (files: FileList | File[]): Promise<Proce
 
         const type = file.type.startsWith('image/') ? 'image' as const : 'file' as const;
 
+        // Use the compressed file's name if compression changed the format,
+        // otherwise keep the original name the user selected.
+        const displayName = (file !== rawFile && file.name !== rawFile.name)
+            ? file.name
+            : rawFile.name;
+
         attachments.push({
             id: crypto.randomUUID(),
             type,
             mimeType: file.type,
             data: result,
-            name: rawFile.name
+            name: displayName
         });
     }
 
