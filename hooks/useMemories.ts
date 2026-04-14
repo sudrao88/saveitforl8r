@@ -82,6 +82,14 @@ export const useMemories = () => {
   // Abort controllers for in-progress chunked uploads, keyed by memoryId
   const uploadAbortControllersRef = useRef<Map<string, AbortController>>(new Map());
 
+  // Cancel all in-progress uploads on unmount
+  useEffect(() => {
+    return () => {
+      uploadAbortControllersRef.current.forEach(controller => controller.abort());
+      uploadAbortControllersRef.current.clear();
+    };
+  }, []);
+
   const recoveryAttemptedRef = useRef(false);
   const memoriesRef = useRef(memories);
 

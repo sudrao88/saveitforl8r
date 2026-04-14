@@ -175,10 +175,14 @@ export const createUploadRouter = ({ ai, db }) => {
             shouldAssemble = false;
             return;
           }
-          const updated = freshSession.receivedChunks.includes(chunkIndex)
-            ? freshSession.receivedChunks
-            : [...freshSession.receivedChunks, chunkIndex];
-          txn.update(sessionRef, { receivedChunks: updated });
+          const isNewChunk = !freshSession.receivedChunks.includes(chunkIndex);
+          const updated = isNewChunk
+            ? [...freshSession.receivedChunks, chunkIndex]
+            : freshSession.receivedChunks;
+
+          if (isNewChunk) {
+            txn.update(sessionRef, { receivedChunks: updated });
+          }
 
           if (updated.length >= freshSession.totalChunks) {
             txn.update(sessionRef, { status: 'assembling' });
@@ -244,10 +248,11 @@ export const createUploadRouter = ({ ai, db }) => {
     }
   );
 
-  // --- DELETE /cleanup — Remove expired upload sessions (called by Cloud Scheduler or cron) ---
+  // --- DELETE /cleanup — Remove expired upload sessions (called by Cloud Scheduler or authenticated admin) ---
 
   router.delete(
     '/cleanup',
+    authenticateRequest,
     async (_req, res) => {
       try {
         const now = new Date();
