@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v67",
-  "buildNumber": 67,
-  "buildDate": "2026-04-15T06:17:43.920Z",
+  "version": "saveitforl8r-v69",
+  "buildNumber": 69,
+  "buildDate": "2026-04-15T11:15:00.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Prevent recurring notes from becoming deletion candidates"
+  "changelog": "Add nested checklist sub-lists with two-level indentation"
 }
