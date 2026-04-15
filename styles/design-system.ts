@@ -94,8 +94,8 @@ export const overlay = {
   navBtn:
     'absolute z-(--z-sticky) p-3 rounded-full bg-(--color-surface-base)/40 hover:bg-(--color-surface-base)/70 text-(--color-text-primary)/70 hover:text-(--color-text-primary) transition-all active:scale-90 backdrop-blur-sm',
   // ─── Animation class pairs for AnimatedPresence ──────────
-  sheetEnter: 'animate-in fade-in slide-in-from-bottom-4 duration-(--duration-slow)',
-  sheetExit: 'animate-out fade-out slide-out-to-bottom-4 fill-mode-forwards pointer-events-none duration-(--duration-normal)',
+  sheetEnter: 'animate-in slide-in-from-bottom-full duration-(--duration-slow)',
+  sheetExit: 'animate-out slide-out-to-bottom-full fill-mode-forwards pointer-events-none duration-(--duration-normal)',
   modalEnter: 'animate-in zoom-in-95 fade-in duration-(--duration-normal)',
   modalExit: 'animate-out zoom-out-95 fade-out fill-mode-forwards pointer-events-none duration-(--duration-normal)',
   backdropEnter: 'animate-in fade-in duration-(--duration-fast)',
