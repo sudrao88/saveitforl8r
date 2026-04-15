@@ -63,10 +63,10 @@ export const useDeletionCandidates = (
     // Must have at least one event or todo to be considered
     if (events.length === 0 && todos.length === 0) continue;
 
-    // Recurring events may not have all future occurrences generated yet,
-    // so never suggest deletion for memories with recurring events.
-    const hasRecurringEvent = events.some(e => e.recurrenceRule);
-    if (hasRecurringEvent) continue;
+    // Recurring notes or events may not have all future occurrences generated yet,
+    // so never suggest deletion for memories with recurring patterns.
+    const isRecurring = memory.enrichment?.temporalContext?.relevantAt?.isRecurring || events.some(e => e.recurrenceRule);
+    if (isRecurring) continue;
 
     const allEventsPast = events.length === 0 || events.every(e => isEventPast(e, now));
     const allTodosCompleted = todos.length === 0 || todos.every(t => t.isCompleted);
