@@ -939,19 +939,14 @@ const AppContent: React.FC = () => {
           )}
         </main>
 
+        {!isFullscreenViewOpen && (
+          <QuickNoteBar
+            ref={quickNoteBarRef}
+            onSave={handleQuickNoteSave}
+            onExpand={handleQuickNoteExpand}
+          />
+        )}
       </div>
-
-      {/* QuickNoteBar — lives outside the feed div so it stays visible when
-          sheet overlays (moments, settings, calendar, etc.) slide in on top.
-          Hidden only for fullscreen views (editor/capture/recall) which use
-          opaque backgrounds at z-overlay, below the bar's z-modal. */}
-      {!isFullscreenViewOpen && (
-        <QuickNoteBar
-          ref={quickNoteBarRef}
-          onSave={handleQuickNoteSave}
-          onExpand={handleQuickNoteExpand}
-        />
-      )}
 
       {/* ─── Fullscreen view overlays (stacked, animated) ──────── */}
 
