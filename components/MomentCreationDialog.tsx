@@ -8,6 +8,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { X, Loader2, Sparkles } from 'lucide-react';
 import { btn, overlay } from '../styles/design-system';
+import { useAnimatedUnmount } from '../hooks/useAnimatedUnmount';
 
 interface MomentCreationDialogProps {
   isOpen: boolean;
@@ -62,18 +63,22 @@ const MomentCreationDialog: React.FC<MomentCreationDialogProps> = ({
     }
   }, [handleSubmit]);
 
-  if (!isOpen) return null;
+  const { mounted, phase } = useAnimatedUnmount(isOpen);
+
+  if (!mounted) return null;
+
+  const animClass = phase === 'exit' ? overlay.modalExit : overlay.modalEnter;
 
   return (
     <div className={`${overlay.dialogBackdrop}`}>
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-(--color-surface-base)/60 backdrop-blur-sm"
+        className={`absolute inset-0 bg-(--color-surface-base)/60 backdrop-blur-sm ${phase === 'exit' ? overlay.backdropExit : overlay.backdropEnter}`}
         onClick={isCreating ? undefined : onClose}
       />
 
       {/* Dialog */}
-      <div className={`relative w-full max-w-lg mx-4 mb-4 sm:mb-0 ${overlay.modal} animate-in slide-in-from-bottom duration-(--duration-normal)`}>
+      <div className={`relative w-full max-w-lg mx-4 mb-4 sm:mb-0 ${overlay.modal} ${animClass}`}>
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-(--color-border-default)">
           <div className="flex items-center gap-2">

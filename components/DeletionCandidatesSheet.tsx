@@ -140,7 +140,7 @@ const DeletionCandidatesSheet: React.FC<DeletionCandidatesSheetProps> = ({
   const previewMemory = previewMemoryId ? candidates.find(c => c.id === previewMemoryId) ?? null : null;
 
   return (
-    <div className={overlay.sheet}>
+    <div className={overlay.sheetBase}>
       {/* Header */}
       <div className={overlay.sheetHeader}>
         <div className="flex items-center gap-3">

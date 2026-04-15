@@ -15,6 +15,7 @@ import QuickNoteBar, { QuickNoteBarHandle } from './components/QuickNoteBar';
 import GalleryViewer from './components/GalleryViewer';
 import { lazyWithRetry } from './utils/lazyWithRetry';
 import { btn, overlay } from './styles/design-system';
+import AnimatedPresence from './components/AnimatedPresence';
 
 // Lazy-load heavy components that aren't needed on initial render.
 // lazyWithRetry clears stale SW caches and reloads if a chunk fails to import.
@@ -802,217 +803,232 @@ const AppContent: React.FC = () => {
   const isUpdateAvailable = isNative() ? nativeUpdateAvailable : updateAvailable;
   const versionToDisplay = isNative() ? nativeVersion : appVersion;
 
-  if (editingMemory) {
-    return (
-      <ErrorBoundary
-        fallbackTitle="Memory editor encountered an error"
-        fallbackMessage="Something went wrong while editing. Your data is safe — try reloading."
-      >
-        <Suspense fallback={null}>
-          <NewMemoryPage
-              onClose={handleEditClose}
-              onCreate={handleCreateMemory}
-              onUpdate={handleUpdateMemory}
-              editMemory={editingMemory}
-            />
-        </Suspense>
-      </ErrorBoundary>
-    );
-  }
+  const captureInitialContent = useMemo(() => {
+    if (!isCaptureOpen) return undefined;
+    if (quickNoteExpandState) {
+      return {
+        text: quickNoteExpandState.content,
+        attachments: quickNoteExpandState.attachments,
+        tags: quickNoteExpandState.tags,
+      };
+    }
+    if (shareData) {
+      return { ...shareData, text: escapeHtml(shareData.text) };
+    }
+    return undefined;
+  }, [isCaptureOpen, quickNoteExpandState, shareData]);
 
-  if (isCaptureOpen) {
-    const expandInitial = quickNoteExpandState ? {
-      text: quickNoteExpandState.content,
-      attachments: quickNoteExpandState.attachments,
-      tags: quickNoteExpandState.tags,
-    } : undefined;
-    return (
-      <ErrorBoundary
-        fallbackTitle="Memory capture encountered an error"
-        fallbackMessage="Something went wrong while capturing. Your data is safe — try reloading."
-      >
-        <Suspense fallback={null}>
-          <NewMemoryPage
-              onClose={handleCaptureClose}
-              onCreate={handleCreateMemory}
-              initialContent={expandInitial || (shareData ? { ...shareData, text: escapeHtml(shareData.text) } : undefined)}
-            />
-        </Suspense>
-      </ErrorBoundary>
-    );
-  }
-
-  if (view === ViewMode.RECALL) {
-     return (
-        <>
-          <ErrorBoundary
-            fallbackTitle="Brain Search encountered an error"
-            fallbackMessage="The AI search feature hit an unexpected issue. Your memories are safe — try reloading."
-          >
-            <Suspense fallback={null}>
-              <ChatInterface
-                  memories={displayMemories}
-                  onClose={handleChatClose}
-                  searchFunction={search}
-                  onViewAttachment={handleViewAttachment}
-                  onDelete={handleDeleteMemory}
-                  onEdit={handleEditMemory}
-                  onTogglePin={handleTogglePin}
-                />
-            </Suspense>
-          </ErrorBoundary>
-          {viewingGallery && (
-            <ErrorBoundary
-              fallbackTitle="Gallery encountered an error"
-              fallbackMessage="Something went wrong displaying media. Your data is safe — try reloading."
-            >
-              <GalleryViewer
-                  attachments={viewingGallery.attachments}
-                  initialIndex={viewingGallery.currentIndex}
-                  onClose={() => setViewingGallery(null)}
-                />
-            </ErrorBoundary>
-          )}
-        </>
-     );
-  }
+  const anyFullscreenOpen = !!editingMemory || isCaptureOpen || view === ViewMode.RECALL;
 
   return (
     <div className="min-h-screen bg-black flex flex-col">
-      {/* Main UI — hidden when MomentCreationDialog is open */}
-      {!showCreateMoment ? (
-        <>
-          <div ref={topNavRef} className="sticky top-0 z-(--z-overlay) bg-(--color-surface-base) pt-[var(--sat)]">
-              <TopNavigation
-                setView={handleSetView}
-                resetFilters={handleResetFilters}
-                onSettingsClick={handleSettingsClick}
-                updateAvailable={isUpdateAvailable}
-                onUpdateApp={handleUpdateApp}
-                syncError={!!syncError}
-                isSyncingDownload={isSyncingDownload}
-                modelStatus={modelStatus}
-                isOtaDownloading={isOtaDownloading}
-              />
+      {/* Feed layout — always rendered, overlaid by fullscreen views */}
+      <div className={anyFullscreenOpen ? 'pointer-events-none' : undefined} aria-hidden={anyFullscreenOpen || undefined}>
+        <div ref={topNavRef} className="sticky top-0 z-(--z-overlay) bg-(--color-surface-base) pt-[var(--sat)]">
+            <TopNavigation
+              setView={handleSetView}
+              resetFilters={handleResetFilters}
+              onSettingsClick={handleSettingsClick}
+              updateAvailable={isUpdateAvailable}
+              onUpdateApp={handleUpdateApp}
+              syncError={!!syncError}
+              isSyncingDownload={isSyncingDownload}
+              modelStatus={modelStatus}
+              isOtaDownloading={isOtaDownloading}
+            />
+        </div>
+
+        <MomentsStrip
+          moments={moments}
+          onMomentTap={handleMomentTap}
+          onNewMoment={handleNewMoment}
+          onShowAll={handleShowAllMoments}
+          onCalendarTap={handleCalendarTap}
+          calendarEventCount={calendarUpcomingCount}
+          onTodoTap={handleTodoTap}
+          todoPendingCount={todoPendingCount}
+          synthesisLoading={synthesisLoading}
+          deletionCandidateCount={deletionCandidates.length}
+          onDeletionCandidatesTap={() => {
+            setShowDeletionCandidates(true);
+            logEvent(ANALYTICS_EVENTS.DELETION_CANDIDATES.CATEGORY, ANALYTICS_EVENTS.DELETION_CANDIDATES.ACTION_OPENED);
+          }}
+        />
+
+        {notificationsSupported && notificationPermission === 'prompt' && !notifBannerDismissed && activeMemoryCount > 0 && (
+          <div className="mx-4 sm:mx-8 my-3 flex items-center gap-3 p-3 bg-(--color-accent-muted) border border-(--color-accent)/30 rounded-(--radius-xl)">
+            <Bell size={18} className="text-(--color-accent) shrink-0" />
+            <p className="flex-1 text-sm text-(--color-text-secondary)">
+              Enable notifications to get a daily briefing of your events and tasks.
+            </p>
+            <button
+              onClick={async () => {
+                await setNotificationsEnabled(true);
+              }}
+              className={`${btn.base} ${btn.primarySm} shrink-0`}
+            >
+              Enable
+            </button>
+            <button
+              onClick={() => setNotifBannerDismissed(true)}
+              className="shrink-0 p-1 text-(--color-text-tertiary) hover:text-(--color-text-secondary) transition-colors duration-(--duration-fast)"
+              aria-label="Dismiss"
+            >
+              <X size={16} />
+            </button>
           </div>
+        )}
 
-          <MomentsStrip
-            moments={moments}
-            onMomentTap={handleMomentTap}
-            onNewMoment={handleNewMoment}
-            onShowAll={handleShowAllMoments}
-            onCalendarTap={handleCalendarTap}
-            calendarEventCount={calendarUpcomingCount}
-            onTodoTap={handleTodoTap}
-            todoPendingCount={todoPendingCount}
-            synthesisLoading={synthesisLoading}
-            deletionCandidateCount={deletionCandidates.length}
-            onDeletionCandidatesTap={() => {
-              setShowDeletionCandidates(true);
-              logEvent(ANALYTICS_EVENTS.DELETION_CANDIDATES.CATEGORY, ANALYTICS_EVENTS.DELETION_CANDIDATES.ACTION_OPENED);
-            }}
-          />
-
-          {notificationsSupported && notificationPermission === 'prompt' && !notifBannerDismissed && activeMemoryCount > 0 && (
-            <div className="mx-4 sm:mx-8 my-3 flex items-center gap-3 p-3 bg-(--color-accent-muted) border border-(--color-accent)/30 rounded-(--radius-xl)">
-              <Bell size={18} className="text-(--color-accent) shrink-0" />
-              <p className="flex-1 text-sm text-(--color-text-secondary)">
-                Enable notifications to get a daily briefing of your events and tasks.
-              </p>
-              <button
-                onClick={async () => {
-                  await setNotificationsEnabled(true);
-                }}
-                className={`${btn.base} ${btn.primarySm} shrink-0`}
-              >
-                Enable
-              </button>
-              <button
-                onClick={() => setNotifBannerDismissed(true)}
-                className="shrink-0 p-1 text-(--color-text-tertiary) hover:text-(--color-text-secondary) transition-colors duration-(--duration-fast)"
-                aria-label="Dismiss"
-              >
-                <X size={16} />
-              </button>
-            </div>
-          )}
-
-          {availableTypes.length > 0 && (
-            <div className="sticky z-(--z-dropdown) bg-(--color-surface-base) backdrop-blur-md border-b border-(--color-border-default)/50" style={{ top: `${topNavHeight}px` }}>
-              <FilterBar
-                availableTypes={availableTypes}
-                filterType={filterType}
-                setFilterType={handleSetFilterType}
-                clearFilters={handleResetFilters}
-              />
-            </div>
-          )}
-
-          <main className="flex-1 p-4 sm:p-8 pb-24 max-w-7xl mx-auto w-full relative">
-            {isLoading ? (
-              <div className="columns-1 sm:columns-2 lg:columns-3 gap-4 space-y-4">
-                {[1, 2, 3, 4, 5, 6].map(i => (
-                  <div key={i} className="break-inside-avoid rounded-(--radius-xl) bg-(--color-surface-raised) border border-(--color-border-subtle) p-4 animate-pulse">
-                    <div className="h-4 bg-(--color-surface-raised)/50 rounded w-3/4 mb-3"></div>
-                    <div className="h-3 bg-(--color-surface-raised)/30 rounded w-full mb-2"></div>
-                    <div className="h-3 bg-(--color-surface-raised)/30 rounded w-5/6 mb-2"></div>
-                    <div className="h-3 bg-(--color-surface-raised)/30 rounded w-2/3"></div>
-                  </div>
-                ))}
-              </div>
-            ) : filteredMemories.length === 0 ? (
-              <EmptyState
-                hasMemories={memories.length > 0}
-                clearFilters={handleClearFiltersEmptyState}
-              />
-            ) : (
-              <VirtualizedMemoryGrid
-                memories={displayMemories}
-                onDelete={handleDeleteMemory}
-                onRetry={handleRetryMemory}
-                onUpdate={updateMemoryContent}
-                onExpand={setExpandedMemory}
-                onViewAttachment={handleViewAttachment}
-                onTogglePin={handleTogglePin}
-                onEdit={handleEditMemory}
-                isAuthenticated={authStatus === 'linked'}
-                onSignIn={login}
-                syncStatusMap={syncStatusMap}
-                onSyncRetry={retrySyncFile}
-                uploadProgressMap={uploadProgressMap}
-              />
-            )}
-          </main>
-
-          <QuickNoteBar
-            ref={quickNoteBarRef}
-            onSave={handleQuickNoteSave}
-            onExpand={handleQuickNoteExpand}
-          />
-        </>
-      ) : (
-        <>
-          {/* Overlay for MomentCreationDialog */}
-          <div
-            className="fixed inset-0 z-(--z-overlay) bg-black/60 backdrop-blur-sm animate-in fade-in duration-(--duration-fast)"
-            aria-hidden
-          />
-          {/* Spacer to maintain layout when main content is hidden for moment creation */}
-          <div className="flex-1" />
-        </>
-      )}
-
-      {liveExpandedMemory && (
-        <div className="fixed inset-0 z-(--z-sheet) bg-black/90 backdrop-blur-md flex flex-col animate-in fade-in duration-(--duration-normal)">
-          <div className="sticky top-0 z-(--z-sticky) px-4 py-3 border-b border-(--color-border-default) flex items-center justify-between bg-(--color-surface-base)/50 backdrop-blur-xl pt-[var(--sat)]">
-             <div className="flex items-center gap-3">
-                <button onClick={() => setExpandedMemory(null)} className={overlay.closeBtn}>
-                    <X size={24} />
-                </button>
-                <h2 className="text-lg font-bold text-(--color-text-primary) truncate max-w-[200px] sm:max-w-md">Memory Detail</h2>
-             </div>
-             <Logo className="w-8 h-8 text-(--color-accent) opacity-50" />
+        {availableTypes.length > 0 && (
+          <div className="sticky z-(--z-dropdown) bg-(--color-surface-base) backdrop-blur-md border-b border-(--color-border-default)/50" style={{ top: `${topNavHeight}px` }}>
+            <FilterBar
+              availableTypes={availableTypes}
+              filterType={filterType}
+              setFilterType={handleSetFilterType}
+              clearFilters={handleResetFilters}
+            />
           </div>
+        )}
+
+        <main className="flex-1 p-4 sm:p-8 pb-24 max-w-7xl mx-auto w-full relative">
+          {isLoading ? (
+            <div className="columns-1 sm:columns-2 lg:columns-3 gap-4 space-y-4">
+              {[1, 2, 3, 4, 5, 6].map(i => (
+                <div key={i} className="break-inside-avoid rounded-(--radius-xl) bg-(--color-surface-raised) border border-(--color-border-subtle) p-4 animate-pulse">
+                  <div className="h-4 bg-(--color-surface-raised)/50 rounded w-3/4 mb-3"></div>
+                  <div className="h-3 bg-(--color-surface-raised)/30 rounded w-full mb-2"></div>
+                  <div className="h-3 bg-(--color-surface-raised)/30 rounded w-5/6 mb-2"></div>
+                  <div className="h-3 bg-(--color-surface-raised)/30 rounded w-2/3"></div>
+                </div>
+              ))}
+            </div>
+          ) : filteredMemories.length === 0 ? (
+            <EmptyState
+              hasMemories={memories.length > 0}
+              clearFilters={handleClearFiltersEmptyState}
+            />
+          ) : (
+            <VirtualizedMemoryGrid
+              memories={displayMemories}
+              onDelete={handleDeleteMemory}
+              onRetry={handleRetryMemory}
+              onUpdate={updateMemoryContent}
+              onExpand={setExpandedMemory}
+              onViewAttachment={handleViewAttachment}
+              onTogglePin={handleTogglePin}
+              onEdit={handleEditMemory}
+              isAuthenticated={authStatus === 'linked'}
+              onSignIn={login}
+              syncStatusMap={syncStatusMap}
+              onSyncRetry={retrySyncFile}
+              uploadProgressMap={uploadProgressMap}
+            />
+          )}
+        </main>
+
+        <QuickNoteBar
+          ref={quickNoteBarRef}
+          onSave={handleQuickNoteSave}
+          onExpand={handleQuickNoteExpand}
+        />
+      </div>
+
+      {/* ─── Fullscreen view overlays (stacked, animated) ──────── */}
+
+      <AnimatedPresence
+        isOpen={!!editingMemory}
+        enterClassName={overlay.viewEnter}
+        exitClassName={overlay.viewExit}
+        duration={150}
+      >
+        <ErrorBoundary
+          fallbackTitle="Memory editor encountered an error"
+          fallbackMessage="Something went wrong while editing. Your data is safe — try reloading."
+        >
+          <Suspense fallback={null}>
+            <NewMemoryPage
+              onClose={handleEditClose}
+              onCreate={handleCreateMemory}
+              onUpdate={handleUpdateMemory}
+              editMemory={editingMemory!}
+            />
+          </Suspense>
+        </ErrorBoundary>
+      </AnimatedPresence>
+
+      <AnimatedPresence
+        isOpen={isCaptureOpen}
+        enterClassName={overlay.viewEnter}
+        exitClassName={overlay.viewExit}
+        duration={150}
+      >
+        <ErrorBoundary
+          fallbackTitle="Memory capture encountered an error"
+          fallbackMessage="Something went wrong while capturing. Your data is safe — try reloading."
+        >
+          <Suspense fallback={null}>
+            <NewMemoryPage
+              onClose={handleCaptureClose}
+              onCreate={handleCreateMemory}
+              initialContent={captureInitialContent}
+            />
+          </Suspense>
+        </ErrorBoundary>
+      </AnimatedPresence>
+
+      <AnimatedPresence
+        isOpen={view === ViewMode.RECALL}
+        enterClassName={overlay.viewEnter}
+        exitClassName={overlay.viewExit}
+        duration={150}
+      >
+        <ErrorBoundary
+          fallbackTitle="Brain Search encountered an error"
+          fallbackMessage="The AI search feature hit an unexpected issue. Your memories are safe — try reloading."
+        >
+          <Suspense fallback={null}>
+            <ChatInterface
+              memories={displayMemories}
+              onClose={handleChatClose}
+              searchFunction={search}
+              onViewAttachment={handleViewAttachment}
+              onDelete={handleDeleteMemory}
+              onEdit={handleEditMemory}
+              onTogglePin={handleTogglePin}
+            />
+          </Suspense>
+        </ErrorBoundary>
+      </AnimatedPresence>
+
+      {/* ─── MomentCreationDialog backdrop ──────────────────── */}
+      <AnimatedPresence
+        isOpen={showCreateMoment}
+        enterClassName={overlay.backdropEnter}
+        exitClassName={overlay.backdropExit}
+        duration={150}
+        className="fixed inset-0 z-(--z-overlay) bg-black/60 backdrop-blur-sm"
+      >
+        <span aria-hidden />
+      </AnimatedPresence>
+
+      {/* ─── Overlay sheets (animated enter/exit) ──────────── */}
+
+      <AnimatedPresence
+        isOpen={!!liveExpandedMemory}
+        enterClassName={overlay.backdropEnter}
+        exitClassName={overlay.backdropExit}
+        className="fixed inset-0 z-(--z-sheet) bg-black/90 backdrop-blur-md flex flex-col"
+      >
+        <div className="sticky top-0 z-(--z-sticky) px-4 py-3 border-b border-(--color-border-default) flex items-center justify-between bg-(--color-surface-base)/50 backdrop-blur-xl pt-[var(--sat)]">
+           <div className="flex items-center gap-3">
+              <button onClick={() => setExpandedMemory(null)} className={overlay.closeBtn}>
+                  <X size={24} />
+              </button>
+              <h2 className="text-lg font-bold text-(--color-text-primary) truncate max-w-[200px] sm:max-w-md">Memory Detail</h2>
+           </div>
+           <Logo className="w-8 h-8 text-(--color-accent) opacity-50" />
+        </div>
+        {liveExpandedMemory && (
           <div className="flex-1 overflow-y-auto p-4 sm:p-8">
              <div className="max-w-2xl mx-auto pb-20">
                 <MemoryCard
@@ -1032,55 +1048,65 @@ const AppContent: React.FC = () => {
                 />
              </div>
           </div>
-        </div>
-      )}
+        )}
+      </AnimatedPresence>
 
-      {isSettingsOpen && (
-          <Suspense fallback={null}>
-            <SettingsModal
-                onClose={handleSettingsClose}
-                availableTypes={availableTypes}
-                onImportSuccess={handleImportSuccess}
-                appVersion={versionToDisplay}
-                syncError={syncError}
-                onSyncComplete={handleFullRefresh}
-                modelStatus={modelStatus}
-                downloadProgress={downloadProgress}
-                retryDownload={retryDownload}
-                embeddingStats={embeddingStats}
-                retryFailedEmbeddings={retryFailedEmbeddings}
-                totalMemories={activeMemoryCount}
-                lastError={lastError}
-                closeWorkerDB={closeWorkerDB}
-                reconcileReport={reconcileReport}
-                notificationsSupported={notificationsSupported}
-                notificationsEnabled={notificationsEnabled}
-                notificationPermission={notificationPermission}
-                notificationTime={notificationTime}
-                onNotificationsEnabledChange={setNotificationsEnabled}
-                onNotificationTimeChange={setNotifTime}
-                onRequestNotificationPermission={requestNotificationPermission}
-                onOpenNotificationSettings={openNotificationSettings}
-            />
-          </Suspense>
-      )}
-
-      {liveActiveMoment && (
+      <AnimatedPresence
+        isOpen={isSettingsOpen}
+        enterClassName={overlay.modalEnter}
+        exitClassName={overlay.modalExit}
+      >
         <Suspense fallback={null}>
-          <MomentSheet
-            moment={liveActiveMoment}
-            memories={memories}
-            onClose={handleMomentClose}
-            loadSynthesis={loadSynthesis}
-            onDelete={deleteMoment}
-            onDeleteNotes={handleDeleteNotes}
-            onViewAttachment={handleViewAttachment}
-            onMemoryDelete={handleDeleteMemory}
-            onMemoryEdit={handleEditMemory}
-            onMemoryTogglePin={handleTogglePin}
+          <SettingsModal
+              onClose={handleSettingsClose}
+              availableTypes={availableTypes}
+              onImportSuccess={handleImportSuccess}
+              appVersion={versionToDisplay}
+              syncError={syncError}
+              onSyncComplete={handleFullRefresh}
+              modelStatus={modelStatus}
+              downloadProgress={downloadProgress}
+              retryDownload={retryDownload}
+              embeddingStats={embeddingStats}
+              retryFailedEmbeddings={retryFailedEmbeddings}
+              totalMemories={activeMemoryCount}
+              lastError={lastError}
+              closeWorkerDB={closeWorkerDB}
+              reconcileReport={reconcileReport}
+              notificationsSupported={notificationsSupported}
+              notificationsEnabled={notificationsEnabled}
+              notificationPermission={notificationPermission}
+              notificationTime={notificationTime}
+              onNotificationsEnabledChange={setNotificationsEnabled}
+              onNotificationTimeChange={setNotifTime}
+              onRequestNotificationPermission={requestNotificationPermission}
+              onOpenNotificationSettings={openNotificationSettings}
           />
         </Suspense>
-      )}
+      </AnimatedPresence>
+
+      <AnimatedPresence
+        isOpen={!!liveActiveMoment}
+        enterClassName={overlay.sheetEnter}
+        exitClassName={overlay.sheetExit}
+      >
+        <Suspense fallback={null}>
+          {liveActiveMoment && (
+            <MomentSheet
+              moment={liveActiveMoment}
+              memories={memories}
+              onClose={handleMomentClose}
+              loadSynthesis={loadSynthesis}
+              onDelete={deleteMoment}
+              onDeleteNotes={handleDeleteNotes}
+              onViewAttachment={handleViewAttachment}
+              onMemoryDelete={handleDeleteMemory}
+              onMemoryEdit={handleEditMemory}
+              onMemoryTogglePin={handleTogglePin}
+            />
+          )}
+        </Suspense>
+      </AnimatedPresence>
 
       <Suspense fallback={null}>
         <MomentCreationDialog
@@ -1091,7 +1117,11 @@ const AppContent: React.FC = () => {
         />
       </Suspense>
 
-      {showAllMoments && (
+      <AnimatedPresence
+        isOpen={showAllMoments}
+        enterClassName={overlay.sheetEnter}
+        exitClassName={overlay.sheetExit}
+      >
         <Suspense fallback={null}>
           <AllMomentsSheet
             moments={moments}
@@ -1099,9 +1129,13 @@ const AppContent: React.FC = () => {
             onSelectMoment={handleSelectMomentFromList}
           />
         </Suspense>
-      )}
+      </AnimatedPresence>
 
-      {showCalendarAgenda && (
+      <AnimatedPresence
+        isOpen={showCalendarAgenda}
+        enterClassName={overlay.sheetEnter}
+        exitClassName={overlay.sheetExit}
+      >
         <Suspense fallback={null}>
           <CalendarAgendaView
             events={calendarEvents}
@@ -1113,9 +1147,13 @@ const AppContent: React.FC = () => {
             onTogglePin={handleTogglePin}
           />
         </Suspense>
-      )}
+      </AnimatedPresence>
 
-      {showTodoList && (
+      <AnimatedPresence
+        isOpen={showTodoList}
+        enterClassName={overlay.sheetEnter}
+        exitClassName={overlay.sheetExit}
+      >
         <Suspense fallback={null}>
           <TodoListView
             items={todoItems}
@@ -1158,9 +1196,13 @@ const AppContent: React.FC = () => {
             onTogglePin={handleTogglePin}
           />
         </Suspense>
-      )}
+      </AnimatedPresence>
 
-      {showDeletionCandidates && (
+      <AnimatedPresence
+        isOpen={showDeletionCandidates}
+        enterClassName={overlay.sheetEnter}
+        exitClassName={overlay.sheetExit}
+      >
         <Suspense fallback={null}>
           <DeletionCandidatesSheet
             candidates={deletionCandidates}
@@ -1180,26 +1222,36 @@ const AppContent: React.FC = () => {
             onTogglePin={handleTogglePin}
           />
         </Suspense>
-      )}
+      </AnimatedPresence>
 
-      {viewingGallery && (
-          <ErrorBoundary
-            fallbackTitle="Gallery encountered an error"
-            fallbackMessage="Something went wrong displaying media. Your data is safe — try reloading."
-          >
+      <AnimatedPresence
+        isOpen={!!viewingGallery}
+        enterClassName={overlay.viewerEnter}
+        exitClassName={overlay.viewerExit}
+        duration={150}
+      >
+        <ErrorBoundary
+          fallbackTitle="Gallery encountered an error"
+          fallbackMessage="Something went wrong displaying media. Your data is safe — try reloading."
+        >
+          {viewingGallery && (
             <GalleryViewer
               attachments={viewingGallery.attachments}
               initialIndex={viewingGallery.currentIndex}
               onClose={() => setViewingGallery(null)}
             />
-          </ErrorBoundary>
-      )}
+          )}
+        </ErrorBoundary>
+      </AnimatedPresence>
 
-      {momentError && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-(--z-toast) bg-(--color-danger)/90 border border-(--color-danger)/50 text-(--color-text-primary) px-4 py-3 rounded-(--radius-xl) text-sm font-medium shadow-lg animate-in fade-in slide-in-from-top-2 duration-(--duration-normal) max-w-sm text-center backdrop-blur-md">
-          {momentError}
-        </div>
-      )}
+      <AnimatedPresence
+        isOpen={!!momentError}
+        enterClassName={overlay.toastEnter}
+        exitClassName={overlay.toastExit}
+        className="fixed top-4 left-1/2 -translate-x-1/2 z-(--z-toast) bg-(--color-danger)/90 border border-(--color-danger)/50 text-(--color-text-primary) px-4 py-3 rounded-(--radius-xl) text-sm font-medium shadow-lg max-w-sm text-center backdrop-blur-md"
+      >
+        {momentError}
+      </AnimatedPresence>
 
       {isOtaDownloading && (
         <div className="fixed inset-0 z-(--z-tooltip) bg-black/95 backdrop-blur-md flex flex-col items-center justify-center gap-6">
