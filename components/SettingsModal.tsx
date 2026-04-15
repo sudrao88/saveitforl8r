@@ -182,9 +182,9 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
   const statsFailed = embeddingStats?.failed || 0;
 
   return (
-    <div className="fixed inset-0 z-(--z-sheet) flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in duration-(--duration-fast)">
+    <div className="fixed inset-0 z-(--z-sheet) flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4">
       {/* Modal container: Use calc with safe-area for Safari incognito compatibility */}
-      <div className="bg-black border border-(--color-border-default) rounded-t-(--radius-xl) sm:rounded-(--radius-xl) max-w-2xl w-full shadow-2xl relative flex flex-col overflow-hidden animate-in slide-in-from-bottom-10 sm:zoom-in-95 duration-(--duration-fast)"
+      <div className="bg-black border border-(--color-border-default) rounded-t-(--radius-xl) sm:rounded-(--radius-xl) max-w-2xl w-full shadow-2xl relative flex flex-col overflow-hidden"
            style={{ maxHeight: 'calc(100dvh - var(--sat) - var(--sab) - 16px)' }}>
         <div className="p-4 sm:p-6 border-b border-(--color-border-default) flex items-center justify-between shrink-0 bg-black z-(--z-sticky) pt-[max(16px,var(--sat))] sm:pt-6">
           <div className="flex items-center gap-3">

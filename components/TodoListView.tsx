@@ -303,7 +303,7 @@ const TodoListView: React.FC<TodoListViewProps> = ({
   );
 
   return (
-    <div className={`${overlay.sheet}`}>
+    <div className={overlay.sheetBase}>
       {/* Header */}
       <div className={overlay.sheetHeader}>
         <div className="flex items-center gap-3">

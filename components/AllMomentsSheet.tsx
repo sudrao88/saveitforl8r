@@ -15,7 +15,7 @@ const AllMomentsSheet: React.FC<AllMomentsSheetProps> = ({
   onClose,
   onSelectMoment,
 }) => (
-  <div className={`${overlay.sheet} duration-(--duration-normal)`}>
+  <div className={overlay.sheetBase}>
     <div className={overlay.sheetHeader}>
       <div className="flex items-center gap-3">
         <button

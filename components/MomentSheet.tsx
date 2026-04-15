@@ -48,7 +48,7 @@ const SheetShell: React.FC<{
   onClose: () => void;
   children: React.ReactNode;
 }> = ({ title, subtitle, headerRight, onClose, children }) => (
-  <div className={`${overlay.sheet}`}>
+  <div className={overlay.sheetBase}>
     <div className={overlay.sheetHeader}>
       <div className="flex items-center gap-3">
         <button

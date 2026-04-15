@@ -71,6 +71,10 @@ export const overlay = {
     'fixed inset-0 bg-(--color-surface-overlay)/95 backdrop-blur-md',
   backdropLight:
     'fixed inset-0 bg-(--color-surface-base)/80 backdrop-blur-sm',
+  // Structural-only sheet (no animation — use with AnimatedPresence)
+  sheetBase:
+    'fixed inset-0 z-(--z-sheet) bg-(--color-surface-overlay)/95 backdrop-blur-md flex flex-col',
+  // Legacy: includes enter animation for components not yet using AnimatedPresence
   sheet:
     'fixed inset-0 z-(--z-sheet) bg-(--color-surface-overlay)/95 backdrop-blur-md flex flex-col animate-in fade-in duration-(--duration-slow)',
   sheetHeader:
@@ -89,6 +93,19 @@ export const overlay = {
     'p-2 -mr-2 rounded-full hover:bg-(--color-surface-raised) text-(--color-text-secondary) hover:text-(--color-text-primary) transition-colors active:scale-95',
   navBtn:
     'absolute z-(--z-sticky) p-3 rounded-full bg-(--color-surface-base)/40 hover:bg-(--color-surface-base)/70 text-(--color-text-primary)/70 hover:text-(--color-text-primary) transition-all active:scale-90 backdrop-blur-sm',
+  // ─── Animation class pairs for AnimatedPresence ──────────
+  sheetEnter: 'animate-in fade-in slide-in-from-bottom-4 duration-(--duration-slow)',
+  sheetExit: 'animate-out fade-out slide-out-to-bottom-4 duration-(--duration-normal)',
+  modalEnter: 'animate-in zoom-in-95 fade-in duration-(--duration-normal)',
+  modalExit: 'animate-out zoom-out-95 fade-out duration-(--duration-normal)',
+  backdropEnter: 'animate-in fade-in duration-(--duration-fast)',
+  backdropExit: 'animate-out fade-out duration-(--duration-fast)',
+  viewerEnter: 'animate-in fade-in zoom-in-95 duration-(--duration-fast)',
+  viewerExit: 'animate-out fade-out zoom-out-95 duration-(--duration-fast)',
+  viewEnter: 'animate-in fade-in duration-(--duration-normal)',
+  viewExit: 'animate-out fade-out duration-(--duration-fast)',
+  toastEnter: 'animate-in fade-in slide-in-from-top-2 duration-(--duration-normal)',
+  toastExit: 'animate-out fade-out slide-out-to-top-2 duration-(--duration-normal)',
 } as const;
 
 // ─── Typography ─────────────────────────────────────────────
