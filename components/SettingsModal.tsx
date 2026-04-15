@@ -27,7 +27,7 @@ interface SettingsModalProps {
   totalMemories: number;
   lastError?: string | null;
   closeWorkerDB?: () => void;
-  rebuildIndex?: () => void;
+  rebuildIndex: () => void;
   reconcileReport?: ReconcileReport | null;
   onUpdateReport?: (report: ReconcileReport) => void;
   notificationsSupported?: boolean;
@@ -160,7 +160,7 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
           const report = await forceReindexAll();
           // Rebuild the worker's in-memory Orama index so it reflects
           // the cleared vectors and picks up newly queued items.
-          rebuildIndex?.();
+          rebuildIndex();
           if (onUpdateReport) onUpdateReport(report);
       } catch (e) {
           console.error("Manual reindex failed", e);
