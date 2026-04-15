@@ -58,6 +58,7 @@
   --duration-fast: 150ms;
   --duration-normal: 250ms;
   --duration-slow: 400ms;
+  --duration-sheet: 600ms;
 }
 
 :root {

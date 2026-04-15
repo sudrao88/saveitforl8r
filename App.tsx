@@ -1093,6 +1093,7 @@ const AppContent: React.FC = () => {
         isOpen={!!liveActiveMoment}
         enterClassName={overlay.sheetEnter}
         exitClassName={overlay.sheetExit}
+        duration={600}
       >
         <Suspense fallback={null}>
           {frozenActiveMoment && (
@@ -1125,6 +1126,7 @@ const AppContent: React.FC = () => {
         isOpen={showAllMoments}
         enterClassName={overlay.sheetEnter}
         exitClassName={overlay.sheetExit}
+        duration={600}
       >
         <Suspense fallback={null}>
           <AllMomentsSheet
@@ -1139,6 +1141,7 @@ const AppContent: React.FC = () => {
         isOpen={showCalendarAgenda}
         enterClassName={overlay.sheetEnter}
         exitClassName={overlay.sheetExit}
+        duration={600}
       >
         <Suspense fallback={null}>
           <CalendarAgendaView
@@ -1157,6 +1160,7 @@ const AppContent: React.FC = () => {
         isOpen={showTodoList}
         enterClassName={overlay.sheetEnter}
         exitClassName={overlay.sheetExit}
+        duration={600}
       >
         <Suspense fallback={null}>
           <TodoListView
@@ -1206,6 +1210,7 @@ const AppContent: React.FC = () => {
         isOpen={showDeletionCandidates}
         enterClassName={overlay.sheetEnter}
         exitClassName={overlay.sheetExit}
+        duration={600}
       >
         <Suspense fallback={null}>
           <DeletionCandidatesSheet
