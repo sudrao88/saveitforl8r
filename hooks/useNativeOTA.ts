@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
 
@@ -18,6 +18,7 @@ const hasIOSBridge = () => Capacitor.getPlatform() === 'ios' && !!window.webkit?
 const INITIAL_UPDATE_CHECK_DELAY_MS = 5 * 1000;          // 5 seconds
 const PERIODIC_UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
 const PRECACHE_TIMEOUT_MS = 60 * 1000;                   // 60 seconds
+const DOWNLOAD_TIMEOUT_MS = 60 * 1000;                   // 60 seconds
 
 interface VersionInfo {
   version: string;
@@ -54,6 +55,10 @@ export const useNativeOTA = () => {
     isPrecaching: false,
   });
 
+  // Timeout handle for download — if the native bridge never responds,
+  // we auto-fail after DOWNLOAD_TIMEOUT_MS so the user isn't stuck.
+  const downloadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Check if currently using remote URL mode
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
@@ -77,6 +82,10 @@ export const useNativeOTA = () => {
     const handleOtaError = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       console.error('[OTA] Download error from native:', detail);
+      if (downloadTimeoutRef.current) {
+        clearTimeout(downloadTimeoutRef.current);
+        downloadTimeoutRef.current = null;
+      }
       setState(s => ({ ...s, isDownloading: false, downloadError: String(detail) }));
     };
 
@@ -88,6 +97,9 @@ export const useNativeOTA = () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
       window.removeEventListener('ota-error', handleOtaError);
+      if (downloadTimeoutRef.current) {
+        clearTimeout(downloadTimeoutRef.current);
+      }
     };
   }, []);
 
@@ -133,6 +145,22 @@ export const useNativeOTA = () => {
     }
 
     setState(s => ({ ...s, isDownloading: true, downloadError: null }));
+
+    // Clear any previous timeout and start a new one.
+    // If the native bridge never responds (success reloads the page,
+    // failure dispatches ota-error), this timeout prevents the user
+    // from being stuck on the download overlay indefinitely.
+    if (downloadTimeoutRef.current) {
+      clearTimeout(downloadTimeoutRef.current);
+    }
+    downloadTimeoutRef.current = setTimeout(() => {
+      setState(s => {
+        if (!s.isDownloading) return s;
+        console.error('[OTA] Download timed out after', DOWNLOAD_TIMEOUT_MS, 'ms');
+        return { ...s, isDownloading: false, downloadError: 'Download timed out. Please try again.' };
+      });
+      downloadTimeoutRef.current = null;
+    }, DOWNLOAD_TIMEOUT_MS);
 
     try {
       // Store current version for rollback logic
@@ -329,6 +357,11 @@ export const useNativeOTA = () => {
     }
   }, []);
 
+  // Clear download error (used by UI dismiss button)
+  const dismissDownloadError = useCallback(() => {
+    setState(s => ({ ...s, downloadError: null }));
+  }, []);
+
   // Format cache size for display
   const formatCacheSize = useCallback((bytes: number): string => {
     if (bytes < 1024) return `${bytes} B`;
@@ -341,6 +374,7 @@ export const useNativeOTA = () => {
     checkForUpdate,
     enableRemoteMode,
     disableRemoteMode,
+    dismissDownloadError,
     remoteUrl: REMOTE_URL,
     precacheForOffline,
     applyUpdate,

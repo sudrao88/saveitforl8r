@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, Suspense } from 'react';
-import { Bell, RefreshCw, X } from 'lucide-react';
+import { Bell, RefreshCw, X, AlertTriangle } from 'lucide-react';
 import { App as CapacitorApp, URLOpenListenerEvent } from '@capacitor/app';
 import { isNative } from './services/platform';
 import MemoryCard from './components/MemoryCard';
@@ -76,6 +76,7 @@ const AppContent: React.FC = () => {
       currentVersion: nativeVersion,
       isDownloading: isOtaDownloading,
       downloadError: otaDownloadError,
+      dismissDownloadError,
   } = useNativeOTA();
 
   const { shareData, clearShareData } = useShareReceiver();
@@ -1252,16 +1253,45 @@ const AppContent: React.FC = () => {
         {frozenMomentError}
       </AnimatedPresence>
 
-      {isOtaDownloading && (
+      {(isOtaDownloading || otaDownloadError) && (
         <div className="fixed inset-0 z-(--z-tooltip) bg-black/95 backdrop-blur-md flex flex-col items-center justify-center gap-6">
           <Logo className="w-16 h-16 text-(--color-accent)" />
-          <div className="flex flex-col items-center gap-3">
-            <RefreshCw size={32} className="text-(--color-accent) animate-spin" />
-            <h2 className="text-xl font-bold text-(--color-text-primary)">Downloading Update</h2>
-            <p className="text-sm text-(--color-text-secondary) text-center max-w-xs">
-              Please wait while the latest version is downloaded. The app will reload automatically.
-            </p>
-          </div>
+
+          {isOtaDownloading ? (
+            <div className="flex flex-col items-center gap-3">
+              <RefreshCw size={32} className="text-(--color-accent) animate-spin" />
+              <h2 className="text-xl font-bold text-(--color-text-primary)">Downloading Update</h2>
+              <p className="text-sm text-(--color-text-secondary) text-center max-w-xs">
+                Please wait while the latest version is downloaded. The app will reload automatically.
+              </p>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-3">
+              <AlertTriangle size={32} className="text-(--color-danger)" />
+              <h2 className="text-xl font-bold text-(--color-text-primary)">Update Failed</h2>
+              <p className="text-sm text-(--color-text-secondary) text-center max-w-xs">
+                {otaDownloadError}
+              </p>
+              <div className="flex items-center gap-3 mt-3">
+                <button
+                  onClick={() => {
+                    dismissDownloadError();
+                    enableRemoteMode().catch(console.error);
+                  }}
+                  className={`${btn.base} ${btn.primary}`}
+                >
+                  <RefreshCw size={16} />
+                  <span>Try Again</span>
+                </button>
+                <button
+                  onClick={dismissDownloadError}
+                  className={`${btn.base} ${btn.secondary}`}
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

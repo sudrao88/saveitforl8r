@@ -1157,4 +1157,76 @@ describe('useNativeOTA', () => {
       expect(window.AndroidBridge!.disableRemoteMode).toHaveBeenCalled();
     });
   });
+
+  // ---- Download timeout ----
+
+  describe('download timeout', () => {
+    it('should set downloadError after timeout if bridge does not respond', async () => {
+      setupAndroidBridge();
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      const { result } = renderHook(() => useNativeOTA());
+
+      await act(async () => {
+        await result.current.enableRemoteMode();
+      });
+
+      expect(result.current.isDownloading).toBe(true);
+      expect(result.current.downloadError).toBeNull();
+
+      // Advance past the 60s timeout
+      act(() => {
+        vi.advanceTimersByTime(60_000);
+      });
+
+      expect(result.current.isDownloading).toBe(false);
+      expect(result.current.downloadError).toBe('Download timed out. Please try again.');
+    });
+
+    it('should not overwrite error if bridge responds before timeout', async () => {
+      setupAndroidBridge();
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      const { result } = renderHook(() => useNativeOTA());
+
+      await act(async () => {
+        await result.current.enableRemoteMode();
+      });
+
+      // Bridge responds with error before timeout
+      act(() => {
+        window.dispatchEvent(new CustomEvent('ota-error', { detail: 'HTTP 500' }));
+      });
+
+      expect(result.current.isDownloading).toBe(false);
+      expect(result.current.downloadError).toBe('HTTP 500');
+
+      // Advance past timeout — should NOT change state again
+      act(() => {
+        vi.advanceTimersByTime(60_000);
+      });
+
+      // Error message unchanged (not overwritten by timeout)
+      expect(result.current.downloadError).toBe('HTTP 500');
+    });
+  });
+
+  // ---- dismissDownloadError ----
+
+  describe('dismissDownloadError', () => {
+    it('should clear downloadError', () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      const { result } = renderHook(() => useNativeOTA());
+
+      act(() => {
+        window.dispatchEvent(new CustomEvent('ota-error', { detail: 'test error' }));
+      });
+
+      expect(result.current.downloadError).toBe('test error');
+
+      act(() => {
+        result.current.dismissDownloadError();
+      });
+
+      expect(result.current.downloadError).toBeNull();
+    });
+  });
 });
