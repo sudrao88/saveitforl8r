@@ -56,6 +56,9 @@ import { escapeHtml } from './utils/editorUtils';
 import { ANALYTICS_EVENTS } from './constants';
 import { handleDeepLink } from './services/googleAuth';
 
+/** Must match --duration-sheet in index.css (used by overlay.sheetEnter / sheetExit). */
+const SHEET_DURATION = 600;
+
 const AppContent: React.FC = () => {
   const [view, setView] = useState<ViewMode>(ViewMode.FEED);
   const [isCaptureOpen, setIsCaptureOpen] = useState(false);
@@ -822,7 +825,23 @@ const AppContent: React.FC = () => {
   // Truly fullscreen views (opaque bg-black at z-overlay / z-modal) — QuickNoteBar must hide
   const isFullscreenViewOpen = !!editingMemory || isCaptureOpen || view === ViewMode.RECALL || !!viewingGallery;
   // Any overlay (fullscreen OR sheet) — feed behind gets pointer-events-none + aria-hidden
-  const anyFullscreenOpen = isFullscreenViewOpen || !!liveExpandedMemory || isSettingsOpen || !!liveActiveMoment || showAllMoments || showCalendarAgenda || showTodoList || showDeletionCandidates;
+  const anyOverlayOpen = isFullscreenViewOpen || !!liveExpandedMemory || isSettingsOpen || !!liveActiveMoment || showAllMoments || showCalendarAgenda || showTodoList || showDeletionCandidates;
+
+  // Keep feed locked during sheet exit animations so background elements
+  // don't become interactive/accessible while the sheet is still sliding out.
+  const [exitLock, setExitLock] = useState(false);
+  const exitLockTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => {
+    if (anyOverlayOpen) {
+      if (exitLockTimer.current) clearTimeout(exitLockTimer.current);
+      setExitLock(false);
+    } else if (!anyOverlayOpen) {
+      setExitLock(true);
+      exitLockTimer.current = setTimeout(() => setExitLock(false), SHEET_DURATION);
+    }
+    return () => { if (exitLockTimer.current) clearTimeout(exitLockTimer.current); };
+  }, [anyOverlayOpen]);
+  const feedLocked = anyOverlayOpen || exitLock;
 
   // Freeze nullable values so content stays visible during exit animations.
   // When state becomes null (triggering AnimatedPresence exit), the frozen
@@ -836,7 +855,7 @@ const AppContent: React.FC = () => {
   return (
     <div className="min-h-screen bg-black flex flex-col">
       {/* Feed layout — always rendered, overlaid by fullscreen views */}
-      <div className={anyFullscreenOpen ? 'pointer-events-none' : undefined} aria-hidden={anyFullscreenOpen || undefined}>
+      <div className={feedLocked ? 'pointer-events-none' : undefined} aria-hidden={feedLocked || undefined}>
         <div ref={topNavRef} className="sticky top-0 z-(--z-overlay) bg-(--color-surface-base) pt-[var(--sat)]">
             <TopNavigation
               setView={handleSetView}
@@ -1093,7 +1112,7 @@ const AppContent: React.FC = () => {
         isOpen={!!liveActiveMoment}
         enterClassName={overlay.sheetEnter}
         exitClassName={overlay.sheetExit}
-        duration={600}
+        duration={SHEET_DURATION}
       >
         <Suspense fallback={null}>
           {frozenActiveMoment && (
@@ -1126,7 +1145,7 @@ const AppContent: React.FC = () => {
         isOpen={showAllMoments}
         enterClassName={overlay.sheetEnter}
         exitClassName={overlay.sheetExit}
-        duration={600}
+        duration={SHEET_DURATION}
       >
         <Suspense fallback={null}>
           <AllMomentsSheet
@@ -1141,7 +1160,7 @@ const AppContent: React.FC = () => {
         isOpen={showCalendarAgenda}
         enterClassName={overlay.sheetEnter}
         exitClassName={overlay.sheetExit}
-        duration={600}
+        duration={SHEET_DURATION}
       >
         <Suspense fallback={null}>
           <CalendarAgendaView
@@ -1160,7 +1179,7 @@ const AppContent: React.FC = () => {
         isOpen={showTodoList}
         enterClassName={overlay.sheetEnter}
         exitClassName={overlay.sheetExit}
-        duration={600}
+        duration={SHEET_DURATION}
       >
         <Suspense fallback={null}>
           <TodoListView
@@ -1210,7 +1229,7 @@ const AppContent: React.FC = () => {
         isOpen={showDeletionCandidates}
         enterClassName={overlay.sheetEnter}
         exitClassName={overlay.sheetExit}
-        duration={600}
+        duration={SHEET_DURATION}
       >
         <Suspense fallback={null}>
           <DeletionCandidatesSheet
