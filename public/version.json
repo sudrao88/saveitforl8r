@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v65",
-  "buildNumber": 65,
-  "buildDate": "2026-04-15T03:36:22.879Z",
+  "version": "saveitforl8r-v66",
+  "buildNumber": 66,
+  "buildDate": "2026-04-15T04:41:23.141Z",
   "minNativeVersion": "1.0.0",
   "changelog": "Prevent recurring notes from becoming deletion candidates"
 }
