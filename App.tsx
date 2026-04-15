@@ -819,7 +819,10 @@ const AppContent: React.FC = () => {
     return undefined;
   }, [isCaptureOpen, quickNoteExpandState, shareData]);
 
-  const anyFullscreenOpen = !!editingMemory || isCaptureOpen || view === ViewMode.RECALL || !!liveExpandedMemory || isSettingsOpen || !!liveActiveMoment || showAllMoments || showCalendarAgenda || showTodoList || showDeletionCandidates || !!viewingGallery;
+  // Truly fullscreen views (opaque bg-black at z-overlay / z-modal) — QuickNoteBar must hide
+  const isFullscreenViewOpen = !!editingMemory || isCaptureOpen || view === ViewMode.RECALL || !!viewingGallery;
+  // Any overlay (fullscreen OR sheet) — feed behind gets pointer-events-none + aria-hidden
+  const anyFullscreenOpen = isFullscreenViewOpen || !!liveExpandedMemory || isSettingsOpen || !!liveActiveMoment || showAllMoments || showCalendarAgenda || showTodoList || showDeletionCandidates;
 
   // Freeze nullable values so content stays visible during exit animations.
   // When state becomes null (triggering AnimatedPresence exit), the frozen
@@ -936,7 +939,7 @@ const AppContent: React.FC = () => {
           )}
         </main>
 
-        {!anyFullscreenOpen && (
+        {!isFullscreenViewOpen && (
           <QuickNoteBar
             ref={quickNoteBarRef}
             onSave={handleQuickNoteSave}

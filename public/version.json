@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v69",
-  "buildNumber": 69,
-  "buildDate": "2026-04-15T11:15:00.000Z",
+  "version": "saveitforl8r-v70",
+  "buildNumber": 70,
+  "buildDate": "2026-04-15T16:31:18.939Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Add nested checklist sub-lists with two-level indentation"
+  "changelog": "Fix QuickNoteBar persistence and sheet slide animations"
 }
