@@ -95,17 +95,17 @@ export const overlay = {
     'absolute z-(--z-sticky) p-3 rounded-full bg-(--color-surface-base)/40 hover:bg-(--color-surface-base)/70 text-(--color-text-primary)/70 hover:text-(--color-text-primary) transition-all active:scale-90 backdrop-blur-sm',
   // ─── Animation class pairs for AnimatedPresence ──────────
   sheetEnter: 'animate-in fade-in slide-in-from-bottom-4 duration-(--duration-slow)',
-  sheetExit: 'animate-out fade-out slide-out-to-bottom-4 fill-mode-forwards duration-(--duration-normal)',
+  sheetExit: 'animate-out fade-out slide-out-to-bottom-4 fill-mode-forwards pointer-events-none duration-(--duration-normal)',
   modalEnter: 'animate-in zoom-in-95 fade-in duration-(--duration-normal)',
-  modalExit: 'animate-out zoom-out-95 fade-out fill-mode-forwards duration-(--duration-normal)',
+  modalExit: 'animate-out zoom-out-95 fade-out fill-mode-forwards pointer-events-none duration-(--duration-normal)',
   backdropEnter: 'animate-in fade-in duration-(--duration-fast)',
-  backdropExit: 'animate-out fade-out fill-mode-forwards duration-(--duration-fast)',
+  backdropExit: 'animate-out fade-out fill-mode-forwards pointer-events-none duration-(--duration-fast)',
   viewerEnter: 'animate-in fade-in zoom-in-95 duration-(--duration-fast)',
-  viewerExit: 'animate-out fade-out zoom-out-95 fill-mode-forwards duration-(--duration-fast)',
+  viewerExit: 'animate-out fade-out zoom-out-95 fill-mode-forwards pointer-events-none duration-(--duration-fast)',
   viewEnter: 'animate-in fade-in duration-(--duration-normal)',
-  viewExit: 'animate-out fade-out fill-mode-forwards duration-(--duration-fast)',
+  viewExit: 'animate-out fade-out fill-mode-forwards pointer-events-none duration-(--duration-fast)',
   toastEnter: 'animate-in fade-in slide-in-from-top-2 duration-(--duration-normal)',
-  toastExit: 'animate-out fade-out slide-out-to-top-2 fill-mode-forwards duration-(--duration-normal)',
+  toastExit: 'animate-out fade-out slide-out-to-top-2 fill-mode-forwards pointer-events-none duration-(--duration-normal)',
 } as const;
 
 // ─── Typography ─────────────────────────────────────────────
