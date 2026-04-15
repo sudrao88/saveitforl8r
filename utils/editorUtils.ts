@@ -39,25 +39,27 @@ export const looksLikeMarkdown = (text: string): boolean => {
     ].some(pattern => pattern.test(text));
 };
 
-/** Detect whether text contains checklist markdown and parse items from it. */
-export const parseChecklistMarkdown = (text: string): { text: string; checked: boolean }[] | null => {
+/** Detect whether text contains checklist markdown and parse items from it.
+ *  Supports indented sub-items (2+ leading spaces before the marker). */
+export const parseChecklistMarkdown = (text: string): { text: string; checked: boolean; indent?: number }[] | null => {
     const lines = text.split('\n');
-    const checklistPattern = /^[-*+]?\s*\[([ xX])\]\s+(.*)/;
-    const items: { text: string; checked: boolean }[] = [];
+    const checklistPattern = /^(\s*)[-*+]?\s*\[([ xX])\]\s+(.*)/;
+    const items: { text: string; checked: boolean; indent?: number }[] = [];
     let hasChecklistItem = false;
 
     for (const line of lines) {
-        const trimmedLine = line.trim();
-        if (!trimmedLine) {
+        if (!line.trim()) {
             continue;
         }
 
-        const match = trimmedLine.match(checklistPattern);
+        const match = line.match(checklistPattern);
         if (match) {
             hasChecklistItem = true;
-            items.push({ text: match[2], checked: match[1].toLowerCase() === 'x' });
+            const leadingSpaces = match[1].length;
+            const indent = leadingSpaces >= 2 ? 1 : 0;
+            items.push({ text: match[3], checked: match[2].toLowerCase() === 'x', indent });
         } else {
-            items.push({ text: trimmedLine, checked: false });
+            items.push({ text: line.trim(), checked: false, indent: 0 });
         }
     }
 

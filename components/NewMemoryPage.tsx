@@ -13,7 +13,7 @@ import { processFileInputs, MAX_FILE_SIZE_BYTES, MAX_ATTACHMENTS } from '../util
 import FormattingToolbar from './FormattingToolbar';
 import TagInput from './TagInput';
 import { btn, overlay } from '../styles/design-system';
-import { ChecklistEditor } from './ChecklistItems';
+import { ChecklistEditor, ChecklistItemData, serializeChecklistToHtml, parseChecklistFromHtml, cascadeToggle, canIndent, canOutdent } from './ChecklistItems';
 import useBeforeInputMarkdown from '../hooks/useBeforeInputMarkdown';
 
 interface NewMemoryPageProps {
@@ -102,22 +102,10 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
   const prevFormatsRef = useRef<string[]>([]);
 
   // For Checklist Mode
-  interface ChecklistItem {
-    id: string;
-    text: string;
-    checked: boolean;
-  }
-  const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>(() => {
+  const [checklistItems, setChecklistItems] = useState<ChecklistItemData[]>(() => {
     const content = getInitialContent();
     if (content.startsWith('<ul class="checklist">')) {
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(content, 'text/html');
-      const items = Array.from(doc.querySelectorAll('li'));
-      return items.map(item => ({
-        id: crypto.randomUUID(),
-        text: item.textContent || '',
-        checked: item.getAttribute('data-checked') === 'true'
-      }));
+      return parseChecklistFromHtml(content);
     }
     return [];
   });
@@ -203,12 +191,13 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
 
     // Checklist markdown — switch to checklist mode with parsed items
     if (plainText) {
-        const checklistItems = parseChecklistMarkdown(plainText);
-        if (checklistItems) {
-            setChecklistItems(checklistItems.map(item => ({
+        const parsedChecklist = parseChecklistMarkdown(plainText);
+        if (parsedChecklist) {
+            setChecklistItems(parsedChecklist.map(item => ({
                 id: crypto.randomUUID(),
                 text: item.text,
-                checked: item.checked
+                checked: item.checked,
+                indent: (item as { indent?: number }).indent ?? 0,
             })));
             if (editorRef.current) editorRef.current.innerHTML = '';
             setIsChecklistMode(true);
@@ -339,7 +328,8 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
   const addChecklistItem = (afterId?: string) => {
       setChecklistItems(prev => {
           const index = prev.findIndex(item => item.id === afterId);
-          const newItem = { id: crypto.randomUUID(), text: '', checked: false };
+          const inheritIndent = index !== -1 ? (prev[index].indent ?? 0) : 0;
+          const newItem: ChecklistItemData = { id: crypto.randomUUID(), text: '', checked: false, indent: inheritIndent };
           if (index === -1) return [...prev, newItem];
           const newItems = [...prev];
           newItems.splice(index + 1, 0, newItem);
@@ -352,15 +342,30 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
       setChecklistItems(prev => prev.filter(item => item.id !== id));
   };
 
+  const toggleChecklistItemChecked = (id: string) => {
+      setChecklistItems(prev => cascadeToggle(prev, id));
+  };
+
+  const indentChecklistItem = (id: string) => {
+      setChecklistItems(prev => {
+          if (!canIndent(prev, id)) return prev;
+          return prev.map(i => i.id === id ? { ...i, indent: 1 } : i);
+      });
+  };
+
+  const outdentChecklistItem = (id: string) => {
+      setChecklistItems(prev => {
+          if (!canOutdent(prev, id)) return prev;
+          return prev.map(i => i.id === id ? { ...i, indent: 0 } : i);
+      });
+  };
+
   // Check if there are unsaved changes
   const hasChanges = useCallback((): boolean => {
     // Get current content
     let currentContent = '';
     if (isChecklistMode) {
-      const listItems = checklistItems.map(item =>
-        `<li data-checked="${item.checked}">${escapeHtml(item.text)}</li>`
-      ).join('');
-      currentContent = checklistItems.length > 0 ? `<ul class="checklist">${listItems}</ul>` : '';
+      currentContent = checklistItems.length > 0 ? serializeChecklistToHtml(checklistItems) : '';
     } else {
       currentContent = editorRef.current?.innerHTML || '';
     }
@@ -383,10 +388,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
     let finalContent = '';
 
     if (isChecklistMode) {
-        const listItems = checklistItems.map(item =>
-            `<li data-checked="${item.checked}">${escapeHtml(item.text)}</li>`
-        ).join('');
-        finalContent = `<ul class="checklist">${listItems}</ul>`;
+        finalContent = serializeChecklistToHtml(checklistItems);
     } else {
         finalContent = editorRef.current?.innerHTML || '';
     }
@@ -528,10 +530,12 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                 {isChecklistMode ? (
                     <ChecklistEditor
                         items={checklistItems}
-                        onToggle={(id) => setChecklistItems(prev => prev.map(i => i.id === id ? { ...i, checked: !i.checked } : i))}
+                        onToggle={toggleChecklistItemChecked}
                         onUpdate={updateChecklistItem}
                         onAdd={addChecklistItem}
                         onRemove={removeChecklistItem}
+                        onIndent={indentChecklistItem}
+                        onOutdent={outdentChecklistItem}
                         autoFocusLast
                     />
                 ) : (

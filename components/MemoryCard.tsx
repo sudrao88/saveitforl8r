@@ -4,7 +4,7 @@ import { Memory, Attachment, UploadProgress } from '../types.ts';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { btn, card, confirm, menu, overlay, text } from '../styles/design-system';
 import { downloadDataUri } from '../services/downloadService';
-import { ChecklistDisplay } from './ChecklistItems';
+import { ChecklistDisplay, parseChecklistFromHtml, serializeChecklistToHtml, cascadeToggle } from './ChecklistItems';
 
 interface EnrichmentSectionProps {
   icon: React.ReactNode;
@@ -377,36 +377,16 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
 
   const isChecklist = memory.content?.startsWith('<ul class="checklist">') ?? false;
   
-  const handleToggleCheck = (index: number) => {
+  const handleToggleCheck = (id: string) => {
       if (!onUpdate) return;
-      
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(memory.content, 'text/html');
-      const items = doc.querySelectorAll('li');
-      
-      if (items[index]) {
-          const current = items[index].getAttribute('data-checked') === 'true';
-          items[index].setAttribute('data-checked', String(!current));
-          
-          const listItems = Array.from(items).map(li => 
-              `<li data-checked="${li.getAttribute('data-checked')}">${li.innerHTML}</li>`
-          ).join('');
-          const newContent = `<ul class="checklist">${listItems}</ul>`;
-          
-          onUpdate(memory.id, newContent);
-      }
+      const items = parseChecklistFromHtml(memory.content, memory.id);
+      const updated = cascadeToggle(items, id);
+      onUpdate(memory.id, serializeChecklistToHtml(updated));
   };
 
   const renderContent = () => {
       if (isChecklist) {
-          const parser = new DOMParser();
-          const doc = parser.parseFromString(memory.content, 'text/html');
-          const items = Array.from(doc.querySelectorAll('li')).map((item, idx) => ({
-              id: `${memory.id}-${idx}`,
-              text: item.textContent || '',
-              checked: item.getAttribute('data-checked') === 'true',
-          }));
-
+          const items = parseChecklistFromHtml(memory.content, memory.id);
           return <ChecklistDisplay items={items} onToggle={handleToggleCheck} />;
       }
       
