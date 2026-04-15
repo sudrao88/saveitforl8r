@@ -819,7 +819,10 @@ const AppContent: React.FC = () => {
     return undefined;
   }, [isCaptureOpen, quickNoteExpandState, shareData]);
 
-  const anyFullscreenOpen = !!editingMemory || isCaptureOpen || view === ViewMode.RECALL || !!liveExpandedMemory || isSettingsOpen || !!liveActiveMoment || showAllMoments || showCalendarAgenda || showTodoList || showDeletionCandidates || !!viewingGallery;
+  // Truly fullscreen views (opaque bg-black at z-overlay / z-modal) — QuickNoteBar must hide
+  const isFullscreenViewOpen = !!editingMemory || isCaptureOpen || view === ViewMode.RECALL;
+  // Any overlay (fullscreen OR sheet) — feed behind gets pointer-events-none + aria-hidden
+  const anyFullscreenOpen = isFullscreenViewOpen || !!liveExpandedMemory || isSettingsOpen || !!liveActiveMoment || showAllMoments || showCalendarAgenda || showTodoList || showDeletionCandidates || !!viewingGallery;
 
   // Freeze nullable values so content stays visible during exit animations.
   // When state becomes null (triggering AnimatedPresence exit), the frozen
@@ -936,14 +939,19 @@ const AppContent: React.FC = () => {
           )}
         </main>
 
-        {!anyFullscreenOpen && (
-          <QuickNoteBar
-            ref={quickNoteBarRef}
-            onSave={handleQuickNoteSave}
-            onExpand={handleQuickNoteExpand}
-          />
-        )}
       </div>
+
+      {/* QuickNoteBar — lives outside the feed div so it stays visible when
+          sheet overlays (moments, settings, calendar, etc.) slide in on top.
+          Hidden only for fullscreen views (editor/capture/recall) which use
+          opaque backgrounds at z-overlay, below the bar's z-modal. */}
+      {!isFullscreenViewOpen && (
+        <QuickNoteBar
+          ref={quickNoteBarRef}
+          onSave={handleQuickNoteSave}
+          onExpand={handleQuickNoteExpand}
+        />
+      )}
 
       {/* ─── Fullscreen view overlays (stacked, animated) ──────── */}
 
