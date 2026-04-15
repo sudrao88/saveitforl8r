@@ -936,11 +936,13 @@ const AppContent: React.FC = () => {
           )}
         </main>
 
-        <QuickNoteBar
-          ref={quickNoteBarRef}
-          onSave={handleQuickNoteSave}
-          onExpand={handleQuickNoteExpand}
-        />
+        {!anyFullscreenOpen && (
+          <QuickNoteBar
+            ref={quickNoteBarRef}
+            onSave={handleQuickNoteSave}
+            onExpand={handleQuickNoteExpand}
+          />
+        )}
       </div>
 
       {/* ─── Fullscreen view overlays (stacked, animated) ──────── */}
