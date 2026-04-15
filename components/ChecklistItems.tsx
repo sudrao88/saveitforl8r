@@ -114,13 +114,7 @@ export function canIndent(
   targetId: string,
 ): boolean {
   const idx = items.findIndex((i) => i.id === targetId);
-  if (idx <= 0) return false; // can't indent first item
-  if ((items[idx].indent ?? 0) === 1) return false; // already indented
-  // Must have a parent (indent=0) somewhere above
-  for (let i = idx - 1; i >= 0; i--) {
-    if ((items[i].indent ?? 0) === 0) return true;
-  }
-  return false;
+  return idx > 0 && (items[idx].indent ?? 0) === 0;
 }
 
 export function canOutdent(
@@ -130,6 +124,24 @@ export function canOutdent(
   const idx = items.findIndex((i) => i.id === targetId);
   if (idx === -1) return false;
   return (items[idx].indent ?? 0) === 1;
+}
+
+/** Indent an item (0→1) if valid. Returns unchanged array if not. */
+export function applyIndent(
+  items: ChecklistItemData[],
+  targetId: string,
+): ChecklistItemData[] {
+  if (!canIndent(items, targetId)) return items;
+  return items.map((i) => (i.id === targetId ? { ...i, indent: 1 } : i));
+}
+
+/** Outdent an item (1→0) if valid. Returns unchanged array if not. */
+export function applyOutdent(
+  items: ChecklistItemData[],
+  targetId: string,
+): ChecklistItemData[] {
+  if (!canOutdent(items, targetId)) return items;
+  return items.map((i) => (i.id === targetId ? { ...i, indent: 0 } : i));
 }
 
 // ─── Checkbox (shared between display and edit modes) ─────────
@@ -203,7 +215,7 @@ function DragHandle({
     (e: React.PointerEvent) => {
       startXRef.current = e.clientX;
       firedRef.current = false;
-      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     },
     [],
   );
@@ -228,6 +240,8 @@ function DragHandle({
       className={checklist.dragHandle}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
+      aria-label="Drag to indent or outdent"
+      role="button"
     >
       <GripVertical size={14} />
     </div>

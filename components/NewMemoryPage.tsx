@@ -13,7 +13,7 @@ import { processFileInputs, MAX_FILE_SIZE_BYTES, MAX_ATTACHMENTS } from '../util
 import FormattingToolbar from './FormattingToolbar';
 import TagInput from './TagInput';
 import { btn, overlay } from '../styles/design-system';
-import { ChecklistEditor, ChecklistItemData, serializeChecklistToHtml, parseChecklistFromHtml, cascadeToggle, canIndent, canOutdent } from './ChecklistItems';
+import { ChecklistEditor, ChecklistItemData, serializeChecklistToHtml, parseChecklistFromHtml, cascadeToggle, applyIndent, applyOutdent } from './ChecklistItems';
 import useBeforeInputMarkdown from '../hooks/useBeforeInputMarkdown';
 
 interface NewMemoryPageProps {
@@ -347,17 +347,11 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
   };
 
   const indentChecklistItem = (id: string) => {
-      setChecklistItems(prev => {
-          if (!canIndent(prev, id)) return prev;
-          return prev.map(i => i.id === id ? { ...i, indent: 1 } : i);
-      });
+      setChecklistItems(prev => applyIndent(prev, id));
   };
 
   const outdentChecklistItem = (id: string) => {
-      setChecklistItems(prev => {
-          if (!canOutdent(prev, id)) return prev;
-          return prev.map(i => i.id === id ? { ...i, indent: 0 } : i);
-      });
+      setChecklistItems(prev => applyOutdent(prev, id));
   };
 
   // Check if there are unsaved changes

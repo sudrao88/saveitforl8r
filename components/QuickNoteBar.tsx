@@ -10,7 +10,7 @@ import FormattingToolbar from './FormattingToolbar';
 import TagInput from './TagInput';
 import { btn, zIndex } from '../styles/design-system';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
-import { ChecklistEditor, ChecklistItemData, serializeChecklistToHtml, cascadeToggle, canIndent, canOutdent } from './ChecklistItems';
+import { ChecklistEditor, ChecklistItemData, serializeChecklistToHtml, cascadeToggle, applyIndent, applyOutdent } from './ChecklistItems';
 import useBeforeInputMarkdown from '../hooks/useBeforeInputMarkdown';
 
 // Configure marked for clean output
@@ -362,17 +362,11 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
   }, []);
 
   const indentChecklistItem = useCallback((id: string) => {
-    setChecklistItems(prev => {
-      if (!canIndent(prev, id)) return prev;
-      return prev.map(i => i.id === id ? { ...i, indent: 1 } : i);
-    });
+    setChecklistItems(prev => applyIndent(prev, id));
   }, []);
 
   const outdentChecklistItem = useCallback((id: string) => {
-    setChecklistItems(prev => {
-      if (!canOutdent(prev, id)) return prev;
-      return prev.map(i => i.id === id ? { ...i, indent: 0 } : i);
-    });
+    setChecklistItems(prev => applyOutdent(prev, id));
   }, []);
 
   // Focus the newly added checklist item

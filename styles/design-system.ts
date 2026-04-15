@@ -171,8 +171,6 @@ export const checklist = {
     'touch-none cursor-grab active:cursor-grabbing text-(--color-text-tertiary) hover:text-(--color-text-secondary) transition-colors p-0.5 shrink-0',
   addBtn:
     'flex items-center gap-1.5 text-(--color-text-tertiary) hover:text-(--color-accent) text-sm transition-colors py-1 active:text-(--color-accent)',
-  addSubBtn:
-    'flex items-center gap-1.5 text-(--color-text-tertiary) hover:text-(--color-accent) text-sm transition-colors py-1 active:text-(--color-accent) pl-8',
 } as const;
 
 // ─── Confirmation Dialog ────────────────────────────────────
