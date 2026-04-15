@@ -10,7 +10,7 @@ import FormattingToolbar from './FormattingToolbar';
 import TagInput from './TagInput';
 import { btn, zIndex } from '../styles/design-system';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
-import { ChecklistEditor } from './ChecklistItems';
+import { ChecklistEditor, ChecklistItemData, serializeChecklistToHtml, cascadeToggle, applyIndent, applyOutdent } from './ChecklistItems';
 import useBeforeInputMarkdown from '../hooks/useBeforeInputMarkdown';
 
 // Configure marked for clean output
@@ -28,11 +28,7 @@ export interface QuickNoteBarHandle {
   setContent: (text: string, attachments: Attachment[]) => void;
 }
 
-interface ChecklistItem {
-  id: string;
-  text: string;
-  checked: boolean;
-}
+// ChecklistItemData imported from ./ChecklistItems
 
 const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave, onExpand }, ref) => {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -44,7 +40,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
   const [isEmpty, setIsEmpty] = useState(true);
   const [activeFormats, setActiveFormats] = useState<string[]>([]);
   const [isChecklistMode, setIsChecklistMode] = useState(false);
-  const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([]);
+  const [checklistItems, setChecklistItems] = useState<ChecklistItemData[]>([]);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [rejectedFiles, setRejectedFiles] = useState<{ name: string; size: number }[]>([]);
 
@@ -158,7 +154,8 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
             setChecklistItems(parsedChecklist.map(item => ({
                 id: crypto.randomUUID(),
                 text: item.text,
-                checked: item.checked
+                checked: item.checked,
+                indent: (item as { indent?: number }).indent ?? 0,
             })));
             if (editorRef.current) editorRef.current.innerHTML = '';
             setIsChecklistMode(true);
@@ -235,10 +232,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
   const handleSave = useCallback(async () => {
     let content = '';
     if (isChecklistMode) {
-      const listItems = checklistItems.map(item =>
-        `<li data-checked="${item.checked}">${escapeHtml(item.text)}</li>`
-      ).join('');
-      content = `<ul class="checklist">${listItems}</ul>`;
+      content = serializeChecklistToHtml(checklistItems);
     } else {
       const rawContent = editorRef.current?.innerHTML || '';
       content = sanitizePastedHtml(rawContent);
@@ -269,10 +263,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
   const handleExpand = useCallback(() => {
     let content = '';
     if (isChecklistMode) {
-      const listItems = checklistItems.map(item =>
-        `<li data-checked="${item.checked}">${escapeHtml(item.text)}</li>`
-      ).join('');
-      content = `<ul class="checklist">${listItems}</ul>`;
+      content = serializeChecklistToHtml(checklistItems);
     } else {
       const rawContent = editorRef.current?.innerHTML || '';
       content = sanitizePastedHtml(rawContent);
@@ -350,7 +341,8 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
     focusItemIdRef.current = newId;
     setChecklistItems(prev => {
       const index = prev.findIndex(item => item.id === afterId);
-      const newItem = { id: newId, text: '', checked: false };
+      const inheritIndent = index !== -1 ? (prev[index].indent ?? 0) : 0;
+      const newItem: ChecklistItemData = { id: newId, text: '', checked: false, indent: inheritIndent };
       if (index === -1) return [...prev, newItem];
       const newItems = [...prev];
       newItems.splice(index + 1, 0, newItem);
@@ -366,7 +358,15 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
   }, []);
 
   const toggleChecklistItemChecked = useCallback((id: string) => {
-    setChecklistItems(prev => prev.map(i => i.id === id ? { ...i, checked: !i.checked } : i));
+    setChecklistItems(prev => cascadeToggle(prev, id));
+  }, []);
+
+  const indentChecklistItem = useCallback((id: string) => {
+    setChecklistItems(prev => applyIndent(prev, id));
+  }, []);
+
+  const outdentChecklistItem = useCallback((id: string) => {
+    setChecklistItems(prev => applyOutdent(prev, id));
   }, []);
 
   // Focus the newly added checklist item
@@ -462,6 +462,8 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
                 onUpdate={updateChecklistItem}
                 onAdd={addChecklistItem}
                 onRemove={removeChecklistItem}
+                onIndent={indentChecklistItem}
+                onOutdent={outdentChecklistItem}
                 onSave={handleSave}
                 dataIdAttr
               />

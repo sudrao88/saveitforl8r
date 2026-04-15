@@ -163,9 +163,12 @@ export const checklist = {
   checkboxUnchecked: 'border-(--color-border-default)',
   checkboxDot: 'w-2.5 h-2.5 bg-(--color-accent) rounded-(--radius-xs)',
   itemRow: 'flex items-center gap-3',
+  subItemRow: 'flex items-center gap-3 pl-8',
   itemText: 'text-sm transition-all',
   itemTextDefault: 'text-(--color-text-primary)',
   itemTextChecked: 'line-through text-(--color-text-tertiary)',
+  dragHandle:
+    'touch-none cursor-grab active:cursor-grabbing text-(--color-text-tertiary) hover:text-(--color-text-secondary) transition-colors p-0.5 shrink-0',
   addBtn:
     'flex items-center gap-1.5 text-(--color-text-tertiary) hover:text-(--color-accent) text-sm transition-colors py-1 active:text-(--color-accent)',
 } as const;
