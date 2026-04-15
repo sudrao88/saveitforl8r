@@ -76,3 +76,20 @@ export function useAnimatedUnmount(
 
   return { mounted, phase };
 }
+
+/**
+ * Retains the last non-null/non-undefined value so content stays visible
+ * during exit animations. When the source value becomes null (triggering
+ * AnimatedPresence exit), this hook returns the previous valid value,
+ * preventing content from vanishing mid-animation.
+ *
+ * Uses the "setState during render" pattern (React-approved) to avoid
+ * ref access during render.
+ */
+export function useFrozenValue<T>(value: T | null | undefined): T | null | undefined {
+  const [frozen, setFrozen] = useState(value);
+  if (value != null && value !== frozen) {
+    setFrozen(value);
+  }
+  return value != null ? value : frozen;
+}

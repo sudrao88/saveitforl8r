@@ -16,6 +16,7 @@ import GalleryViewer from './components/GalleryViewer';
 import { lazyWithRetry } from './utils/lazyWithRetry';
 import { btn, overlay } from './styles/design-system';
 import AnimatedPresence from './components/AnimatedPresence';
+import { useFrozenValue } from './hooks/useAnimatedUnmount';
 
 // Lazy-load heavy components that aren't needed on initial render.
 // lazyWithRetry clears stale SW caches and reloads if a chunk fails to import.
@@ -818,7 +819,16 @@ const AppContent: React.FC = () => {
     return undefined;
   }, [isCaptureOpen, quickNoteExpandState, shareData]);
 
-  const anyFullscreenOpen = !!editingMemory || isCaptureOpen || view === ViewMode.RECALL;
+  const anyFullscreenOpen = !!editingMemory || isCaptureOpen || view === ViewMode.RECALL || !!liveExpandedMemory || isSettingsOpen || !!liveActiveMoment || showAllMoments || showCalendarAgenda || showTodoList || showDeletionCandidates || !!viewingGallery;
+
+  // Freeze nullable values so content stays visible during exit animations.
+  // When state becomes null (triggering AnimatedPresence exit), the frozen
+  // value retains the last valid data so content doesn't vanish mid-animation.
+  const frozenEditingMemory = useFrozenValue(editingMemory);
+  const frozenExpandedMemory = useFrozenValue(liveExpandedMemory);
+  const frozenActiveMoment = useFrozenValue(liveActiveMoment);
+  const frozenViewingGallery = useFrozenValue(viewingGallery);
+  const frozenMomentError = useFrozenValue(momentError);
 
   return (
     <div className="min-h-screen bg-black flex flex-col">
@@ -950,7 +960,7 @@ const AppContent: React.FC = () => {
               onClose={handleEditClose}
               onCreate={handleCreateMemory}
               onUpdate={handleUpdateMemory}
-              editMemory={editingMemory!}
+              editMemory={frozenEditingMemory!}
             />
           </Suspense>
         </ErrorBoundary>
@@ -1000,17 +1010,6 @@ const AppContent: React.FC = () => {
         </ErrorBoundary>
       </AnimatedPresence>
 
-      {/* ─── MomentCreationDialog backdrop ──────────────────── */}
-      <AnimatedPresence
-        isOpen={showCreateMoment}
-        enterClassName={overlay.backdropEnter}
-        exitClassName={overlay.backdropExit}
-        duration={150}
-        className="fixed inset-0 z-(--z-overlay) bg-black/60 backdrop-blur-sm"
-      >
-        <span aria-hidden />
-      </AnimatedPresence>
-
       {/* ─── Overlay sheets (animated enter/exit) ──────────── */}
 
       <AnimatedPresence
@@ -1028,11 +1027,11 @@ const AppContent: React.FC = () => {
            </div>
            <Logo className="w-8 h-8 text-(--color-accent) opacity-50" />
         </div>
-        {liveExpandedMemory && (
+        {frozenExpandedMemory && (
           <div className="flex-1 overflow-y-auto p-4 sm:p-8">
              <div className="max-w-2xl mx-auto pb-20">
                 <MemoryCard
-                    memory={liveExpandedMemory}
+                    memory={frozenExpandedMemory}
                     onDelete={handleDeleteMemory}
                     onRetry={handleRetryMemory}
                     onUpdate={updateMemoryContent}
@@ -1042,9 +1041,9 @@ const AppContent: React.FC = () => {
                     isDialog={true}
                     isAuthenticated={authStatus === 'linked'}
                     onSignIn={login}
-                    syncStatus={syncStatusMap.get(liveExpandedMemory.id)}
+                    syncStatus={syncStatusMap.get(frozenExpandedMemory.id)}
                     onSyncRetry={retrySyncFile}
-                    uploadProgress={uploadProgressMap.get(liveExpandedMemory.id)}
+                    uploadProgress={uploadProgressMap.get(frozenExpandedMemory.id)}
                 />
              </div>
           </div>
@@ -1091,9 +1090,9 @@ const AppContent: React.FC = () => {
         exitClassName={overlay.sheetExit}
       >
         <Suspense fallback={null}>
-          {liveActiveMoment && (
+          {frozenActiveMoment && (
             <MomentSheet
-              moment={liveActiveMoment}
+              moment={frozenActiveMoment}
               memories={memories}
               onClose={handleMomentClose}
               loadSynthesis={loadSynthesis}
@@ -1234,10 +1233,10 @@ const AppContent: React.FC = () => {
           fallbackTitle="Gallery encountered an error"
           fallbackMessage="Something went wrong displaying media. Your data is safe — try reloading."
         >
-          {viewingGallery && (
+          {frozenViewingGallery && (
             <GalleryViewer
-              attachments={viewingGallery.attachments}
-              initialIndex={viewingGallery.currentIndex}
+              attachments={frozenViewingGallery.attachments}
+              initialIndex={frozenViewingGallery.currentIndex}
               onClose={() => setViewingGallery(null)}
             />
           )}
@@ -1250,7 +1249,7 @@ const AppContent: React.FC = () => {
         exitClassName={overlay.toastExit}
         className="fixed top-4 left-1/2 -translate-x-1/2 z-(--z-toast) bg-(--color-danger)/90 border border-(--color-danger)/50 text-(--color-text-primary) px-4 py-3 rounded-(--radius-xl) text-sm font-medium shadow-lg max-w-sm text-center backdrop-blur-md"
       >
-        {momentError}
+        {frozenMomentError}
       </AnimatedPresence>
 
       {isOtaDownloading && (
