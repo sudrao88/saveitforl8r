@@ -59,6 +59,9 @@ import { handleDeepLink } from './services/googleAuth';
 /** Must match --duration-sheet in index.css (used by overlay.sheetEnter / sheetExit). */
 const SHEET_DURATION = 600;
 
+/** Must match --duration-slow in index.css (used by overlay.viewEnter / viewExit / modalEnter / modalExit / backdropEnter / backdropExit). */
+const VIEW_DURATION = 400;
+
 const AppContent: React.FC = () => {
   const [view, setView] = useState<ViewMode>(ViewMode.FEED);
   const [isCaptureOpen, setIsCaptureOpen] = useState(false);
@@ -973,7 +976,8 @@ const AppContent: React.FC = () => {
         isOpen={!!editingMemory}
         enterClassName={overlay.viewEnter}
         exitClassName={overlay.viewExit}
-        duration={150}
+        duration={VIEW_DURATION}
+        className="fixed inset-0 z-(--z-overlay)"
       >
         <ErrorBoundary
           fallbackTitle="Memory editor encountered an error"
@@ -994,7 +998,8 @@ const AppContent: React.FC = () => {
         isOpen={isCaptureOpen}
         enterClassName={overlay.viewEnter}
         exitClassName={overlay.viewExit}
-        duration={150}
+        duration={VIEW_DURATION}
+        className="fixed inset-0 z-(--z-overlay)"
       >
         <ErrorBoundary
           fallbackTitle="Memory capture encountered an error"
@@ -1014,7 +1019,8 @@ const AppContent: React.FC = () => {
         isOpen={view === ViewMode.RECALL}
         enterClassName={overlay.viewEnter}
         exitClassName={overlay.viewExit}
-        duration={150}
+        duration={VIEW_DURATION}
+        className="fixed inset-0 z-(--z-modal)"
       >
         <ErrorBoundary
           fallbackTitle="Brain Search encountered an error"
@@ -1040,6 +1046,7 @@ const AppContent: React.FC = () => {
         isOpen={!!liveExpandedMemory}
         enterClassName={overlay.backdropEnter}
         exitClassName={overlay.backdropExit}
+        duration={VIEW_DURATION}
         className="fixed inset-0 z-(--z-sheet) bg-black/90 backdrop-blur-md flex flex-col"
       >
         <div className="sticky top-0 z-(--z-sticky) px-4 py-3 border-b border-(--color-border-default) flex items-center justify-between bg-(--color-surface-base)/50 backdrop-blur-xl pt-[var(--sat)]">
@@ -1078,6 +1085,8 @@ const AppContent: React.FC = () => {
         isOpen={isSettingsOpen}
         enterClassName={overlay.modalEnter}
         exitClassName={overlay.modalExit}
+        duration={VIEW_DURATION}
+        className="fixed inset-0 z-(--z-sheet)"
       >
         <Suspense fallback={null}>
           <SettingsModal
@@ -1113,6 +1122,7 @@ const AppContent: React.FC = () => {
         enterClassName={overlay.sheetEnter}
         exitClassName={overlay.sheetExit}
         duration={SHEET_DURATION}
+        className="fixed inset-0 z-(--z-sheet)"
       >
         <Suspense fallback={null}>
           {frozenActiveMoment && (
@@ -1146,6 +1156,7 @@ const AppContent: React.FC = () => {
         enterClassName={overlay.sheetEnter}
         exitClassName={overlay.sheetExit}
         duration={SHEET_DURATION}
+        className="fixed inset-0 z-(--z-sheet)"
       >
         <Suspense fallback={null}>
           <AllMomentsSheet
@@ -1161,6 +1172,7 @@ const AppContent: React.FC = () => {
         enterClassName={overlay.sheetEnter}
         exitClassName={overlay.sheetExit}
         duration={SHEET_DURATION}
+        className="fixed inset-0 z-(--z-sheet)"
       >
         <Suspense fallback={null}>
           <CalendarAgendaView
@@ -1180,6 +1192,7 @@ const AppContent: React.FC = () => {
         enterClassName={overlay.sheetEnter}
         exitClassName={overlay.sheetExit}
         duration={SHEET_DURATION}
+        className="fixed inset-0 z-(--z-sheet)"
       >
         <Suspense fallback={null}>
           <TodoListView
@@ -1230,6 +1243,7 @@ const AppContent: React.FC = () => {
         enterClassName={overlay.sheetEnter}
         exitClassName={overlay.sheetExit}
         duration={SHEET_DURATION}
+        className="fixed inset-0 z-(--z-sheet)"
       >
         <Suspense fallback={null}>
           <DeletionCandidatesSheet
