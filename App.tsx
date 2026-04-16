@@ -1020,7 +1020,7 @@ const AppContent: React.FC = () => {
         enterClassName={overlay.viewEnter}
         exitClassName={overlay.viewExit}
         duration={VIEW_DURATION}
-        className="fixed inset-0 z-(--z-overlay)"
+        className="fixed inset-0 z-(--z-modal)"
       >
         <ErrorBoundary
           fallbackTitle="Brain Search encountered an error"
@@ -1086,7 +1086,7 @@ const AppContent: React.FC = () => {
         enterClassName={overlay.modalEnter}
         exitClassName={overlay.modalExit}
         duration={VIEW_DURATION}
-        className="fixed inset-0 z-(--z-modal)"
+        className="fixed inset-0 z-(--z-sheet)"
       >
         <Suspense fallback={null}>
           <SettingsModal
