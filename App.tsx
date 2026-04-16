@@ -826,9 +826,9 @@ const AppContent: React.FC = () => {
   }, [isCaptureOpen, quickNoteExpandState, shareData]);
 
   // Truly fullscreen views (opaque bg-black at z-overlay / z-modal) — QuickNoteBar must hide
-  const isFullscreenViewOpen = !!editingMemory || isCaptureOpen || view === ViewMode.RECALL || !!viewingGallery;
+  const isFullscreenViewOpen = !!editingMemory || view === ViewMode.RECALL || !!viewingGallery;
   // Any overlay (fullscreen OR sheet) — feed behind gets pointer-events-none + aria-hidden
-  const anyOverlayOpen = isFullscreenViewOpen || !!liveExpandedMemory || isSettingsOpen || !!liveActiveMoment || showAllMoments || showCalendarAgenda || showTodoList || showDeletionCandidates;
+  const anyOverlayOpen = isFullscreenViewOpen || isCaptureOpen || !!liveExpandedMemory || isSettingsOpen || !!liveActiveMoment || showAllMoments || showCalendarAgenda || showTodoList || showDeletionCandidates;
 
   // Keep feed locked during sheet exit animations so background elements
   // don't become interactive/accessible while the sheet is still sliding out.
@@ -999,7 +999,7 @@ const AppContent: React.FC = () => {
         enterClassName={overlay.viewEnter}
         exitClassName={overlay.viewExit}
         duration={VIEW_DURATION}
-        className="fixed inset-0 z-(--z-overlay)"
+        className="fixed inset-0 z-(--z-sheet)"
       >
         <ErrorBoundary
           fallbackTitle="Memory capture encountered an error"
