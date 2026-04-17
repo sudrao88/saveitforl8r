@@ -69,6 +69,12 @@ export function useKeyboardHeight(options?: {
     const vv = window.visualViewport;
     if (!vv) return;
 
+    // The global --kb-inset is only driven by the default calculation
+    // (offsetTop excluded). Consumers that pass includeOffsetTop use a
+    // different formula (vv.offsetTop-adjusted) and should not fight for the
+    // same global variable during mount overlaps with other consumers.
+    const ownsKbInsetVar = !options?.includeOffsetTop;
+
     let rafId = 0;
     const update = () => {
       const offset = options?.includeOffsetTop ? vv.offsetTop : 0;
@@ -78,7 +84,9 @@ export function useKeyboardHeight(options?: {
       // Update the CSS variable synchronously on every resize event so
       // padding-bottom tracks the viewport continuously as the keyboard
       // animates up/down. No CSS transition is needed on this path.
-      setKbInsetVar(newHeight);
+      if (ownsKbInsetVar) {
+        setKbInsetVar(newHeight);
+      }
 
       // React state drives conditional rendering (e.g. sticky vs. fixed
       // positioning) and the onHide callback. Debounce via rAF so we don't
