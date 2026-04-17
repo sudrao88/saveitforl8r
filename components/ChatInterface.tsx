@@ -170,9 +170,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
   const previewMemory = memories.find(m => m.id === previewMemoryId);
 
   return (
-    <>
-    <div className="fixed inset-0 z-(--z-modal) bg-black" aria-hidden="true" style={{ touchAction: 'none' }} />
-
     <div className="fixed inset-0 z-(--z-modal) flex flex-col overflow-hidden bg-black">
       {/* Header */}
       <div className="flex-none border-b border-(--color-border-default) px-4 pb-3 pt-[calc(0.75rem+var(--sat))] flex items-center justify-between bg-black z-(--z-sticky) shadow-sm shrink-0">
@@ -268,9 +265,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
 
       {/* Input Area */}
       <div
-        className="flex-none w-full bg-black shrink-0 z-(--z-dropdown) transition-[padding-bottom] duration-(--duration-keyboard) ease-(--ease-keyboard)"
+        className={`flex-none w-full bg-black shrink-0 z-(--z-dropdown)${isNative() ? ' transition-[padding-bottom] duration-(--duration-keyboard) ease-(--ease-keyboard)' : ''}`}
         style={{
-            paddingBottom: keyboardHeight > 0 ? `${keyboardHeight}px` : 'max(1rem, var(--sab))',
+            paddingBottom: keyboardHeight > 0 ? `calc(${keyboardHeight}px + 0.5rem)` : 'max(1rem, var(--sab))',
             paddingTop: '1rem',
             paddingLeft: '1rem',
             paddingRight: '1rem',
@@ -311,7 +308,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
           />
       )}
     </div>
-    </>
   );
 };
 
