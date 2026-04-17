@@ -1,26 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { isNative } from '../services/platform';
 import { Keyboard } from '@capacitor/keyboard';
 import { Capacitor } from '@capacitor/core';
 
-/**
- * Track virtual keyboard height across native and PWA.
- *
- * iOS native: uses Capacitor Keyboard plugin events (visualViewport is unreliable in WKWebView).
- * Android native: returns 0 — the Capacitor config uses KeyboardResize.Native (adjustResize)
- *   so the viewport shrinks automatically and sticky/fixed bottom-0 just works. Capacitor events
- *   are still used to fire the onShow callback.
- * PWA/browser: falls back to the visualViewport API, skipping the initial measurement to avoid
- *   false-positive keyboard height during app startup in standalone mode.
- *
- * @param options.includeOffsetTop - Include vv.offsetTop in PWA calculation (for iOS Safari address bar)
- * @param options.onShow - Callback when keyboard appears
- */
 export function useKeyboardHeight(options?: {
   includeOffsetTop?: boolean;
   onShow?: () => void;
+  onHide?: () => void;
 }): number {
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const prevHeightRef = useRef(0);
 
   useEffect(() => {
     if (isNative()) {
@@ -35,7 +24,7 @@ export function useKeyboardHeight(options?: {
           options?.onShow?.();
         });
         const hideHandle = Keyboard.addListener('keyboardDidHide', () => {
-          // noop — viewport resize handles positioning
+          options?.onHide?.();
         });
         return () => {
           showHandle.then(h => h.remove()).catch(() => {});
@@ -50,6 +39,7 @@ export function useKeyboardHeight(options?: {
       });
       const hideHandle = Keyboard.addListener('keyboardWillHide', () => {
         setKeyboardHeight(0);
+        options?.onHide?.();
       });
       return () => {
         showHandle.then(h => h.remove()).catch(() => {});
@@ -70,7 +60,12 @@ export function useKeyboardHeight(options?: {
       rafId = requestAnimationFrame(() => {
         const offset = options?.includeOffsetTop ? vv.offsetTop : 0;
         const kbHeight = window.innerHeight - vv.height - offset;
-        setKeyboardHeight(kbHeight > 0 ? kbHeight : 0);
+        const newHeight = kbHeight > 0 ? kbHeight : 0;
+        if (prevHeightRef.current > 0 && newHeight === 0) {
+          options?.onHide?.();
+        }
+        prevHeightRef.current = newHeight;
+        setKeyboardHeight(newHeight);
       });
     };
 
