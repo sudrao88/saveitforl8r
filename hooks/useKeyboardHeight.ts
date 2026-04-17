@@ -3,6 +3,19 @@ import { isNative } from '../services/platform';
 import { Keyboard } from '@capacitor/keyboard';
 import { Capacitor } from '@capacitor/core';
 
+// Global CSS variable that mirrors the current keyboard inset in pixels.
+// Components apply `padding-bottom: var(--kb-inset, 0px)` (or a max/calc on it)
+// so they track the visual viewport in real time without waiting for a React
+// re-render. This eliminates the flicker where a bottom bar briefly hides
+// behind the keyboard before a transition catches up.
+const KB_INSET_VAR = '--kb-inset';
+
+function setKbInsetVar(px: number): void {
+  if (typeof document !== 'undefined') {
+    document.documentElement.style.setProperty(KB_INSET_VAR, `${px}px`);
+  }
+}
+
 export function useKeyboardHeight(options?: {
   includeOffsetTop?: boolean;
   onShow?: () => void;
@@ -35,10 +48,12 @@ export function useKeyboardHeight(options?: {
       // iOS: Capacitor keyboard events are reliable in WKWebView
       const showHandle = Keyboard.addListener('keyboardWillShow', (info) => {
         setKeyboardHeight(info.keyboardHeight);
+        setKbInsetVar(info.keyboardHeight);
         options?.onShow?.();
       });
       const hideHandle = Keyboard.addListener('keyboardWillHide', () => {
         setKeyboardHeight(0);
+        setKbInsetVar(0);
         options?.onHide?.();
       });
       return () => {
@@ -56,11 +71,20 @@ export function useKeyboardHeight(options?: {
 
     let rafId = 0;
     const update = () => {
+      const offset = options?.includeOffsetTop ? vv.offsetTop : 0;
+      const kbHeight = window.innerHeight - vv.height - offset;
+      const newHeight = kbHeight > 0 ? kbHeight : 0;
+
+      // Update the CSS variable synchronously on every resize event so
+      // padding-bottom tracks the viewport continuously as the keyboard
+      // animates up/down. No CSS transition is needed on this path.
+      setKbInsetVar(newHeight);
+
+      // React state drives conditional rendering (e.g. sticky vs. fixed
+      // positioning) and the onHide callback. Debounce via rAF so we don't
+      // re-render on every viewport resize event.
       cancelAnimationFrame(rafId);
       rafId = requestAnimationFrame(() => {
-        const offset = options?.includeOffsetTop ? vv.offsetTop : 0;
-        const kbHeight = window.innerHeight - vv.height - offset;
-        const newHeight = kbHeight > 0 ? kbHeight : 0;
         if (prevHeightRef.current > 0 && newHeight === 0) {
           options?.onHide?.();
         }
