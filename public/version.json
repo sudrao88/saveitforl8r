@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v72",
-  "buildNumber": 72,
-  "buildDate": "2026-04-16T01:13:49.181Z",
+  "version": "saveitforl8r-v73",
+  "buildNumber": 73,
+  "buildDate": "2026-04-17T00:40:00.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Fix screen transitions to slide up from bottom"
+  "changelog": "Smooth keyboard transitions for New Memory and Brain Search"
 }

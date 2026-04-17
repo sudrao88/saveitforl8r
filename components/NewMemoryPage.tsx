@@ -8,6 +8,7 @@ import { isNative } from '../services/platform';
 import { Keyboard } from '@capacitor/keyboard';
 import { Geolocation } from '@capacitor/geolocation';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
+import { useDeferredAutoFocus } from '../hooks/useDeferredAutoFocus';
 import { escapeHtml, looksLikeMarkdown, parseChecklistMarkdown, sanitizePastedHtml, hasRichFormatting, extractHashtags, mergeTagsWithHashtags, containsUrl, linkifyUrls, handleEditorKeyDown, checkActiveFormats, execFormatCommand, formatsEqual, isEditorEmpty } from '../utils/editorUtils';
 import { processFileInputs, MAX_FILE_SIZE_BYTES, MAX_ATTACHMENTS } from '../utils/attachmentUtils';
 import FormattingToolbar from './FormattingToolbar';
@@ -145,14 +146,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
     }
   }, [isChecklistMode, initialContent, editMemory]);
 
-  // Focus editor on mount
-  useEffect(() => {
-    if (!isChecklistMode && editorRef.current) {
-        setTimeout(() => {
-            editorRef.current?.focus();
-        }, 100);
-    }
-  }, [isChecklistMode]);
+  useDeferredAutoFocus(editorRef, { enabled: !isChecklistMode });
 
   const handlePaste = (e: React.ClipboardEvent) => {
     const clipboardData = e.clipboardData;
@@ -564,7 +558,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
 
         {/* Sticky bottom card */}
         <div
-          className="shrink-0 px-3 pt-1 max-w-3xl mx-auto w-full transition-[padding-bottom] duration-(--duration-fast)"
+          className="shrink-0 px-3 pt-1 max-w-3xl mx-auto w-full transition-[padding-bottom] duration-(--duration-keyboard) ease-(--ease-keyboard)"
           style={{ paddingBottom: keyboardHeight > 0 ? `${keyboardHeight}px` : 'max(0.75rem, var(--sab))' }}
         >
           <div className="bg-(--color-surface-overlay)/95 backdrop-blur-xl border border-(--color-border-default)/50 rounded-(--radius-xl) shadow-2xl shadow-black/40">

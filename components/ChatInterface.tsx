@@ -6,6 +6,7 @@ import MemoryPreviewModal from './MemoryPreviewModal';
 import { btn, overlay } from '../styles/design-system';
 import { isNative } from '../services/platform';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
+import { useDeferredAutoFocus } from '../hooks/useDeferredAutoFocus';
 
 interface ChatInterfaceProps {
   memories: Memory[];
@@ -53,16 +54,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
     onShow: () => setTimeout(scrollToBottom, 100),
   });
 
+  useDeferredAutoFocus(textareaRef);
+
   useEffect(() => {
     // Lock body scroll
     const originalStyle = window.getComputedStyle(document.body).overflow;
     document.body.style.overflow = 'hidden';
-
-    if (isNative()) {
-      // Focus after a tick so the keyboard listener in useKeyboardHeight
-      // is registered before the keyboard opens
-      setTimeout(() => textareaRef.current?.focus(), 100);
-    }
 
     if (!isNative() && window.visualViewport) {
       const handleResize = () => {
@@ -193,7 +190,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
         className="fixed left-0 right-0 z-(--z-modal) flex flex-col overflow-hidden bg-black"
         style={{
           height: keyboardHeight > 0 ? `calc(100dvh - ${keyboardHeight}px)` : viewport.height,
-          top: viewport.top
+          top: viewport.top,
+          transition: isNative() ? 'height var(--duration-keyboard) var(--ease-keyboard)' : undefined,
         }}
     >
       {/* Header */}
@@ -295,13 +293,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
             paddingBottom: keyboardHeight > 0 ? '0.5rem' : 'max(1rem, var(--sab))',
             paddingTop: '1rem',
             paddingLeft: '1rem',
-            paddingRight: '1rem'
+            paddingRight: '1rem',
+            transition: isNative() ? 'padding-bottom var(--duration-keyboard) var(--ease-keyboard)' : undefined,
         }}
       >
         <div className="max-w-4xl mx-auto flex items-end gap-3 bg-(--color-surface-raised) px-4 py-2 rounded-(--radius-xl) border border-(--color-border-default) focus-within:border-(--color-accent) focus-within:ring-1 focus-within:ring-(--color-accent) transition-all shadow-sm">
             <textarea
                 ref={textareaRef}
-                autoFocus={!isNative()}
                 rows={1}
                 className="w-full text-base font-medium focus:outline-none bg-transparent placeholder-(--color-text-tertiary) border-none text-(--color-text-primary) py-2 resize-none max-h-32"
                 placeholder="Ask your second brain..."
