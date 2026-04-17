@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v75",
-  "buildNumber": 75,
-  "buildDate": "2026-04-17T07:00:00.000Z",
+  "version": "saveitforl8r-v76",
+  "buildNumber": 76,
+  "buildDate": "2026-04-17T19:30:00.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Prevent iOS WebView auto-scroll from dragging Brain Search when keyboard opens"
+  "changelog": "Smooth format bar and chat input transitions when keyboard opens on PWA"
 }

@@ -51,7 +51,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
     }
   };
 
-  const keyboardHeight = useKeyboardHeight({
+  // Hook drives the global --kb-inset CSS variable used by the input area
+  // below and fires onShow so we can scroll to the latest message on native.
+  useKeyboardHeight({
     onShow: () => setTimeout(scrollToBottom, 100),
   });
 
@@ -300,7 +302,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
       <div
         className={`flex-none w-full bg-black shrink-0 z-(--z-dropdown)${isNative() ? ' transition-[padding-bottom] duration-(--duration-keyboard) ease-(--ease-keyboard)' : ''}`}
         style={{
-            paddingBottom: keyboardHeight > 0 ? `calc(${keyboardHeight}px + 0.5rem)` : 'max(1rem, var(--sab))',
+            paddingBottom: 'max(calc(var(--kb-inset, 0px) + 0.5rem), 1rem, var(--sab))',
             paddingTop: '1rem',
             paddingLeft: '1rem',
             paddingRight: '1rem',
