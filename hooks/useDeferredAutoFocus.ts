@@ -20,5 +20,5 @@ export function useDeferredAutoFocus(
     const ms = prefersReducedMotion() ? REDUCED_MOTION_DELAY : delay;
     const timer = setTimeout(() => ref.current?.focus(), ms);
     return () => clearTimeout(timer);
-  }, [enabled]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [enabled, delay, ref]);
 }

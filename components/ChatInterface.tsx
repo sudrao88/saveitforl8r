@@ -191,7 +191,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
         style={{
           height: keyboardHeight > 0 ? `calc(100dvh - ${keyboardHeight}px)` : viewport.height,
           top: viewport.top,
-          transition: 'height var(--duration-keyboard) var(--ease-keyboard)',
+          transition: isNative() ? 'height var(--duration-keyboard) var(--ease-keyboard)' : undefined,
         }}
     >
       {/* Header */}
@@ -294,7 +294,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
             paddingTop: '1rem',
             paddingLeft: '1rem',
             paddingRight: '1rem',
-            transition: 'padding-bottom var(--duration-keyboard) var(--ease-keyboard)',
+            transition: isNative() ? 'padding-bottom var(--duration-keyboard) var(--ease-keyboard)' : undefined,
         }}
       >
         <div className="max-w-4xl mx-auto flex items-end gap-3 bg-(--color-surface-raised) px-4 py-2 rounded-(--radius-xl) border border-(--color-border-default) focus-within:border-(--color-accent) focus-within:ring-1 focus-within:ring-(--color-accent) transition-all shadow-sm">
