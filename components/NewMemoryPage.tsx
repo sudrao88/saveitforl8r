@@ -490,7 +490,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
     : 'You have unsaved content. If you leave now, this memory will be lost.';
 
   return (
-    <div className="fixed inset-0 bg-black flex flex-col z-(--z-overlay)" dir="ltr">
+    <div className="fixed inset-0 bg-black flex flex-col z-(--z-sheet)" dir="ltr">
         {/* Header */}
         <div className="shrink-0 bg-(--color-surface-base)/90 backdrop-blur-md border-b border-(--color-border-default) px-4 py-3 flex items-center justify-between pt-[calc(var(--sat)+12px)]">
             <div className="flex items-center gap-3">
