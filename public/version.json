@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v74",
-  "buildNumber": 74,
-  "buildDate": "2026-04-17T05:00:00.000Z",
+  "version": "saveitforl8r-v75",
+  "buildNumber": 75,
+  "buildDate": "2026-04-17T07:00:00.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Fix Brain Search sheet re-animating when iOS keyboard appears"
+  "changelog": "Prevent iOS WebView auto-scroll from dragging Brain Search when keyboard opens"
 }
