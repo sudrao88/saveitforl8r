@@ -463,6 +463,9 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
     handleCloseConfirmed();
   };
 
+  // Intercept Android native back so it triggers discard confirmation, matching the on-screen back button
+  useBackButton(handleClose, !showDiscardConfirm);
+
   // Keyboard shortcut: ⌘+Enter or Ctrl+Enter to save
   const handleSubmitRef = useRef(handleSubmit);
   useEffect(() => { handleSubmitRef.current = handleSubmit; });

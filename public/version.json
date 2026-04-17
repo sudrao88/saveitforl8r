@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v76",
-  "buildNumber": 76,
+  "version": "saveitforl8r-v77",
+  "buildNumber": 77,
   "buildDate": "2026-04-17T19:30:00.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Smooth format bar and chat input transitions when keyboard opens on PWA"
+  "changelog": "Native back button on new memory screen now prompts to discard unsaved changes"
 }
