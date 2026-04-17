@@ -1,6 +1,6 @@
 {
-  "version": "saveitforl8r-v75",
-  "buildNumber": 75,
+  "version": "saveitforl8r-v76",
+  "buildNumber": 76,
   "buildDate": "2026-04-17T19:30:00.000Z",
   "minNativeVersion": "1.0.0",
   "changelog": "Smooth format bar and chat input transitions when keyboard opens on PWA"

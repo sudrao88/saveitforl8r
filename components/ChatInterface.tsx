@@ -7,6 +7,8 @@ import { btn, overlay } from '../styles/design-system';
 import { isNative } from '../services/platform';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { useDeferredAutoFocus } from '../hooks/useDeferredAutoFocus';
+import { Keyboard } from '@capacitor/keyboard';
+import { Capacitor } from '@capacitor/core';
 
 interface ChatInterfaceProps {
   memories: Memory[];
@@ -58,21 +60,52 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
   useDeferredAutoFocus(textareaRef);
 
   useEffect(() => {
-    const originalStyle = window.getComputedStyle(document.body).overflow;
-    document.body.style.overflow = 'hidden';
+    const html = document.documentElement;
+    const body = document.body;
+    const prev = {
+      htmlOverflow: html.style.overflow,
+      bodyOverflow: body.style.overflow,
+      bodyPosition: body.style.position,
+      bodyWidth: body.style.width,
+      bodyTop: body.style.top,
+      bodyLeft: body.style.left,
+      bodyRight: body.style.right,
+    };
+    const isIOS = isNative() && Capacitor.getPlatform() === 'ios';
+    const scrollY = window.scrollY;
+
+    html.style.overflow = 'hidden';
+    body.style.overflow = 'hidden';
+    if (isIOS) {
+      // Pin the document so iOS cannot scroll the WKWebView when the
+      // keyboard opens (the default "scroll focused input into view"
+      // behavior otherwise drags fixed elements upward with the content).
+      body.style.position = 'fixed';
+      body.style.width = '100%';
+      body.style.top = `-${scrollY}px`;
+      body.style.left = '0';
+      body.style.right = '0';
+      Keyboard.setScroll({ isDisabled: true }).catch(() => {});
+    }
     setTimeout(scrollToBottom, 100);
 
-    if (!isNative() && window.visualViewport) {
-      const handleResize = () => setTimeout(scrollToBottom, 100);
-      window.visualViewport.addEventListener('resize', handleResize);
-      return () => {
-        document.body.style.overflow = originalStyle;
-        window.visualViewport?.removeEventListener('resize', handleResize);
-      };
-    }
+    const vv = !isNative() ? window.visualViewport : null;
+    const handleResize = () => setTimeout(scrollToBottom, 100);
+    vv?.addEventListener('resize', handleResize);
 
     return () => {
-      document.body.style.overflow = originalStyle;
+      html.style.overflow = prev.htmlOverflow;
+      body.style.overflow = prev.bodyOverflow;
+      if (isIOS) {
+        body.style.position = prev.bodyPosition;
+        body.style.width = prev.bodyWidth;
+        body.style.top = prev.bodyTop;
+        body.style.left = prev.bodyLeft;
+        body.style.right = prev.bodyRight;
+        window.scrollTo(0, scrollY);
+        Keyboard.setScroll({ isDisabled: false }).catch(() => {});
+      }
+      vv?.removeEventListener('resize', handleResize);
     };
   }, []);
 
