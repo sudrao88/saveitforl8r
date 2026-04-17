@@ -42,7 +42,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const [viewport, setViewport] = useState({ height: '100dvh', top: 0 });
 
   const scrollToBottom = () => {
     if (messagesEndRef.current) {
@@ -57,30 +56,18 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
   useDeferredAutoFocus(textareaRef);
 
   useEffect(() => {
-    // Lock body scroll
     const originalStyle = window.getComputedStyle(document.body).overflow;
     document.body.style.overflow = 'hidden';
+    setTimeout(scrollToBottom, 100);
 
     if (!isNative() && window.visualViewport) {
-      const handleResize = () => {
-        setViewport({
-          height: `${window.visualViewport!.height}px`,
-          top: window.visualViewport!.offsetTop
-        });
-        setTimeout(scrollToBottom, 100);
-      };
+      const handleResize = () => setTimeout(scrollToBottom, 100);
       window.visualViewport.addEventListener('resize', handleResize);
-      window.visualViewport.addEventListener('scroll', handleResize);
-      handleResize();
-
       return () => {
         document.body.style.overflow = originalStyle;
         window.visualViewport?.removeEventListener('resize', handleResize);
-        window.visualViewport?.removeEventListener('scroll', handleResize);
       };
     }
-
-    setTimeout(scrollToBottom, 100);
 
     return () => {
       document.body.style.overflow = originalStyle;
@@ -183,17 +170,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
   const previewMemory = memories.find(m => m.id === previewMemoryId);
 
   return (
-    <>
-    <div className="fixed inset-0 z-(--z-modal) bg-black" aria-hidden="true" style={{ height: '100vh', touchAction: 'none' }} />
-
-    <div
-        className="fixed left-0 right-0 z-(--z-modal) flex flex-col overflow-hidden bg-black"
-        style={{
-          height: keyboardHeight > 0 ? `calc(100dvh - ${keyboardHeight}px)` : viewport.height,
-          top: viewport.top,
-          transition: isNative() ? 'height var(--duration-keyboard) var(--ease-keyboard)' : undefined,
-        }}
-    >
+    <div className="fixed inset-0 z-(--z-modal) flex flex-col overflow-hidden bg-black">
       {/* Header */}
       <div className="flex-none border-b border-(--color-border-default) px-4 pb-3 pt-[calc(0.75rem+var(--sat))] flex items-center justify-between bg-black z-(--z-sticky) shadow-sm shrink-0">
         <div className="flex items-center gap-2">
@@ -288,13 +265,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
 
       {/* Input Area */}
       <div
-        className="flex-none w-full bg-black shrink-0 z-(--z-dropdown)"
+        className={`flex-none w-full bg-black shrink-0 z-(--z-dropdown)${isNative() ? ' transition-[padding-bottom] duration-(--duration-keyboard) ease-(--ease-keyboard)' : ''}`}
         style={{
-            paddingBottom: keyboardHeight > 0 ? '0.5rem' : 'max(1rem, var(--sab))',
+            paddingBottom: keyboardHeight > 0 ? `calc(${keyboardHeight}px + 0.5rem)` : 'max(1rem, var(--sab))',
             paddingTop: '1rem',
             paddingLeft: '1rem',
             paddingRight: '1rem',
-            transition: isNative() ? 'padding-bottom var(--duration-keyboard) var(--ease-keyboard)' : undefined,
         }}
       >
         <div className="max-w-4xl mx-auto flex items-end gap-3 bg-(--color-surface-raised) px-4 py-2 rounded-(--radius-xl) border border-(--color-border-default) focus-within:border-(--color-accent) focus-within:ring-1 focus-within:ring-(--color-accent) transition-all shadow-sm">
@@ -332,7 +308,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
           />
       )}
     </div>
-    </>
   );
 };
 
