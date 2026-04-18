@@ -14,7 +14,7 @@ import { processFileInputs, MAX_FILE_SIZE_BYTES, MAX_ATTACHMENTS } from '../util
 import FormattingToolbar from './FormattingToolbar';
 import TagInput from './TagInput';
 import { btn, overlay } from '../styles/design-system';
-import { ChecklistEditor, ChecklistItemData, serializeChecklistToHtml, parseChecklistFromHtml, cascadeToggle, applyIndent, applyOutdent } from './ChecklistItems';
+import { ChecklistEditor, ChecklistItemData, serializeChecklistToHtml, parseChecklistFromHtml, cascadeToggle, applyIndent, applyOutdent, applyMove } from './ChecklistItems';
 import useBeforeInputMarkdown from '../hooks/useBeforeInputMarkdown';
 
 interface NewMemoryPageProps {
@@ -350,6 +350,10 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
       setChecklistItems(prev => applyOutdent(prev, id));
   };
 
+  const moveChecklistItem = (id: string, direction: 'up' | 'down') => {
+      setChecklistItems(prev => applyMove(prev, id, direction));
+  };
+
   // Check if there are unsaved changes
   const hasChanges = useCallback((): boolean => {
     // Get current content
@@ -529,6 +533,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
                         onRemove={removeChecklistItem}
                         onIndent={indentChecklistItem}
                         onOutdent={outdentChecklistItem}
+                        onMove={moveChecklistItem}
                         autoFocusLast
                     />
                 ) : (
