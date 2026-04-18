@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v78",
-  "buildNumber": 78,
+  "version": "saveitforl8r-v79",
+  "buildNumber": 79,
   "buildDate": "2026-04-18T05:13:52.959Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Internal cleanup pass: server correctness fixes, polling hook unmount safety, diagnostic logs on factory reset, and debug log removal"
+  "changelog": "Checklist improvements: backspace on an empty item now focuses the previous item, arrow keys navigate between items, and the drag handle now supports vertical drag to reorder alongside the existing sideways swipe to indent. Cmd/Ctrl+\\\\ in the rich text editor clears inline formatting."
 }
