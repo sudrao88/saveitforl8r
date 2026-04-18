@@ -126,19 +126,30 @@ const attachOgPreviews = async (ogImagePromise, sanitized, requestId) => {
 export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GEMINI_TIMEOUT_MS, ENRICHMENT_COLLECTION, ENRICHMENT_TTL_MS, ENRICHMENT_FAILED_TTL_MS, aiLimiter }) => {
   const router = Router();
 
-  const persistEnrichmentResult = (memoryId, userId, status, result) => {
+  const persistEnrichmentResult = async (memoryId, userId, status, result) => {
     if (!db || !memoryId) return;
-    const doc = {
-      userId,
-      status,
-      createdAt: Date.now(),
-      expireAt: new Date(Date.now() + (status === 'completed' ? ENRICHMENT_TTL_MS : ENRICHMENT_FAILED_TTL_MS)),
-    };
-    if (result) doc.result = result;
-    db.collection(ENRICHMENT_COLLECTION)
-      .doc(memoryId)
-      .set(doc)
-      .catch((err) => console.error(`[Firestore] Failed to persist result for ${memoryId}:`, err.message));
+
+    const docRef = db.collection(ENRICHMENT_COLLECTION).doc(memoryId);
+
+    try {
+      // Verify ownership: only allow overwrite if doc doesn't exist or belongs to this user
+      const existing = await docRef.get();
+      if (existing.exists && existing.data().userId !== userId) {
+        console.warn(`[Firestore] Ownership mismatch for enrichment ${memoryId}: requested by ${userId}, owned by ${existing.data().userId}`);
+        return;
+      }
+
+      const doc = {
+        userId,
+        status,
+        createdAt: Date.now(),
+        expireAt: new Date(Date.now() + (status === 'completed' ? ENRICHMENT_TTL_MS : ENRICHMENT_FAILED_TTL_MS)),
+      };
+      if (result) doc.result = result;
+      await docRef.set(doc);
+    } catch (err) {
+      console.error(`[Firestore] Failed to persist result for ${memoryId}:`, err.message);
+    }
   };
 
   const enrichLimiter = rateLimit({
