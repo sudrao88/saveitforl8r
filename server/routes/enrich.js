@@ -368,8 +368,7 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
             }
           }
 
-          persistEnrichmentResult(memoryId, req.userId, 'completed', sanitized)
-            .catch((err) => console.error(`[Firestore] Failed to persist result for ${memoryId}:`, err.message));
+          persistEnrichmentResult(memoryId, req.userId, 'completed', sanitized);
 
           // Schedule a delayed silent push (30s grace period)
           // If the client polls and retrieves the result within 30s, the push is unnecessary
@@ -430,8 +429,7 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
             }
           }
 
-          persistEnrichmentResult(memoryId, req.userId, 'completed', sanitizedFallback)
-            .catch((err) => console.error(`[Firestore] Failed to persist result for ${memoryId}:`, err.message));
+          persistEnrichmentResult(memoryId, req.userId, 'completed', sanitizedFallback);
 
           // Schedule a delayed silent push (30s grace period)
           setTimeout(async () => {
@@ -446,8 +444,7 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
           }, 30_000);
         } catch (fallbackError) {
           console.error(`[Enrich] [${req.requestId}] Fallback also failed:`, fallbackError.message);
-          persistEnrichmentResult(memoryId, req.userId, 'failed', null)
-            .catch((err) => console.error(`[Firestore] Failed to persist result for ${memoryId}:`, err.message));
+          persistEnrichmentResult(memoryId, req.userId, 'failed', null);
         }
       } finally {
         // Clean up any files uploaded via Gemini File API (best-effort)
