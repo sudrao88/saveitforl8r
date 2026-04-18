@@ -126,8 +126,18 @@ export const useMomentCreationPolling = ({
   onMomentCreated,
 }: UseMomentCreationPollingOptions) => {
   const pollingActiveRef = useRef(false);
+  const isMountedRef = useRef(true);
 
-  useEffect(() => () => { pollingActiveRef.current = false; }, []);
+  // Use a ref to avoid stale closures in the polling loop.
+  // Without this, if onMomentCreated is recreated, the already-running
+  // setTimeout chain captures the old callback.
+  const onMomentCreatedRef = useRef(onMomentCreated);
+  onMomentCreatedRef.current = onMomentCreated;
+
+  useEffect(() => () => {
+    isMountedRef.current = false;
+    pollingActiveRef.current = false;
+  }, []);
 
   const startPolling = useCallback(() => {
     if (pollingActiveRef.current) return;
@@ -147,15 +157,17 @@ export const useMomentCreationPolling = ({
       try {
         const ids = pending.map(m => m.id);
         const results = await fetchPendingMomentResults(ids);
+        if (!isMountedRef.current) return;
 
         for (const moment of pending) {
           const outcome = await applyMomentResult(
             moment, results[moment.id], memoriesRef, setSynthesesMap
           );
+          if (!isMountedRef.current) return;
           if (outcome) {
             setMoments(prev => prev.map(m => m.id === moment.id ? outcome.updated : m));
             if (outcome.action === 'completed') {
-              onMomentCreated?.(outcome.updated);
+              onMomentCreatedRef.current?.(outcome.updated);
             }
           }
         }
@@ -175,13 +187,14 @@ export const useMomentCreationPolling = ({
     };
 
     setTimeout(poll, FAST_POLL_INTERVAL_MS);
-  }, [momentsRef, memoriesRef, setMoments, setSynthesesMap, onMomentCreated]);
+  }, [momentsRef, memoriesRef, setMoments, setSynthesesMap]);
 
   const recoverPending = useCallback(async (pendingMoments: Moment[]) => {
     if (pendingMoments.length === 0) return;
     try {
       const ids = pendingMoments.map(m => m.id);
       const results = await fetchPendingMomentResults(ids);
+      if (!isMountedRef.current) return;
 
       for (const moment of pendingMoments) {
         const result = results[moment.id];
@@ -193,17 +206,18 @@ export const useMomentCreationPolling = ({
         const outcome = await applyMomentResult(
           moment, result, memoriesRef, setSynthesesMap
         );
+        if (!isMountedRef.current) return;
         if (outcome) {
           setMoments(prev => prev.map(m => m.id === moment.id ? outcome.updated : m));
           if (outcome.action === 'completed') {
-            onMomentCreated?.(outcome.updated);
+            onMomentCreatedRef.current?.(outcome.updated);
           }
         }
       }
     } catch (err) {
       console.error('[MomentRecovery] Failed:', err);
     }
-  }, [memoriesRef, setMoments, setSynthesesMap, startPolling, onMomentCreated]);
+  }, [memoriesRef, setMoments, setSynthesesMap, startPolling]);
 
   return { startPolling, recoverPending };
 };

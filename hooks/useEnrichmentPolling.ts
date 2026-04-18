@@ -106,6 +106,7 @@ export const useEnrichmentPolling = ({
   onEnrichmentComplete,
 }: UseEnrichmentPollingOptions) => {
   const pollingActiveRef = useRef(false);
+  const isMountedRef = useRef(true);
 
   // Use a ref to avoid stale closures in the polling loop.
   // Without this, if onEnrichmentComplete is recreated (e.g. authStatus
@@ -113,7 +114,10 @@ export const useEnrichmentPolling = ({
   const onEnrichmentCompleteRef = useRef(onEnrichmentComplete);
   onEnrichmentCompleteRef.current = onEnrichmentComplete;
 
-  useEffect(() => () => { pollingActiveRef.current = false; }, []);
+  useEffect(() => () => {
+    isMountedRef.current = false;
+    pollingActiveRef.current = false;
+  }, []);
 
   const startPolling = useCallback(() => {
     if (pollingActiveRef.current) return;
@@ -133,9 +137,11 @@ export const useEnrichmentPolling = ({
       try {
         const ids = pending.map(m => m.id);
         const results = await fetchPendingEnrichments(ids);
+        if (!isMountedRef.current) return;
 
         for (const memory of pending) {
           const outcome = await applyEnrichmentResult(memory, results[memory.id]);
+          if (!isMountedRef.current) return;
           if (outcome) {
             setMemories(prev => prev.map(m => m.id === memory.id ? outcome.updated : m));
             if (outcome.action === 'completed') {
@@ -171,6 +177,7 @@ export const useEnrichmentPolling = ({
     try {
       const ids = pendingMemories.map(m => m.id);
       const results = await fetchPendingEnrichments(ids);
+      if (!isMountedRef.current) return;
 
       for (const memory of pendingMemories) {
         const result = results[memory.id];
@@ -181,6 +188,7 @@ export const useEnrichmentPolling = ({
         }
 
         const outcome = await applyEnrichmentResult(memory, result);
+        if (!isMountedRef.current) return;
         if (outcome) {
           setMemories(prev => prev.map(m => m.id === memory.id ? outcome.updated : m));
           if (outcome.action === 'completed') {
