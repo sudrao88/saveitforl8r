@@ -117,7 +117,7 @@ production).
 
 ---
 
-## Phase 5 — Delete orphaned files at repo root
+## ✅ Phase 5 — Delete orphaned files at repo root
 
 **Goal**: Remove verified-unreferenced files.
 
