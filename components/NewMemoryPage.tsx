@@ -350,9 +350,9 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
       setChecklistItems(prev => applyOutdent(prev, id));
   };
 
-  const moveChecklistItem = (id: string, direction: 'up' | 'down') => {
+  const moveChecklistItem = useCallback((id: string, direction: 'up' | 'down') => {
       setChecklistItems(prev => applyMove(prev, id, direction));
-  };
+  }, []);
 
   // Check if there are unsaved changes
   const hasChanges = useCallback((): boolean => {
