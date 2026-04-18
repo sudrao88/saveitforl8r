@@ -17,12 +17,11 @@
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
+import { isNative } from './platform';
 
 const isIOS = (): boolean =>
   /iPad|iPhone|iPod/.test(navigator.userAgent) ||
   (navigator.userAgent.includes('Mac') && 'ontouchend' in document);
-
-const isNative = (): boolean => Capacitor.isNativePlatform();
 
 /**
  * Reads a Blob as a base64 string with no `data:...;base64,` prefix,
