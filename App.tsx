@@ -830,13 +830,20 @@ const AppContent: React.FC = () => {
 
   // Keep feed locked during sheet exit animations so background elements
   // don't become interactive/accessible while the sheet is still sliding out.
+  // Only engage on a real open → closed transition; on initial mount
+  // anyOverlayOpen is already false, and locking here would disable the
+  // QuickNoteBar, search button, and other feed controls for SHEET_DURATION
+  // on cold start (visible as unresponsive UI on iOS launch).
   const [exitLock, setExitLock] = useState(false);
   const exitLockTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const prevAnyOverlayOpen = useRef(anyOverlayOpen);
   useEffect(() => {
+    const wasOpen = prevAnyOverlayOpen.current;
+    prevAnyOverlayOpen.current = anyOverlayOpen;
     if (anyOverlayOpen) {
       if (exitLockTimer.current) clearTimeout(exitLockTimer.current);
       setExitLock(false);
-    } else if (!anyOverlayOpen) {
+    } else if (wasOpen) {
       setExitLock(true);
       exitLockTimer.current = setTimeout(() => setExitLock(false), SHEET_DURATION);
     }
