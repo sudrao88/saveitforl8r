@@ -764,9 +764,9 @@ export const deleteTodoItemHard = async (id: string): Promise<void> => {
 export const factoryReset = async () => {
     try {
         console.log("Starting Factory Reset...");
-        try { db.close(); } catch (e) {}
+        try { db.close(); } catch (e) { console.warn('[FactoryReset] close failed (non-fatal):', e); }
         // Close the singleton IDB connection so deleteDatabase can proceed
-        try { cachedDB?.close(); cachedDB = null; } catch (e) {}
+        try { cachedDB?.close(); cachedDB = null; } catch (e) { console.warn('[FactoryReset] close failed (non-fatal):', e); }
 
         if ('serviceWorker' in navigator) {
             const registrations = await navigator.serviceWorker.getRegistrations();
