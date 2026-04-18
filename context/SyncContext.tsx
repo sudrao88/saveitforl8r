@@ -427,7 +427,6 @@ const applyNoteToMomentMatches = async (
         };
 
         await saveMoment(updated);
-        console.log(`[${logPrefix}] Moment ${momentId}: added ${newNoteIds.length} note(s)`);
         updatedMoments.push(updated);
     }
 
@@ -845,8 +844,6 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
     }
 
-    console.log(`[Sync] Delta sync plan: download=${plan.toDownload.length} upload=${plan.toUpload.length} deleteRemote=${plan.toDeleteRemote.length}`);
-
     const totalSyncItems = plan.toDownload.length + plan.toUpload.length + plan.toDeleteRemote.length;
     if (totalSyncItems > 0) {
         await startForegroundSync(totalSyncItems);
@@ -905,14 +902,12 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         throw new Error(`Failed to sync ${errors.length} items`);
     }
 
-    console.log('--- [Sync] Delta Sync Complete ---');
   }, [saveSnapshot]);
 
   const performSync = useCallback(async (forceFullSync = false) => {
     // CRITICAL FIX: checkIsLinked is async, must await it!
     const linked = await checkIsLinked();
     if (isSyncingRef.current || !linked) {
-        console.log(`[Sync] Skip sync: isSyncing=${isSyncingRef.current}, linked=${linked}`);
         return;
     }
 
@@ -925,7 +920,6 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             // Re-check after debounce: a single-file sync may have started
             // during the debounce window, which would cause concurrent syncs.
             if (isSyncingRef.current) {
-                console.log('[Sync] Skip sync: another sync started during debounce');
                 resolve();
                 return;
             }
@@ -971,10 +965,8 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                                 localIds.has(`moment-${noteId.replace('moment-synthesis-', '')}`))
                         )
                     );
-                    console.log(`[Sync] Force full sync: rebuilt snapshot from local data (${Object.keys(previousSnapshot).length}/${Object.keys(fullSnapshot).length} items matched)`);
                 }
 
-                console.log(`--- [Sync] Starting ${forceFullSync ? 'FULL' : 'DELTA'} Sync ---`);
                 await doDeltaSync(previousSnapshot, {
                     onProgress: onSyncProgressRef.current,
                     onMemorySynced: onMemorySyncedRef.current,

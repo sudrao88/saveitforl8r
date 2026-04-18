@@ -97,7 +97,7 @@ unmounts.
 
 ---
 
-## Phase 4 — Strip client debug `console.log` calls
+## ✅ Phase 4 — Strip client debug `console.log` calls
 
 **Goal**: Remove pure debug/trace logs from production client bundles.
 Keep `console.error` and `console.warn` (they have diagnostic value in

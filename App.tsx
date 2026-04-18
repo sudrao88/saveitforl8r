@@ -364,7 +364,6 @@ const AppContent: React.FC = () => {
             const schemeParams = new URLSearchParams({ code, error });
             const schemeUrl = `com.saveitforl8r.app://google-auth?${schemeParams.toString()}`;
 
-            console.log("Bouncing to native app:", schemeUrl);
             window.location.href = schemeUrl;
 
             // Visual feedback using safe DOM construction (avoid innerHTML XSS)
@@ -413,7 +412,6 @@ const AppContent: React.FC = () => {
                 .filter(m => !m.isDeleted && (m.isPending || m.processingError))
                 .map(m => m.id);
               if (pendingIds.length > 0) {
-                  console.log(`[App] Auth linked — auto-retrying ${pendingIds.length} failed memories`);
                   pendingIds.forEach(id => handleRetryRef.current(id));
               }
           }).catch(err => {

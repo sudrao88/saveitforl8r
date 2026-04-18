@@ -99,7 +99,6 @@ export const useMemories = () => {
   // Helper for single file sync - Memoized
   const trySyncFile = useCallback(async (memory: Memory) => {
       if (authStatus === 'linked') {
-          console.log(`[Auto-Sync] Triggering single file sync for ${memory.id}`);
           syncFile(memory).catch(err => console.error("Single file sync failed:", err));
       }
   }, [authStatus, syncFile]);
@@ -118,7 +117,6 @@ export const useMemories = () => {
       // Handle moment matching from enrichment results
       const matched = memory.enrichment?.matchedMomentIds;
       if (matched && matched.length > 0) {
-        console.log(`[Moments] Enrichment matched note ${memory.id} to moments:`, matched);
         if (onNoteMatchedMomentsRef.current) {
           for (const momentId of matched) {
             onNoteMatchedMomentsRef.current(momentId, memory.id).catch(err =>
@@ -184,7 +182,6 @@ export const useMemories = () => {
     const pendingMemories = memories.filter(m => m.isPending);
     if (pendingMemories.length === 0) return;
 
-    console.log(`[Recovery] Found ${pendingMemories.length} pending memories, attempting recovery...`);
     recoverPending(pendingMemories);
   }, [isLoading, memories, recoverPending]);
 
@@ -484,7 +481,6 @@ export const useMemories = () => {
       await trySyncFile(updatedMemory);
 
       // Submit enrichment with moments metadata and start polling
-      console.log(`[Update] Submitting enrichment for ${id}`);
       startPolling();
 
       submitEnrichment(text, attachments, updatedMemory.location, tags, id, buildMomentsMeta(momentsRef.current))
@@ -538,21 +534,18 @@ export const useMemories = () => {
   // re-implementing the completed/failed/processing logic inline.
   useEffect(() => {
     const handleOnline = async () => {
-      console.log("App is back online.");
       // Trigger sync if linked
       if (authStatus === 'linked') sync();
 
       // Recover pending enrichments from server
       const pendingItems = memoriesRef.current.filter(m => m.isPending);
       if (pendingItems.length > 0) {
-          console.log(`[Online-Recovery] Recovering ${pendingItems.length} pending items...`);
           await recoverPending(pendingItems);
       }
 
       // Auto-retry enrichment for failed memories
       const failures = memoriesRef.current.filter(m => m.processingError);
       if (failures.length > 0) {
-          console.log(`[Auto-Retry] Retrying ${failures.length} items...`);
           failures.forEach(m => handleRetry(m.id));
       }
     };
