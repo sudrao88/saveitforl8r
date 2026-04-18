@@ -200,13 +200,11 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
   const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const { attachments: newAttachments, rejected } = await processFileInputs(e.target.files);
-      let dropped = 0;
-      setAttachments(prev => {
-        const remaining = Math.max(0, MAX_ATTACHMENTS - prev.length);
-        dropped = Math.max(0, newAttachments.length - remaining);
-        if (remaining <= 0) return prev;
-        return [...prev, ...newAttachments.slice(0, remaining)];
-      });
+      const remaining = Math.max(0, MAX_ATTACHMENTS - attachments.length);
+      const dropped = Math.max(0, newAttachments.length - remaining);
+      if (remaining > 0) {
+        setAttachments(prev => [...prev, ...newAttachments.slice(0, remaining)]);
+      }
       if (rejected.length > 0) {
         setRejectedFiles(rejected);
         setTimeout(() => setRejectedFiles([]), 5000);
@@ -217,7 +215,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
       }
       e.target.value = '';
     }
-  }, []);
+  }, [attachments.length]);
 
   const removeAttachment = useCallback((id: string) => {
     setAttachments(prev => prev.filter(a => a.id !== id));

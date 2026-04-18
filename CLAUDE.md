@@ -83,7 +83,7 @@ Three thresholds bound per-note attachment payloads. Keep them in sync when chan
 
 - **Count**: `MAX_ATTACHMENTS = 20` per note. Client: `utils/attachmentUtils.ts`. Server: `server/middleware/validation.js` (rejects with `400` beyond the limit).
 - **Per-file size cap**: ~52 MB base64 (`validation.js` — `att.data.length > 70_000_000`). Individual chunked upload capped at 55 MB (`validateUploadInit`).
-- **Chunked-upload threshold**: 2 MB base64 (~1.5 MB decoded). Attachments above this are pre-uploaded via the Gemini File API and sent as `fileUri` instead of inline bytes. Client: `CHUNKED_UPLOAD_THRESHOLD` in `hooks/useMemories.ts`. Server backstop: `FILE_API_THRESHOLD` in `server/routes/enrich.js`. Keeping this at 2 MB ensures 20 inline attachments stay well under Cloud Run's 32 MB request-body limit.
+- **Chunked-upload threshold**: 1.2 MB base64 (~900 KB decoded). Attachments above this are pre-uploaded via the Gemini File API and sent as `fileUri` instead of inline bytes. Client: `CHUNKED_UPLOAD_THRESHOLD` in `hooks/useMemories.ts`. Server backstop: `FILE_API_THRESHOLD` in `server/routes/enrich.js`. Worst-case 20 inline attachments ≈ 24 MB, safely under Cloud Run's 32 MB request-body limit.
 
 ### Accepted Risks
 
