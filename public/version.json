@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v77",
-  "buildNumber": 77,
-  "buildDate": "2026-04-18T02:24:59.434Z",
+  "version": "saveitforl8r-v78",
+  "buildNumber": 78,
+  "buildDate": "2026-04-18T05:13:52.959Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Native back button on new memory screen now prompts to discard unsaved changes"
+  "changelog": "Internal cleanup pass: server correctness fixes, polling hook unmount safety, diagnostic logs on factory reset, and debug log removal"
 }

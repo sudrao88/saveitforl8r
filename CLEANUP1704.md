@@ -146,7 +146,7 @@ production).
 
 ---
 
-## Phase 7 — Verification
+## ✅ Phase 7 — Verification
 
 Run **after** all phases above that were executed in this session (or as
 a final cross-session pass).
