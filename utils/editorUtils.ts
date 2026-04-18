@@ -405,6 +405,14 @@ export const handleEditorKeyDown = (
         return true;
     }
 
+    // ── Clear inline formatting (Cmd/Ctrl+\) ────────────────────────────────
+    if (mod && e.key === '\\') {
+        e.preventDefault();
+        document.execCommand('removeFormat');
+        checkFormats();
+        return true;
+    }
+
     // ── Tab for list indentation ────────────────────────────────────────────
     if (e.key === 'Tab' && sel?.anchorNode) {
         if (isInsideTag(sel.anchorNode, 'LI', editorEl)) {

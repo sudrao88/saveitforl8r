@@ -144,6 +144,68 @@ export function applyOutdent(
   return items.map((i) => (i.id === targetId ? { ...i, indent: 0 } : i));
 }
 
+// ─── Reorder ─────────────────────────────────────────────────
+//
+// Parents move as a block with their children. Children only swap with
+// adjacent siblings (same indent=1 run) so they don't cross parent
+// boundaries and orphan themselves.
+
+export function applyMove(
+  items: ChecklistItemData[],
+  targetId: string,
+  direction: 'up' | 'down',
+): ChecklistItemData[] {
+  const idx = items.findIndex((i) => i.id === targetId);
+  if (idx === -1) return items;
+  const isChild = (items[idx].indent ?? 0) === 1;
+
+  if (isChild) {
+    const sibling = direction === 'up' ? idx - 1 : idx + 1;
+    if (sibling < 0 || sibling >= items.length) return items;
+    if ((items[sibling].indent ?? 0) !== 1) return items;
+    const next = [...items];
+    [next[idx], next[sibling]] = [next[sibling], next[idx]];
+    return next;
+  }
+
+  // Parent block: spans the parent plus its trailing indent=1 children.
+  const childIndices = getChildrenIndices(items, idx);
+  const blockStart = idx;
+  const blockEnd = childIndices.length
+    ? childIndices[childIndices.length - 1]
+    : idx;
+
+  if (direction === 'up') {
+    if (blockStart === 0) return items;
+    // Previous block is the parent above; walk past any of its children to
+    // find that parent's start index.
+    let prevStart = blockStart - 1;
+    while (prevStart > 0 && (items[prevStart].indent ?? 0) === 1) {
+      prevStart--;
+    }
+    return [
+      ...items.slice(0, prevStart),
+      ...items.slice(blockStart, blockEnd + 1),
+      ...items.slice(prevStart, blockStart),
+      ...items.slice(blockEnd + 1),
+    ];
+  }
+
+  if (blockEnd >= items.length - 1) return items;
+  // Next block starts at blockEnd+1 (a parent) and extends through its children.
+  const nextStart = blockEnd + 1;
+  const nextChildren = getChildrenIndices(items, nextStart);
+  const nextEnd = nextChildren.length
+    ? nextChildren[nextChildren.length - 1]
+    : nextStart;
+  return [
+    ...items.slice(0, blockStart),
+    ...items.slice(nextStart, nextEnd + 1),
+    ...items.slice(blockStart, blockEnd + 1),
+    ...items.slice(nextEnd + 1),
+  ];
+}
+
 // ─── Checkbox (shared between display and edit modes) ─────────
 
 function Checkbox({
@@ -199,22 +261,33 @@ export function ChecklistDisplay({ items, onToggle }: ChecklistDisplayProps) {
   );
 }
 
-// ─── Drag handle for indent/outdent ──────────────────────────
+// ─── Drag handle for indent/outdent and reorder ──────────────
+
+const HORIZONTAL_THRESHOLD = 40;
+const VERTICAL_STEP = 32;
 
 function DragHandle({
   onIndent,
   onOutdent,
+  onMoveUp,
+  onMoveDown,
 }: {
   onIndent: () => void;
   onOutdent: () => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
 }) {
   const startXRef = useRef(0);
-  const firedRef = useRef(false);
+  const startYRef = useRef(0);
+  const modeRef = useRef<'none' | 'horizontal' | 'vertical'>('none');
+  const horizontalFiredRef = useRef(false);
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
       startXRef.current = e.clientX;
-      firedRef.current = false;
+      startYRef.current = e.clientY;
+      modeRef.current = 'none';
+      horizontalFiredRef.current = false;
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     },
     [],
@@ -222,25 +295,44 @@ function DragHandle({
 
   const onPointerMove = useCallback(
     (e: React.PointerEvent) => {
-      if (firedRef.current) return;
       const dx = e.clientX - startXRef.current;
-      if (dx > 40) {
-        firedRef.current = true;
-        onIndent();
-      } else if (dx < -40) {
-        firedRef.current = true;
-        onOutdent();
+      const dy = e.clientY - startYRef.current;
+
+      if (modeRef.current === 'none') {
+        if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+        modeRef.current = Math.abs(dy) > Math.abs(dx) ? 'vertical' : 'horizontal';
+      }
+
+      if (modeRef.current === 'horizontal') {
+        if (horizontalFiredRef.current) return;
+        if (dx > HORIZONTAL_THRESHOLD) {
+          horizontalFiredRef.current = true;
+          onIndent();
+        } else if (dx < -HORIZONTAL_THRESHOLD) {
+          horizontalFiredRef.current = true;
+          onOutdent();
+        }
+        return;
+      }
+
+      // Vertical reorder: step the item one position each VERTICAL_STEP pixels.
+      if (dy >= VERTICAL_STEP) {
+        startYRef.current += VERTICAL_STEP;
+        onMoveDown();
+      } else if (dy <= -VERTICAL_STEP) {
+        startYRef.current -= VERTICAL_STEP;
+        onMoveUp();
       }
     },
-    [onIndent, onOutdent],
+    [onIndent, onOutdent, onMoveUp, onMoveDown],
   );
 
   return (
     <div
-      className={checklist.dragHandle}
+      className={`${checklist.dragHandle} touch-none`}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
-      aria-label="Drag to indent or outdent"
+      aria-label="Drag to reorder, or swipe sideways to indent"
       role="button"
     >
       <GripVertical size={14} />
@@ -258,6 +350,7 @@ interface ChecklistEditorProps {
   onRemove: (id: string) => void;
   onIndent: (id: string) => void;
   onOutdent: (id: string) => void;
+  onMove: (id: string, direction: 'up' | 'down') => void;
   onSave?: () => void;
   autoFocusLast?: boolean;
   dataIdAttr?: boolean;
@@ -271,10 +364,21 @@ export function ChecklistEditor({
   onRemove,
   onIndent,
   onOutdent,
+  onMove,
   onSave,
   autoFocusLast = false,
   dataIdAttr = false,
 }: ChecklistEditorProps) {
+  const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
+
+  const focusItem = useCallback((id: string) => {
+    const input = inputRefs.current.get(id);
+    if (!input) return;
+    input.focus();
+    const len = input.value.length;
+    input.setSelectionRange(len, len);
+  }, []);
+
   return (
     <div className="space-y-2">
       {items.map((item, index) => {
@@ -288,12 +392,18 @@ export function ChecklistEditor({
             <DragHandle
               onIndent={() => onIndent(item.id)}
               onOutdent={() => onOutdent(item.id)}
+              onMoveUp={() => onMove(item.id, 'up')}
+              onMoveDown={() => onMove(item.id, 'down')}
             />
             <Checkbox
               checked={item.checked}
               onClick={() => onToggle(item.id)}
             />
             <input
+              ref={(el) => {
+                if (el) inputRefs.current.set(item.id, el);
+                else inputRefs.current.delete(item.id);
+              }}
               type="text"
               value={item.text}
               {...(dataIdAttr ? { 'data-checklist-id': item.id } : {})}
@@ -315,7 +425,18 @@ export function ChecklistEditor({
                   items.length > 1
                 ) {
                   e.preventDefault();
+                  const target = items[index - 1] ?? items[index + 1];
+                  if (target) focusItem(target.id);
                   onRemove(item.id);
+                } else if (e.key === 'ArrowUp' && index > 0) {
+                  e.preventDefault();
+                  focusItem(items[index - 1].id);
+                } else if (
+                  e.key === 'ArrowDown' &&
+                  index < items.length - 1
+                ) {
+                  e.preventDefault();
+                  focusItem(items[index + 1].id);
                 } else if (e.key === 'Tab' && !e.shiftKey) {
                   e.preventDefault();
                   onIndent(item.id);
