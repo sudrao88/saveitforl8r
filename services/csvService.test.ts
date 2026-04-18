@@ -174,9 +174,11 @@ describe('csvToMemories', () => {
     const header =
       'id,timestamp,date_iso,content,type,tags,summary,location_json,attachments_json,enrichment_json';
     // Row with broken JSON in location_json triggers catch; next row is fine
-    const csv = `${header}
-m-bad,1700000000000,,hello,,,,{broken,null,null
-m-good,1700000000001,,ok,,,,null,null,null`;
+    const csv = [
+      header,
+      'm-bad,1700000000000,,hello,,,,{broken,null,null',
+      'm-good,1700000000001,,ok,,,,null,null,null',
+    ].join('\n');
     const parsed = csvToMemories(csv);
     expect(parsed.map(m => m.id)).toEqual(['m-good']);
     warnSpy.mockRestore();
