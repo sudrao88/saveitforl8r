@@ -275,6 +275,16 @@ export function ChecklistEditor({
   autoFocusLast = false,
   dataIdAttr = false,
 }: ChecklistEditorProps) {
+  const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
+
+  const focusItem = useCallback((id: string) => {
+    const input = inputRefs.current.get(id);
+    if (!input) return;
+    input.focus();
+    const len = input.value.length;
+    input.setSelectionRange(len, len);
+  }, []);
+
   return (
     <div className="space-y-2">
       {items.map((item, index) => {
@@ -294,6 +304,10 @@ export function ChecklistEditor({
               onClick={() => onToggle(item.id)}
             />
             <input
+              ref={(el) => {
+                if (el) inputRefs.current.set(item.id, el);
+                else inputRefs.current.delete(item.id);
+              }}
               type="text"
               value={item.text}
               {...(dataIdAttr ? { 'data-checklist-id': item.id } : {})}
@@ -315,7 +329,18 @@ export function ChecklistEditor({
                   items.length > 1
                 ) {
                   e.preventDefault();
+                  const target = items[index - 1] ?? items[index + 1];
+                  if (target) focusItem(target.id);
                   onRemove(item.id);
+                } else if (e.key === 'ArrowUp' && index > 0) {
+                  e.preventDefault();
+                  focusItem(items[index - 1].id);
+                } else if (
+                  e.key === 'ArrowDown' &&
+                  index < items.length - 1
+                ) {
+                  e.preventDefault();
+                  focusItem(items[index + 1].id);
                 } else if (e.key === 'Tab' && !e.shiftKey) {
                   e.preventDefault();
                   onIndent(item.id);
