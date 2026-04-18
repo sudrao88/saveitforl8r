@@ -83,7 +83,7 @@ unmounts.
 
 ---
 
-## Phase 3 — Silent error-swallowing fixes
+## ✅ Phase 3 — Silent error-swallowing fixes
 
 **Goal**: Keep best-effort flows intact but leave a diagnostic trail.
 
