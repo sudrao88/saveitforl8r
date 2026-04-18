@@ -126,19 +126,30 @@ const attachOgPreviews = async (ogImagePromise, sanitized, requestId) => {
 export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GEMINI_TIMEOUT_MS, ENRICHMENT_COLLECTION, ENRICHMENT_TTL_MS, ENRICHMENT_FAILED_TTL_MS, aiLimiter }) => {
   const router = Router();
 
-  const persistEnrichmentResult = (memoryId, userId, status, result) => {
+  const persistEnrichmentResult = async (memoryId, userId, status, result) => {
     if (!db || !memoryId) return;
-    const doc = {
-      userId,
-      status,
-      createdAt: Date.now(),
-      expireAt: new Date(Date.now() + (status === 'completed' ? ENRICHMENT_TTL_MS : ENRICHMENT_FAILED_TTL_MS)),
-    };
-    if (result) doc.result = result;
-    db.collection(ENRICHMENT_COLLECTION)
-      .doc(memoryId)
-      .set(doc)
-      .catch((err) => console.error(`[Firestore] Failed to persist result for ${memoryId}:`, err.message));
+
+    const docRef = db.collection(ENRICHMENT_COLLECTION).doc(memoryId);
+
+    try {
+      // Verify ownership: only allow overwrite if doc doesn't exist or belongs to this user
+      const existing = await docRef.get();
+      if (existing.exists && existing.data().userId !== userId) {
+        console.warn(`[Firestore] Ownership mismatch for enrichment ${memoryId}: requested by ${userId}, owned by ${existing.data().userId}`);
+        return;
+      }
+
+      const doc = {
+        userId,
+        status,
+        createdAt: Date.now(),
+        expireAt: new Date(Date.now() + (status === 'completed' ? ENRICHMENT_TTL_MS : ENRICHMENT_FAILED_TTL_MS)),
+      };
+      if (result) doc.result = result;
+      await docRef.set(doc);
+    } catch (err) {
+      console.error(`[Firestore] Failed to persist result for ${memoryId}:`, err.message);
+    }
   };
 
   const enrichLimiter = rateLimit({
@@ -357,7 +368,8 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
             }
           }
 
-          persistEnrichmentResult(memoryId, req.userId, 'completed', sanitized);
+          persistEnrichmentResult(memoryId, req.userId, 'completed', sanitized)
+            .catch((err) => console.error(`[Firestore] Failed to persist result for ${memoryId}:`, err.message));
 
           // Schedule a delayed silent push (30s grace period)
           // If the client polls and retrieves the result within 30s, the push is unnecessary
@@ -418,7 +430,8 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
             }
           }
 
-          persistEnrichmentResult(memoryId, req.userId, 'completed', sanitizedFallback);
+          persistEnrichmentResult(memoryId, req.userId, 'completed', sanitizedFallback)
+            .catch((err) => console.error(`[Firestore] Failed to persist result for ${memoryId}:`, err.message));
 
           // Schedule a delayed silent push (30s grace period)
           setTimeout(async () => {
@@ -433,7 +446,8 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
           }, 30_000);
         } catch (fallbackError) {
           console.error(`[Enrich] [${req.requestId}] Fallback also failed:`, fallbackError.message);
-          persistEnrichmentResult(memoryId, req.userId, 'failed', null);
+          persistEnrichmentResult(memoryId, req.userId, 'failed', null)
+            .catch((err) => console.error(`[Firestore] Failed to persist result for ${memoryId}:`, err.message));
         }
       } finally {
         // Clean up any files uploaded via Gemini File API (best-effort)

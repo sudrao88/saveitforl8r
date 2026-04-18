@@ -9,10 +9,12 @@
  *           and determines moment type + title.
  *   Step 3: Synthesis — generates the final structured synthesis.
  */
+import crypto from 'crypto';
 import { Router } from 'express';
 import { Type } from '@google/genai';
 import rateLimit from 'express-rate-limit';
 import { authenticateRequest } from '../middleware/auth.js';
+import { UUID_REGEX } from '../middleware/validation.js';
 import { sanitizeUserInput, sanitizeForPromptEmbedding } from '../lib/sanitize.js';
 import { sendSilentPush } from '../lib/silentPush.js';
 
@@ -330,7 +332,7 @@ export const createMomentRouter = ({
     if (notes.length > 500)
       return res.status(400).json({ error: 'Too many notes (max 500)' });
     if (momentId !== undefined) {
-      if (typeof momentId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(momentId))
+      if (typeof momentId !== 'string' || !UUID_REGEX.test(momentId))
         return res.status(400).json({ error: 'momentId must be a valid UUID' });
     }
 
@@ -347,7 +349,7 @@ export const createMomentRouter = ({
     if (momentIds.length > 10)
       return res.status(400).json({ error: 'Maximum 10 momentIds per request' });
     for (const id of momentIds) {
-      if (typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))
+      if (typeof id !== 'string' || !UUID_REGEX.test(id))
         return res.status(400).json({ error: `Invalid momentId: ${id}` });
     }
 

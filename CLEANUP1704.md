@@ -20,7 +20,7 @@ runs last within whatever slice of phases a given session executes.
 
 ---
 
-## Phase 1 — Server correctness fixes
+## ✅ Phase 1 — Server correctness fixes
 
 **Goal**: Fix real server-side bugs. Smallest, highest-signal changes.
 
