@@ -6,7 +6,7 @@
  * with tiered polling intervals (1s for first 15s, then 2s).
  */
 
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { fetchPendingMomentResults, CreateMomentResponse } from '../services/geminiService';
 import { Moment, Memory, MomentSynthesis, MomentType } from '../types';
 import { saveMoment, saveMomentSynthesis } from '../services/storageService';
@@ -126,6 +126,8 @@ export const useMomentCreationPolling = ({
   onMomentCreated,
 }: UseMomentCreationPollingOptions) => {
   const pollingActiveRef = useRef(false);
+
+  useEffect(() => () => { pollingActiveRef.current = false; }, []);
 
   const startPolling = useCallback(() => {
     if (pollingActiveRef.current) return;

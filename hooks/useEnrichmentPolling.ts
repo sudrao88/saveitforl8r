@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { fetchPendingEnrichments } from '../services/geminiService';
 import { getMemory, saveMemory } from '../services/storageService';
 import { Attachment, LinkPreview, Memory } from '../types';
@@ -112,6 +112,8 @@ export const useEnrichmentPolling = ({
   // changes), the already-running setTimeout chain captures the old callback.
   const onEnrichmentCompleteRef = useRef(onEnrichmentComplete);
   onEnrichmentCompleteRef.current = onEnrichmentComplete;
+
+  useEffect(() => () => { pollingActiveRef.current = false; }, []);
 
   const startPolling = useCallback(() => {
     if (pollingActiveRef.current) return;

@@ -61,7 +61,7 @@ runs last within whatever slice of phases a given session executes.
 
 ---
 
-## Phase 2 — Client polling unmount-safety
+## ✅ Phase 2 — Client polling unmount-safety
 
 **Goal**: Stop the two polling hooks from continuing after their host
 unmounts.
