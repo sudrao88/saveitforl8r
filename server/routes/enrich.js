@@ -207,7 +207,7 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
       const parts = [];
       const uploadedFileNames = []; // Track Gemini File API uploads for cleanup
 
-      const FILE_API_THRESHOLD = 4_000_000; // Use File API for attachments > 4MB base64 chars
+      const FILE_API_THRESHOLD = 2_000_000; // Use File API for attachments > 2MB base64 chars (matches client CHUNKED_UPLOAD_THRESHOLD)
 
       if (attachments && Array.isArray(attachments)) {
         for (const att of attachments) {
