@@ -107,4 +107,16 @@ describe('clearServiceWorkerCaches', () => {
     };
     await expect(clearServiceWorkerCaches()).resolves.toBeUndefined();
   });
+
+  it('handles an empty cache list without error', async () => {
+    const keys = vi.fn().mockResolvedValue([]);
+    const del = vi.fn();
+    (globalThis as unknown as { caches: Partial<CacheStorage> }).caches = {
+      keys,
+      delete: del,
+    };
+    await clearServiceWorkerCaches();
+    expect(keys).toHaveBeenCalledTimes(1);
+    expect(del).not.toHaveBeenCalled();
+  });
 });
