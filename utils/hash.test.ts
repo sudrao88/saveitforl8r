@@ -109,4 +109,29 @@ describe('computeInputHash', () => {
     computeInputHash(ids, [makeMemory({ id: 'a' }), makeMemory({ id: 'b' })]);
     expect(ids).toEqual(['b', 'a']);
   });
+
+  it('handles an empty noteIds array', () => {
+    expect(computeInputHash([], [])).toMatch(/^mh_[0-9a-f]+$/);
+  });
+
+  it('ignores memories not referenced by any id', () => {
+    const referenced = computeInputHash(
+      ['a'],
+      [makeMemory({ id: 'a', timestamp: 1 })],
+    );
+    const withExtra = computeInputHash(
+      ['a'],
+      [
+        makeMemory({ id: 'a', timestamp: 1 }),
+        makeMemory({ id: 'unrelated', timestamp: 99 }),
+      ],
+    );
+    expect(referenced).toBe(withExtra);
+  });
+
+  it('treats a missing memory the same as an empty reference', () => {
+    // When a noteId has no matching memory, the hash uses just the id.
+    // Two different missing ids should therefore produce different hashes.
+    expect(computeInputHash(['x'], [])).not.toBe(computeInputHash(['y'], []));
+  });
 });

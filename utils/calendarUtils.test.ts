@@ -257,4 +257,101 @@ describe('expandHorizon', () => {
     ];
     expect(expandHorizon(existing)).toEqual([]);
   });
+
+  it('produces different IDs for different occurrence dates in the same series', () => {
+    const existing = [
+      makeEvent({
+        occurrenceDate: '2026-04-10',
+        recurringGroupId: 'group-xyz',
+        recurrenceRule: { frequency: 'weekly' },
+      }),
+    ];
+    const added = expandHorizon(existing);
+    const ids = new Set(added.map(e => e.id));
+    expect(ids.size).toBe(added.length);
+  });
+
+  it('produces different IDs across different recurringGroupIds on the same date', () => {
+    const dateA = [
+      makeEvent({
+        occurrenceDate: '2026-04-10',
+        recurringGroupId: 'group-a',
+        recurrenceRule: { frequency: 'weekly' },
+      }),
+    ];
+    const dateB = [
+      makeEvent({
+        occurrenceDate: '2026-04-10',
+        recurringGroupId: 'group-b',
+        recurrenceRule: { frequency: 'weekly' },
+      }),
+    ];
+    const addedA = expandHorizon(dateA);
+    const addedB = expandHorizon(dateB);
+    // Same dates, different groups — ids must not collide across series.
+    const sameDateA = addedA.find(e => e.occurrenceDate === '2026-04-17');
+    const sameDateB = addedB.find(e => e.occurrenceDate === '2026-04-17');
+    expect(sameDateA?.id).toBeDefined();
+    expect(sameDateB?.id).toBeDefined();
+    expect(sameDateA!.id).not.toBe(sameDateB!.id);
+  });
+
+  it('extends up to the rule endDate when it falls within horizon', () => {
+    const existing = [
+      makeEvent({
+        occurrenceDate: '2026-04-10',
+        recurringGroupId: 'group-1',
+        startDate: '2026-04-10T09:00:00',
+        recurrenceRule: { frequency: 'weekly', endDate: '2026-05-08' },
+      }),
+    ];
+    const added = expandHorizon(existing);
+    // Should not exceed the endDate boundary.
+    for (const evt of added) {
+      expect(evt.occurrenceDate! <= '2026-05-08').toBe(true);
+    }
+  });
+});
+
+describe('expandRecurringEvent (additional edge cases)', () => {
+  it('caps a runaway recurrence at MAX_OCCURRENCES', () => {
+    // Anchor the clock so the horizon is predictable.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 0, 1));
+    try {
+      const det: DetectedEvent = {
+        title: 'Daily habit',
+        startDate: '2026-01-01',
+        allDay: true,
+        status: 'confirmed',
+        recurrenceFrequency: 'daily',
+      };
+      // Very long horizon so the MAX_OCCURRENCES cap is the limiting factor.
+      const events = expandRecurringEvent(det, 'mem-1', undefined, 120);
+      expect(events.length).toBeLessThanOrEqual(365);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not generate events past an explicit endDate even if the horizon is later', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 0, 1));
+    try {
+      const det: DetectedEvent = {
+        title: 'Short series',
+        startDate: '2026-02-01',
+        allDay: true,
+        status: 'confirmed',
+        recurrenceFrequency: 'weekly',
+        recurrenceEndDate: '2026-02-28',
+      };
+      const events = expandRecurringEvent(det, 'mem-1', undefined, 12);
+      for (const e of events) {
+        expect(e.occurrenceDate! <= '2026-02-28').toBe(true);
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
