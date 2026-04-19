@@ -222,8 +222,10 @@ export const useMemories = () => {
     }
   }, [refreshMemories, trySyncFile]);
 
-  // Threshold for chunked upload — base64 data longer than this is uploaded in chunks
-  const CHUNKED_UPLOAD_THRESHOLD = 5_000_000; // ~3.75MB decoded
+  // Threshold for chunked upload — base64 data longer than this is uploaded in chunks.
+  // 20 attachments × 1.2 MB = ~24 MB worst-case inline payload, safely under Cloud Run's 32 MB body cap
+  // (leaving headroom for JSON wrapper, text, tags, and moments metadata).
+  const CHUNKED_UPLOAD_THRESHOLD = 1_200_000; // ~900KB decoded
 
   /**
    * Convert a base64 data URI to a Blob efficiently using fetch(),

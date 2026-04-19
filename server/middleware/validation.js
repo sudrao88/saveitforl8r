@@ -12,6 +12,9 @@ export const ALLOWED_MIME_TYPES = [
   'text/markdown',
 ];
 
+/** Must match MAX_ATTACHMENTS in utils/attachmentUtils.ts. */
+export const MAX_ATTACHMENTS = 20;
+
 export const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Gemini File API URIs follow this pattern. */
@@ -36,8 +39,8 @@ export const validateEnrichInput = (req, res, next) => {
   if (attachments !== undefined) {
     if (!Array.isArray(attachments))
       return res.status(400).json({ error: 'attachments must be an array' });
-    if (attachments.length > 5)
-      return res.status(400).json({ error: 'Maximum 5 attachments allowed' });
+    if (attachments.length > MAX_ATTACHMENTS)
+      return res.status(400).json({ error: `Maximum ${MAX_ATTACHMENTS} attachments allowed` });
 
     for (const att of attachments) {
       if (!att.mimeType || !ALLOWED_MIME_TYPES.includes(att.mimeType)) {

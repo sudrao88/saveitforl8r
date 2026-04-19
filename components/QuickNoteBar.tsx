@@ -43,6 +43,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
   const [checklistItems, setChecklistItems] = useState<ChecklistItemData[]>([]);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [rejectedFiles, setRejectedFiles] = useState<{ name: string; size: number }[]>([]);
+  const [droppedForLimit, setDroppedForLimit] = useState(0);
 
   const keyboardHeight = useKeyboardHeight({ includeOffsetTop: true });
 
@@ -199,18 +200,22 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
   const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const { attachments: newAttachments, rejected } = await processFileInputs(e.target.files);
-      setAttachments(prev => {
-        const remaining = MAX_ATTACHMENTS - prev.length;
-        if (remaining <= 0) return prev;
-        return [...prev, ...newAttachments.slice(0, remaining)];
-      });
+      const remaining = Math.max(0, MAX_ATTACHMENTS - attachments.length);
+      const dropped = Math.max(0, newAttachments.length - remaining);
+      if (remaining > 0) {
+        setAttachments(prev => [...prev, ...newAttachments.slice(0, remaining)]);
+      }
       if (rejected.length > 0) {
         setRejectedFiles(rejected);
         setTimeout(() => setRejectedFiles([]), 5000);
       }
+      if (dropped > 0) {
+        setDroppedForLimit(dropped);
+        setTimeout(() => setDroppedForLimit(0), 5000);
+      }
       e.target.value = '';
     }
-  }, []);
+  }, [attachments.length]);
 
   const removeAttachment = useCallback((id: string) => {
     setAttachments(prev => prev.filter(a => a.id !== id));
@@ -409,6 +414,22 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
                 {rejectedFiles.length === 1
                   ? `"${rejectedFiles[0].name}" exceeds the ${Math.round(MAX_FILE_SIZE_BYTES / (1024 * 1024))}MB limit`
                   : `${rejectedFiles.length} files exceed the ${Math.round(MAX_FILE_SIZE_BYTES / (1024 * 1024))}MB limit`}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Attachment limit warning */}
+        {droppedForLimit > 0 && (
+          <div className="px-4 pt-3 pb-1">
+            <div className="flex items-start gap-2 text-xs text-(--color-danger) bg-(--color-danger)/10 border border-(--color-danger)/30 rounded-(--radius-md) px-3 py-2">
+              <span className="shrink-0 mt-0.5">
+                <X size={12} />
+              </span>
+              <span>
+                {droppedForLimit === 1
+                  ? `1 file not added — maximum ${MAX_ATTACHMENTS} attachments per note`
+                  : `${droppedForLimit} files not added — maximum ${MAX_ATTACHMENTS} attachments per note`}
               </span>
             </div>
           </div>

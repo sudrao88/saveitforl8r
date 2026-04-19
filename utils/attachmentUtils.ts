@@ -3,8 +3,8 @@ import { Attachment } from '../types';
 /** Maximum file size allowed for upload (50MB). */
 export const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
 
-/** Maximum number of attachments per memory (must match server limit). */
-export const MAX_ATTACHMENTS = 5;
+/** Maximum number of attachments per memory (must match server limit in server/middleware/validation.js). */
+export const MAX_ATTACHMENTS = 20;
 
 /** Max width or height for compressed images. */
 const IMAGE_MAX_DIMENSION = 2048;
