@@ -73,6 +73,7 @@ const AppContent: React.FC = () => {
   const [showAllMoments, setShowAllMoments] = useState(false);
   const [showCreateMoment, setShowCreateMoment] = useState(false);
   const [quickNoteExpandState, setQuickNoteExpandState] = useState<QuickNoteState | null>(null);
+  const [newMemoryId, setNewMemoryId] = useState<string | null>(null);
   const quickNoteBarRef = useRef<QuickNoteBarHandle>(null);
 
   const { updateAvailable, updateApp, appVersion } = useServiceWorker();
@@ -567,7 +568,8 @@ const AppContent: React.FC = () => {
   } = useMemoryFilters(memories);
 
   const handleCreateMemory = useCallback(async (text: string, attachments: any[], tags: string[], location?: { latitude: number; longitude: number }) => {
-    await createMemory(text, attachments, tags, location);
+    const id = await createMemory(text, attachments, tags, location);
+    setNewMemoryId(id);
     setIsCaptureOpen(false);
     logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_CREATED);
     clearShareData();
@@ -713,7 +715,8 @@ const AppContent: React.FC = () => {
     } catch (e) {
       console.warn('QuickNote location unavailable', e);
     }
-    await createMemory(text, attachments, tags, location);
+    const id = await createMemory(text, attachments, tags, location);
+    setNewMemoryId(id);
     logEvent(ANALYTICS_EVENTS.QUICK_NOTE.CATEGORY, ANALYTICS_EVENTS.QUICK_NOTE.ACTION_SAVED);
   }, [createMemory]);
 
@@ -782,6 +785,28 @@ const AppContent: React.FC = () => {
       return b.timestamp - a.timestamp;
     });
   }, [filteredMemories]);
+
+  // After a new memory is added, scroll its card into view and hold a
+  // highlight ring briefly so the user sees that the note was captured.
+  useEffect(() => {
+    if (!newMemoryId) return;
+    if (!displayMemories.some(m => m.id === newMemoryId)) return;
+    let cleared = false;
+    const raf = requestAnimationFrame(() => {
+      const el = document.querySelector(`[data-memory-id="${newMemoryId}"]`);
+      if (el) {
+        (el as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    });
+    const timer = setTimeout(() => {
+      cleared = true;
+      setNewMemoryId(null);
+    }, 1500);
+    return () => {
+      cancelAnimationFrame(raf);
+      if (!cleared) clearTimeout(timer);
+    };
+  }, [newMemoryId, displayMemories]);
 
   const activeMemoryCount = useMemo(() => memories.filter(m => !m.isDeleted).length, [memories]);
 
@@ -962,6 +987,7 @@ const AppContent: React.FC = () => {
               syncStatusMap={syncStatusMap}
               onSyncRetry={retrySyncFile}
               uploadProgressMap={uploadProgressMap}
+              highlightedMemoryId={newMemoryId}
             />
           )}
         </main>
