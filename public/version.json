@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v80",
-  "buildNumber": 80,
-  "buildDate": "2026-04-19T00:42:45.524Z",
+  "version": "saveitforl8r-v81",
+  "buildNumber": 81,
+  "buildDate": "2026-04-21T09:45:00.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Per-note attachment limit raised from 5 to 20. Files over the limit now show a warning instead of being silently dropped. Large attachments are routed through the Gemini File API at a tighter 1.2 MB threshold to keep enrichment requests within Cloud Run's body-size cap."
+  "changelog": "When a note is saved, the feed now smoothly scrolls to the new card and briefly highlights it so you can see that it was captured."
 }
