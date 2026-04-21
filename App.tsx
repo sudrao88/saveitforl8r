@@ -74,6 +74,7 @@ const AppContent: React.FC = () => {
   const [showCreateMoment, setShowCreateMoment] = useState(false);
   const [quickNoteExpandState, setQuickNoteExpandState] = useState<QuickNoteState | null>(null);
   const [newMemoryId, setNewMemoryId] = useState<string | null>(null);
+  const scrolledMemoryIdRef = useRef<string | null>(null);
   const quickNoteBarRef = useRef<QuickNoteBarHandle>(null);
 
   const { updateAvailable, updateApp, appVersion } = useServiceWorker();
@@ -786,27 +787,31 @@ const AppContent: React.FC = () => {
     });
   }, [filteredMemories]);
 
-  // After a new memory is added, scroll its card into view and hold a
-  // highlight ring briefly so the user sees that the note was captured.
+  // After a new memory is added, scroll its card into view exactly once —
+  // re-runs on displayMemories changes only until the card first renders,
+  // so background sync updates don't re-trigger the scroll.
+  useEffect(() => {
+    if (!newMemoryId) {
+      scrolledMemoryIdRef.current = null;
+      return;
+    }
+    if (scrolledMemoryIdRef.current === newMemoryId) return;
+    const el = document.querySelector(`[data-memory-id="${newMemoryId}"]`);
+    if (!el) return;
+    scrolledMemoryIdRef.current = newMemoryId;
+    const raf = requestAnimationFrame(() => {
+      (el as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [newMemoryId, displayMemories]);
+
+  // Clear the highlight after 1.5s. Independent of displayMemories so
+  // list updates during the hold don't extend the highlight window.
   useEffect(() => {
     if (!newMemoryId) return;
-    if (!displayMemories.some(m => m.id === newMemoryId)) return;
-    let cleared = false;
-    const raf = requestAnimationFrame(() => {
-      const el = document.querySelector(`[data-memory-id="${newMemoryId}"]`);
-      if (el) {
-        (el as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
-    });
-    const timer = setTimeout(() => {
-      cleared = true;
-      setNewMemoryId(null);
-    }, 1500);
-    return () => {
-      cancelAnimationFrame(raf);
-      if (!cleared) clearTimeout(timer);
-    };
-  }, [newMemoryId, displayMemories]);
+    const timer = setTimeout(() => setNewMemoryId(null), 1500);
+    return () => clearTimeout(timer);
+  }, [newMemoryId]);
 
   const activeMemoryCount = useMemo(() => memories.filter(m => !m.isDeleted).length, [memories]);
 

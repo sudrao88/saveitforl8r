@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v81",
-  "buildNumber": 81,
-  "buildDate": "2026-04-21T09:45:00.000Z",
+  "version": "saveitforl8r-v82",
+  "buildNumber": 82,
+  "buildDate": "2026-04-21T10:45:00.000Z",
   "minNativeVersion": "1.0.0",
   "changelog": "When a note is saved, the feed now smoothly scrolls to the new card and briefly highlights it so you can see that it was captured."
 }
