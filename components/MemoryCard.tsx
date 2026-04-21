@@ -391,11 +391,8 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
       }
       
       return (
-          <div 
-            className={`prose prose-invert prose-sm max-w-none text-(--color-text-primary) font-normal leading-relaxed break-words
-                prose-p:my-1 prose-headings:mb-1 prose-headings:mt-3 prose-headings:text-(--color-text-primary) prose-ul:my-1
-                text-sm
-            `}
+          <div
+            className="rich-editor max-w-none text-(--color-text-primary) font-normal leading-relaxed break-words text-sm"
             dangerouslySetInnerHTML={{ __html: linkifyHtml(memory.content) }}
           />
       );
