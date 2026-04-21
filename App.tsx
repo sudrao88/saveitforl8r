@@ -73,6 +73,8 @@ const AppContent: React.FC = () => {
   const [showAllMoments, setShowAllMoments] = useState(false);
   const [showCreateMoment, setShowCreateMoment] = useState(false);
   const [quickNoteExpandState, setQuickNoteExpandState] = useState<QuickNoteState | null>(null);
+  const [newMemoryId, setNewMemoryId] = useState<string | null>(null);
+  const scrolledMemoryIdRef = useRef<string | null>(null);
   const quickNoteBarRef = useRef<QuickNoteBarHandle>(null);
 
   const { updateAvailable, updateApp, appVersion } = useServiceWorker();
@@ -567,7 +569,8 @@ const AppContent: React.FC = () => {
   } = useMemoryFilters(memories);
 
   const handleCreateMemory = useCallback(async (text: string, attachments: any[], tags: string[], location?: { latitude: number; longitude: number }) => {
-    await createMemory(text, attachments, tags, location);
+    const id = await createMemory(text, attachments, tags, location);
+    setNewMemoryId(id);
     setIsCaptureOpen(false);
     logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_CREATED);
     clearShareData();
@@ -713,7 +716,8 @@ const AppContent: React.FC = () => {
     } catch (e) {
       console.warn('QuickNote location unavailable', e);
     }
-    await createMemory(text, attachments, tags, location);
+    const id = await createMemory(text, attachments, tags, location);
+    setNewMemoryId(id);
     logEvent(ANALYTICS_EVENTS.QUICK_NOTE.CATEGORY, ANALYTICS_EVENTS.QUICK_NOTE.ACTION_SAVED);
   }, [createMemory]);
 
@@ -782,6 +786,32 @@ const AppContent: React.FC = () => {
       return b.timestamp - a.timestamp;
     });
   }, [filteredMemories]);
+
+  // After a new memory is added, scroll its card into view exactly once —
+  // re-runs on displayMemories changes only until the card first renders,
+  // so background sync updates don't re-trigger the scroll.
+  useEffect(() => {
+    if (!newMemoryId) {
+      scrolledMemoryIdRef.current = null;
+      return;
+    }
+    if (scrolledMemoryIdRef.current === newMemoryId) return;
+    const el = document.querySelector(`[data-memory-id="${newMemoryId}"]`);
+    if (!el) return;
+    scrolledMemoryIdRef.current = newMemoryId;
+    const raf = requestAnimationFrame(() => {
+      (el as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [newMemoryId, displayMemories]);
+
+  // Clear the highlight after 1.5s. Independent of displayMemories so
+  // list updates during the hold don't extend the highlight window.
+  useEffect(() => {
+    if (!newMemoryId) return;
+    const timer = setTimeout(() => setNewMemoryId(null), 1500);
+    return () => clearTimeout(timer);
+  }, [newMemoryId]);
 
   const activeMemoryCount = useMemo(() => memories.filter(m => !m.isDeleted).length, [memories]);
 
@@ -962,6 +992,7 @@ const AppContent: React.FC = () => {
               syncStatusMap={syncStatusMap}
               onSyncRetry={retrySyncFile}
               uploadProgressMap={uploadProgressMap}
+              highlightedMemoryId={newMemoryId}
             />
           )}
         </main>

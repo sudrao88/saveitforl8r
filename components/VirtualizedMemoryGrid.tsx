@@ -16,6 +16,7 @@ interface VirtualizedMemoryGridProps {
   syncStatusMap?: Map<string, 'syncing' | 'synced' | 'error'>;
   onSyncRetry?: (id: string) => void;
   uploadProgressMap?: Map<string, UploadProgress>;
+  highlightedMemoryId?: string | null;
 }
 
 const VirtualizedMemoryGrid: React.FC<VirtualizedMemoryGridProps> = ({
@@ -32,6 +33,7 @@ const VirtualizedMemoryGrid: React.FC<VirtualizedMemoryGridProps> = ({
   syncStatusMap,
   onSyncRetry,
   uploadProgressMap,
+  highlightedMemoryId,
 }) => {
   return (
     <div
@@ -40,10 +42,13 @@ const VirtualizedMemoryGrid: React.FC<VirtualizedMemoryGridProps> = ({
         gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 300px), 1fr))',
       }}
     >
-      {memories.map((mem, index) => (
+      {memories.map((mem, index) => {
+        const isHighlighted = highlightedMemoryId === mem.id;
+        return (
         <div
           key={mem.id}
-          className="[content-visibility:auto] [contain-intrinsic-size:auto_400px] grid"
+          data-memory-id={mem.id}
+          className={`[content-visibility:auto] [contain-intrinsic-size:auto_400px] grid scroll-mt-32 rounded-(--radius-xl) transition-shadow duration-(--duration-slow) ${isHighlighted ? 'ring-2 ring-(--color-accent) ring-offset-2 ring-offset-(--color-surface-base)' : ''}`}
         >
           <MemoryCard
             memory={mem}
@@ -62,7 +67,8 @@ const VirtualizedMemoryGrid: React.FC<VirtualizedMemoryGridProps> = ({
             uploadProgress={uploadProgressMap?.get(mem.id)}
           />
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 };
