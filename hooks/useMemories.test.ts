@@ -469,6 +469,50 @@ describe('useMemories', () => {
       });
     });
 
+    it('should await submission on update before starting polling (no race with stale completed doc)', async () => {
+      // Regression: previously updateMemory called startPolling() and fired
+      // submitEnrichment without awaiting, so the first poll could read the
+      // previous edit's completed Firestore doc and mark the memory done with
+      // stale enrichment data — causing edits to "not enrich" the first time.
+      const existingMemory = {
+        id: 'existing-1', content: 'Old content', timestamp: 100, tags: [],
+        isPending: false, processingError: false,
+      };
+
+      (storageService.getMemories as any).mockResolvedValue([existingMemory]);
+      (storageService.saveMemory as any).mockResolvedValue(undefined);
+      (storageService.getMemory as any).mockResolvedValue(existingMemory);
+
+      let resolveSubmit!: () => void;
+      (geminiService.submitEnrichment as any).mockImplementation(
+        () => new Promise<void>((resolve) => { resolveSubmit = resolve; })
+      );
+      (geminiService.fetchPendingEnrichments as any).mockResolvedValue({});
+
+      const { result } = renderHook(() => useMemories());
+      await waitFor(() => expect(result.current.memories).toHaveLength(1));
+
+      // Fire the update but do NOT await — submission is intentionally hung
+      let updatePromise!: Promise<unknown>;
+      await act(async () => {
+        updatePromise = result.current.updateMemory('existing-1', 'Updated content', [], []);
+        await vi.advanceTimersByTimeAsync(5_000);
+      });
+
+      // Polling must NOT have run yet — server has not confirmed receipt of
+      // the new submission, so the doc could still be "completed" with stale data
+      expect(geminiService.fetchPendingEnrichments).not.toHaveBeenCalled();
+
+      // Resolve the submission; polling should now begin
+      await act(async () => {
+        resolveSubmit();
+        await updatePromise;
+        await vi.advanceTimersByTimeAsync(2_500);
+      });
+
+      expect(geminiService.fetchPendingEnrichments).toHaveBeenCalled();
+    });
+
     it('should recover pending memories on app load and complete enrichment', async () => {
       const pendingMemory = {
         id: 'pending-1', content: 'Recovering', timestamp: Date.now(), tags: [],

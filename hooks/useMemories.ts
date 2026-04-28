@@ -320,8 +320,10 @@ export const useMemories = () => {
       }
     }
 
-    // Submit enrichment (fileUri for uploaded attachments, inline data for small ones)
-    startPolling();
+    // Submit enrichment first so the server overwrites any stale "failed"
+    // (retry path) or "completed" doc with status:"processing" before we
+    // begin polling. Otherwise polling can race the submission and apply
+    // the prior result to the new attempt.
     try {
       await submitEnrichment(text, enrichmentAttachments, location, tags, memoryId, buildMomentsMeta(momentsRef.current));
       updateUploadProgress(memoryId, null);
@@ -331,7 +333,10 @@ export const useMemories = () => {
       const failedMemory: Memory = { ...newMemory, isPending: false, processingError: true };
       await saveMemory(failedMemory);
       setMemories(prev => prev.map(m => m.id === memoryId ? failedMemory : m));
+      return;
     }
+
+    startPolling();
   }, [startPolling, updateUploadProgress]);
 
   const handleRetry = useCallback(async (id: string) => {
@@ -482,25 +487,31 @@ export const useMemories = () => {
       // Sync immediately (save the text changes even before enrichment finishes)
       await trySyncFile(updatedMemory);
 
-      // Submit enrichment with moments metadata and start polling
+      // Submit enrichment FIRST so the server overwrites any stale
+      // "completed" doc with status:"processing" before polling starts.
+      // Otherwise the first poll can read the previous edit's completed
+      // result and mark the memory done with stale enrichment data.
+      try {
+        await submitEnrichment(
+          text, attachments, updatedMemory.location, tags, id,
+          buildMomentsMeta(momentsRef.current),
+        );
+      } catch (err) {
+        console.error("Update enrichment submission failed:", err);
+        const current = await getMemory(id);
+        if (!current || current.isDeleted) return;
+
+        const failedMemory: Memory = {
+            ...updatedMemory,
+            isPending: false,
+            processingError: true
+        };
+        await saveMemory(failedMemory);
+        setMemories(prev => prev.map(m => m.id === id ? failedMemory : m));
+        return;
+      }
+
       startPolling();
-
-      submitEnrichment(text, attachments, updatedMemory.location, tags, id, buildMomentsMeta(momentsRef.current))
-        .catch(async (err) => {
-            console.error("Update enrichment submission failed:", err);
-            const current = await getMemory(id);
-            if (!current || current.isDeleted) return;
-
-            const failedMemory: Memory = {
-                ...updatedMemory,
-                isPending: false,
-                processingError: true
-            };
-            await saveMemory(failedMemory);
-            setMemories(prev => prev.map(m => m.id === id ? failedMemory : m));
-        });
-
-      return Promise.resolve();
   }, [trySyncFile, startPolling]);
 
   // Incremental upsert for sync-downloaded memories. Inserts new memories
