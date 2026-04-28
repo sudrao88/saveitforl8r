@@ -16,7 +16,6 @@ import {
   Check,
   RefreshCw,
   FileText,
-  AlertTriangle,
 } from 'lucide-react';
 import {
   Moment,
@@ -27,6 +26,7 @@ import {
   Attachment,
 } from '../types';
 import MemoryPreviewModal from './MemoryPreviewModal';
+import MomentNoteDeletionSheet from './MomentNoteDeletionSheet';
 import { overlay, btn } from '../styles/design-system';
 
 // Shared loading indicator for pending creation and resynthesis states
@@ -120,6 +120,16 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
 
   const previewMemory = previewMemoryId ? memoriesMap.get(previewMemoryId) : undefined;
 
+  // Resolved, in-order list of the moment's notes (skip missing or soft-deleted).
+  const momentNotes = useMemo(() => {
+    const result: Memory[] = [];
+    for (const id of moment.noteIds) {
+      const m = memoriesMap.get(id);
+      if (m && !m.isDeleted) result.push(m);
+    }
+    return result;
+  }, [moment.noteIds, memoriesMap]);
+
   // Dismiss nested dialogs on Android back button
   useBackButton(() => setPreviewMemoryId(null), previewMemoryId !== null);
   useBackButton(() => setDeleteConfirmStep(null), deleteConfirmStep !== null);
@@ -211,12 +221,14 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
     onClose();
   }, [moment.id, onDelete, onClose]);
 
-  const handleDeleteWithNotes = useCallback(() => {
+  const handleDeleteWithNotes = useCallback((noteIdsToDelete: string[]) => {
     onDelete(moment.id);
-    onDeleteNotes?.(moment.noteIds);
+    if (noteIdsToDelete.length > 0) {
+      onDeleteNotes?.(noteIdsToDelete);
+    }
     setDeleteConfirmStep(null);
     onClose();
-  }, [moment.id, moment.noteIds, onDelete, onDeleteNotes, onClose]);
+  }, [moment.id, onDelete, onDeleteNotes, onClose]);
 
   // Pending state — moment is still being created
   if (moment.isPending) {
@@ -401,38 +413,17 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
         </div>
       )}
 
-      {/* Delete Confirmation Dialog — Step 2: Confirm note deletion */}
+      {/* Delete Confirmation — Step 2: Select notes to delete */}
       {deleteConfirmStep === 'confirm-notes' && (
-        <div className={overlay.dialogBackdrop} onClick={() => setDeleteConfirmStep(null)}>
-          <div
-            className={`${overlay.modal} p-6 mx-4 w-full max-w-sm animate-in zoom-in-95 fade-in duration-(--duration-normal)`}
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex flex-col items-center text-center mb-6">
-              <div className="w-12 h-12 bg-(--color-danger)/10 rounded-full flex items-center justify-center mb-3">
-                <AlertTriangle size={24} className="text-(--color-warning)" />
-              </div>
-              <h3 className="text-base font-bold text-(--color-text-primary) mb-1">Are you sure?</h3>
-              <p className="text-sm text-(--color-text-secondary)">
-                This will permanently delete {noteCount} {noteLabel} along with the moment. This action cannot be undone.
-              </p>
-            </div>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setDeleteConfirmStep('choose')}
-                className={`${btn.base} ${btn.secondary} flex-1 text-sm`}
-              >
-                Go back
-              </button>
-              <button
-                onClick={handleDeleteWithNotes}
-                className={`${btn.base} ${btn.danger} flex-1 text-sm`}
-              >
-                Delete all
-              </button>
-            </div>
-          </div>
-        </div>
+        <MomentNoteDeletionSheet
+          moment={moment}
+          notes={momentNotes}
+          onCancel={() => setDeleteConfirmStep(null)}
+          onConfirm={handleDeleteWithNotes}
+          onViewAttachment={onViewAttachment}
+          onMemoryEdit={onMemoryEdit}
+          onMemoryTogglePin={onMemoryTogglePin}
+        />
       )}
     </SheetShell>
   );
