@@ -23,6 +23,77 @@ const sanitizeQueryResponse = (parsed) => {
   return parsed;
 };
 
+const normalizeForAnchor = (s) =>
+  String(s || '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+
+// Long enough to be distinctive across a 200-memory corpus, short enough to
+// survive minor paraphrasing or truncation by the model.
+const ANCHOR_LEN = 40;
+const MIN_ANCHOR_LEN = 12;
+
+/**
+ * Re-anchor source IDs when the model returns a preview snippet that doesn't
+ * appear in the memory it cites. Gemini occasionally swaps IDs between
+ * similar-looking entries (e.g. notes saved on the same day), which leaves
+ * the client opening the wrong memory when a user taps a source.
+ *
+ * Strategy: if the preview text isn't a substring of the claimed memory's
+ * content/summary but uniquely matches another memory, rewrite the id.
+ */
+const reanchorSources = (parsed, memories, requestId) => {
+  if (!parsed || !Array.isArray(parsed.sources) || !Array.isArray(memories)) {
+    return parsed;
+  }
+
+  const haystacks = new Map();
+  for (const m of memories) {
+    if (m && typeof m.id === 'string') {
+      haystacks.set(
+        m.id,
+        normalizeForAnchor(`${m.content || ''} ${m.enrichment?.summary || ''}`)
+      );
+    }
+  }
+
+  parsed.sources = parsed.sources.map((s) => {
+    if (!s || typeof s !== 'object') return s;
+    const id = typeof s.id === 'string' ? s.id : '';
+    const preview = typeof s.preview === 'string' ? s.preview : '';
+    if (!preview) return s;
+
+    const anchor = normalizeForAnchor(preview).slice(0, ANCHOR_LEN);
+    if (anchor.length < MIN_ANCHOR_LEN) return s;
+
+    const claimed = haystacks.get(id);
+    if (claimed && claimed.includes(anchor)) return s;
+
+    let match = null;
+    let ambiguous = false;
+    for (const [mid, hay] of haystacks) {
+      if (hay.includes(anchor)) {
+        if (match) {
+          ambiguous = true;
+          break;
+        }
+        match = mid;
+      }
+    }
+
+    if (match && !ambiguous && match !== id) {
+      console.warn(
+        `[Query] [${requestId}] Re-anchored source ${id} -> ${match} (preview did not match claimed memory)`
+      );
+      return { ...s, id: match };
+    }
+    return s;
+  });
+
+  return parsed;
+};
+
 export const createQueryRouter = ({ ai, MODEL_NAME, FALLBACK_MODEL_NAME, GEMINI_TIMEOUT_MS }) => {
   const router = Router();
 
@@ -133,7 +204,8 @@ export const createQueryRouter = ({ ai, MODEL_NAME, FALLBACK_MODEL_NAME, GEMINI_
 
           const responseText = response.text || '{}';
           console.log(`[Query] [${req.requestId}] Response length: ${responseText.length}`);
-          res.json(sanitizeQueryResponse(JSON.parse(responseText)));
+          const parsed = sanitizeQueryResponse(JSON.parse(responseText));
+          res.json(reanchorSources(parsed, memories, req.requestId));
         } catch (apiError) {
           clearTimeout(timeout);
 
@@ -158,7 +230,8 @@ export const createQueryRouter = ({ ai, MODEL_NAME, FALLBACK_MODEL_NAME, GEMINI_
 
             const fbText = fbResponse.text || '{}';
             console.log(`[Query] [${req.requestId}] Fallback response length: ${fbText.length}`);
-            return res.json(sanitizeQueryResponse(JSON.parse(fbText)));
+            const fbParsed = sanitizeQueryResponse(JSON.parse(fbText));
+            return res.json(reanchorSources(fbParsed, memories, req.requestId));
           } catch (fbError) {
             clearTimeout(fbTimeout);
             throw fbError;
