@@ -182,19 +182,19 @@ const MomentNoteDeletionSheet: React.FC<MomentNoteDeletionSheetProps> = ({
 
       {/* Footer action bar */}
       <div className="sticky bottom-0 px-4 py-4 border-t border-(--color-border-default) bg-(--color-surface-overlay)/95 backdrop-blur-xl pb-[max(1rem,var(--sab))]">
-        <div className="max-w-2xl mx-auto flex gap-3">
+        <div className="max-w-2xl mx-auto flex gap-3 items-stretch">
           <button
             onClick={onCancel}
-            className={`${btn.base} ${btn.ghost} flex-1 gap-2`}
+            className={`${btn.base} ${btn.ghost}`}
           >
             Cancel
           </button>
           <button
             onClick={() => setShowConfirm(true)}
-            className={`${btn.base} ${btn.danger} flex-1 gap-2`}
+            className={`${btn.base} ${btn.danger} flex-1 gap-2 whitespace-nowrap min-w-0`}
           >
-            <Trash2 size={16} />
-            {deleteButtonLabel}
+            <Trash2 size={18} className="shrink-0" />
+            <span className="truncate">{deleteButtonLabel}</span>
           </button>
         </div>
       </div>

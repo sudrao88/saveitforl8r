@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v83",
-  "buildNumber": 83,
+  "version": "saveitforl8r-v84",
+  "buildNumber": 84,
   "buildDate": "2026-04-28T00:00:00.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Deleting a moment now lets you choose which notes to delete with it. After picking 'Delete moment and notes', a list of the moment's notes appears with all of them pre-selected — uncheck any you want to keep, then confirm."
+  "changelog": "Polished the moment-and-notes delete sheet: the action button now keeps its full label on a single line with a clearer trash icon."
 }
