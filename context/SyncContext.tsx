@@ -278,18 +278,25 @@ const executeSyncPlan = async (plan: SyncPlan, callbacks?: ExecuteSyncCallbacks)
     // (downloadedNotes was populated during the streaming download phase above)
     const matchesToApply = collectMatchedMomentIds(downloadedNotes);
     const needMomentsFetch = matchesToApply.size > 0 || deletedNoteIds.size > 0;
+
+    // Index plan.toUpload by noteId so queueMomentUpload is O(1) per call
+    // even when many moments are updated in a single sync pass.
+    const uploadIdxByNoteId = new Map<string, number>();
+    plan.toUpload.forEach((u, i) => uploadIdxByNoteId.set(u.noteId, i));
     const queueMomentUpload = (updated: Moment) => {
         const key = `moment-${updated.id}`;
-        const existingIdx = plan.toUpload.findIndex(u => u.noteId === key);
-        if (existingIdx >= 0) {
+        const existingIdx = uploadIdxByNoteId.get(key);
+        if (existingIdx !== undefined) {
             plan.toUpload[existingIdx] = { ...plan.toUpload[existingIdx], memory: updated };
         } else {
+            uploadIdxByNoteId.set(key, plan.toUpload.length);
             plan.toUpload.push({ noteId: key, memory: updated });
         }
     };
 
     if (needMomentsFetch) {
         const allMoments = await getAllMomentsIncludingDeleted();
+        const momentsById = new Map(allMoments.map(m => [m.id, m]));
 
         // Drop dangling noteIds from moments when remote tombstones arrive.
         // Done before applyNoteToMomentMatches so a noteId can't be both
@@ -298,14 +305,17 @@ const executeSyncPlan = async (plan: SyncPlan, callbacks?: ExecuteSyncCallbacks)
         if (deletedNoteIds.size > 0) {
             const cleanedMoments = await removeDanglingNoteIdsFromMoments(deletedNoteIds, allMoments, 'Sync:Download');
             for (const updated of cleanedMoments) {
-                const idx = allMoments.findIndex(m => m.id === updated.id);
-                if (idx >= 0) allMoments[idx] = updated;
+                momentsById.set(updated.id, updated);
                 queueMomentUpload(updated);
             }
         }
 
         if (matchesToApply.size > 0) {
-            const updatedMoments = await applyNoteToMomentMatches(matchesToApply, allMoments, 'Sync:Download');
+            const updatedMoments = await applyNoteToMomentMatches(
+                matchesToApply,
+                Array.from(momentsById.values()),
+                'Sync:Download',
+            );
             for (const updated of updatedMoments) {
                 queueMomentUpload(updated);
             }
