@@ -70,6 +70,10 @@ const executeSyncPlan = async (plan: SyncPlan, callbacks?: ExecuteSyncCallbacks)
     // Track successfully downloaded notes for moment-match reconciliation
     const downloadedNotes: Array<{ id: string; enrichment?: { matchedMomentIds?: string[] } }> = [];
 
+    // Track note IDs that arrived as tombstones so dangling refs can be
+    // scrubbed from moments after the download phase.
+    const deletedNoteIds = new Set<string>();
+
     // Memories whose attachments were deferred — full versions emitted after download phase
     const deferredAttachmentMemories: Memory[] = [];
 
@@ -212,6 +216,7 @@ const executeSyncPlan = async (plan: SyncPlan, callbacks?: ExecuteSyncCallbacks)
                 } else if (shouldSave) {
                     if (content.isDeleted) {
                         await withProgress(deleteMemory(item.noteId));
+                        deletedNoteIds.add(item.noteId);
                     } else {
                         // Save full memory to IDB
                         await withProgress(saveMemory(content));
@@ -272,19 +277,37 @@ const executeSyncPlan = async (plan: SyncPlan, callbacks?: ExecuteSyncCallbacks)
     // to apply these matches locally when it downloads the note.
     // (downloadedNotes was populated during the streaming download phase above)
     const matchesToApply = collectMatchedMomentIds(downloadedNotes);
-    if (matchesToApply.size > 0) {
-        const allMoments = await getAllMomentsIncludingDeleted();
-        const updatedMoments = await applyNoteToMomentMatches(matchesToApply, allMoments, 'Sync:Download');
+    const needMomentsFetch = matchesToApply.size > 0 || deletedNoteIds.size > 0;
+    const queueMomentUpload = (updated: Moment) => {
+        const key = `moment-${updated.id}`;
+        const existingIdx = plan.toUpload.findIndex(u => u.noteId === key);
+        if (existingIdx >= 0) {
+            plan.toUpload[existingIdx] = { ...plan.toUpload[existingIdx], memory: updated };
+        } else {
+            plan.toUpload.push({ noteId: key, memory: updated });
+        }
+    };
 
-        // Queue updated moments for upload so changes propagate to other devices.
-        // If a moment is already queued, update it in-place to avoid data loss.
-        for (const updated of updatedMoments) {
-            const key = `moment-${updated.id}`;
-            const existingIdx = plan.toUpload.findIndex(u => u.noteId === key);
-            if (existingIdx >= 0) {
-                plan.toUpload[existingIdx] = { ...plan.toUpload[existingIdx], memory: updated };
-            } else {
-                plan.toUpload.push({ noteId: key, memory: updated });
+    if (needMomentsFetch) {
+        const allMoments = await getAllMomentsIncludingDeleted();
+
+        // Drop dangling noteIds from moments when remote tombstones arrive.
+        // Done before applyNoteToMomentMatches so a noteId can't be both
+        // removed (because the note was tombstoned) and re-added (because a
+        // separately-downloaded note's matchedMomentIds still references it).
+        if (deletedNoteIds.size > 0) {
+            const cleanedMoments = await removeDanglingNoteIdsFromMoments(deletedNoteIds, allMoments, 'Sync:Download');
+            for (const updated of cleanedMoments) {
+                const idx = allMoments.findIndex(m => m.id === updated.id);
+                if (idx >= 0) allMoments[idx] = updated;
+                queueMomentUpload(updated);
+            }
+        }
+
+        if (matchesToApply.size > 0) {
+            const updatedMoments = await applyNoteToMomentMatches(matchesToApply, allMoments, 'Sync:Download');
+            for (const updated of updatedMoments) {
+                queueMomentUpload(updated);
             }
         }
     }
@@ -427,6 +450,44 @@ const applyNoteToMomentMatches = async (
         };
 
         await saveMoment(updated);
+        updatedMoments.push(updated);
+    }
+
+    return updatedMoments;
+};
+
+/**
+ * Strip any noteIds that no longer correspond to a live memory from each moment.
+ * Triggered when remote tombstones arrive via sync — without this, a moment can
+ * keep claiming "22 notes" while only 19 actually resolve, producing a mismatch
+ * between the moment header and the deletion sheet.
+ *
+ * @returns Array of updated moments (for syncing to Drive).
+ */
+const removeDanglingNoteIdsFromMoments = async (
+    deletedNoteIds: Set<string>,
+    moments: Moment[],
+    logPrefix: string,
+): Promise<Moment[]> => {
+    if (deletedNoteIds.size === 0) return [];
+    const updatedMoments: Moment[] = [];
+
+    for (const moment of moments) {
+        if (moment.isDeleted) continue;
+        if (!moment.noteIds.some(id => deletedNoteIds.has(id))) continue;
+
+        const filtered = moment.noteIds.filter(id => !deletedNoteIds.has(id));
+        const updated: Moment = {
+            ...moment,
+            noteIds: filtered,
+            inputHash: undefined,
+            updatedAt: Date.now(),
+        };
+
+        await saveMoment(updated);
+        await deleteMomentSynthesis(moment.id).catch(e =>
+            console.warn(`[${logPrefix}] Failed to clear synthesis for ${moment.id}:`, e)
+        );
         updatedMoments.push(updated);
     }
 
