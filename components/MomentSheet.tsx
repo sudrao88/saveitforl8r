@@ -106,9 +106,6 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
   const [previewMemoryId, setPreviewMemoryId] = useState<string | null>(null);
   const [deleteConfirmStep, setDeleteConfirmStep] = useState<DeleteConfirmStep | null>(null);
 
-  const noteCount = moment.noteIds.length;
-  const noteLabel = noteCount === 1 ? 'note' : 'notes';
-
   // Build a lookup map for source note citations
   const memoriesMap = useMemo(() => {
     const map = new Map<string, Memory>();
@@ -121,6 +118,8 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
   const previewMemory = previewMemoryId ? memoriesMap.get(previewMemoryId) : undefined;
 
   // Resolved, in-order list of the moment's notes (skip missing or soft-deleted).
+  // Drives every displayed note count so the header, confirmation prompt, and
+  // deletion sheet stay in sync even when moment.noteIds contains dangling refs.
   const momentNotes = useMemo(() => {
     const result: Memory[] = [];
     for (const id of moment.noteIds) {
@@ -129,6 +128,9 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
     }
     return result;
   }, [moment.noteIds, memoriesMap]);
+
+  const noteCount = momentNotes.length;
+  const noteLabel = noteCount === 1 ? 'note' : 'notes';
 
   // Dismiss nested dialogs on Android back button
   useBackButton(() => setPreviewMemoryId(null), previewMemoryId !== null);
@@ -207,13 +209,13 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
   }, []);
 
   const handleDeleteClick = useCallback(() => {
-    if (moment.noteIds.length > 0 && onDeleteNotes) {
+    if (noteCount > 0 && onDeleteNotes) {
       setDeleteConfirmStep('choose');
     } else {
       onDelete(moment.id);
       onClose();
     }
-  }, [moment.id, moment.noteIds.length, onDelete, onDeleteNotes, onClose]);
+  }, [moment.id, noteCount, onDelete, onDeleteNotes, onClose]);
 
   const handleDeleteMomentOnly = useCallback(() => {
     onDelete(moment.id);
@@ -274,7 +276,7 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
       subtitle={synthesis?.subtitle}
       headerRight={
         <div className="flex items-center gap-2 text-xs text-(--color-text-tertiary)">
-          <span>{moment.noteIds.length} notes</span>
+          <span>{noteCount} {noteLabel}</span>
         </div>
       }
       onClose={onClose}
