@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v84",
-  "buildNumber": 84,
-  "buildDate": "2026-04-28T00:00:00.000Z",
+  "version": "saveitforl8r-v85",
+  "buildNumber": 85,
+  "buildDate": "2026-04-29T00:00:00.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Polished the moment-and-notes delete sheet: the action button now keeps its full label on a single line with a clearer trash icon."
+  "changelog": "Fixed a moment-deletion bug where the header showed more notes than the delete sheet, and stopped cross-device note deletions from leaving stale references inside moments."
 }
