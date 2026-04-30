@@ -1,5 +1,5 @@
 // public/sw.js
-const CACHE_NAME = 'saveitforl8r-v86'; // Increment version to force update
+const CACHE_NAME = 'saveitforl8r-v87'; // Increment version to force update
 const STATIC_CACHE = 'saveitforl8r-static-v1';
 const SCOPE = '/';
 
