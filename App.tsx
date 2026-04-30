@@ -882,7 +882,7 @@ const AppContent: React.FC = () => {
     <div className="min-h-screen bg-black flex flex-col">
       {/* Feed layout — always rendered, overlaid by fullscreen views */}
       <div className={feedLocked ? 'pointer-events-none' : undefined} aria-hidden={feedLocked || undefined}>
-        <div className="sticky top-0 z-(--z-overlay) bg-(--color-surface-base) pt-[var(--sat)]">
+        <div className="sticky top-0 z-(--z-overlay) bg-(--color-surface-base)/80 backdrop-blur-md pt-[var(--sat)]">
             <TopNavigation
               setView={handleSetView}
               resetFilters={handleResetFilters}
