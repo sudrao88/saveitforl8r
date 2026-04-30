@@ -274,7 +274,11 @@ export const useMomentCreationPolling = ({
       candidates.push(m);
     }
 
-    // Drop expired markers without a network call.
+    // Phase 1: drop expired markers without a network call. Persist each
+    // sequentially (IndexedDB writes are cheap) but apply a single setMoments
+    // at the end of the phase to avoid one re-render per stale moment.
+    const momentUpdates = new Map<string, Moment>();
+
     if (stale.length > 0) {
       for (const m of stale) {
         const cleared: Moment = {
@@ -285,17 +289,26 @@ export const useMomentCreationPolling = ({
         };
         try {
           await saveMoment(cleared);
+          momentUpdates.set(m.id, cleared);
         } catch (err) {
           console.error('[MomentResyncRecovery] Failed to clear stale marker:', err);
         }
-        if (!isMountedRef.current) return;
-        setMoments(prev => prev.map(x => x.id === m.id ? cleared : x));
+      }
+      if (!isMountedRef.current) return;
+      if (momentUpdates.size > 0) {
+        setMoments(prev => prev.map(x => momentUpdates.get(x.id) ?? x));
       }
     }
 
     if (candidates.length === 0) return;
 
     try {
+      // Phase 2: fetch server results for all candidates in chunked batches,
+      // then accumulate updates in maps and apply once at the end of the phase.
+      momentUpdates.clear();
+      const synthesisUpdates = new Map<string, MomentSynthesis>();
+      const recovered: Moment[] = [];
+
       const resultsByMomentId: Record<string, Awaited<ReturnType<typeof fetchPendingSynthesisResults>>[string]> = {};
       for (let i = 0; i < candidates.length; i += SYNTHESIS_RESULTS_BATCH_SIZE) {
         const batchIds = candidates.slice(i, i + SYNTHESIS_RESULTS_BATCH_SIZE).map(m => m.id);
@@ -311,7 +324,7 @@ export const useMomentCreationPolling = ({
         // the in-flight server request on next sheet open.
         if (result?.status === 'processing') continue;
 
-        const clearMarker = async () => {
+        const queueClear = async () => {
           const cleared: Moment = {
             ...moment,
             pendingSynthesisHash: undefined,
@@ -319,12 +332,11 @@ export const useMomentCreationPolling = ({
             updatedAt: Date.now(),
           };
           await saveMoment(cleared);
-          if (!isMountedRef.current) return;
-          setMoments(prev => prev.map(x => x.id === moment.id ? cleared : x));
+          momentUpdates.set(moment.id, cleared);
         };
 
         if (!result || result.status === 'not_found' || result.status === 'failed') {
-          await clearMarker();
+          await queueClear();
           continue;
         }
 
@@ -337,7 +349,7 @@ export const useMomentCreationPolling = ({
           const localStillMatches = result.inputHash === currentHash;
 
           if (!serverHashOk || !localStillMatches) {
-            await clearMarker();
+            await queueClear();
             continue;
           }
 
@@ -370,16 +382,29 @@ export const useMomentCreationPolling = ({
             console.error('[MomentResyncRecovery] Persist failed:', err);
             continue;
           }
-          if (!isMountedRef.current) return;
 
-          setMoments(prev => prev.map(x => x.id === moment.id ? updatedMoment : x));
-          setSynthesesMap(prev => {
-            const next = new Map(prev);
-            next.set(moment.id, stored);
-            return next;
-          });
-          onMomentResynthesisRecoveredRef.current?.(updatedMoment);
+          momentUpdates.set(moment.id, updatedMoment);
+          synthesisUpdates.set(moment.id, stored);
+          recovered.push(updatedMoment);
         }
+      }
+
+      if (!isMountedRef.current) return;
+
+      if (momentUpdates.size > 0) {
+        setMoments(prev => prev.map(x => momentUpdates.get(x.id) ?? x));
+      }
+      if (synthesisUpdates.size > 0) {
+        setSynthesesMap(prev => {
+          const next = new Map(prev);
+          for (const [id, stored] of synthesisUpdates) {
+            next.set(id, stored);
+          }
+          return next;
+        });
+      }
+      for (const m of recovered) {
+        onMomentResynthesisRecoveredRef.current?.(m);
       }
     } catch (err) {
       console.error('[MomentResyncRecovery] Failed:', err);

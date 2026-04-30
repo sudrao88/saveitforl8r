@@ -241,14 +241,20 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
       // Polling is decoupled from the caller's AbortSignal so that navigating
       // away from a MomentSheet doesn't cancel background polling — the result
       // is cached and ready when the user returns.
-      setSynthesisLoading(prev => new Set(prev).add(moment.id));
+      //
+      // If a poll is already in flight for this moment from an earlier call in
+      // this session (e.g. user reopens the sheet while polling continues),
+      // skip the redundant processingError-clear write and the server status
+      // check — that work was already done by the original call.
+      const existingPoll = inFlightPolling.current.get(moment.id);
+
+      setSynthesisLoading(prev => prev.has(moment.id) ? prev : new Set(prev).add(moment.id));
 
       // Snapshot the moment with processingError cleared (issue 2). We hold
       // this so subsequent persistence writes layer on a clean slate.
-      let workingMoment: Moment = moment.processingError
-        ? { ...moment, processingError: false, updatedAt: Date.now() }
-        : moment;
-      if (workingMoment !== moment) {
+      let workingMoment: Moment = moment;
+      if (!existingPoll && moment.processingError) {
+        workingMoment = { ...moment, processingError: false, updatedAt: Date.now() };
         await saveMoment(workingMoment);
         setMomentsList(prev => prev.map(m => m.id === moment.id ? workingMoment : m));
       }
@@ -298,7 +304,7 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
       try {
         // If we already have a polling promise from this session (e.g. user
         // re-opened the sheet), reuse it without re-checking the server.
-        let pollingPromise = inFlightPolling.current.get(moment.id);
+        let pollingPromise = existingPoll;
 
         if (!pollingPromise) {
           // Step 1: check if the server already has a result for this moment.
