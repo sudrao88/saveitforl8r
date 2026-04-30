@@ -287,7 +287,8 @@ interface SubmitResynthesisResponse {
  */
 export const submitResynthesis = async (
   moment: Moment,
-  memories: Memory[]
+  memories: Memory[],
+  inputHash?: string,
 ): Promise<{ momentId: string }> => {
   const notes = moment.noteIds
     .map(id => memories.find(m => m.id === id))
@@ -311,6 +312,7 @@ export const submitResynthesis = async (
     momentTitle: moment.title,
     objective: moment.objective,
     momentId: moment.id,
+    ...(inputHash ? { inputHash } : {}),
   });
 
   if (result.status !== 'accepted') {
@@ -322,14 +324,15 @@ export const submitResynthesis = async (
 // --- Synthesis Polling ---
 
 export type SynthesisPollResult =
-  | { status: 'completed'; data: SynthesisResponse }
-  | { status: 'processing' }
-  | { status: 'failed' }
+  | { status: 'completed'; data: SynthesisResponse; inputHash?: string }
+  | { status: 'processing'; inputHash?: string }
+  | { status: 'failed'; inputHash?: string }
   | { status: 'not_found' };
 
 interface SynthesisResultEntry {
   status: 'completed' | 'failed' | 'not_found' | string;
   data?: SynthesisResponse;
+  inputHash?: string;
 }
 
 interface SynthesisResultsResponse {
@@ -357,12 +360,12 @@ export const fetchPendingSynthesisResults = async (
         if (entry?.status === 'not_found') {
           result[id] = { status: 'not_found' };
         } else if (entry?.status === 'completed' && entry.data) {
-          result[id] = { status: 'completed', data: entry.data };
+          result[id] = { status: 'completed', data: entry.data, inputHash: entry.inputHash };
         } else if (entry?.status === 'failed') {
-          result[id] = { status: 'failed' };
+          result[id] = { status: 'failed', inputHash: entry.inputHash };
         } else {
           // Default unknown statuses to 'processing' as a safe intermediate state
-          result[id] = { status: 'processing' };
+          result[id] = { status: 'processing', inputHash: entry?.inputHash };
         }
       }
     }

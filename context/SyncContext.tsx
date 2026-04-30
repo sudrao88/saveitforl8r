@@ -630,18 +630,14 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const syncMomentInternal = useCallback(async (moment: Moment) => {
       try {
-          const filename = `moment-${moment.id}.json`;
-          const remoteFile = await findFileByName(filename);
-          const uploadedMoment = await uploadFile(filename, moment, remoteFile?.id);
-
           const snapshotJSON = await storage.get(SNAPSHOT_KEY);
           const snapshot = snapshotJSON ? JSON.parse(snapshotJSON) : {};
 
-          if (uploadedMoment?.modifiedTime) {
-              snapshot[`moment-${moment.id}`] = uploadedMoment.modifiedTime;
-          }
-
-          // Also sync the synthesis cache if available
+          // Upload the synthesis first, then the moment metadata. If the
+          // sequence is interrupted, Drive may carry an updated synthesis
+          // without updated metadata (harmless — next sync converges) instead
+          // of metadata pointing at a synthesis Drive doesn't yet have (which
+          // would force another device to refetch from scratch).
           const synthesis = await getMomentSynthesis(moment.id);
           if (synthesis) {
               const synthFilename = `moment-synthesis-${moment.id}.json`;
@@ -651,6 +647,14 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               if (uploadedSynth?.modifiedTime) {
                   snapshot[`moment-synthesis-${moment.id}`] = uploadedSynth.modifiedTime;
               }
+          }
+
+          const filename = `moment-${moment.id}.json`;
+          const remoteFile = await findFileByName(filename);
+          const uploadedMoment = await uploadFile(filename, moment, remoteFile?.id);
+
+          if (uploadedMoment?.modifiedTime) {
+              snapshot[`moment-${moment.id}`] = uploadedMoment.modifiedTime;
           }
 
           await storage.set(SNAPSHOT_KEY, JSON.stringify(snapshot));
