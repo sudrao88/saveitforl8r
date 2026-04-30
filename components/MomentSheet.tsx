@@ -27,7 +27,7 @@ import {
 } from '../types';
 import MemoryPreviewModal from './MemoryPreviewModal';
 import MomentNoteDeletionSheet from './MomentNoteDeletionSheet';
-import { overlay, btn } from '../styles/design-system';
+import { overlay, btn, chip } from '../styles/design-system';
 
 // Shared loading indicator for pending creation and resynthesis states
 const SynthesisLoadingState: React.FC = () => (
@@ -292,9 +292,21 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-2xl mx-auto p-4 sm:p-8 pb-32">
-          {isLoading && (
+          {/* Cold-load: no cached synthesis yet — block with the full-screen spinner */}
+          {isLoading && !synthesis && (
             <div className="flex items-center justify-center py-24">
               <SynthesisLoadingState />
+            </div>
+          )}
+
+          {/* Background resync: a previous synthesis is already on screen.
+              Show an inline "Updating…" pill instead of hiding the content. */}
+          {isLoading && synthesis && (
+            <div className="flex justify-center mb-4">
+              <div className={`${chip.base} ${chip.inactive}`}>
+                <Loader2 size={14} className="animate-spin text-(--color-accent)" />
+                <span>Updating…</span>
+              </div>
             </div>
           )}
 
@@ -318,7 +330,7 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
             </div>
           )}
 
-          {synthesis && !isLoading && (
+          {synthesis && !error && (
             <>
               <div className="space-y-6">
                 {synthesis.sections.map((section, sIdx) => (

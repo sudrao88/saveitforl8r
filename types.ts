@@ -268,6 +268,15 @@ export interface Moment {
   lastSeenInputHash?: string;     // inputHash when user last viewed this moment
   isPending?: boolean;            // True while server is processing async creation
   processingError?: boolean;      // True if server pipeline failed
+  /**
+   * inputHash that was sent with an in-flight resynthesis request. Set when the
+   * client calls submitResynthesis and cleared when the poll completes (success
+   * or failure). Used on app start to recover an interrupted resynthesis without
+   * triggering a fresh Gemini call.
+   */
+  pendingSynthesisHash?: string;
+  /** Timestamp when the in-flight resynthesis was submitted. */
+  pendingSynthesisAt?: number;
 }
 
 export interface SynthesisItem {

@@ -28,7 +28,7 @@ import {
   saveMomentSynthesis,
   deleteMomentSynthesis,
 } from '../services/storageService';
-import { submitMomentCreation, submitResynthesis, pollSynthesisResult } from '../services/geminiService';
+import { submitMomentCreation, submitResynthesis, pollSynthesisResult, fetchPendingSynthesisResults } from '../services/geminiService';
 import { useMomentCreationPolling } from './useMomentCreationPolling';
 import { computeInputHash } from '../utils/hash';
 
@@ -89,12 +89,13 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
   }, []);
 
   // Integrate moment creation polling
-  const { startPolling, recoverPending } = useMomentCreationPolling({
+  const { startPolling, recoverPending, recoverPendingResynthesis } = useMomentCreationPolling({
     momentsRef: momentsListRef,
     memoriesRef,
     setMoments: setMomentsList,
     setSynthesesMap,
     onMomentCreated: handleMomentCreated,
+    onMomentResynthesisRecovered: handleMomentCreated,
   });
 
   const refreshMoments = useCallback(async () => {
@@ -107,10 +108,13 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
       if (pending.length > 0) {
         recoverPending(pending);
       }
+      // Recover interrupted resynthesis requests too — the synthesis may have
+      // completed server-side while we were offline.
+      recoverPendingResynthesis(loadedMoments);
     } catch (err) {
       console.error('[Moments] Failed to refresh moments:', err);
     }
-  }, [recoverPending]);
+  }, [recoverPending, recoverPendingResynthesis]);
 
   // Load persisted moments on mount + recover any pending from previous session
   useEffect(() => {
@@ -127,12 +131,14 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
         if (pending.length > 0) {
           recoverPending(pending);
         }
+        // Recover interrupted user-triggered resynthesis requests.
+        recoverPendingResynthesis(loadedMoments);
       } catch (err) {
         console.error('[Moments] Failed to load persisted data:', err);
       }
     };
     loadData();
-  }, [recoverPending]);
+  }, [recoverPending, recoverPendingResynthesis]);
 
   // Create a new moment (async — returns pending placeholder immediately)
   const createNewMoment = useCallback(
@@ -227,45 +233,45 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
         return persisted.content;
       }
 
-      // Cache miss — submit re-synthesis asynchronously and poll for result.
+      // Cache miss — first check the server's Firestore-backed result store
+      // for a completed synthesis from a previous session (e.g. one that was
+      // submitted before the user exited mid-polling). Only submit a new
+      // request if no usable result exists.
+      //
       // Polling is decoupled from the caller's AbortSignal so that navigating
       // away from a MomentSheet doesn't cancel background polling — the result
       // is cached and ready when the user returns.
-      setSynthesisLoading(prev => new Set(prev).add(moment.id));
-      try {
-        // Reuse an existing in-flight polling promise for this moment if one
-        // exists (e.g. if the user re-opens the sheet while polling is still
-        // running from the first open).
-        let pollingPromise = inFlightPolling.current.get(moment.id);
-        if (!pollingPromise) {
-          await submitResynthesis(moment, currentMemories);
-          pollingPromise = pollSynthesisResult(moment.id);
-          inFlightPolling.current.set(moment.id, pollingPromise);
-        }
+      //
+      // If a poll is already in flight for this moment from an earlier call in
+      // this session (e.g. user reopens the sheet while polling continues),
+      // skip the redundant processingError-clear write and the server status
+      // check — that work was already done by the original call.
+      const existingPoll = inFlightPolling.current.get(moment.id);
 
-        const rawSynthesis = await pollingPromise;
-        inFlightPolling.current.delete(moment.id);
+      setSynthesisLoading(prev => prev.has(moment.id) ? prev : new Set(prev).add(moment.id));
 
-        // Filter out items referencing notes not in this moment.
-        // This guards against a race where a concurrent synthesis request
-        // (with a different set of notes) completes first and its result
-        // is picked up by our polling — e.g. when a note is deleted while
-        // a previous synthesis is still in-flight on the server.
-        const synthesis: SynthesisResponse = {
-          ...rawSynthesis,
-          sections: rawSynthesis.sections
-            .map(section => ({
-              ...section,
-              items: section.items.filter(item =>
-                currentNoteIdSet.has(item.sourceNoteId)
-              ),
-            }))
-            .filter(section => section.items.length > 0),
-          generatedFrom: rawSynthesis.generatedFrom.filter(id =>
-            currentNoteIdSet.has(id)
-          ),
-        };
+      // Snapshot the moment with processingError cleared (issue 2). We hold
+      // this so subsequent persistence writes layer on a clean slate.
+      let workingMoment: Moment = moment;
+      if (!existingPoll && moment.processingError) {
+        workingMoment = { ...moment, processingError: false, updatedAt: Date.now() };
+        await saveMoment(workingMoment);
+        setMomentsList(prev => prev.map(m => m.id === moment.id ? workingMoment : m));
+      }
 
+      const filterSynthesis = (raw: SynthesisResponse): SynthesisResponse => ({
+        ...raw,
+        sections: raw.sections
+          .map(section => ({
+            ...section,
+            items: section.items.filter(item => currentNoteIdSet.has(item.sourceNoteId)),
+          }))
+          .filter(section => section.items.length > 0),
+        generatedFrom: raw.generatedFrom.filter(id => currentNoteIdSet.has(id)),
+      });
+
+      const persistResult = async (raw: SynthesisResponse): Promise<SynthesisResponse> => {
+        const synthesis = filterSynthesis(raw);
         const stored: MomentSynthesis = {
           momentId: moment.id,
           inputHash: currentHash,
@@ -273,26 +279,78 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
           generatedAt: Date.now(),
           noteIds: moment.noteIds,
         };
-
-        // Update moment's hash and synthesis timestamp
         const updatedMoment: Moment = {
-          ...moment,
+          ...workingMoment,
           inputHash: currentHash,
           lastSeenInputHash: currentHash,
           lastSynthesizedAt: Date.now(),
           updatedAt: Date.now(),
+          processingError: false,
+          pendingSynthesisHash: undefined,
+          pendingSynthesisAt: undefined,
         };
         await saveMoment(updatedMoment);
         setMomentsList(prev => prev.map(m => m.id === moment.id ? updatedMoment : m));
-
         await saveMomentSynthesis(stored);
         setSynthesesMap(prev => {
           const next = new Map(prev);
           next.set(moment.id, stored);
           return next;
         });
-
         onMomentChangedRef.current?.(updatedMoment);
+        return synthesis;
+      };
+
+      try {
+        // If we already have a polling promise from this session (e.g. user
+        // re-opened the sheet), reuse it without re-checking the server.
+        let pollingPromise = existingPoll;
+
+        if (!pollingPromise) {
+          // Step 1: check if the server already has a result for this moment.
+          const existing = await fetchPendingSynthesisResults([moment.id]);
+          const serverEntry = existing[moment.id];
+
+          if (
+            serverEntry?.status === 'completed' &&
+            'data' in serverEntry &&
+            serverEntry.inputHash === currentHash
+          ) {
+            // Server already has a fresh result — use it without resubmitting.
+            const synthesis = await persistResult(serverEntry.data);
+            return signal?.aborted ? null : synthesis;
+          }
+
+          if (
+            serverEntry?.status === 'processing' &&
+            (!serverEntry.inputHash || serverEntry.inputHash === currentHash)
+          ) {
+            // Server is still synthesizing for the same input — just poll.
+            pollingPromise = pollSynthesisResult(moment.id);
+            inFlightPolling.current.set(moment.id, pollingPromise);
+          } else {
+            // No usable server result — submit a fresh resynthesis. Persist a
+            // recovery marker so that if this session is interrupted, the next
+            // session can resume polling instead of resubmitting (issue 5).
+            workingMoment = {
+              ...workingMoment,
+              pendingSynthesisHash: currentHash,
+              pendingSynthesisAt: Date.now(),
+              updatedAt: Date.now(),
+            };
+            await saveMoment(workingMoment);
+            setMomentsList(prev => prev.map(m => m.id === moment.id ? workingMoment : m));
+
+            await submitResynthesis(moment, currentMemories, currentHash);
+            pollingPromise = pollSynthesisResult(moment.id);
+            inFlightPolling.current.set(moment.id, pollingPromise);
+          }
+        }
+
+        const rawSynthesis = await pollingPromise;
+        inFlightPolling.current.delete(moment.id);
+
+        const synthesis = await persistResult(rawSynthesis);
 
         // If the caller was aborted (e.g. MomentSheet unmounted), the result
         // is still cached above — the caller just won't use the return value.
@@ -304,6 +362,17 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
       } catch (err) {
         inFlightPolling.current.delete(moment.id);
         console.error('[Moments] Synthesis failed:', err);
+        // Clear the recovery marker so app start doesn't keep polling a dead request.
+        if (workingMoment.pendingSynthesisHash || workingMoment.pendingSynthesisAt) {
+          const cleared: Moment = {
+            ...workingMoment,
+            pendingSynthesisHash: undefined,
+            pendingSynthesisAt: undefined,
+            updatedAt: Date.now(),
+          };
+          await saveMoment(cleared);
+          setMomentsList(prev => prev.map(m => m.id === moment.id ? cleared : m));
+        }
         return null;
       } finally {
         setSynthesisLoading(prev => {
