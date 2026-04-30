@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v85",
-  "buildNumber": 85,
-  "buildDate": "2026-04-29T00:00:00.000Z",
+  "version": "saveitforl8r-v86",
+  "buildNumber": 86,
+  "buildDate": "2026-04-30T00:00:00.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Fixed a moment-deletion bug where the header showed more notes than the delete sheet, and stopped cross-device note deletions from leaving stale references inside moments."
+  "changelog": "Fixed a bug where reopening a moment after exiting mid-refresh would re-run the synthesis from scratch — it now reuses the result that finished server-side. Background re-syncs render the previous synthesis under an \"Updating…\" pill instead of a blocking spinner."
 }
