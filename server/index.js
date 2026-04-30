@@ -299,13 +299,15 @@ const SYNTHESIS_COLLECTION = 'synthesis-results';
 const SYNTHESIS_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const SYNTHESIS_FAILED_TTL_MS = 24 * 60 * 60 * 1000; // 1 day
 
-const persistSynthesisResult = async (momentId, userId, status, result) => {
+const persistSynthesisResult = async (momentId, userId, status, result, inputHash) => {
   if (!db || !momentId) return;
 
   const docRef = db.collection(SYNTHESIS_COLLECTION).doc(momentId);
 
   try {
-    // Verify ownership: only allow overwrite if doc doesn't exist or belongs to this user
+    // Verify ownership and preserve previously-stored inputHash when this write
+    // doesn't supply one (the initial 'processing' write sets it; later
+    // 'completed'/'failed' writes shouldn't clobber it).
     const existing = await docRef.get();
     if (existing.exists && existing.data().userId !== userId) {
       console.warn(`[Firestore] Ownership mismatch for synthesis ${momentId}: requested by ${userId}, owned by ${existing.data().userId}`);
@@ -319,6 +321,11 @@ const persistSynthesisResult = async (momentId, userId, status, result) => {
       expireAt: new Date(Date.now() + (status === 'completed' ? SYNTHESIS_TTL_MS : SYNTHESIS_FAILED_TTL_MS)),
     };
     if (result) doc.result = result;
+    if (inputHash) {
+      doc.inputHash = inputHash;
+    } else if (existing.exists && existing.data().inputHash) {
+      doc.inputHash = existing.data().inputHash;
+    }
     await docRef.set(doc);
   } catch (err) {
     console.error(`[Firestore] Failed to persist synthesis result for ${momentId}:`, err.message);
@@ -350,11 +357,13 @@ app.post(
   validateSynthesizeInput,
   synthesizeLimiter,
   async (req, res) => {
-    const { notes, momentType, momentTitle, objective, momentId } = req.body;
+    const { notes, momentType, momentTitle, objective, momentId, inputHash } = req.body;
 
     // Persist "processing" status before responding so that any concurrent
     // polling requests see "processing" rather than a stale "completed" result.
-    await persistSynthesisResult(momentId, req.userId, 'processing', null);
+    // Stamp the inputHash so subsequent polls can verify the cached result is
+    // still relevant for the client's current note set.
+    await persistSynthesisResult(momentId, req.userId, 'processing', null, inputHash);
 
     // Acknowledge immediately
     res.json({ status: 'accepted', momentId });
@@ -517,13 +526,17 @@ app.post(
         const data = snap.data();
         if (data.userId !== req.userId) { results[momentIds[i]] = { status: 'not_found' }; continue; }
 
+        const entry = {};
         if (data.status === 'completed' && data.result) {
-          results[momentIds[i]] = { status: 'completed', data: data.result };
+          entry.status = 'completed';
+          entry.data = data.result;
         } else if (data.status === 'failed') {
-          results[momentIds[i]] = { status: 'failed' };
+          entry.status = 'failed';
         } else {
-          results[momentIds[i]] = { status: data.status || 'processing' };
+          entry.status = data.status || 'processing';
         }
+        if (data.inputHash) entry.inputHash = data.inputHash;
+        results[momentIds[i]] = entry;
       }
 
       res.json({ results });
