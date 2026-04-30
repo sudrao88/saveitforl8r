@@ -895,7 +895,7 @@ const AppContent: React.FC = () => {
               isOtaDownloading={isOtaDownloading}
             />
             {availableTypes.length > 0 && (
-              <div className="bg-(--color-surface-base) backdrop-blur-md border-b border-(--color-border-default)/50">
+              <div className="border-b border-(--color-border-default)/50">
                 <FilterBar
                   availableTypes={availableTypes}
                   filterType={filterType}
