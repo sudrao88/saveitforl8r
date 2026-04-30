@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v86",
-  "buildNumber": 86,
+  "version": "saveitforl8r-v87",
+  "buildNumber": 87,
   "buildDate": "2026-04-30T00:00:00.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Fixed a bug where reopening a moment after exiting mid-refresh would re-run the synthesis from scratch — it now reuses the result that finished server-side. Background re-syncs render the previous synthesis under an \"Updating…\" pill instead of a blocking spinner."
+  "changelog": "Fixed a gap between the top toolbar and the filter bar on the native Android app — they now stick together flush with no scroll content bleeding through."
 }

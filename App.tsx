@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, Suspense } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, Suspense } from 'react';
 import { Bell, RefreshCw, X } from 'lucide-react';
 import { App as CapacitorApp, URLOpenListenerEvent } from '@capacitor/app';
 import { isNative } from './services/platform';
@@ -311,24 +311,12 @@ const AppContent: React.FC = () => {
   const syncRef = useRef(sync);
   const refreshRef = useRef(handleFullRefresh);
   const handleRetryRef = useRef(handleRetry);
-  const topNavRef = useRef<HTMLDivElement>(null);
-  const [topNavHeight, setTopNavHeight] = useState(0);
 
   useEffect(() => {
     syncRef.current = sync;
     refreshRef.current = handleFullRefresh;
     handleRetryRef.current = handleRetry;
   }, [sync, handleFullRefresh, handleRetry]);
-
-  useLayoutEffect(() => {
-    const el = topNavRef.current;
-    if (!el) return;
-    const update = () => setTopNavHeight(el.offsetHeight);
-    update();
-    const observer = new ResizeObserver(update);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
 
   const {
     isSettingsOpen,
@@ -894,7 +882,7 @@ const AppContent: React.FC = () => {
     <div className="min-h-screen bg-black flex flex-col">
       {/* Feed layout — always rendered, overlaid by fullscreen views */}
       <div className={feedLocked ? 'pointer-events-none' : undefined} aria-hidden={feedLocked || undefined}>
-        <div ref={topNavRef} className="sticky top-0 z-(--z-overlay) bg-(--color-surface-base) pt-[var(--sat)]">
+        <div className="sticky top-0 z-(--z-overlay) bg-(--color-surface-base)/80 backdrop-blur-md pt-[var(--sat)]">
             <TopNavigation
               setView={handleSetView}
               resetFilters={handleResetFilters}
@@ -906,6 +894,16 @@ const AppContent: React.FC = () => {
               modelStatus={modelStatus}
               isOtaDownloading={isOtaDownloading}
             />
+            {availableTypes.length > 0 && (
+              <div className="border-b border-(--color-border-default)/50">
+                <FilterBar
+                  availableTypes={availableTypes}
+                  filterType={filterType}
+                  setFilterType={handleSetFilterType}
+                  clearFilters={handleResetFilters}
+                />
+              </div>
+            )}
         </div>
 
         <MomentsStrip
@@ -946,17 +944,6 @@ const AppContent: React.FC = () => {
             >
               <X size={16} />
             </button>
-          </div>
-        )}
-
-        {availableTypes.length > 0 && (
-          <div className="sticky z-(--z-dropdown) bg-(--color-surface-base) backdrop-blur-md border-b border-(--color-border-default)/50" style={{ top: `${topNavHeight}px` }}>
-            <FilterBar
-              availableTypes={availableTypes}
-              filterType={filterType}
-              setFilterType={handleSetFilterType}
-              clearFilters={handleResetFilters}
-            />
           </div>
         )}
 
