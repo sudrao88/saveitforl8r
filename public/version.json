@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v89",
-  "buildNumber": 89,
+  "version": "saveitforl8r-v91",
+  "buildNumber": 91,
   "buildDate": "2026-05-01T00:00:00.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Fixed moment deletion not syncing across devices. Deletes now propagate immediately and can no longer be resurrected by background activity (enrichment matches, mark-seen, resynthesis recovery) on another device."
+  "changelog": "Eliminated the gap that appeared between the toolbar and filter bar on Android while scrolling. The filter bar now tracks the toolbar's height through CSS, so it stays flush even when the system status bar inset changes mid-scroll."
 }
