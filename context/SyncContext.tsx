@@ -159,18 +159,23 @@ const executeSyncPlan = async (plan: SyncPlan, callbacks?: ExecuteSyncCallbacks)
                     return;
                 }
 
-                // Handle moment files with proper conflict resolution
+                // Handle moment files with proper conflict resolution.
+                // Tombstones are authoritative: a remote `isDeleted` always wins,
+                // even if the local copy has a newer updatedAt. Otherwise the
+                // local timestamp gets bumped by background activity
+                // (addNoteToMoment from enrichment, markMomentSeen,
+                // loadSynthesis, recoverPendingResynthesis) and the deletion
+                // would be silently discarded — then the alive local copy is
+                // re-uploaded, resurrecting the moment on every device.
                 if (item.noteId.startsWith('moment-')) {
                     const momentContent = content as unknown as Moment;
                     const verifiedMomentId = item.noteId.replace('moment-', '');
                     const safeMoment: Moment = { ...momentContent, id: verifiedMomentId };
-                    if (item.localMoment) {
+                    if (safeMoment.isDeleted) {
+                        await withProgress(deleteMomentHard(verifiedMomentId));
+                    } else if (item.localMoment) {
                         if (safeMoment.updatedAt > item.localMoment.updatedAt) {
-                            if (safeMoment.isDeleted) {
-                                await withProgress(deleteMomentHard(verifiedMomentId));
-                            } else {
-                                await withProgress(saveMoment(safeMoment));
-                            }
+                            await withProgress(saveMoment(safeMoment));
                         } else if (item.localMoment.updatedAt > safeMoment.updatedAt) {
                             plan.toUpload.push({
                                 noteId: item.noteId,
@@ -179,11 +184,7 @@ const executeSyncPlan = async (plan: SyncPlan, callbacks?: ExecuteSyncCallbacks)
                             });
                         }
                     } else {
-                        if (safeMoment.isDeleted) {
-                            await withProgress(deleteMomentHard(verifiedMomentId));
-                        } else {
-                            await withProgress(saveMoment(safeMoment));
-                        }
+                        await withProgress(saveMoment(safeMoment));
                     }
                     return;
                 }
@@ -633,24 +634,42 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           const snapshotJSON = await storage.get(SNAPSHOT_KEY);
           const snapshot = snapshotJSON ? JSON.parse(snapshotJSON) : {};
 
-          // Upload the synthesis first, then the moment metadata. If the
-          // sequence is interrupted, Drive may carry an updated synthesis
-          // without updated metadata (harmless — next sync converges) instead
-          // of metadata pointing at a synthesis Drive doesn't yet have (which
-          // would force another device to refetch from scratch).
-          const synthesis = await getMomentSynthesis(moment.id);
-          if (synthesis) {
-              const synthFilename = `moment-synthesis-${moment.id}.json`;
-              const remoteSynthFile = await findFileByName(synthFilename);
-              const uploadedSynth = await uploadFile(synthFilename, synthesis, remoteSynthFile?.id);
+          // For tombstones, skip the synthesis upload — the file is about to
+          // be deleted from Drive anyway (see performMomentSync).
+          if (!moment.isDeleted) {
+              // Upload the synthesis first, then the moment metadata. If the
+              // sequence is interrupted, Drive may carry an updated synthesis
+              // without updated metadata (harmless — next sync converges) instead
+              // of metadata pointing at a synthesis Drive doesn't yet have (which
+              // would force another device to refetch from scratch).
+              const synthesis = await getMomentSynthesis(moment.id);
+              if (synthesis) {
+                  const synthFilename = `moment-synthesis-${moment.id}.json`;
+                  const remoteSynthFile = await findFileByName(synthFilename);
+                  const uploadedSynth = await uploadFile(synthFilename, synthesis, remoteSynthFile?.id);
 
-              if (uploadedSynth?.modifiedTime) {
-                  snapshot[`moment-synthesis-${moment.id}`] = uploadedSynth.modifiedTime;
+                  if (uploadedSynth?.modifiedTime) {
+                      snapshot[`moment-synthesis-${moment.id}`] = uploadedSynth.modifiedTime;
+                  }
               }
           }
 
           const filename = `moment-${moment.id}.json`;
           const remoteFile = await findFileByName(filename);
+
+          // If the moment was previously synced (snapshot has an entry) but is
+          // missing from Drive, another device has deleted it. Re-uploading
+          // would resurrect it on every device. Instead, propagate the deletion
+          // locally so background updates (addNoteToMoment, markMomentSeen,
+          // loadSynthesis, etc.) don't bring it back from the dead.
+          if (!remoteFile && snapshot[`moment-${moment.id}`]) {
+              await deleteMomentHard(moment.id);
+              delete snapshot[`moment-${moment.id}`];
+              delete snapshot[`moment-synthesis-${moment.id}`];
+              await storage.set(SNAPSHOT_KEY, JSON.stringify(snapshot));
+              return;
+          }
+
           const uploadedMoment = await uploadFile(filename, moment, remoteFile?.id);
 
           if (uploadedMoment?.modifiedTime) {
@@ -1074,6 +1093,41 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       try {
           await getAccessToken();
+
+          if (moment.isDeleted) {
+              // Mirror the note deletion path (performSingleSync): delete the
+              // remote files directly and hard-delete locally. The previous
+              // approach uploaded the tombstone and waited for the next delta
+              // sync to clean up — that left a window where a remote device
+              // could push a local update with a higher updatedAt and override
+              // the deletion, then re-upload it (resurrecting the moment on
+              // the deleting device).
+              const filename = `moment-${moment.id}.json`;
+              const synthFilename = `moment-synthesis-${moment.id}.json`;
+
+              const remoteMoment = await findFileByName(filename);
+              if (remoteMoment) {
+                  await deleteFileById(remoteMoment.id);
+              }
+
+              const remoteSynth = await findFileByName(synthFilename);
+              if (remoteSynth) {
+                  await deleteFileById(remoteSynth.id);
+              }
+
+              // Cascade-deletes the synthesis from IDB too.
+              await deleteMomentHard(moment.id);
+
+              const snapshotJSON = await storage.get(SNAPSHOT_KEY);
+              if (snapshotJSON) {
+                  const snapshot = JSON.parse(snapshotJSON);
+                  delete snapshot[`moment-${moment.id}`];
+                  delete snapshot[`moment-synthesis-${moment.id}`];
+                  await storage.set(SNAPSHOT_KEY, JSON.stringify(snapshot));
+              }
+              return;
+          }
+
           await syncMomentInternal(moment);
       } catch (e: any) {
           console.error(`[Sync] Moment sync failed for ${moment.id}:`, e);

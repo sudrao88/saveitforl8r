@@ -375,6 +375,81 @@ describe('SyncContext', () => {
       expect(driveService.deleteFileById).toHaveBeenCalledWith('drive-del-single');
       expect(storageService.deleteMemory).toHaveBeenCalledWith('del-single');
     });
+
+    it('should delete remote moment file and synthesis and hard-delete locally on single sync of deleted moment', async () => {
+      // Mirrors the note-deletion semantics: a single moment sync of a
+      // tombstone should remove the Drive files and the local tombstone
+      // immediately, rather than uploading the tombstone and waiting for
+      // the next delta sync (which races with background updates).
+      const tombstone = {
+        id: 'mom-del',
+        objective: 'Test',
+        title: 'Test',
+        type: 'general',
+        noteIds: [],
+        createdAt: 1000,
+        updatedAt: 2000,
+        isDeleted: true,
+      };
+
+      (driveService.findFileByName as any).mockImplementation((name: string) => {
+        if (name === 'moment-mom-del.json') {
+          return Promise.resolve({ id: 'drive-mom-del', name, modifiedTime: '2024-01-01T00:00:00Z' });
+        }
+        if (name === 'moment-synthesis-mom-del.json') {
+          return Promise.resolve({ id: 'drive-synth-mom-del', name, modifiedTime: '2024-01-01T00:00:00Z' });
+        }
+        return Promise.resolve(null);
+      });
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      await act(async () => {
+        await result.current.syncMoment(tombstone as any);
+      });
+
+      // Both moment file and synthesis file should be deleted from Drive.
+      expect(driveService.deleteFileById).toHaveBeenCalledWith('drive-mom-del');
+      expect(driveService.deleteFileById).toHaveBeenCalledWith('drive-synth-mom-del');
+      // Local tombstone hard-deleted (cascades to the synthesis cache).
+      expect(storageService.deleteMomentHard).toHaveBeenCalledWith('mom-del');
+      // The tombstone must NOT be uploaded — that was the buggy path that
+      // raced with background activity on the other device.
+      expect(driveService.uploadFile).not.toHaveBeenCalled();
+    });
+
+    it('should not resurrect a moment that was deleted on another device', async () => {
+      // Background activity (e.g. addNoteToMoment from enrichment) calls
+      // syncMoment with an alive moment. If the file is missing from Drive
+      // but our snapshot says we synced it before, the deletion was made
+      // by another device — propagate the deletion instead of re-uploading.
+      mockStorageValues['gdrive_remote_snapshot'] = JSON.stringify({
+        'moment-mom-1': '2024-01-01T00:00:00Z',
+      });
+
+      const aliveLocal = {
+        id: 'mom-1',
+        objective: 'Test',
+        title: 'Test',
+        type: 'general',
+        noteIds: ['n1'],
+        createdAt: 1000,
+        updatedAt: 9000, // bumped locally by enrichment match
+      };
+
+      (driveService.findFileByName as any).mockResolvedValue(null);
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      await act(async () => {
+        await result.current.syncMoment(aliveLocal as any);
+      });
+
+      // Should not re-upload — that would resurrect the deleted moment.
+      expect(driveService.uploadFile).not.toHaveBeenCalled();
+      // Should propagate the deletion locally.
+      expect(storageService.deleteMomentHard).toHaveBeenCalledWith('mom-1');
+    });
   });
 
   describe('moment delta sync', () => {
@@ -552,6 +627,36 @@ describe('SyncContext', () => {
 
       // Local moment should be deleted because another device removed it from Drive
       expect(storageService.deleteMomentHard).toHaveBeenCalledWith('mom-1');
+    });
+
+    it('should hard-delete local moment when remote tombstone arrives, even if local updatedAt is newer', async () => {
+      // Regression test for moment deletion sync bug:
+      // Background activity on Device B (addNoteToMoment, markMomentSeen,
+      // loadSynthesis, recoverPendingResynthesis) bumps the local
+      // updatedAt. Without this fix, the streaming download handler would
+      // route the tombstone to "upload local" instead of deleting, silently
+      // discarding the deletion and resurrecting the moment elsewhere.
+      const remoteTombstone = makeMoment('mom-1', 1500, { isDeleted: true });
+      const localMoment = makeMoment('mom-1', 5000); // local has newer updatedAt
+
+      (storageService.getMemories as any).mockResolvedValue([]);
+      (storageService.getAllMomentsIncludingDeleted as any).mockResolvedValue([localMoment]);
+      (driveService.listAllFiles as any).mockResolvedValue([
+        { id: 'drive-mom-1', name: 'moment-mom-1.json', modifiedTime: '2024-01-02T00:00:00Z' },
+      ]);
+      mockDownloads(new Map([['drive-mom-1', remoteTombstone]]));
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      await act(async () => {
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
+      });
+
+      // Tombstone wins regardless of timestamp
+      expect(storageService.deleteMomentHard).toHaveBeenCalledWith('mom-1');
+      expect(storageService.saveMoment).not.toHaveBeenCalledWith(localMoment);
     });
 
     it('should skip unchanged moment files when snapshot matches remote modifiedTime', async () => {
