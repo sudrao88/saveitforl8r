@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v88",
-  "buildNumber": 88,
-  "buildDate": "2026-04-30T00:00:00.000Z",
+  "version": "saveitforl8r-v89",
+  "buildNumber": 89,
+  "buildDate": "2026-05-01T00:00:00.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Restored the moments strip between the toolbar and the filter bar. The filter bar still sticks flush below the toolbar when scrolling, with no gap on Android."
+  "changelog": "Fixed moment deletion not syncing across devices. Deletes now propagate immediately and can no longer be resurrected by background activity (enrichment matches, mark-seen, resynthesis recovery) on another device."
 }
