@@ -311,8 +311,7 @@ const AppContent: React.FC = () => {
   const syncRef = useRef(sync);
   const refreshRef = useRef(handleFullRefresh);
   const handleRetryRef = useRef(handleRetry);
-  const topNavRef = useRef<HTMLDivElement>(null);
-  const [topNavHeight, setTopNavHeight] = useState(0);
+  const topNavInnerRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     syncRef.current = sync;
@@ -320,18 +319,23 @@ const AppContent: React.FC = () => {
     handleRetryRef.current = handleRetry;
   }, [sync, handleFullRefresh, handleRetry]);
 
-  // Measure TopNav so the FilterBar can stick directly below it.
-  // Observe border-box (not the default content-box) so padding-only changes
-  // — like Android injecting safe-area-inset-top into --sat after first paint —
-  // are detected. Using getBoundingClientRect for sub-pixel accuracy avoids
-  // a hairline gap from offsetHeight rounding.
+  // Publish the inner <nav> height as --top-nav-h on :root. The FilterBar
+  // wrapper offsets itself with calc(var(--top-nav-h) + var(--sat)), so when
+  // Android re-injects --sat the FilterBar's sticky top updates synchronously
+  // in the same CSS recompute as the TopNav's padding-top — no React render
+  // race, no gap. Measuring the inner <nav> (not the outer wrapper) keeps
+  // --top-nav-h stable across --sat changes since the nav has no safe-area
+  // padding of its own.
   useLayoutEffect(() => {
-    const el = topNavRef.current;
+    const el = topNavInnerRef.current;
     if (!el) return;
-    const update = () => setTopNavHeight(el.getBoundingClientRect().height);
+    const update = () => {
+      const h = el.getBoundingClientRect().height;
+      document.documentElement.style.setProperty('--top-nav-h', `${h}px`);
+    };
     update();
     const observer = new ResizeObserver(update);
-    observer.observe(el, { box: 'border-box' });
+    observer.observe(el);
     return () => observer.disconnect();
   }, []);
 
@@ -899,8 +903,9 @@ const AppContent: React.FC = () => {
     <div className="min-h-screen bg-black flex flex-col">
       {/* Feed layout — always rendered, overlaid by fullscreen views */}
       <div className={feedLocked ? 'pointer-events-none' : undefined} aria-hidden={feedLocked || undefined}>
-        <div ref={topNavRef} className="sticky top-0 z-(--z-overlay) bg-(--color-surface-base)/80 backdrop-blur-md pt-[var(--sat)]">
+        <div className="sticky top-0 z-(--z-overlay) bg-(--color-surface-base)/80 backdrop-blur-md pt-[var(--sat)]">
             <TopNavigation
+              ref={topNavInnerRef}
               setView={handleSetView}
               resetFilters={handleResetFilters}
               onSettingsClick={handleSettingsClick}
@@ -956,8 +961,8 @@ const AppContent: React.FC = () => {
 
         {availableTypes.length > 0 && (
           <div
-            className="sticky z-(--z-dropdown) bg-(--color-surface-base) backdrop-blur-md border-b border-(--color-border-default)/50"
-            style={{ top: `${Math.ceil(topNavHeight)}px` }}
+            className="sticky z-(--z-dropdown) bg-(--color-surface-base)/80 backdrop-blur-md border-b border-(--color-border-default)/50"
+            style={{ top: 'calc(var(--top-nav-h, 0px) + var(--sat, 0px))' }}
           >
             <FilterBar
               availableTypes={availableTypes}

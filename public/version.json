@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v88",
-  "buildNumber": 88,
+  "version": "saveitforl8r-v89",
+  "buildNumber": 89,
   "buildDate": "2026-04-30T00:00:00.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Restored the moments strip between the toolbar and the filter bar. The filter bar still sticks flush below the toolbar when scrolling, with no gap on Android."
+  "changelog": "Eliminated the gap that appeared between the toolbar and filter bar on Android while scrolling. The filter bar now tracks the toolbar's height through CSS, so it stays flush even when the system status bar inset changes mid-scroll."
 }

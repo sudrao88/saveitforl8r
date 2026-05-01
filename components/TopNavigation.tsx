@@ -17,7 +17,7 @@ interface TopNavigationProps {
   isOtaDownloading?: boolean;
 }
 
-const TopNavigation: React.FC<TopNavigationProps> = ({
+const TopNavigation = React.forwardRef<HTMLElement, TopNavigationProps>(({
     setView,
     resetFilters,
     onSettingsClick,
@@ -27,9 +27,9 @@ const TopNavigation: React.FC<TopNavigationProps> = ({
     isSyncingDownload,
     modelStatus,
     isOtaDownloading
-}) => {
+}, ref) => {
   return (
-    <nav className="px-4 py-3 sm:px-8 flex justify-center">
+    <nav ref={ref} className="px-4 py-3 sm:px-8 flex justify-center">
       <div className="w-full max-w-4xl flex items-center justify-between gap-4">
         <div 
             className="flex items-center gap-3 text-(--color-accent) shrink-0 cursor-pointer group active:scale-95 transition-transform"
@@ -101,6 +101,8 @@ const TopNavigation: React.FC<TopNavigationProps> = ({
       </div>
     </nav>
   );
-};
+});
+
+TopNavigation.displayName = 'TopNavigation';
 
 export default TopNavigation;
