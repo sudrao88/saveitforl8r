@@ -54,6 +54,7 @@ vi.mock('../services/googleDriveService', () => ({
   uploadMultipleFiles: vi.fn().mockResolvedValue({ failures: [] }),
   findFileByName: vi.fn().mockResolvedValue(null),
   findAllFilesByName: vi.fn().mockResolvedValue([]),
+  cleanupFilesByName: vi.fn().mockResolvedValue(undefined),
   deleteFileById: vi.fn().mockResolvedValue(undefined),
   isLinked: vi.fn().mockResolvedValue(true), // Now async
   deleteRemoteNote: vi.fn().mockResolvedValue(undefined),
@@ -108,6 +109,23 @@ describe('SyncContext', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] });
     // Clear mock storage values
     Object.keys(mockStorageValues).forEach(key => delete mockStorageValues[key]);
+
+    // cleanupFilesByName is a thin wrapper over findAllFilesByName +
+    // deleteFileById in the real module. Wire the default mock the same way
+    // so existing assertions on deleteFileById keep verifying behavior.
+    (driveService.cleanupFilesByName as any).mockImplementation(
+      async (filename: string, keepId?: string) => {
+        const files = await (driveService.findAllFilesByName as any)(filename);
+        for (const file of files) {
+          if (keepId && file.id === keepId) continue;
+          try {
+            await (driveService.deleteFileById as any)(file.id);
+          } catch {
+            // mirror real helper: swallow individual delete failures
+          }
+        }
+      },
+    );
   });
 
   afterEach(() => {
@@ -727,6 +745,42 @@ describe('SyncContext', () => {
       // Tombstone wins regardless of timestamp
       expect(storageService.deleteMomentHard).toHaveBeenCalledWith('mom-1');
       expect(storageService.saveMoment).not.toHaveBeenCalledWith(localMoment);
+    });
+
+    it('should plan duplicate Drive files for deletion alongside the canonical when local moment is a tombstone', async () => {
+      // doDeltaSync identifies duplicates from listAllFiles and queues them
+      // for deletion at planning time, so executeSyncPlan stays a simple
+      // execution engine — no per-item findAllFilesByName lookups.
+      const snapshot = { 'moment-mom-dup': '2024-01-01T00:00:00Z' };
+      mockStorageValues['gdrive_remote_snapshot'] = JSON.stringify(snapshot);
+      mockStorageValues['gdrive_last_sync_time'] = '5000';
+
+      const tombstone = makeMoment('mom-dup', 9000, { isDeleted: true });
+
+      (storageService.getMemories as any).mockResolvedValue([]);
+      (storageService.getAllMomentsIncludingDeleted as any).mockResolvedValue([tombstone]);
+      (driveService.listAllFiles as any).mockResolvedValue([
+        { id: 'drive-mom-dup-1', name: 'moment-mom-dup.json', modifiedTime: '2024-01-02T00:00:00Z' },
+        { id: 'drive-mom-dup-2', name: 'moment-mom-dup.json', modifiedTime: '2024-01-03T00:00:00Z' },
+        { id: 'drive-synth-dup-1', name: 'moment-synthesis-mom-dup.json', modifiedTime: '2024-01-02T00:00:00Z' },
+        { id: 'drive-synth-dup-2', name: 'moment-synthesis-mom-dup.json', modifiedTime: '2024-01-03T00:00:00Z' },
+      ]);
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      await act(async () => {
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
+      });
+
+      // Both the canonical and the duplicate file ID should be deleted.
+      expect(driveService.deleteFileById).toHaveBeenCalledWith('drive-mom-dup-1');
+      expect(driveService.deleteFileById).toHaveBeenCalledWith('drive-mom-dup-2');
+      expect(driveService.deleteFileById).toHaveBeenCalledWith('drive-synth-dup-1');
+      expect(driveService.deleteFileById).toHaveBeenCalledWith('drive-synth-dup-2');
+      // executeSyncPlan must not fall back to findAllFilesByName lookups.
+      expect(driveService.findAllFilesByName).not.toHaveBeenCalled();
     });
 
     it('should skip unchanged moment files when snapshot matches remote modifiedTime', async () => {

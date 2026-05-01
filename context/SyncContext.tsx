@@ -8,6 +8,7 @@ import {
     uploadMultipleFiles,
     findFileByName,
     findAllFilesByName,
+    cleanupFilesByName,
     deleteFileById,
     isLinked as checkIsLinked,
     deleteRemoteNote,
@@ -378,35 +379,15 @@ const executeSyncPlan = async (plan: SyncPlan, callbacks?: ExecuteSyncCallbacks)
         }
     }
 
+    // toDeleteRemote contains canonical file IDs plus any duplicate file IDs
+    // discovered during planning (see pushDeleteRemote in doDeltaSync). For
+    // moment deletions, the synthesis is included as a separate entry by the
+    // synthesis branch of the planner, so this loop stays a pure execution
+    // engine without extra Drive lookups. Synthesis files that exist on Drive
+    // but were never in the snapshot are caught by the orphan-cleanup pass.
     for (const item of plan.toDeleteRemote) {
         try {
             await deleteFileById(item.fileId);
-            // Clean up any duplicates Drive may have for the same name —
-            // concurrent uploads from another device can leave more than one
-            // file with the same logical id. Surviving duplicates would be
-            // pulled back down by the next listAllFiles and resurrect the
-            // entity locally.
-            try {
-                const duplicates = await findAllFilesByName(`${item.noteId}.json`);
-                for (const dup of duplicates) {
-                    if (dup.id === item.fileId) continue;
-                    await deleteFileById(dup.id);
-                }
-            } catch (e) {
-                console.warn(`[Sync] Failed to clean duplicates for ${item.noteId}:`, e);
-            }
-            // When deleting a moment, also delete its synthesis file(s) from remote
-            if (item.noteId.startsWith('moment-') && !item.noteId.startsWith('moment-synthesis-')) {
-                const momentId = item.noteId.replace('moment-', '');
-                try {
-                    const synthFiles = await findAllFilesByName(`moment-synthesis-${momentId}.json`);
-                    for (const synthFile of synthFiles) {
-                        await deleteFileById(synthFile.id);
-                    }
-                } catch (e) {
-                    console.warn(`[Sync] Failed to delete remote synthesis for ${momentId}:`, e);
-                }
-            }
         } catch (e) {
             console.error(`[Sync] Failed to delete remote file for ${item.noteId}:`, e);
             errors.push(item.noteId);
@@ -750,7 +731,23 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const localTodoMap = new Map(localTodoItems.map(t => [`todo-${t.id}`, t]));
 
     const remoteFiles = await listAllFiles();
-    const remoteMap = new Map(remoteFiles.map(f => [f.name.replace('.json', ''), f]));
+    // Build remoteMap (first occurrence per name) and duplicatesByName (extras).
+    // Drive permits multiple files with the same name; concurrent uploads from
+    // different devices, or a POST-after-missed-lookup, can create duplicates.
+    // The canonical entry drives planning; the extras get queued for deletion
+    // alongside whatever fate befalls the canonical.
+    const remoteMap = new Map<string, DriveFile>();
+    const duplicatesByName = new Map<string, DriveFile[]>();
+    for (const f of remoteFiles) {
+        const noteId = f.name.replace('.json', '');
+        if (!remoteMap.has(noteId)) {
+            remoteMap.set(noteId, f);
+        } else {
+            const list = duplicatesByName.get(noteId) || [];
+            list.push(f);
+            duplicatesByName.set(noteId, list);
+        }
+    }
 
     const lastSyncTimeStr = await storage.get(LAST_SYNC_KEY);
     const lastSyncTime = parseInt(lastSyncTimeStr || '0');
@@ -761,6 +758,21 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         toDeleteLocal: [],
         toDeleteRemote: [],
         toHardDeleteLocal: [],
+    };
+
+    // Push a delete-remote entry plus any duplicates for the same logical id,
+    // so executeSyncPlan can stay a simple execution engine without making
+    // extra Drive lookups per item. Also scheduled when the entity is being
+    // uploaded to a moment file — performMomentSync's cleanup covers that
+    // path; here we only fan out on actual deletes.
+    const pushDeleteRemote = (noteId: string, fileId: string) => {
+        plan.toDeleteRemote.push({ noteId, fileId });
+        const dups = duplicatesByName.get(noteId);
+        if (dups) {
+            for (const dup of dups) {
+                plan.toDeleteRemote.push({ noteId, fileId: dup.id });
+            }
+        }
     };
 
     const handled = new Set<string>();
@@ -776,7 +788,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (noteId.startsWith('event-')) {
             const localEvent = localEventMap.get(noteId);
             if (localEvent?.isDeleted) {
-                plan.toDeleteRemote.push({ noteId, fileId: remoteFile.id });
+                pushDeleteRemote(noteId, remoteFile.id);
                 plan.toHardDeleteLocal.push(noteId);
             } else {
                 plan.toDownload.push({ noteId, fileId: remoteFile.id, localCalendarEvent: localEvent });
@@ -788,7 +800,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (noteId.startsWith('todo-')) {
             const localTodo = localTodoMap.get(noteId);
             if (localTodo?.isDeleted) {
-                plan.toDeleteRemote.push({ noteId, fileId: remoteFile.id });
+                pushDeleteRemote(noteId, remoteFile.id);
                 plan.toHardDeleteLocal.push(noteId);
             } else {
                 plan.toDownload.push({ noteId, fileId: remoteFile.id, localTodoItem: localTodo });
@@ -802,7 +814,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             const localMoment = localMomentMap.get(`moment-${momentId}`);
             if (localMoment?.isDeleted) {
                 // Parent moment is deleted locally — clean up the remote synthesis
-                plan.toDeleteRemote.push({ noteId, fileId: remoteFile.id });
+                pushDeleteRemote(noteId, remoteFile.id);
                 plan.toHardDeleteLocal.push(noteId);
             } else {
                 plan.toDownload.push({ noteId, fileId: remoteFile.id });
@@ -814,7 +826,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (noteId.startsWith('moment-')) {
             const localMoment = localMomentMap.get(noteId);
             if (localMoment?.isDeleted) {
-                plan.toDeleteRemote.push({ noteId, fileId: remoteFile.id });
+                pushDeleteRemote(noteId, remoteFile.id);
                 plan.toHardDeleteLocal.push(noteId);
             } else {
                 plan.toDownload.push({ noteId, fileId: remoteFile.id, localMoment: localMoment });
@@ -825,7 +837,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const local = localMap.get(noteId);
 
         if (local?.isDeleted) {
-            plan.toDeleteRemote.push({ noteId, fileId: remoteFile.id });
+            pushDeleteRemote(noteId, remoteFile.id);
             plan.toHardDeleteLocal.push(noteId);
         } else if (!local) {
             plan.toDownload.push({ noteId, fileId: remoteFile.id });
@@ -896,7 +908,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (local.isDeleted) {
             const remote = remoteMap.get(local.id);
             if (remote) {
-                plan.toDeleteRemote.push({ noteId: local.id, fileId: remote.id });
+                pushDeleteRemote(local.id, remote.id);
             }
             plan.toHardDeleteLocal.push(local.id);
             handled.add(local.id);
@@ -916,7 +928,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (moment.isDeleted) {
             const remote = remoteMap.get(key);
             if (remote) {
-                plan.toDeleteRemote.push({ noteId: key, fileId: remote.id });
+                pushDeleteRemote(key, remote.id);
             }
             plan.toHardDeleteLocal.push(key);
             handled.add(key);
@@ -935,7 +947,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (event.isDeleted) {
             const remote = remoteMap.get(key);
             if (remote) {
-                plan.toDeleteRemote.push({ noteId: key, fileId: remote.id });
+                pushDeleteRemote(key, remote.id);
             }
             plan.toHardDeleteLocal.push(key);
             handled.add(key);
@@ -954,7 +966,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (item.isDeleted) {
             const remote = remoteMap.get(key);
             if (remote) {
-                plan.toDeleteRemote.push({ noteId: key, fileId: remote.id });
+                pushDeleteRemote(key, remote.id);
             }
             plan.toHardDeleteLocal.push(key);
             handled.add(key);
@@ -974,7 +986,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const hasMomentRemote = remoteMap.has(momentKey);
         const hasMomentLocal = localMomentMap.has(momentKey);
         if (!hasMomentRemote && !hasMomentLocal) {
-            plan.toDeleteRemote.push({ noteId, fileId: remoteFile.id });
+            pushDeleteRemote(noteId, remoteFile.id);
             plan.toHardDeleteLocal.push(noteId);
             handled.add(noteId);
         }
@@ -1162,18 +1174,8 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               // can leave duplicates behind. If any survive, the next delta
               // sync's listAllFiles will pull one of them down and resurrect
               // the moment locally.
-              const filename = `moment-${moment.id}.json`;
-              const synthFilename = `moment-synthesis-${moment.id}.json`;
-
-              const remoteMoments = await findAllFilesByName(filename);
-              for (const file of remoteMoments) {
-                  await deleteFileById(file.id);
-              }
-
-              const remoteSyntheses = await findAllFilesByName(synthFilename);
-              for (const file of remoteSyntheses) {
-                  await deleteFileById(file.id);
-              }
+              await cleanupFilesByName(`moment-${moment.id}.json`);
+              await cleanupFilesByName(`moment-synthesis-${moment.id}.json`);
 
               // Cascade-deletes the synthesis from IDB too.
               await deleteMomentHard(moment.id);
@@ -1285,10 +1287,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               // Delete every Drive file matching the name — duplicates can
               // exist when concurrent uploads race a deletion. See the
               // performMomentSync comment for the full rationale.
-              const remoteFiles = await findAllFilesByName(`${memory.id}.json`);
-              for (const file of remoteFiles) {
-                  await deleteFileById(file.id);
-              }
+              await cleanupFilesByName(`${memory.id}.json`);
               await deleteMemory(memory.id);
               const snapshotJSON = await storage.get(SNAPSHOT_KEY);
               if (snapshotJSON) {
