@@ -7,6 +7,7 @@ import {
     uploadFile,
     uploadMultipleFiles,
     findFileByName,
+    findAllFilesByName,
     deleteFileById,
     isLinked as checkIsLinked,
     deleteRemoteNote,
@@ -380,12 +381,28 @@ const executeSyncPlan = async (plan: SyncPlan, callbacks?: ExecuteSyncCallbacks)
     for (const item of plan.toDeleteRemote) {
         try {
             await deleteFileById(item.fileId);
-            // When deleting a moment, also delete its synthesis file from remote
+            // Clean up any duplicates Drive may have for the same name —
+            // concurrent uploads from another device can leave more than one
+            // file with the same logical id. Surviving duplicates would be
+            // pulled back down by the next listAllFiles and resurrect the
+            // entity locally.
+            try {
+                const duplicates = await findAllFilesByName(`${item.noteId}.json`);
+                for (const dup of duplicates) {
+                    if (dup.id === item.fileId) continue;
+                    await deleteFileById(dup.id);
+                }
+            } catch (e) {
+                console.warn(`[Sync] Failed to clean duplicates for ${item.noteId}:`, e);
+            }
+            // When deleting a moment, also delete its synthesis file(s) from remote
             if (item.noteId.startsWith('moment-') && !item.noteId.startsWith('moment-synthesis-')) {
                 const momentId = item.noteId.replace('moment-', '');
                 try {
-                    const synthFile = await findFileByName(`moment-synthesis-${momentId}.json`);
-                    if (synthFile) await deleteFileById(synthFile.id);
+                    const synthFiles = await findAllFilesByName(`moment-synthesis-${momentId}.json`);
+                    for (const synthFile of synthFiles) {
+                        await deleteFileById(synthFile.id);
+                    }
                 } catch (e) {
                     console.warn(`[Sync] Failed to delete remote synthesis for ${momentId}:`, e);
                 }
@@ -645,8 +662,22 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               const synthesis = await getMomentSynthesis(moment.id);
               if (synthesis) {
                   const synthFilename = `moment-synthesis-${moment.id}.json`;
-                  const remoteSynthFile = await findFileByName(synthFilename);
-                  const uploadedSynth = await uploadFile(synthFilename, synthesis, remoteSynthFile?.id);
+                  // findAllFilesByName so we can clean up any duplicates left
+                  // by a prior race (concurrent upload from another device, or
+                  // a re-synthesis that POSTed because findFileByName missed).
+                  const remoteSynthFiles = await findAllFilesByName(synthFilename);
+                  const primarySynth = remoteSynthFiles[0];
+                  const uploadedSynth = await uploadFile(synthFilename, synthesis, primarySynth?.id);
+
+                  // Delete any extras so they don't resurrect a deleted moment
+                  // and don't sit on Drive consuming quota.
+                  for (let i = 1; i < remoteSynthFiles.length; i++) {
+                      try {
+                          await deleteFileById(remoteSynthFiles[i].id);
+                      } catch (e) {
+                          console.warn(`[Sync] Failed to remove duplicate synthesis ${remoteSynthFiles[i].id}:`, e);
+                      }
+                  }
 
                   if (uploadedSynth?.modifiedTime) {
                       snapshot[`moment-synthesis-${moment.id}`] = uploadedSynth.modifiedTime;
@@ -655,14 +686,15 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           }
 
           const filename = `moment-${moment.id}.json`;
-          const remoteFile = await findFileByName(filename);
+          const remoteFiles = await findAllFilesByName(filename);
+          const primaryRemote = remoteFiles[0];
 
           // If the moment was previously synced (snapshot has an entry) but is
           // missing from Drive, another device has deleted it. Re-uploading
           // would resurrect it on every device. Instead, propagate the deletion
           // locally so background updates (addNoteToMoment, markMomentSeen,
           // loadSynthesis, etc.) don't bring it back from the dead.
-          if (!remoteFile && snapshot[`moment-${moment.id}`]) {
+          if (!primaryRemote && snapshot[`moment-${moment.id}`]) {
               await deleteMomentHard(moment.id);
               delete snapshot[`moment-${moment.id}`];
               delete snapshot[`moment-synthesis-${moment.id}`];
@@ -670,7 +702,17 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               return;
           }
 
-          const uploadedMoment = await uploadFile(filename, moment, remoteFile?.id);
+          const uploadedMoment = await uploadFile(filename, moment, primaryRemote?.id);
+
+          // Clean up duplicate moment files. Otherwise a delete could leave
+          // an orphan that gets pulled back down by the next listAllFiles.
+          for (let i = 1; i < remoteFiles.length; i++) {
+              try {
+                  await deleteFileById(remoteFiles[i].id);
+              } catch (e) {
+                  console.warn(`[Sync] Failed to remove duplicate moment ${remoteFiles[i].id}:`, e);
+              }
+          }
 
           if (uploadedMoment?.modifiedTime) {
               snapshot[`moment-${moment.id}`] = uploadedMoment.modifiedTime;
@@ -1091,6 +1133,16 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const linked = await checkIsLinked();
       if (isSyncingRef.current || !linked) return;
 
+      // Tombstone path mirrors performSingleSync: hold the global sync mutex so
+      // a manual delta sync can't run concurrently with the delete-from-Drive
+      // sequence and re-download the moment from a duplicate file we haven't
+      // gotten to yet. Non-deletion paths preserve the existing behavior so
+      // parallel updates from removeNoteFromMoments still proceed.
+      if (moment.isDeleted) {
+          setIsSyncing(true);
+          isSyncingRef.current = true;
+      }
+
       try {
           await getAccessToken();
 
@@ -1102,17 +1154,25 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               // could push a local update with a higher updatedAt and override
               // the deletion, then re-upload it (resurrecting the moment on
               // the deleting device).
+              //
+              // Delete EVERY Drive file matching the moment/synthesis name,
+              // not just the first match. Drive permits duplicates, and
+              // concurrent uploads (e.g. a fresh synthesis racing the delete,
+              // or two devices both POSTing after a missed findFileByName)
+              // can leave duplicates behind. If any survive, the next delta
+              // sync's listAllFiles will pull one of them down and resurrect
+              // the moment locally.
               const filename = `moment-${moment.id}.json`;
               const synthFilename = `moment-synthesis-${moment.id}.json`;
 
-              const remoteMoment = await findFileByName(filename);
-              if (remoteMoment) {
-                  await deleteFileById(remoteMoment.id);
+              const remoteMoments = await findAllFilesByName(filename);
+              for (const file of remoteMoments) {
+                  await deleteFileById(file.id);
               }
 
-              const remoteSynth = await findFileByName(synthFilename);
-              if (remoteSynth) {
-                  await deleteFileById(remoteSynth.id);
+              const remoteSyntheses = await findAllFilesByName(synthFilename);
+              for (const file of remoteSyntheses) {
+                  await deleteFileById(file.id);
               }
 
               // Cascade-deletes the synthesis from IDB too.
@@ -1131,6 +1191,11 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           await syncMomentInternal(moment);
       } catch (e: any) {
           console.error(`[Sync] Moment sync failed for ${moment.id}:`, e);
+      } finally {
+          if (moment.isDeleted) {
+              setIsSyncing(false);
+              isSyncingRef.current = false;
+          }
       }
   }, [syncMomentInternal, getAccessToken]);
 
@@ -1217,9 +1282,12 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           await getAccessToken();
 
           if (memory.isDeleted) {
-              const remoteFile = await findFileByName(`${memory.id}.json`);
-              if (remoteFile) {
-                  await deleteFileById(remoteFile.id);
+              // Delete every Drive file matching the name — duplicates can
+              // exist when concurrent uploads race a deletion. See the
+              // performMomentSync comment for the full rationale.
+              const remoteFiles = await findAllFilesByName(`${memory.id}.json`);
+              for (const file of remoteFiles) {
+                  await deleteFileById(file.id);
               }
               await deleteMemory(memory.id);
               const snapshotJSON = await storage.get(SNAPSHOT_KEY);

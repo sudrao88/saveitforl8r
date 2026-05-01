@@ -55,6 +55,20 @@ export const findFileByName = async (filename: string): Promise<DriveFile | null
   return data.files?.[0] || null;
 };
 
+// Returns every Drive file matching `filename` in appDataFolder. Drive permits
+// duplicate filenames, and concurrent uploads (e.g. moment metadata + synthesis
+// re-uploads racing across devices, or against a deletion) can create them.
+// Deletion paths must remove all duplicates or the surviving copy resurrects
+// the entity on the next sync.
+export const findAllFilesByName = async (filename: string): Promise<DriveFile[]> => {
+  const safeFilename = filename.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  const query = `name = '${safeFilename}' and 'appDataFolder' in parents and trashed = false`;
+  const url = `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=${encodeURIComponent(query)}&fields=files(id, name, modifiedTime)`;
+  const res = await driveFetch(url);
+  const data = await res.json();
+  return data.files || [];
+};
+
 export const downloadFileContent = async (fileId: string) => {
   const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
   const res = await driveFetch(url);
