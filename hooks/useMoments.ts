@@ -519,34 +519,37 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
     []
   );
 
-  // Soft-delete a moment.
-  // Same functional-updater pattern as addNoteToMoment for consistency.
+  // Soft-delete a moment, then sync the deletion. The sync layer
+  // (performMomentSync) directly deletes the Drive files and hard-deletes the
+  // local tombstone — same pattern as note deletion (handleDelete in
+  // useMemories). Awaiting the callback mirrors note deletion semantics so
+  // callers can react after the deletion has propagated (or failed).
   const deleteMoment = useCallback(
-    (momentId: string): Promise<void> => {
-      return new Promise((resolve, reject) => {
+    async (momentId: string): Promise<void> => {
+      const captured: { tombstone?: Moment } = {};
+      flushSync(() => {
         setMomentsList(prev => {
           const current = prev.find(m => m.id === momentId);
-          if (!current) {
-            resolve();
-            return prev;
-          }
-
-          const tombstone: Moment = {
-            ...current,
-            isDeleted: true,
-            updatedAt: Date.now(),
-          };
-
-          saveMoment(tombstone)
-            .then(() => {
-              onMomentChangedRef.current?.(tombstone);
-              resolve();
-            })
-            .catch(reject);
-
+          if (!current) return prev;
+          captured.tombstone = { ...current, isDeleted: true, updatedAt: Date.now() };
           return prev.filter(m => m.id !== momentId);
         });
       });
+
+      const tombstone = captured.tombstone;
+      if (!tombstone) return;
+
+      // Persist the tombstone first so a sync failure leaves an idempotent
+      // record that the next delta sync will retry.
+      await saveMoment(tombstone);
+      // Clear cached synthesis so a stale entry can't resurface in the UI.
+      setSynthesesMap(prev => {
+        if (!prev.has(momentId)) return prev;
+        const next = new Map(prev);
+        next.delete(momentId);
+        return next;
+      });
+      onMomentChangedRef.current?.(tombstone);
     },
     []
   );
