@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v93",
-  "buildNumber": 93,
-  "buildDate": "2026-05-01T00:00:00.000Z",
+  "version": "saveitforl8r-v94",
+  "buildNumber": 94,
+  "buildDate": "2026-05-01T16:35:00.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Moment deletion now mirrors the note deletion pattern exactly. Polling, recovery, and synthesis paths re-read the latest moment from IndexedDB before saving and bail out if the user has deleted it in the meantime, just like useEnrichmentPolling does for notes."
+  "changelog": "Deleting a moment now removes every duplicate Drive file for that moment plus its synthesis, so a surviving copy can't be pulled back down on the next manual sync. Delta sync planning detects duplicates from the existing listAllFiles result, eliminating per-item Drive lookups during deletion."
 }
