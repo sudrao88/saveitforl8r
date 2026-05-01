@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v87",
-  "buildNumber": 87,
+  "version": "saveitforl8r-v88",
+  "buildNumber": 88,
   "buildDate": "2026-04-30T00:00:00.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Fixed a gap between the top toolbar and the filter bar on the native Android app — they now stick together flush with no scroll content bleeding through."
+  "changelog": "Restored the moments strip between the toolbar and the filter bar. The filter bar still sticks flush below the toolbar when scrolling, with no gap on Android."
 }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef, Suspense } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, Suspense } from 'react';
 import { Bell, RefreshCw, X } from 'lucide-react';
 import { App as CapacitorApp, URLOpenListenerEvent } from '@capacitor/app';
 import { isNative } from './services/platform';
@@ -311,12 +311,29 @@ const AppContent: React.FC = () => {
   const syncRef = useRef(sync);
   const refreshRef = useRef(handleFullRefresh);
   const handleRetryRef = useRef(handleRetry);
+  const topNavRef = useRef<HTMLDivElement>(null);
+  const [topNavHeight, setTopNavHeight] = useState(0);
 
   useEffect(() => {
     syncRef.current = sync;
     refreshRef.current = handleFullRefresh;
     handleRetryRef.current = handleRetry;
   }, [sync, handleFullRefresh, handleRetry]);
+
+  // Measure TopNav so the FilterBar can stick directly below it.
+  // Observe border-box (not the default content-box) so padding-only changes
+  // — like Android injecting safe-area-inset-top into --sat after first paint —
+  // are detected. Using getBoundingClientRect for sub-pixel accuracy avoids
+  // a hairline gap from offsetHeight rounding.
+  useLayoutEffect(() => {
+    const el = topNavRef.current;
+    if (!el) return;
+    const update = () => setTopNavHeight(el.getBoundingClientRect().height);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(el, { box: 'border-box' });
+    return () => observer.disconnect();
+  }, []);
 
   const {
     isSettingsOpen,
@@ -882,7 +899,7 @@ const AppContent: React.FC = () => {
     <div className="min-h-screen bg-black flex flex-col">
       {/* Feed layout — always rendered, overlaid by fullscreen views */}
       <div className={feedLocked ? 'pointer-events-none' : undefined} aria-hidden={feedLocked || undefined}>
-        <div className="sticky top-0 z-(--z-overlay) bg-(--color-surface-base)/80 backdrop-blur-md pt-[var(--sat)]">
+        <div ref={topNavRef} className="sticky top-0 z-(--z-overlay) bg-(--color-surface-base)/80 backdrop-blur-md pt-[var(--sat)]">
             <TopNavigation
               setView={handleSetView}
               resetFilters={handleResetFilters}
@@ -894,16 +911,6 @@ const AppContent: React.FC = () => {
               modelStatus={modelStatus}
               isOtaDownloading={isOtaDownloading}
             />
-            {availableTypes.length > 0 && (
-              <div className="border-b border-(--color-border-default)/50">
-                <FilterBar
-                  availableTypes={availableTypes}
-                  filterType={filterType}
-                  setFilterType={handleSetFilterType}
-                  clearFilters={handleResetFilters}
-                />
-              </div>
-            )}
         </div>
 
         <MomentsStrip
@@ -944,6 +951,20 @@ const AppContent: React.FC = () => {
             >
               <X size={16} />
             </button>
+          </div>
+        )}
+
+        {availableTypes.length > 0 && (
+          <div
+            className="sticky z-(--z-dropdown) bg-(--color-surface-base) backdrop-blur-md border-b border-(--color-border-default)/50"
+            style={{ top: `${Math.ceil(topNavHeight)}px` }}
+          >
+            <FilterBar
+              availableTypes={availableTypes}
+              filterType={filterType}
+              setFilterType={handleSetFilterType}
+              clearFilters={handleResetFilters}
+            />
           </div>
         )}
 
