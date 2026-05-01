@@ -44,6 +44,14 @@ describe('useMoments', () => {
     (storageService.getMomentSynthesis as any).mockResolvedValue(null);
     (storageService.saveMomentSynthesis as any).mockResolvedValue(undefined);
     (storageService.deleteMomentSynthesis as any).mockResolvedValue(undefined);
+    // getMoment(id) is used by the tombstone-aware re-read pattern in
+    // loadSynthesis and the polling/recovery hooks. Default to returning
+    // whatever getMoments() returns so tests that only mock getMoments
+    // continue to work without explicitly mocking getMoment.
+    (storageService.getMoment as any).mockImplementation(async (id: string) => {
+      const all = await (storageService.getMoments as any)();
+      return Array.isArray(all) ? all.find((m: Moment) => m.id === id) ?? null : null;
+    });
     // Default: server has no result, so loadSynthesis falls through to submit.
     (geminiService.fetchPendingSynthesisResults as any).mockResolvedValue({});
   });
@@ -481,6 +489,61 @@ describe('useMoments', () => {
 
       const finalMoment = result.current.moments.find(m => m.id === 'm1')!;
       expect(finalMoment.processingError).toBe(false);
+    });
+
+    it('does not resurrect a moment deleted while loadSynthesis is in flight', async () => {
+      // Reproduces the user-reported bug: user opens a moment (triggers
+      // loadSynthesis), deletes it before the network result arrives.
+      // Without the tombstone re-read in persistResult, the captured
+      // workingMoment is spread into saveMoment() and resurrects the
+      // deleted moment in IndexedDB; the next refresh re-renders it.
+      const moments = [makeMoment('m1', ['note-1'])];
+      const memories = [makeMemory('note-1')];
+
+      (storageService.getMoments as any).mockResolvedValue(moments);
+      // First read returns the alive moment (loadSynthesis startup);
+      // after the user "deletes", subsequent reads return a tombstone.
+      let isDeleted = false;
+      (storageService.getMoment as any).mockImplementation(async (id: string) => {
+        if (id !== 'm1') return null;
+        const base = moments[0];
+        return isDeleted ? { ...base, isDeleted: true } : base;
+      });
+
+      // The "delete" happens during the polling network round-trip.
+      (geminiService.fetchPendingSynthesisResults as any).mockResolvedValue({
+        m1: { status: 'not_found' },
+      });
+      (geminiService.submitResynthesis as any).mockResolvedValue({ momentId: 'm1' });
+      (geminiService.pollSynthesisResult as any).mockImplementation(async () => {
+        isDeleted = true;
+        return {
+          format: 'general',
+          title: 'Resurrected',
+          sections: [{ heading: 'S', items: [{ label: 'i', sourceNoteId: 'note-1' }] }],
+          generatedFrom: ['note-1'],
+        };
+      });
+
+      const { result } = renderHook(() => useMoments(memories));
+      await waitFor(() => expect(result.current.moments).toHaveLength(1));
+
+      let synthesis: any;
+      await act(async () => {
+        synthesis = await result.current.loadSynthesis(result.current.moments[0], memories);
+      });
+
+      // persistResult should bail out because the moment is now tombstoned.
+      expect(synthesis).toBeNull();
+      // Critically, no alive moment should have been written back to IDB.
+      const aliveSaves = (storageService.saveMoment as any).mock.calls.filter(
+        (c: any[]) => c[0]?.id === 'm1' && !c[0]?.isDeleted,
+      );
+      const resurrectedSave = aliveSaves.find(
+        (c: any[]) => c[0]?.lastSynthesizedAt !== undefined,
+      );
+      expect(resurrectedSave).toBeUndefined();
+      expect(storageService.saveMomentSynthesis).not.toHaveBeenCalled();
     });
   });
 });

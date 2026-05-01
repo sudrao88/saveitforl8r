@@ -23,6 +23,7 @@ import {
 } from '../types';
 import {
   getMoments,
+  getMoment,
   saveMoment,
   getMomentSynthesis,
   saveMomentSynthesis,
@@ -270,17 +271,25 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
         generatedFrom: raw.generatedFrom.filter(id => currentNoteIdSet.has(id)),
       });
 
-      const persistResult = async (raw: SynthesisResponse): Promise<SynthesisResponse> => {
+      const persistResult = async (raw: SynthesisResponse): Promise<SynthesisResponse | null> => {
         const synthesis = filterSynthesis(raw);
+        // Re-read latest from IDB before persisting (mirrors the note
+        // enrichment polling pattern). The user may have deleted the moment
+        // while the synthesis network round-trip was in flight; without this
+        // guard we'd resurrect the deleted moment by spreading the captured
+        // alive workingMoment back into IDB.
+        const latest = await getMoment(moment.id);
+        if (!latest || latest.isDeleted) return null;
+
         const stored: MomentSynthesis = {
           momentId: moment.id,
           inputHash: currentHash,
           content: synthesis,
           generatedAt: Date.now(),
-          noteIds: moment.noteIds,
+          noteIds: latest.noteIds,
         };
         const updatedMoment: Moment = {
-          ...workingMoment,
+          ...latest,
           inputHash: currentHash,
           lastSeenInputHash: currentHash,
           lastSynthesizedAt: Date.now(),
@@ -332,8 +341,13 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
             // No usable server result — submit a fresh resynthesis. Persist a
             // recovery marker so that if this session is interrupted, the next
             // session can resume polling instead of resubmitting (issue 5).
+            // Re-read latest from IDB so a deletion that happened while we
+            // were checking the server can't be reverted.
+            const latest = await getMoment(moment.id);
+            if (!latest || latest.isDeleted) return null;
+
             workingMoment = {
-              ...workingMoment,
+              ...latest,
               pendingSynthesisHash: currentHash,
               pendingSynthesisAt: Date.now(),
               updatedAt: Date.now(),
@@ -364,14 +378,19 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
         console.error('[Moments] Synthesis failed:', err);
         // Clear the recovery marker so app start doesn't keep polling a dead request.
         if (workingMoment.pendingSynthesisHash || workingMoment.pendingSynthesisAt) {
-          const cleared: Moment = {
-            ...workingMoment,
-            pendingSynthesisHash: undefined,
-            pendingSynthesisAt: undefined,
-            updatedAt: Date.now(),
-          };
-          await saveMoment(cleared);
-          setMomentsList(prev => prev.map(m => m.id === moment.id ? cleared : m));
+          // Re-read latest from IDB so a deletion that happened during the
+          // failed synthesis isn't reverted.
+          const latest = await getMoment(moment.id);
+          if (latest && !latest.isDeleted) {
+            const cleared: Moment = {
+              ...latest,
+              pendingSynthesisHash: undefined,
+              pendingSynthesisAt: undefined,
+              updatedAt: Date.now(),
+            };
+            await saveMoment(cleared);
+            setMomentsList(prev => prev.map(m => m.id === moment.id ? cleared : m));
+          }
         }
         return null;
       } finally {
@@ -394,7 +413,7 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
       return new Promise((resolve, reject) => {
         setMomentsList(prev => {
           const current = prev.find(m => m.id === momentId);
-          if (!current || current.noteIds.includes(noteId)) {
+          if (!current || current.isDeleted || current.noteIds.includes(noteId)) {
             resolve();
             return prev;
           }
@@ -429,7 +448,7 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
       return new Promise((resolve, reject) => {
         setMomentsList(prev => {
           const current = prev.find(m => m.id === momentId);
-          if (!current || current.lastSeenInputHash === current.inputHash) {
+          if (!current || current.isDeleted || current.lastSeenInputHash === current.inputHash) {
             resolve();
             return prev;
           }
