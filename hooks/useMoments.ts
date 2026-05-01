@@ -526,22 +526,17 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
   // callers can react after the deletion has propagated (or failed).
   const deleteMoment = useCallback(
     async (momentId: string): Promise<void> => {
-      const captured: { tombstone?: Moment } = {};
-      flushSync(() => {
-        setMomentsList(prev => {
-          const current = prev.find(m => m.id === momentId);
-          if (!current) return prev;
-          captured.tombstone = { ...current, isDeleted: true, updatedAt: Date.now() };
-          return prev.filter(m => m.id !== momentId);
-        });
-      });
+      const current = momentsListRef.current.find(m => m.id === momentId);
+      if (!current) return;
 
-      const tombstone = captured.tombstone;
-      if (!tombstone) return;
+      const tombstone: Moment = { ...current, isDeleted: true, updatedAt: Date.now() };
 
       // Persist the tombstone first so a sync failure leaves an idempotent
       // record that the next delta sync will retry.
       await saveMoment(tombstone);
+
+      setMomentsList(prev => prev.filter(m => m.id !== momentId));
+
       // Clear cached synthesis so a stale entry can't resurface in the UI.
       setSynthesesMap(prev => {
         if (!prev.has(momentId)) return prev;
