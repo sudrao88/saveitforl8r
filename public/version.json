@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v89",
-  "buildNumber": 89,
+  "version": "saveitforl8r-v90",
+  "buildNumber": 90,
   "buildDate": "2026-05-01T00:00:00.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Fixed moment deletion not syncing across devices. Deletes now propagate immediately and can no longer be resurrected by background activity (enrichment matches, mark-seen, resynthesis recovery) on another device."
+  "changelog": "Hardened moment deletion: storage layer now refuses to resurrect tombstones, blocking the race where a captured-alive moment object from polling, resynthesis recovery, or sync download paths overwrote a freshly-deleted moment in IndexedDB."
 }

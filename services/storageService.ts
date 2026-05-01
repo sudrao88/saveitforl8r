@@ -394,7 +394,24 @@ export const saveMoment = async (moment: Moment): Promise<void> => {
   return new Promise((resolve, reject) => {
     const tx = dbInstance.transaction(MOMENTS_STORE, 'readwrite');
     const store = tx.objectStore(MOMENTS_STORE);
-    store.put(moment);
+
+    // Tombstone protection: refuse to overwrite a tombstone with an alive
+    // record. Without this guard, async write paths (recoverPendingResynthesis,
+    // applyMomentResult in moment-creation polling, the streaming sync
+    // download handler) that captured the moment before the user pressed
+    // delete will spread the captured-alive object back into IndexedDB
+    // after `await`, resurrecting the deleted moment. The tombstone itself
+    // is cleaned up by the next sync cycle.
+    const getReq = store.get(moment.id);
+    getReq.onsuccess = () => {
+      const existing = getReq.result as Moment | undefined;
+      if (existing?.isDeleted && !moment.isDeleted) {
+        return;
+      }
+      store.put(moment);
+    };
+    getReq.onerror = () => reject(getReq.error);
+
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
@@ -445,9 +462,25 @@ export const deleteMomentSynthesis = async (momentId: string): Promise<void> => 
 export const saveMomentSynthesis = async (synthesis: MomentSynthesis): Promise<void> => {
   const dbInstance = await openDB();
   return new Promise((resolve, reject) => {
-    const tx = dbInstance.transaction(MOMENT_SYNTHESIS_STORE, 'readwrite');
-    const store = tx.objectStore(MOMENT_SYNTHESIS_STORE);
-    store.put(synthesis);
+    // Use a multi-store transaction so we can atomically check the parent
+    // moment's deletion state. Without this, a late-arriving synthesis
+    // (from polling or sync download) can be written for a moment the user
+    // has just deleted, leaving an orphan in the synthesis cache.
+    const tx = dbInstance.transaction([MOMENT_SYNTHESIS_STORE, MOMENTS_STORE], 'readwrite');
+    const synthStore = tx.objectStore(MOMENT_SYNTHESIS_STORE);
+    const momentStore = tx.objectStore(MOMENTS_STORE);
+
+    const getReq = momentStore.get(synthesis.momentId);
+    getReq.onsuccess = () => {
+      const parent = getReq.result as Moment | undefined;
+      // Skip if parent moment is missing or tombstoned.
+      if (!parent || parent.isDeleted) {
+        return;
+      }
+      synthStore.put(synthesis);
+    };
+    getReq.onerror = () => reject(getReq.error);
+
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
