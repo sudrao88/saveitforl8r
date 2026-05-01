@@ -405,70 +405,50 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
   );
 
   // Add a note to a moment (called when enrichment matches).
-  // Uses setMomentsList's functional updater so each call sees the latest
-  // state — this prevents lost updates when multiple enrichments complete
-  // in quick succession and match the same moment.
+  // Re-reads the latest record from IndexedDB before saving (mirrors the
+  // note enrichment polling pattern) so a moment that's been tombstoned
+  // — locally or via a sync from another device — isn't resurrected by
+  // a stale React-state copy.
   const addNoteToMoment = useCallback(
-    (momentId: string, noteId: string): Promise<void> => {
-      return new Promise((resolve, reject) => {
-        setMomentsList(prev => {
-          const current = prev.find(m => m.id === momentId);
-          if (!current || current.isDeleted || current.noteIds.includes(noteId)) {
-            resolve();
-            return prev;
-          }
+    async (momentId: string, noteId: string): Promise<void> => {
+      const latest = await getMoment(momentId);
+      if (!latest || latest.isDeleted || latest.noteIds.includes(noteId)) return;
 
-          const newNoteIds = [...current.noteIds, noteId];
-          const updated: Moment = {
-            ...current,
-            noteIds: newNoteIds,
-            inputHash: computeInputHash(newNoteIds, memoriesRef.current),
-            updatedAt: Date.now(),
-          };
+      const newNoteIds = [...latest.noteIds, noteId];
+      const updated: Moment = {
+        ...latest,
+        noteIds: newNoteIds,
+        inputHash: computeInputHash(newNoteIds, memoriesRef.current),
+        updatedAt: Date.now(),
+      };
 
-          saveMoment(updated)
-            .then(() => {
-              onMomentChangedRef.current?.(updated);
-              resolve();
-            })
-            .catch(reject);
-
-          return prev.map(m => m.id === momentId ? updated : m);
-        });
+      await saveMoment(updated);
+      setMomentsList(prev => {
+        const exists = prev.some(m => m.id === momentId);
+        return exists ? prev.map(m => m.id === momentId ? updated : m) : [...prev, updated];
       });
+      onMomentChangedRef.current?.(updated);
     },
     []
   );
 
   // Mark a moment as seen by updating lastSeenInputHash to match current inputHash.
   // This persists to IndexedDB and syncs to Drive so the indicator stays correct
-  // across sessions and devices.
+  // across sessions and devices. Same IDB re-read pattern as addNoteToMoment.
   const markMomentSeen = useCallback(
-    (momentId: string): Promise<void> => {
-      return new Promise((resolve, reject) => {
-        setMomentsList(prev => {
-          const current = prev.find(m => m.id === momentId);
-          if (!current || current.isDeleted || current.lastSeenInputHash === current.inputHash) {
-            resolve();
-            return prev;
-          }
+    async (momentId: string): Promise<void> => {
+      const latest = await getMoment(momentId);
+      if (!latest || latest.isDeleted || latest.lastSeenInputHash === latest.inputHash) return;
 
-          const updated: Moment = {
-            ...current,
-            lastSeenInputHash: current.inputHash,
-            updatedAt: Date.now(),
-          };
+      const updated: Moment = {
+        ...latest,
+        lastSeenInputHash: latest.inputHash,
+        updatedAt: Date.now(),
+      };
 
-          saveMoment(updated)
-            .then(() => {
-              onMomentChangedRef.current?.(updated);
-              resolve();
-            })
-            .catch(reject);
-
-          return prev.map(m => m.id === momentId ? updated : m);
-        });
-      });
+      await saveMoment(updated);
+      setMomentsList(prev => prev.map(m => m.id === momentId ? updated : m));
+      onMomentChangedRef.current?.(updated);
     },
     []
   );

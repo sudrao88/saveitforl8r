@@ -1,6 +1,6 @@
 {
-  "version": "saveitforl8r-v92",
-  "buildNumber": 92,
+  "version": "saveitforl8r-v93",
+  "buildNumber": 93,
   "buildDate": "2026-05-01T00:00:00.000Z",
   "minNativeVersion": "1.0.0",
   "changelog": "Moment deletion now mirrors the note deletion pattern exactly. Polling, recovery, and synthesis paths re-read the latest moment from IndexedDB before saving and bail out if the user has deleted it in the meantime, just like useEnrichmentPolling does for notes."
