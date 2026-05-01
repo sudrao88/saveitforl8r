@@ -23,6 +23,7 @@ import {
 } from '../types';
 import {
   getMoments,
+  getMoment,
   saveMoment,
   getMomentSynthesis,
   saveMomentSynthesis,
@@ -270,17 +271,25 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
         generatedFrom: raw.generatedFrom.filter(id => currentNoteIdSet.has(id)),
       });
 
-      const persistResult = async (raw: SynthesisResponse): Promise<SynthesisResponse> => {
+      const persistResult = async (raw: SynthesisResponse): Promise<SynthesisResponse | null> => {
         const synthesis = filterSynthesis(raw);
+        // Re-read latest from IDB before persisting (mirrors the note
+        // enrichment polling pattern). The user may have deleted the moment
+        // while the synthesis network round-trip was in flight; without this
+        // guard we'd resurrect the deleted moment by spreading the captured
+        // alive workingMoment back into IDB.
+        const latest = await getMoment(moment.id);
+        if (!latest || latest.isDeleted) return null;
+
         const stored: MomentSynthesis = {
           momentId: moment.id,
           inputHash: currentHash,
           content: synthesis,
           generatedAt: Date.now(),
-          noteIds: moment.noteIds,
+          noteIds: latest.noteIds,
         };
         const updatedMoment: Moment = {
-          ...workingMoment,
+          ...latest,
           inputHash: currentHash,
           lastSeenInputHash: currentHash,
           lastSynthesizedAt: Date.now(),
@@ -332,8 +341,13 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
             // No usable server result — submit a fresh resynthesis. Persist a
             // recovery marker so that if this session is interrupted, the next
             // session can resume polling instead of resubmitting (issue 5).
+            // Re-read latest from IDB so a deletion that happened while we
+            // were checking the server can't be reverted.
+            const latest = await getMoment(moment.id);
+            if (!latest || latest.isDeleted) return null;
+
             workingMoment = {
-              ...workingMoment,
+              ...latest,
               pendingSynthesisHash: currentHash,
               pendingSynthesisAt: Date.now(),
               updatedAt: Date.now(),
@@ -364,14 +378,19 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
         console.error('[Moments] Synthesis failed:', err);
         // Clear the recovery marker so app start doesn't keep polling a dead request.
         if (workingMoment.pendingSynthesisHash || workingMoment.pendingSynthesisAt) {
-          const cleared: Moment = {
-            ...workingMoment,
-            pendingSynthesisHash: undefined,
-            pendingSynthesisAt: undefined,
-            updatedAt: Date.now(),
-          };
-          await saveMoment(cleared);
-          setMomentsList(prev => prev.map(m => m.id === moment.id ? cleared : m));
+          // Re-read latest from IDB so a deletion that happened during the
+          // failed synthesis isn't reverted.
+          const latest = await getMoment(moment.id);
+          if (latest && !latest.isDeleted) {
+            const cleared: Moment = {
+              ...latest,
+              pendingSynthesisHash: undefined,
+              pendingSynthesisAt: undefined,
+              updatedAt: Date.now(),
+            };
+            await saveMoment(cleared);
+            setMomentsList(prev => prev.map(m => m.id === moment.id ? cleared : m));
+          }
         }
         return null;
       } finally {
@@ -386,70 +405,50 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
   );
 
   // Add a note to a moment (called when enrichment matches).
-  // Uses setMomentsList's functional updater so each call sees the latest
-  // state — this prevents lost updates when multiple enrichments complete
-  // in quick succession and match the same moment.
+  // Re-reads the latest record from IndexedDB before saving (mirrors the
+  // note enrichment polling pattern) so a moment that's been tombstoned
+  // — locally or via a sync from another device — isn't resurrected by
+  // a stale React-state copy.
   const addNoteToMoment = useCallback(
-    (momentId: string, noteId: string): Promise<void> => {
-      return new Promise((resolve, reject) => {
-        setMomentsList(prev => {
-          const current = prev.find(m => m.id === momentId);
-          if (!current || current.noteIds.includes(noteId)) {
-            resolve();
-            return prev;
-          }
+    async (momentId: string, noteId: string): Promise<void> => {
+      const latest = await getMoment(momentId);
+      if (!latest || latest.isDeleted || latest.noteIds.includes(noteId)) return;
 
-          const newNoteIds = [...current.noteIds, noteId];
-          const updated: Moment = {
-            ...current,
-            noteIds: newNoteIds,
-            inputHash: computeInputHash(newNoteIds, memoriesRef.current),
-            updatedAt: Date.now(),
-          };
+      const newNoteIds = [...latest.noteIds, noteId];
+      const updated: Moment = {
+        ...latest,
+        noteIds: newNoteIds,
+        inputHash: computeInputHash(newNoteIds, memoriesRef.current),
+        updatedAt: Date.now(),
+      };
 
-          saveMoment(updated)
-            .then(() => {
-              onMomentChangedRef.current?.(updated);
-              resolve();
-            })
-            .catch(reject);
-
-          return prev.map(m => m.id === momentId ? updated : m);
-        });
+      await saveMoment(updated);
+      setMomentsList(prev => {
+        const exists = prev.some(m => m.id === momentId);
+        return exists ? prev.map(m => m.id === momentId ? updated : m) : [...prev, updated];
       });
+      onMomentChangedRef.current?.(updated);
     },
     []
   );
 
   // Mark a moment as seen by updating lastSeenInputHash to match current inputHash.
   // This persists to IndexedDB and syncs to Drive so the indicator stays correct
-  // across sessions and devices.
+  // across sessions and devices. Same IDB re-read pattern as addNoteToMoment.
   const markMomentSeen = useCallback(
-    (momentId: string): Promise<void> => {
-      return new Promise((resolve, reject) => {
-        setMomentsList(prev => {
-          const current = prev.find(m => m.id === momentId);
-          if (!current || current.lastSeenInputHash === current.inputHash) {
-            resolve();
-            return prev;
-          }
+    async (momentId: string): Promise<void> => {
+      const latest = await getMoment(momentId);
+      if (!latest || latest.isDeleted || latest.lastSeenInputHash === latest.inputHash) return;
 
-          const updated: Moment = {
-            ...current,
-            lastSeenInputHash: current.inputHash,
-            updatedAt: Date.now(),
-          };
+      const updated: Moment = {
+        ...latest,
+        lastSeenInputHash: latest.inputHash,
+        updatedAt: Date.now(),
+      };
 
-          saveMoment(updated)
-            .then(() => {
-              onMomentChangedRef.current?.(updated);
-              resolve();
-            })
-            .catch(reject);
-
-          return prev.map(m => m.id === momentId ? updated : m);
-        });
-      });
+      await saveMoment(updated);
+      setMomentsList(prev => prev.map(m => m.id === momentId ? updated : m));
+      onMomentChangedRef.current?.(updated);
     },
     []
   );

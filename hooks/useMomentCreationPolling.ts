@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { fetchPendingMomentResults, fetchPendingSynthesisResults, CreateMomentResponse } from '../services/geminiService';
 import { Moment, Memory, MomentSynthesis, MomentType, SynthesisResponse } from '../types';
-import { saveMoment, saveMomentSynthesis } from '../services/storageService';
+import { getMoment, saveMoment, saveMomentSynthesis } from '../services/storageService';
 import { computeInputHash } from '../utils/hash';
 
 const MOMENT_CREATION_TIMEOUT_MS = 180_000; // 3 minutes (3-step pipeline)
@@ -61,6 +61,11 @@ const filterSynthesisToMoment = (
 /**
  * Applies a moment creation poll result to a pending moment.
  * Returns the updated moment if a change was made, or null otherwise.
+ *
+ * Re-reads the latest record from IndexedDB before saving (mirrors the
+ * note enrichment polling pattern in useEnrichmentPolling.ts) so a
+ * deletion that happened during the network round-trip can't be
+ * resurrected by spreading the stale captured object back into IDB.
  */
 const applyMomentResult = async (
   pendingMoment: Moment,
@@ -68,6 +73,18 @@ const applyMomentResult = async (
   memoriesRef: React.RefObject<Memory[]>,
   setSynthesesMap: React.Dispatch<React.SetStateAction<Map<string, MomentSynthesis>>>,
 ): Promise<{ updated: Moment; action: 'completed' | 'failed' } | null> => {
+  const needsUpdate =
+    (result?.status === 'completed' && result.data) ||
+    result?.status === 'failed' ||
+    ((!result || result.status === 'not_found') &&
+      Date.now() - pendingMoment.createdAt > MOMENT_CREATION_TIMEOUT_MS);
+
+  if (!needsUpdate) return null;
+
+  const current = await getMoment(pendingMoment.id);
+  if (!current || current.isDeleted) return null;
+  if (!current.isPending) return null;
+
   // Completed
   if (result?.status === 'completed' && result.data) {
     const data = result.data;
@@ -75,12 +92,12 @@ const applyMomentResult = async (
     // matching while the moment was still pending (race condition fix).
     const mergedNoteIds = Array.from(new Set([
       ...(data.usedNoteIds || []),
-      ...pendingMoment.noteIds,
+      ...current.noteIds,
     ]));
 
     const updatedMoment: Moment = {
-      ...pendingMoment,
-      title: data.title || pendingMoment.title,
+      ...current,
+      title: data.title || current.title,
       type: (data.type || 'general') as MomentType,
       emoji: data.emoji || undefined,
       refinedObjective: data.refinedObjective || undefined,
@@ -119,32 +136,14 @@ const applyMomentResult = async (
     return { updated: updatedMoment, action: 'completed' };
   }
 
-  // Failed
-  if (result?.status === 'failed') {
-    const failedMoment: Moment = {
-      ...pendingMoment,
-      isPending: false,
-      processingError: true,
-    };
-    await saveMoment(failedMoment);
-    return { updated: failedMoment, action: 'failed' };
-  }
-
-  // Timed out (not_found or still processing beyond timeout)
-  if (
-    (!result || result.status === 'not_found') &&
-    Date.now() - pendingMoment.createdAt > MOMENT_CREATION_TIMEOUT_MS
-  ) {
-    const timedOut: Moment = {
-      ...pendingMoment,
-      isPending: false,
-      processingError: true,
-    };
-    await saveMoment(timedOut);
-    return { updated: timedOut, action: 'failed' };
-  }
-
-  return null; // Still processing
+  // Failed or timed out
+  const failedMoment: Moment = {
+    ...current,
+    isPending: false,
+    processingError: true,
+  };
+  await saveMoment(failedMoment);
+  return { updated: failedMoment, action: 'failed' };
 };
 
 export const useMomentCreationPolling = ({
@@ -281,13 +280,16 @@ export const useMomentCreationPolling = ({
 
     if (stale.length > 0) {
       for (const m of stale) {
-        const cleared: Moment = {
-          ...m,
-          pendingSynthesisHash: undefined,
-          pendingSynthesisAt: undefined,
-          updatedAt: now,
-        };
         try {
+          // Re-read latest from IDB so a concurrent deletion isn't reverted.
+          const latest = await getMoment(m.id);
+          if (!latest || latest.isDeleted) continue;
+          const cleared: Moment = {
+            ...latest,
+            pendingSynthesisHash: undefined,
+            pendingSynthesisAt: undefined,
+            updatedAt: now,
+          };
           await saveMoment(cleared);
           momentUpdates.set(m.id, cleared);
         } catch (err) {
@@ -324,9 +326,17 @@ export const useMomentCreationPolling = ({
         // the in-flight server request on next sheet open.
         if (result?.status === 'processing') continue;
 
+        // Re-read the latest record from IndexedDB before persisting (mirrors
+        // useEnrichmentPolling's tombstone check). The user may have deleted
+        // the moment while the network round-trip was in flight; without this
+        // guard we'd resurrect the deleted moment by spreading the captured
+        // alive object back into IDB.
+        const latest = await getMoment(moment.id);
+        if (!latest || latest.isDeleted) continue;
+
         const queueClear = async () => {
           const cleared: Moment = {
-            ...moment,
+            ...latest,
             pendingSynthesisHash: undefined,
             pendingSynthesisAt: undefined,
             updatedAt: Date.now(),
@@ -344,8 +354,8 @@ export const useMomentCreationPolling = ({
           // Validate the server's hash matches the hash we sent at submit time
           // AND still matches the current local note set (notes may have been
           // added/removed locally while the app was closed).
-          const currentHash = computeInputHash(moment.noteIds, memoriesRef.current || []);
-          const serverHashOk = result.inputHash === moment.pendingSynthesisHash;
+          const currentHash = computeInputHash(latest.noteIds, memoriesRef.current || []);
+          const serverHashOk = result.inputHash === latest.pendingSynthesisHash;
           const localStillMatches = result.inputHash === currentHash;
 
           if (!serverHashOk || !localStillMatches) {
@@ -353,18 +363,18 @@ export const useMomentCreationPolling = ({
             continue;
           }
 
-          const noteIdSet = new Set(moment.noteIds);
+          const noteIdSet = new Set(latest.noteIds);
           const synthesis = filterSynthesisToMoment(result.data, noteIdSet);
           const stored: MomentSynthesis = {
-            momentId: moment.id,
+            momentId: latest.id,
             inputHash: currentHash,
             content: synthesis,
             generatedAt: Date.now(),
-            noteIds: moment.noteIds,
+            noteIds: latest.noteIds,
           };
 
           const updatedMoment: Moment = {
-            ...moment,
+            ...latest,
             inputHash: currentHash,
             // Leave lastSeenInputHash untouched so the bubble retains its
             // "unseen" indicator until the user actually opens the sheet.

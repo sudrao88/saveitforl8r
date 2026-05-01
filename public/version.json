@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v91",
-  "buildNumber": 91,
+  "version": "saveitforl8r-v93",
+  "buildNumber": 93,
   "buildDate": "2026-05-01T00:00:00.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Eliminated the gap that appeared between the toolbar and filter bar on Android while scrolling. The filter bar now tracks the toolbar's height through CSS, so it stays flush even when the system status bar inset changes mid-scroll."
+  "changelog": "Moment deletion now mirrors the note deletion pattern exactly. Polling, recovery, and synthesis paths re-read the latest moment from IndexedDB before saving and bail out if the user has deleted it in the meantime, just like useEnrichmentPolling does for notes."
 }
