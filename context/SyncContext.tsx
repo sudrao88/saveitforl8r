@@ -209,7 +209,7 @@ const executeSyncPlan = async (plan: SyncPlan, callbacks?: ExecuteSyncCallbacks)
                 // records skip the read-time migration in storageService and land
                 // in IDB + React state with enrichmentStatus undefined, breaking
                 // strict-equality checks (icon rendering, online auto-retry).
-                normalizeMemory(content);
+                content = normalizeMemory(content);
 
                 const shouldSave = item.local
                     ? content.timestamp > item.local.timestamp
