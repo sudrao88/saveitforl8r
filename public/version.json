@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v95",
-  "buildNumber": 95,
-  "buildDate": "2026-05-03T04:30:00.000Z",
+  "version": "saveitforl8r-v96",
+  "buildNumber": 96,
+  "buildDate": "2026-05-03T00:00:00.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Sync indicators now distinguish offline state from real errors. When the device is in airplane mode or otherwise offline, a muted CloudOff icon replaces the red sync-error icon and the alarming ping animation, both for the global sync status and per-memory sync badges. Real sync or AI-model errors still surface in red while online."
+  "changelog": "Search and moment synthesis requests over 1.2 MB now route through the Gemini File API instead of being inlined. The same chunked-upload pipeline used for large attachments now uploads the notes/memories context as a text file, keeping requests well under Cloud Run's body-size cap and unblocking large memory collections."
 }

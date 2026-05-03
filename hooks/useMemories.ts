@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { getMemories, deleteMemory, saveMemory, getMemory } from '../services/storageService';
 import { submitEnrichment } from '../services/geminiService';
 import { Memory, Attachment, Moment, CalendarEvent, TodoItem, UploadProgress } from '../types';
-import { uploadFileChunked } from '../services/chunkUploadService';
+import { uploadFileChunked, LARGE_PAYLOAD_THRESHOLD } from '../services/chunkUploadService';
 import { useSync } from './useSync';
 import { useAuth } from './useAuth';
 import { useEnrichmentPolling } from './useEnrichmentPolling';
@@ -223,9 +223,9 @@ export const useMemories = () => {
   }, [refreshMemories, trySyncFile]);
 
   // Threshold for chunked upload — base64 data longer than this is uploaded in chunks.
-  // 20 attachments × 1.2 MB = ~24 MB worst-case inline payload, safely under Cloud Run's 32 MB body cap
-  // (leaving headroom for JSON wrapper, text, tags, and moments metadata).
-  const CHUNKED_UPLOAD_THRESHOLD = 1_200_000; // ~900KB decoded
+  // Shared with services/geminiService.ts (search/synthesis context fallback). See
+  // LARGE_PAYLOAD_THRESHOLD in services/chunkUploadService.ts.
+  const CHUNKED_UPLOAD_THRESHOLD = LARGE_PAYLOAD_THRESHOLD;
 
   /**
    * Convert a base64 data URI to a Blob efficiently using fetch(),

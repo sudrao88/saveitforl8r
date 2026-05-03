@@ -22,6 +22,14 @@ const BASE_BACKOFF_MS = 1000;
 const POLL_INTERVAL_MS = 1000;
 const POLL_TIMEOUT_MS = 60_000;
 
+/**
+ * Payloads larger than this (in bytes/chars) should be uploaded via the
+ * chunked upload endpoint and referenced by Gemini File API URI rather
+ * than inlined. Used by attachments (see hooks/useMemories.ts) and by
+ * search/synthesis context payloads (see services/geminiService.ts).
+ */
+export const LARGE_PAYLOAD_THRESHOLD = 1_200_000;
+
 export interface ChunkUploadResult {
   fileUri: string;
   geminiFileName: string;
