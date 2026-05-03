@@ -518,7 +518,12 @@ export const useMemories = () => {
             };
             await saveMemory(failedMemory);
             setMemories(prev => prev.map(m => m.id === id ? failedMemory : m));
-        });
+        })
+        // .then(onF, onErr) is used above so an error thrown inside the
+        // success handler does not flow into the error handler. The trailing
+        // .catch is for unexpected failures inside either handler (e.g. IDB
+        // write rejection); without it those surface as unhandled rejections.
+        .catch(err => console.error('Update post-submit handler failed:', err));
 
       return Promise.resolve();
   }, [trySyncFile, startPolling]);
