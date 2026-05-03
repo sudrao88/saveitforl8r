@@ -792,7 +792,25 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     for (const [noteId, remoteFile] of remoteMap.entries()) {
         if (previousSnapshot[noteId] && previousSnapshot[noteId] === remoteFile.modifiedTime) {
-            continue;
+            // Snapshot says we already synced this version — but only trust
+            // that if the local copy is still here. Capacitor Preferences
+            // (snapshot backing store) is flushed on pause more reliably than
+            // the WebView's IndexedDB WAL, so a process kill on Android can
+            // leave the snapshot up-to-date while the IDB write is lost. If
+            // we trusted the snapshot blindly the note would be invisible
+            // until the user forced a full sync (which rebuilds the snapshot
+            // from local data).
+            // Synthesis files are a remote-only cache here — there's no
+            // separate local synthesis map indexed by noteId, and the
+            // synthesis branch below already handles "parent moment is
+            // deleted locally" correctly, so keep skipping those.
+            const hasLocal =
+                noteId.startsWith('event-') ? localEventMap.has(noteId) :
+                noteId.startsWith('todo-') ? localTodoMap.has(noteId) :
+                noteId.startsWith('moment-synthesis-') ? true :
+                noteId.startsWith('moment-') ? localMomentMap.has(noteId) :
+                localMap.has(noteId);
+            if (hasLocal) continue;
         }
 
         handled.add(noteId);
