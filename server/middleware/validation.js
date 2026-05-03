@@ -18,7 +18,28 @@ export const MAX_ATTACHMENTS = 20;
 export const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Gemini File API URIs follow this pattern. */
-const GEMINI_FILE_URI_RE = /^https:\/\/generativelanguage\.googleapis\.com\//;
+export const GEMINI_FILE_URI_RE = /^https:\/\/generativelanguage\.googleapis\.com\//;
+
+/** Gemini File API names look like "files/abc123" — used for ai.files.delete. */
+const GEMINI_FILE_NAME_RE = /^files\/[A-Za-z0-9_-]+$/;
+
+/**
+ * Validates an optional pair (fileUri, fileName) referencing a Gemini File
+ * API upload — used by /api/query, /api/create-moment, /api/synthesize when
+ * the inline notes/memories payload exceeds the 1.2 MB threshold.
+ *
+ * Returns null when valid (or both fields absent), or an error string.
+ */
+export const validateContextFileRef = (fileUri, fileName) => {
+  if (fileUri === undefined && fileName === undefined) return null;
+  if (typeof fileUri !== 'string' || !GEMINI_FILE_URI_RE.test(fileUri)) {
+    return 'fileUri must be a valid Gemini File API URI';
+  }
+  if (typeof fileName !== 'string' || !GEMINI_FILE_NAME_RE.test(fileName)) {
+    return 'fileName must be a valid Gemini File API name (e.g. "files/abc123")';
+  }
+  return null;
+};
 
 export const validateEnrichInput = (req, res, next) => {
   const { text, attachments, tags, location, memoryId } = req.body;
@@ -105,13 +126,18 @@ const MAX_HISTORY_TURNS = 10;
 const MAX_TURN_TEXT_LENGTH = 4000;
 
 export const validateQueryInput = (req, res, next) => {
-  const { query, memories, history } = req.body;
+  const { query, memories, history, memoriesFileUri, memoriesFileName } = req.body;
 
   if (!query || typeof query !== 'string')
     return res.status(400).json({ error: 'query is required and must be a string' });
   if (query.length > 2_000)
     return res.status(400).json({ error: 'query too long (max 2000 chars)' });
 
+  const fileRefError = validateContextFileRef(memoriesFileUri, memoriesFileName);
+  if (fileRefError) return res.status(400).json({ error: `memoriesFileUri/Name: ${fileRefError}` });
+
+  // When memoriesFileUri is provided, the memories array is optional —
+  // the LLM reads the context from the uploaded Gemini File.
   if (memories !== undefined) {
     if (!Array.isArray(memories))
       return res.status(400).json({ error: 'memories must be an array' });
@@ -159,12 +185,25 @@ export const validateResultsInput = (req, res, next) => {
 };
 
 export const validateSynthesizeInput = (req, res, next) => {
-  const { notes, momentType, momentTitle, objective, momentId } = req.body;
+  const { notes, momentType, momentTitle, objective, momentId, notesFileUri, notesFileName, noteCount } = req.body;
 
-  if (!notes || !Array.isArray(notes))
-    return res.status(400).json({ error: 'notes is required and must be an array' });
-  if (notes.length > 500)
-    return res.status(400).json({ error: 'Too many notes (max 500)' });
+  const fileRefError = validateContextFileRef(notesFileUri, notesFileName);
+  if (fileRefError) return res.status(400).json({ error: `notesFileUri/Name: ${fileRefError}` });
+
+  // When notesFileUri is supplied, notes may be omitted (LLM reads from the file).
+  if (notesFileUri) {
+    if (notes !== undefined) {
+      return res.status(400).json({ error: 'notes must not be provided when notesFileUri is set' });
+    }
+    if (noteCount !== undefined && (typeof noteCount !== 'number' || !Number.isInteger(noteCount) || noteCount < 0 || noteCount > 5_000)) {
+      return res.status(400).json({ error: 'noteCount must be a non-negative integer (max 5000)' });
+    }
+  } else {
+    if (!notes || !Array.isArray(notes))
+      return res.status(400).json({ error: 'notes is required and must be an array' });
+    if (notes.length > 500)
+      return res.status(400).json({ error: 'Too many notes (max 500)' });
+  }
   if (!momentType || typeof momentType !== 'string')
     return res.status(400).json({ error: 'momentType is required and must be a string' });
   if (!momentTitle || typeof momentTitle !== 'string')

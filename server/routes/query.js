@@ -41,20 +41,34 @@ export const createQueryRouter = ({ ai, MODEL_NAME, FALLBACK_MODEL_NAME, GEMINI_
     validateQueryInput,
     queryLimiter,
     async (req, res) => {
-      try {
-        const { query, memories, history = [] } = req.body;
+      // Track Gemini File API uploads from the client so we can delete them
+      // after the request completes (mirrors enrich.js cleanup pattern).
+      const uploadedFileNames = [];
 
-        if (!memories || !Array.isArray(memories) || memories.length === 0) {
+      try {
+        const { query, memories, history = [], memoriesFileUri, memoriesFileName } = req.body;
+
+        const hasFileRef = Boolean(memoriesFileUri);
+        const hasInlineMemories = Array.isArray(memories) && memories.length > 0;
+
+        if (!hasFileRef && !hasInlineMemories) {
           return res.json({
             answer: "I don't have any memories to search through yet. Try adding some memories first!",
             sources: [],
           });
         }
 
-        const context = memories
-          .map(
-            (m) =>
-              `[ID: ${sanitizeUserInput(String(m.id))}] [DATE: ${new Date(m.timestamp).toLocaleDateString()}]
+        if (hasFileRef && memoriesFileName) uploadedFileNames.push(memoriesFileName);
+
+        // When memories are inlined, build the [ID]/[CONTENT]/... context here.
+        // When a fileUri is supplied, the client built the same string and
+        // uploaded it as text/plain — the LLM reads it via the fileData part.
+        const context = hasFileRef
+          ? null
+          : memories
+              .map(
+                (m) =>
+                  `[ID: ${sanitizeUserInput(String(m.id))}] [DATE: ${new Date(m.timestamp).toLocaleDateString()}]
 [CONTENT]: ${sanitizeUserInput(m.content)}
 [SUMMARY]: ${sanitizeUserInput(m.enrichment?.summary || 'N/A')}
 [TAGS]: ${sanitizeUserInput((m.tags || []).join(', '))}
@@ -66,8 +80,21 @@ export const createQueryRouter = ({ ai, MODEL_NAME, FALLBACK_MODEL_NAME, GEMINI_
 [KEY_POINTS]: ${sanitizeUserInput((m.enrichment?.keyPoints || []).join('; ') || 'N/A')}
 [ACTION_ITEMS]: ${sanitizeUserInput((m.enrichment?.actionItems || []).join('; ') || 'N/A')}
 [THEMES]: ${sanitizeUserInput((m.enrichment?.themes || []).join(', ') || 'N/A')}`
-          )
-          .join('\n---\n');
+              )
+              .join('\n---\n');
+
+        // Builds the parts array for a "user" turn that owns the memory
+        // context. When a fileUri is present, the file part precedes the text
+        // part so the model encounters memories before the query.
+        const buildUserPartsWithMemories = (text) => {
+          if (hasFileRef) {
+            return [
+              { fileData: { fileUri: memoriesFileUri, mimeType: 'text/plain' } },
+              { text: `MEMORIES: (see attached file)\n\n${text}` },
+            ];
+          }
+          return [{ text: `MEMORIES:\n${context}\n\n${text}` }];
+        };
 
         const normalizedHistory = normalizeHistory(history);
         const contents = [];
@@ -80,7 +107,7 @@ export const createQueryRouter = ({ ai, MODEL_NAME, FALLBACK_MODEL_NAME, GEMINI_
             if (turn.role === 'user' && !firstUserHandled) {
               contents.push({
                 role: 'user',
-                parts: [{ text: `MEMORIES:\n${context}\n\nQUERY:\n${sanitizedText}` }],
+                parts: buildUserPartsWithMemories(`QUERY:\n${sanitizedText}`),
               });
               firstUserHandled = true;
             } else if (turn.role === 'model') {
@@ -98,7 +125,14 @@ export const createQueryRouter = ({ ai, MODEL_NAME, FALLBACK_MODEL_NAME, GEMINI_
 
           const lastEntry = contents[contents.length - 1];
           if (lastEntry && lastEntry.role === 'user') {
-            lastEntry.parts[0].text += `\n\nFOLLOW-UP QUERY:\n${sanitizedQuery}`;
+            // Append the follow-up query to the last text part of the last user turn.
+            // (parts may begin with a fileData part, so locate the text part by type.)
+            const lastTextPart = [...lastEntry.parts].reverse().find((p) => typeof p.text === 'string');
+            if (lastTextPart) {
+              lastTextPart.text += `\n\nFOLLOW-UP QUERY:\n${sanitizedQuery}`;
+            } else {
+              lastEntry.parts.push({ text: `FOLLOW-UP QUERY:\n${sanitizedQuery}` });
+            }
           } else {
             contents.push({
               role: 'user',
@@ -108,11 +142,11 @@ export const createQueryRouter = ({ ai, MODEL_NAME, FALLBACK_MODEL_NAME, GEMINI_
         } else {
           contents.push({
             role: 'user',
-            parts: [{ text: `MEMORIES:\n${context}\n\nQUERY:\n${sanitizedQuery}` }],
+            parts: buildUserPartsWithMemories(`QUERY:\n${sanitizedQuery}`),
           });
         }
 
-        console.log(`[Query] [${req.requestId}] user=${req.userId} query="${query?.substring(0, 50)}" memories=${memories.length} history=${normalizedHistory.length}`);
+        console.log(`[Query] [${req.requestId}] user=${req.userId} query="${query?.substring(0, 50)}" memories=${hasFileRef ? 'via-file-uri' : memories.length} history=${normalizedHistory.length}`);
 
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
@@ -167,6 +201,11 @@ export const createQueryRouter = ({ ai, MODEL_NAME, FALLBACK_MODEL_NAME, GEMINI_
       } catch (error) {
         console.error(`[Query] [${req.requestId}] Failed:`, error.message);
         res.status(500).json({ error: 'Query failed' });
+      } finally {
+        // Clean up Gemini File API uploads (best-effort, mirrors enrich.js).
+        for (const name of uploadedFileNames) {
+          ai.files.delete({ name }).catch(() => {});
+        }
       }
     }
   );
