@@ -68,7 +68,7 @@ export const createQueryRouter = ({ ai, MODEL_NAME, FALLBACK_MODEL_NAME, GEMINI_
           : memories
               .map(
                 (m) =>
-                  `[ID: ${sanitizeUserInput(String(m.id))}] [DATE: ${new Date(m.timestamp).toLocaleDateString()}]
+                  `[ID: ${sanitizeUserInput(String(m.id))}] [DATE: ${new Date(m.timestamp).toISOString().split('T')[0]}]
 [CONTENT]: ${sanitizeUserInput(m.content)}
 [SUMMARY]: ${sanitizeUserInput(m.enrichment?.summary || 'N/A')}
 [TAGS]: ${sanitizeUserInput((m.tags || []).join(', '))}

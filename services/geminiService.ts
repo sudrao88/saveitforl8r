@@ -187,7 +187,7 @@ const buildMemoriesContextString = (memories: LightMemory[]): string =>
   memories
     .map(
       (m) =>
-        `[ID: ${m.id}] [DATE: ${new Date(m.timestamp).toLocaleDateString()}]
+        `[ID: ${m.id}] [DATE: ${new Date(m.timestamp).toISOString().split('T')[0]}]
 [CONTENT]: ${m.content || ''}
 [SUMMARY]: ${m.enrichment?.summary || 'N/A'}
 [TAGS]: ${(m.tags || []).join(', ')}
