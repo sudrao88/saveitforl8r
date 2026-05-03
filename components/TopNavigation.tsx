@@ -30,7 +30,7 @@ const TopNavigation = React.forwardRef<HTMLElement, TopNavigationProps>(({
     isOtaDownloading
 }, ref) => {
   const isOnline = useOnlineStatus();
-  const showOffline = !isOnline && syncError;
+  const showOffline = !isOnline && (syncError || modelStatus === 'error');
   const showSyncError = isOnline && syncError;
   return (
     <nav ref={ref} className="px-4 py-3 sm:px-8 flex justify-center">
@@ -96,7 +96,7 @@ const TopNavigation = React.forwardRef<HTMLElement, TopNavigationProps>(({
                 <Settings size={20} className="text-(--color-text-tertiary) group-hover:text-(--color-text-primary) group-hover:rotate-90 transition-transform duration-(--duration-normal)" />
             )}
 
-            {(showSyncError || modelStatus === 'error') && !isSyncingDownload && modelStatus !== 'downloading' && (
+            {(showSyncError || (isOnline && modelStatus === 'error')) && !isSyncingDownload && modelStatus !== 'downloading' && (
                 <span className="absolute -top-1 -right-1 flex h-3 w-3">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-(--color-danger) opacity-75"></span>
                     <span className="relative inline-flex rounded-full h-3 w-3 bg-(--color-danger)"></span>
