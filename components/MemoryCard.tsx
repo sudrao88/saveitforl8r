@@ -531,7 +531,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                  <Sparkles size={12} /> Enriching…
                </span>
              )}
-             {memory.enrichmentStatus === 'failed_submit' && (
+             {!uploadProgress && memory.enrichmentStatus === 'failed_submit' && (
                <span className="inline-flex items-center gap-1">
                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-(--radius-full) text-xs font-medium border bg-(--color-warning)/15 text-(--color-warning) border-(--color-warning)/30">
                    <WifiOff size={12} /> Submit failed
@@ -547,7 +547,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                  )}
                </span>
              )}
-             {memory.enrichmentStatus === 'failed_server' && (
+             {!uploadProgress && memory.enrichmentStatus === 'failed_server' && (
                <span className="inline-flex items-center gap-1">
                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-(--radius-full) text-xs font-medium border bg-(--color-warning)/15 text-(--color-warning) border-(--color-warning)/30">
                    <AlertCircle size={12} /> Enrichment failed
