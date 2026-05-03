@@ -800,14 +800,21 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             // we trusted the snapshot blindly the note would be invisible
             // until the user forced a full sync (which rebuilds the snapshot
             // from local data).
-            // Synthesis files are a remote-only cache here — there's no
-            // separate local synthesis map indexed by noteId, and the
-            // synthesis branch below already handles "parent moment is
-            // deleted locally" correctly, so keep skipping those.
+            // For synthesis files we proxy through the parent moment: there's
+            // no batched synthesis map loaded here, but a synthesis whose
+            // parent moment is missing or tombstoned shouldn't be skipped —
+            // missing parent means the moment's IDB row was lost too (so let
+            // the synthesis re-download with it), and a tombstoned parent
+            // means the synthesis branch below needs to clean up the remote
+            // file. Skipping in either case would be wrong.
             const hasLocal =
                 noteId.startsWith('event-') ? localEventMap.has(noteId) :
                 noteId.startsWith('todo-') ? localTodoMap.has(noteId) :
-                noteId.startsWith('moment-synthesis-') ? true :
+                noteId.startsWith('moment-synthesis-') ? (() => {
+                    const parentKey = `moment-${noteId.replace('moment-synthesis-', '')}`;
+                    const parent = localMomentMap.get(parentKey);
+                    return parent !== undefined && !parent.isDeleted;
+                })() :
                 noteId.startsWith('moment-') ? localMomentMap.has(noteId) :
                 localMap.has(noteId);
             if (hasLocal) continue;
