@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getMemories, deleteMemory, saveMemory, getMemory } from '../services/storageService';
 import { submitEnrichment } from '../services/geminiService';
-import { Memory, Attachment, Moment, CalendarEvent, TodoItem, UploadProgress, isMemoryInFlight, isMemoryFailed } from '../types';
+import { Memory, Attachment, Moment, CalendarEvent, TodoItem, UploadProgress, isMemoryInFlight } from '../types';
 import { uploadFileChunked } from '../services/chunkUploadService';
 import { useSync } from './useSync';
 import { useAuth } from './useAuth';
@@ -329,7 +329,7 @@ export const useMemories = () => {
       // 'processing' so the polling-driven failure path is the only one
       // that can mark this memory as failed_server.
       const accepted = await getMemory(memoryId);
-      if (accepted && isMemoryInFlight(accepted)) {
+      if (accepted && !accepted.isDeleted && accepted.enrichmentStatus === 'submitting') {
         const processingMemory: Memory = { ...accepted, enrichmentStatus: 'processing', isPending: true, processingError: false };
         await saveMemory(processingMemory);
         setMemories(prev => prev.map(m => m.id === memoryId ? processingMemory : m));
