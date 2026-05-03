@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getMemories, deleteMemory, saveMemory, getMemory } from '../services/storageService';
 import { submitEnrichment } from '../services/geminiService';
-import { Memory, Attachment, Moment, CalendarEvent, TodoItem, UploadProgress } from '../types';
+import { Memory, Attachment, Moment, CalendarEvent, TodoItem, UploadProgress, isMemoryInFlight } from '../types';
 import { uploadFileChunked, LARGE_PAYLOAD_THRESHOLD } from '../services/chunkUploadService';
 import { useSync } from './useSync';
 import { useAuth } from './useAuth';
@@ -179,7 +179,7 @@ export const useMemories = () => {
     if (isLoading || recoveryAttemptedRef.current) return;
     recoveryAttemptedRef.current = true;
 
-    const pendingMemories = memories.filter(m => m.isPending);
+    const pendingMemories = memories.filter(isMemoryInFlight);
     if (pendingMemories.length === 0) return;
 
     recoverPending(pendingMemories);
@@ -187,7 +187,7 @@ export const useMemories = () => {
 
   // Auto-start polling if there are pending memories (e.g., after recovery leaves some as "processing")
   useEffect(() => {
-    const hasPending = memories.some(m => m.isPending);
+    const hasPending = memories.some(isMemoryInFlight);
     if (hasPending) {
       startPolling();
     }
@@ -311,7 +311,7 @@ export const useMemories = () => {
           console.error('[Upload] Chunked upload failed:', uploadErr);
         }
         updateUploadProgress(memoryId, { status: 'failed', bytesUploaded: 0, totalBytes });
-        const failedMemory: Memory = { ...newMemory, isPending: false, processingError: true };
+        const failedMemory: Memory = { ...newMemory, enrichmentStatus: 'failed_submit', isPending: false, processingError: true };
         await saveMemory(failedMemory);
         setMemories(prev => prev.map(m => m.id === memoryId ? failedMemory : m));
         return;
@@ -325,10 +325,19 @@ export const useMemories = () => {
     try {
       await submitEnrichment(text, enrichmentAttachments, location, tags, memoryId, buildMomentsMeta(momentsRef.current));
       updateUploadProgress(memoryId, null);
+      // Server has acknowledged the job. Transition from 'submitting' to
+      // 'processing' so the polling-driven failure path is the only one
+      // that can mark this memory as failed_server.
+      const accepted = await getMemory(memoryId);
+      if (accepted && !accepted.isDeleted && accepted.enrichmentStatus === 'submitting') {
+        const processingMemory: Memory = { ...accepted, enrichmentStatus: 'processing', isPending: true, processingError: false };
+        await saveMemory(processingMemory);
+        setMemories(prev => prev.map(m => m.id === memoryId ? processingMemory : m));
+      }
     } catch (err) {
       console.error('Enrichment submission failed:', err);
       updateUploadProgress(memoryId, null);
-      const failedMemory: Memory = { ...newMemory, isPending: false, processingError: true };
+      const failedMemory: Memory = { ...newMemory, enrichmentStatus: 'failed_submit', isPending: false, processingError: true };
       await saveMemory(failedMemory);
       setMemories(prev => prev.map(m => m.id === memoryId ? failedMemory : m));
     }
@@ -357,6 +366,7 @@ export const useMemories = () => {
 
     const pendingMemory: Memory = {
         ...memory,
+        enrichmentStatus: 'submitting',
         isPending: true,
         processingError: false,
         attachments: validAttachments.filter(a => a.id !== 'legacy-img'),
@@ -385,6 +395,7 @@ export const useMemories = () => {
         attachments,
         tags,
         location,
+        enrichmentStatus: 'submitting',
         isPending: true,
         processingError: false
       };
@@ -468,6 +479,7 @@ export const useMemories = () => {
         tags,
         location: location || existing.location,
         enrichment: undefined, // Clear old enrichment to force re-processing
+        enrichmentStatus: 'submitting',
         isPending: true,
         processingError: false,
         timestamp: Date.now()
@@ -486,13 +498,21 @@ export const useMemories = () => {
       startPolling();
 
       submitEnrichment(text, attachments, updatedMemory.location, tags, id, buildMomentsMeta(momentsRef.current))
-        .catch(async (err) => {
+        .then(async () => {
+            // Server acknowledged — transition submitting → processing.
+            const current = await getMemory(id);
+            if (!current || current.isDeleted || current.enrichmentStatus !== 'submitting') return;
+            const processingMemory: Memory = { ...current, enrichmentStatus: 'processing', isPending: true, processingError: false };
+            await saveMemory(processingMemory);
+            setMemories(prev => prev.map(m => m.id === id ? processingMemory : m));
+        }, async (err) => {
             console.error("Update enrichment submission failed:", err);
             const current = await getMemory(id);
             if (!current || current.isDeleted) return;
 
             const failedMemory: Memory = {
                 ...updatedMemory,
+                enrichmentStatus: 'failed_submit',
                 isPending: false,
                 processingError: true
             };
@@ -540,13 +560,15 @@ export const useMemories = () => {
       if (authStatus === 'linked') sync();
 
       // Recover pending enrichments from server
-      const pendingItems = memoriesRef.current.filter(m => m.isPending);
+      const pendingItems = memoriesRef.current.filter(isMemoryInFlight);
       if (pendingItems.length > 0) {
           await recoverPending(pendingItems);
       }
 
-      // Auto-retry enrichment for failed memories
-      const failures = memoriesRef.current.filter(m => m.processingError);
+      // Auto-retry only network-flavored failures (failed_submit). For
+      // failed_server, the server already gave up — silent retry would
+      // likely fail again and burn quota; require explicit user retry.
+      const failures = memoriesRef.current.filter(m => m.enrichmentStatus === 'failed_submit');
       if (failures.length > 0) {
           failures.forEach(m => handleRetry(m.id));
       }

@@ -86,6 +86,48 @@ describe('storageService', () => {
     });
   });
 
+  describe('normalizeMemory migration (via getMemories)', () => {
+    const runWithStored = async (stored: any[]) => {
+      mockRequest.result = stored;
+      mockStore.getAll.mockImplementation(() => {
+        setTimeout(() => { if (mockRequest.onsuccess) mockRequest.onsuccess(); }, 0);
+        return mockRequest;
+      });
+      return await getMemories();
+    };
+
+    it('migrates legacy processingError:true → enrichmentStatus:failed_submit', async () => {
+      const memories = await runWithStored([
+        { id: 'a', content: 'x', timestamp: 1, tags: [], processingError: true },
+      ]);
+      expect(memories[0].enrichmentStatus).toBe('failed_submit');
+      // Legacy mirrors stay in sync
+      expect(memories[0].processingError).toBe(true);
+    });
+
+    it('migrates legacy isPending:true → enrichmentStatus:processing (server-source-of-truth default)', async () => {
+      const memories = await runWithStored([
+        { id: 'a', content: 'x', timestamp: 1, tags: [], isPending: true },
+      ]);
+      expect(memories[0].enrichmentStatus).toBe('processing');
+      expect(memories[0].isPending).toBe(true);
+    });
+
+    it('does not overwrite existing enrichmentStatus on read', async () => {
+      const memories = await runWithStored([
+        { id: 'a', content: 'x', timestamp: 1, tags: [], enrichmentStatus: 'failed_server', processingError: true },
+      ]);
+      expect(memories[0].enrichmentStatus).toBe('failed_server');
+    });
+
+    it('infers enrichmentStatus:completed when enrichment data is present', async () => {
+      const memories = await runWithStored([
+        { id: 'a', content: 'x', timestamp: 1, tags: [], enrichment: { summary: 'done' } },
+      ]);
+      expect(memories[0].enrichmentStatus).toBe('completed');
+    });
+  });
+
   describe('getMemories', () => {
     it('should return sorted memories (handling legacy and encrypted)', async () => {
       const mockStoredMemories = [

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { Trash2, Loader2, Clock, ExternalLink, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, RefreshCw, WifiOff, CloudOff, FileText, Paperclip, MoreVertical, AlertTriangle, AlertCircle, LogIn, Maximize2, Eye, Pin, Pencil, Lightbulb, CircleCheck, UtensilsCrossed, ListOrdered, ThumbsUp, ThumbsDown, DollarSign, MapPin, CalendarDays, ClipboardList, MessageSquare, Users, Mic, Code, Heart, Scale, GraduationCap, Briefcase, Music, Film, BookOpenCheck, Bookmark, Phone, Mail, ScrollText, Tag, Clock3, Flame, Quote } from 'lucide-react';
-import { Memory, Attachment, UploadProgress } from '../types.ts';
+import { Memory, Attachment, UploadProgress, isMemoryInFlight, isMemoryFailed } from '../types.ts';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { btn, card, confirm, menu, overlay, text } from '../styles/design-system';
 import { downloadDataUri } from '../services/downloadService';
@@ -372,8 +372,11 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
   
   const shouldTruncateAI = typeof aiText === 'string' && aiText.length > 120;
 
-  const showSignInOverlay = !isAuthenticated && (memory.isPending || !!memory.processingError);
-  const showErrorOverlay = memory.processingError && onRetry && !showSignInOverlay;
+  const isInFlight = isMemoryInFlight(memory);
+  const isFailed = isMemoryFailed(memory);
+  const isSubmitFailed = memory.enrichmentStatus === 'failed_submit';
+  const showSignInOverlay = !isAuthenticated && (isInFlight || isFailed);
+  const showErrorOverlay = isFailed && onRetry && !showSignInOverlay;
 
   const isChecklist = memory.content?.startsWith('<ul class="checklist">') ?? false;
   
@@ -403,8 +406,8 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
       <div
         className={`group relative w-full rounded-(--radius-xl) transition-all duration-(--duration-normal) ${isDialog ? 'overflow-visible' : 'overflow-hidden'} flex flex-col
         ${isDialog ? 'bg-(--color-surface-overlay) border border-(--color-border-default)' : card.interactive}
-        ${memory.isPending ? 'opacity-70 border-(--color-accent)/30' : ''}
-        ${memory.processingError ? 'border-(--color-warning)/30 bg-(--color-warning)/5' : ''}
+        ${isInFlight ? 'opacity-70 border-(--color-accent)/30' : ''}
+        ${isFailed ? 'border-(--color-warning)/30 bg-(--color-warning)/5' : ''}
         ${showErrorOverlay || showSignInOverlay ? 'min-h-[350px]' : ''}
         ${shouldAnimate ? 'animate-in fade-in slide-in-from-bottom-4 duration-(--duration-normal) fill-mode-backwards' : ''}
         ${isShaking ? 'animate-shake' : ''}
@@ -498,8 +501,9 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
              {uploadProgress?.status === 'failed' && (
                <span className="text-xs font-medium text-(--color-warning)">Upload failed</span>
              )}
-             {!uploadProgress && memory.isPending && <span className="text-xs font-medium text-(--color-accent) animate-pulse">Enriching...</span>}
-             {memory.processingError && <WifiOff size={12} className="text-(--color-warning)" />}
+             {!uploadProgress && isInFlight && <span className="text-xs font-medium text-(--color-accent) animate-pulse">Enriching...</span>}
+             {isSubmitFailed && <WifiOff size={12} className="text-(--color-warning)" />}
+             {memory.enrichmentStatus === 'failed_server' && <AlertCircle size={12} className="text-(--color-warning)" />}
              {syncStatus === 'syncing' && <RefreshCw size={12} className="text-(--color-accent) animate-spin" />}
              {syncStatus === 'synced' && <CircleCheck size={12} className="text-(--color-success)" />}
              {syncStatus === 'error' && (
@@ -559,7 +563,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
             )}
 
             {/* Shimmer placeholder while AI enrichment is pending */}
-            {memory.isPending && !enrichment && (
+            {isInFlight && !enrichment && (
                 <div className="space-y-2 mt-2">
                     <div className="h-3 w-3/4 rounded bg-(--color-surface-raised)/50 animate-shimmer" />
                     <div className="h-3 w-1/2 rounded bg-(--color-surface-raised)/50 animate-shimmer" />
@@ -686,7 +690,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                     ))}
                 </div>
                 <div className="flex items-center gap-2 ml-auto relative">
-                    {onRetry && memory.processingError && (
+                    {onRetry && isFailed && (
                         <button onClick={() => onRetry(memory.id)} className="p-2 text-(--color-warning) hover:text-(--color-warning) transition-colors rounded-(--radius-lg) hover:bg-(--color-warning)/20">
                             <RefreshCcw size={16} />
                         </button>

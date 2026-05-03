@@ -14,7 +14,7 @@ import {
     deleteRemoteNote,
     type DriveFile,
 } from '../services/googleDriveService';
-import { Memory, Attachment, Moment, MomentSynthesis, CalendarEvent, TodoItem } from '../types';
+import { Memory, Attachment, Moment, MomentSynthesis, CalendarEvent, TodoItem, isMemoryInFlight, isMemoryFailed } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { storage } from '../services/platform';
 import { enqueue as bgSyncEnqueue, peekAll as bgSyncPeekAll, remove as bgSyncRemove } from '../services/backgroundSyncQueue';
@@ -608,7 +608,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const getSyncStatusMap = useCallback(() => syncStatusMapRef.current, []);
 
   const syncFileInternal = useCallback(async (memory: Memory) => {
-      if (memory.isPending || memory.processingError) return;
+      if (isMemoryInFlight(memory) || isMemoryFailed(memory)) return;
 
       try {
           const filename = `${memory.id}.json`;
@@ -903,7 +903,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     for (const local of localMemories) {
         if (handled.has(local.id)) continue;
-        if (local.isPending || local.processingError) continue;
+        if (isMemoryInFlight(local) || isMemoryFailed(local)) continue;
 
         if (local.isDeleted) {
             const remote = remoteMap.get(local.id);

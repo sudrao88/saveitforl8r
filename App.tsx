@@ -49,7 +49,7 @@ import { useWidgetDeepLink } from './hooks/useWidgetDeepLink';
 import { tryBackHandlers } from './hooks/useBackButton';
 import { SyncProvider } from './context/SyncContext';
 import { reconcileEmbeddings, ReconcileReport, getMemories as getStoredMemories } from './services/storageService';
-import { ViewMode, Memory, Attachment, Moment, QuickNoteState, CalendarEvent } from './types';
+import { ViewMode, Memory, Attachment, Moment, QuickNoteState, CalendarEvent, isMemoryInFlight, isMemoryFailed } from './types';
 import { initGA, logPageView, logEvent } from './services/analytics';
 import { escapeHtml } from './utils/editorUtils';
 
@@ -420,7 +420,7 @@ const AppContent: React.FC = () => {
               return getStoredMemories();
           }).then(freshMemories => {
               const pendingIds = freshMemories
-                .filter(m => !m.isDeleted && (m.isPending || m.processingError))
+                .filter(m => !m.isDeleted && (isMemoryInFlight(m) || isMemoryFailed(m)))
                 .map(m => m.id);
               if (pendingIds.length > 0) {
                   pendingIds.forEach(id => handleRetryRef.current(id));

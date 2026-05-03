@@ -1,5 +1,5 @@
 
-import { EnrichmentData, Memory, Attachment, ChatMessage, Moment, SynthesisResponse } from '../types.ts';
+import { EnrichmentData, Memory, Attachment, ChatMessage, Moment, SynthesisResponse, isMemoryInFlight, isMemoryFailed } from '../types.ts';
 import { postProxy, getProxyUrl } from './proxyService.ts';
 import { getValidToken } from './googleAuth.ts';
 import { enqueue as bgSyncEnqueue } from './backgroundSyncQueue.ts';
@@ -288,7 +288,7 @@ export const submitMomentCreation = async (
   momentId: string,
 ): Promise<{ momentId: string }> => {
   const lightNotes: LightNote[] = memories
-    .filter(m => !m.isPending && !m.processingError && !m.isDeleted)
+    .filter(m => !isMemoryInFlight(m) && !isMemoryFailed(m) && !m.isDeleted)
     .map(m => ({
       id: m.id,
       content: m.content,
@@ -575,7 +575,7 @@ export const queryBrain = async (
   try {
     // Strip attachment data and cap count to keep payload manageable.
     const lightMemories: LightMemory[] = memories
-      .filter(m => !m.isPending && !m.processingError)
+      .filter(m => !isMemoryInFlight(m) && !isMemoryFailed(m))
       .slice(0, MAX_QUERY_MEMORIES)
       .map(m => ({
         id: m.id,

@@ -12,6 +12,7 @@
 import { fetchPendingEnrichments, fetchPendingMomentResults, fetchPendingSynthesisResults } from './geminiService';
 import { getMemory, saveMemory } from './storageService';
 import { applyEnrichmentResult } from '../hooks/useEnrichmentPolling';
+import { isMemoryInFlight } from '../types';
 
 export interface PushData {
   type: 'enrichment-complete' | 'moment-complete' | 'synthesis-complete';
@@ -57,7 +58,7 @@ export const runBackgroundPipeline = async (data: PushData): Promise<void> => {
  */
 async function processEnrichmentCompletion(memoryId: string): Promise<void> {
   const memory = await getMemory(memoryId);
-  if (!memory || !memory.isPending) {
+  if (!memory || !isMemoryInFlight(memory)) {
     // Already processed or deleted
     return;
   }
@@ -140,7 +141,7 @@ export const recoverAllPendingEnrichments = async (): Promise<number> => {
   // Dynamic import to avoid circular dependency with storageService
   const { getMemories } = await import('./storageService');
   const memories = await getMemories();
-  const pending = memories.filter(m => m.isPending);
+  const pending = memories.filter(isMemoryInFlight);
 
   if (pending.length === 0) return 0;
 
