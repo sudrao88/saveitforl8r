@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
-import { Trash2, Loader2, Clock, ExternalLink, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, RefreshCw, WifiOff, CloudOff, FileText, Paperclip, MoreVertical, AlertTriangle, AlertCircle, LogIn, Maximize2, Eye, Pin, Pencil, Lightbulb, CircleCheck, UtensilsCrossed, ListOrdered, ThumbsUp, ThumbsDown, DollarSign, MapPin, CalendarDays, ClipboardList, MessageSquare, Users, Mic, Code, Heart, Scale, GraduationCap, Briefcase, Music, Film, BookOpenCheck, Bookmark, Phone, Mail, ScrollText, Tag, Clock3, Flame, Quote } from 'lucide-react';
+import { Trash2, Loader2, Clock, ExternalLink, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, WifiOff, CloudOff, FileText, Paperclip, MoreVertical, AlertTriangle, AlertCircle, LogIn, Maximize2, Eye, Pin, Pencil, Lightbulb, CircleCheck, UtensilsCrossed, ListOrdered, ThumbsUp, ThumbsDown, DollarSign, MapPin, CalendarDays, ClipboardList, MessageSquare, Users, Mic, Code, Heart, Scale, GraduationCap, Briefcase, Music, Film, BookOpenCheck, Bookmark, Phone, Mail, ScrollText, Tag, Clock3, Flame, Quote, Hourglass, Sparkles } from 'lucide-react';
 import { Memory, Attachment, UploadProgress, isMemoryInFlight, isMemoryFailed } from '../types.ts';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { btn, card, confirm, menu, overlay, text } from '../styles/design-system';
@@ -481,14 +481,34 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
           <div className="flex items-center justify-between mb-3">
              <div className="flex items-center gap-2">
                  {memory.isPinned && <Pin size={12} className="text-(--color-accent) rotate-45" />}
-                 {entity?.type && (
-                    <span className={`flex items-center gap-1.5 ${text.label}`}>
-                        {getEntityIcon(entity.type)}
-                        {entity.type}
-                    </span>
+                 {syncStatus === 'error' ? (
+                   isOffline ? (
+                     <span className="inline-flex items-center gap-1.5 text-(--color-text-tertiary)" title="Offline — sync will resume when reconnected">
+                       <CloudOff size={14} />
+                       <span className="text-xs font-medium">Offline — will sync later</span>
+                     </span>
+                   ) : (
+                     <button
+                       onClick={(e) => { e.stopPropagation(); onSyncRetry?.(memory.id); }}
+                       className="inline-flex items-center gap-1.5 text-(--color-danger) hover:text-(--color-danger)/80 transition-colors"
+                     >
+                       <AlertCircle size={14} />
+                       <span className="text-xs font-medium">Failed to sync — tap to retry</span>
+                     </button>
+                   )
+                 ) : (
+                   <>
+                     {entity?.type ? (
+                       <span className={`flex items-center gap-1.5 ${text.label}`}>
+                         {getEntityIcon(entity.type)}
+                         {entity.type}
+                       </span>
+                     ) : (
+                       <Clock size={12} className="text-(--color-text-tertiary)" />
+                     )}
+                     <span className="text-xs text-(--color-text-tertiary) font-medium">{dateStr}</span>
+                   </>
                  )}
-                 {!entity?.type && <Clock size={12} className="text-(--color-text-tertiary)" />}
-                 <span className="text-xs text-(--color-text-tertiary) font-medium">{dateStr}</span>
              </div>
              {uploadProgress?.status === 'uploading' && (
                <span className="text-xs font-medium text-(--color-accent)">
@@ -501,24 +521,47 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
              {uploadProgress?.status === 'failed' && (
                <span className="text-xs font-medium text-(--color-warning)">Upload failed</span>
              )}
-             {!uploadProgress && isInFlight && <span className="text-xs font-medium text-(--color-accent) animate-pulse">Enriching...</span>}
-             {isSubmitFailed && <WifiOff size={12} className="text-(--color-warning)" />}
-             {memory.enrichmentStatus === 'failed_server' && <AlertCircle size={12} className="text-(--color-warning)" />}
-             {syncStatus === 'syncing' && <RefreshCw size={12} className="text-(--color-accent) animate-spin" />}
-             {syncStatus === 'synced' && <CircleCheck size={12} className="text-(--color-success)" />}
-             {syncStatus === 'error' && (
-                 isOffline ? (
-                     <span className="flex items-center gap-1 text-(--color-text-tertiary)" title="Offline — sync will resume when reconnected">
-                         <CloudOff size={14} />
-                         <span className="text-xs font-medium">Offline</span>
-                     </span>
-                 ) : (
-                     <button onClick={(e) => { e.stopPropagation(); onSyncRetry?.(memory.id); }}
-                             className="flex items-center gap-1 text-(--color-danger) hover:text-(--color-danger) transition-colors">
-                         <AlertCircle size={14} />
-                         <span className="text-xs font-medium">Retry sync</span>
-                     </button>
-                 )
+             {!uploadProgress && memory.enrichmentStatus === 'submitting' && (
+               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-(--radius-full) text-xs font-medium border bg-(--color-accent)/15 text-(--color-accent) border-(--color-accent)/30 animate-pulse">
+                 <Hourglass size={12} /> Submitted
+               </span>
+             )}
+             {!uploadProgress && memory.enrichmentStatus === 'processing' && (
+               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-(--radius-full) text-xs font-medium border bg-(--color-accent)/15 text-(--color-accent) border-(--color-accent)/30 animate-pulse">
+                 <Sparkles size={12} /> Enriching…
+               </span>
+             )}
+             {!uploadProgress && memory.enrichmentStatus === 'failed_submit' && (
+               <span className="inline-flex items-center gap-1">
+                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-(--radius-full) text-xs font-medium border bg-(--color-warning)/15 text-(--color-warning) border-(--color-warning)/30">
+                   <WifiOff size={12} /> Submit failed
+                 </span>
+                 {onRetry && (
+                   <button
+                     onClick={(e) => { e.stopPropagation(); onRetry(memory.id); }}
+                     className="p-1.5 rounded-(--radius-lg) text-(--color-warning) hover:bg-(--color-warning)/20 transition-colors"
+                     aria-label="Retry submission"
+                   >
+                     <RefreshCcw size={14} />
+                   </button>
+                 )}
+               </span>
+             )}
+             {!uploadProgress && memory.enrichmentStatus === 'failed_server' && (
+               <span className="inline-flex items-center gap-1">
+                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-(--radius-full) text-xs font-medium border bg-(--color-warning)/15 text-(--color-warning) border-(--color-warning)/30">
+                   <AlertCircle size={12} /> Enrichment failed
+                 </span>
+                 {onRetry && (
+                   <button
+                     onClick={(e) => { e.stopPropagation(); onRetry(memory.id); }}
+                     className="p-1.5 rounded-(--radius-lg) text-(--color-warning) hover:bg-(--color-warning)/20 transition-colors"
+                     aria-label="Retry enrichment"
+                   >
+                     <RefreshCcw size={14} />
+                   </button>
+                 )}
+               </span>
              )}
           </div>
 
