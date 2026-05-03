@@ -205,6 +205,19 @@ export interface QuickNoteState {
   tags: string[];
 }
 
+/**
+ * Enrichment lifecycle for a Memory. Replaces the overloaded
+ * isPending + processingError boolean pair, which conflated three
+ * distinct conditions (submit-failed, server-failed, client-side-timeout)
+ * and caused premature failure UI for in-flight server jobs.
+ */
+export type EnrichmentStatus =
+  | 'submitting'    // POST /api/enrich is in flight (or queued offline)
+  | 'processing'    // Server accepted; awaiting Firestore completion
+  | 'failed_submit' // Submit threw — server doesn't know about this memory
+  | 'failed_server' // Server's Firestore record explicitly says 'failed'
+  | 'completed';
+
 export interface Memory {
   id: string;
   timestamp: number;
@@ -214,14 +227,25 @@ export interface Memory {
   location?: GeoLocation;
   enrichment?: EnrichmentData;
   tags: string[]; // Finalized tags
+  enrichmentStatus?: EnrichmentStatus;
+  /** @deprecated Mirrored from enrichmentStatus for backward compatibility. Use isMemoryInFlight(). */
   isPending?: boolean;
   isDeleting?: boolean; // UI state for deletion animation
+  /** @deprecated Mirrored from enrichmentStatus for backward compatibility. Use isMemoryFailed(). */
   processingError?: boolean;
   isDeleted?: boolean; // Persistent soft-delete flag for sync
   isPinned?: boolean;
   isDeletionDismissed?: boolean; // User dismissed this note from deletion suggestions
   _attachmentsDeferred?: boolean; // Transient UI flag: attachment data not yet loaded
 }
+
+export const isMemoryInFlight = (m: Pick<Memory, 'enrichmentStatus' | 'isPending'>): boolean =>
+  m.enrichmentStatus === 'submitting' || m.enrichmentStatus === 'processing'
+  || (m.enrichmentStatus === undefined && m.isPending === true);
+
+export const isMemoryFailed = (m: Pick<Memory, 'enrichmentStatus' | 'processingError'>): boolean =>
+  m.enrichmentStatus === 'failed_submit' || m.enrichmentStatus === 'failed_server'
+  || (m.enrichmentStatus === undefined && m.processingError === true);
 
 export interface UploadProgress {
   status: 'uploading' | 'processing' | 'completed' | 'failed';

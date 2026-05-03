@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { fetchPendingEnrichments } from '../services/geminiService';
 import { getMemory, saveMemory } from '../services/storageService';
-import { Attachment, LinkPreview, Memory } from '../types';
-
-const ENRICHMENT_TIMEOUT_MS = 120_000;
+import { Attachment, isMemoryInFlight, LinkPreview, Memory } from '../types';
 
 /** Poll every 1s during the initial fast-polling tier. */
 const FAST_POLL_INTERVAL_MS = 1_000;
@@ -16,8 +14,11 @@ const FAST_POLL_TIER_MS = 15_000;
  * Applies an enrichment poll result to a single memory.
  * Returns the updated memory if a change was made, or null otherwise.
  *
- * This centralizes the "completed/failed/timeout" logic that was previously
- * duplicated across initial recovery, online recovery, and periodic polling.
+ * Server is the source of truth: only act on explicit `completed` or
+ * `failed` server responses. `processing` and `not_found` mean "keep
+ * waiting" — never client-side-timeout an in-flight job into a failure
+ * state, since the server may still be working or the Firestore record
+ * just hasn't been written yet.
  */
 export const applyEnrichmentResult = async (
   memory: Memory,
@@ -25,17 +26,16 @@ export const applyEnrichmentResult = async (
 ): Promise<{ updated: Memory; action: 'completed' | 'failed' } | null> => {
   const needsUpdate =
     (result?.status === 'completed' && result.data) ||
-    result?.status === 'failed' ||
-    ((!result || result.status === 'not_found') && Date.now() - memory.timestamp > ENRICHMENT_TIMEOUT_MS);
+    result?.status === 'failed';
 
-  if (!needsUpdate) return null; // Still processing, no change
+  if (!needsUpdate) return null; // Still processing or not_found — keep waiting
 
   const current = await getMemory(memory.id);
   if (!current || current.isDeleted) return null;
 
   // Skip if the memory was already enriched (prevents double-processing
   // when the polling loop fires again with a stale memoriesRef).
-  if (!current.isPending) return null;
+  if (!isMemoryInFlight(current)) return null;
 
   if (result?.status === 'completed' && result.data) {
     const allTags = Array.from(new Set([...(current.tags || []), ...(result.data.suggestedTags || [])]));
@@ -43,6 +43,7 @@ export const applyEnrichmentResult = async (
       ...current,
       enrichment: result.data,
       tags: allTags,
+      enrichmentStatus: 'completed',
       isPending: false,
       processingError: false,
       timestamp: Date.now(),
@@ -82,8 +83,13 @@ export const applyEnrichmentResult = async (
     return { updated: updatedMemory, action: 'completed' };
   }
 
-  // Failed or timed out
-  const failedMemory: Memory = { ...current, isPending: false, processingError: true };
+  // Server-confirmed failure
+  const failedMemory: Memory = {
+    ...current,
+    enrichmentStatus: 'failed_server',
+    isPending: false,
+    processingError: true,
+  };
   await saveMemory(failedMemory);
   return { updated: failedMemory, action: 'failed' };
 };
@@ -128,7 +134,7 @@ export const useEnrichmentPolling = ({
     const poll = async () => {
       if (!pollingActiveRef.current) return;
 
-      const pending = memoriesRef.current.filter(m => m.isPending);
+      const pending = memoriesRef.current.filter(isMemoryInFlight);
       if (pending.length === 0) {
         pollingActiveRef.current = false;
         return;
@@ -154,7 +160,7 @@ export const useEnrichmentPolling = ({
       }
 
       // Re-check pending after processing
-      const stillPending = memoriesRef.current.filter(m => m.isPending);
+      const stillPending = memoriesRef.current.filter(isMemoryInFlight);
       if (stillPending.length > 0 && pollingActiveRef.current) {
         const elapsed = Date.now() - pollingStartTime;
         const nextDelay = elapsed < FAST_POLL_TIER_MS ? FAST_POLL_INTERVAL_MS : SLOW_POLL_INTERVAL_MS;

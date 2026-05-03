@@ -1,5 +1,5 @@
 
-import { Memory, Moment, MomentSynthesis, CalendarEvent, TodoItem } from '../types.ts';
+import { Memory, Moment, MomentSynthesis, CalendarEvent, TodoItem, isMemoryFailed } from '../types.ts';
 import { encryptData, decryptData, decryptBatch, EncryptedPayload } from './encryptionService';
 import { db } from './db';
 import { storage } from './platform';
@@ -91,6 +91,25 @@ const normalizeMemory = (memory: Memory): Memory => {
   if (!Array.isArray(memory.tags)) {
     memory.tags = [];
   }
+  // Backfill enrichmentStatus from legacy booleans on first read.
+  // Records written by older clients (IndexedDB, Drive sync) will have
+  // isPending/processingError but no enrichmentStatus.
+  if (memory.enrichmentStatus === undefined) {
+    if (memory.processingError) {
+      // Legacy `processingError` never distinguished submit-fail from
+      // server-fail; default to failed_submit so the user can retry.
+      memory.enrichmentStatus = 'failed_submit';
+    } else if (memory.isPending) {
+      // Safer default than 'submitting' — assume server has it.
+      memory.enrichmentStatus = 'processing';
+    } else if (memory.enrichment) {
+      memory.enrichmentStatus = 'completed';
+    }
+  }
+  // Mirror back to legacy fields so any reader still using them sees
+  // consistent state. Drop these mirrors after one release cycle.
+  memory.isPending = memory.enrichmentStatus === 'submitting' || memory.enrichmentStatus === 'processing';
+  memory.processingError = memory.enrichmentStatus === 'failed_submit' || memory.enrichmentStatus === 'failed_server';
   return memory;
 };
 
@@ -106,13 +125,13 @@ const rehydrateMemory = async (stored: StoredMemory): Promise<Memory> => {
       });
     } catch (e: any) {
       console.error(`Failed to decrypt memory ${stored.id}`, e);
-      return {
+      return normalizeMemory({
         id: stored.id,
         timestamp: stored.timestamp,
         content: "Error: Could not decrypt memory.",
         tags: [],
-        processingError: true
-      };
+        enrichmentStatus: 'failed_server',
+      });
     }
   }
   return normalizeMemory(stored as unknown as Memory);
@@ -227,13 +246,15 @@ export const getMemories = async (): Promise<Memory[]> => {
           memories.push(normalizeMemory({ id: stored.id, timestamp: stored.timestamp, ...result.data }));
         } else {
           console.error(`Failed to decrypt memory ${stored.id}`, result?.error);
-          memories.push({
+          memories.push(normalizeMemory({
             id: stored.id,
             timestamp: stored.timestamp,
             content: "Error: Could not decrypt memory.",
             tags: [],
-            processingError: true,
-          });
+            // Decryption failure is non-retryable — the encrypted data is gone/corrupt.
+            // Surface as failed_server (not failed_submit) so we don't auto-retry on online.
+            enrichmentStatus: 'failed_server',
+          }));
         }
       } else {
         memories.push(normalizeMemory(stored as unknown as Memory));
@@ -311,7 +332,7 @@ export const reconcileEmbeddings = async (): Promise<ReconcileReport> => {
     const memories = await getMemories();
     report.total = memories.length;
     
-    const enrichedMemories = memories.filter(m => m.enrichment && !m.isDeleted && !m.processingError);
+    const enrichedMemories = memories.filter(m => m.enrichment && !m.isDeleted && !isMemoryFailed(m));
     report.enriched = enrichedMemories.length;
 
     if (enrichedMemories.length === 0) return report;
@@ -855,6 +876,7 @@ interface StoredMemory {
   location?: any;
   enrichment?: any;
   tags?: string[];
+  enrichmentStatus?: string;
   isPending?: boolean;
   isDeleting?: boolean;
   processingError?: boolean;

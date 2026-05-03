@@ -142,7 +142,7 @@ describe('useMemories', () => {
   });
 
   it('should retry failed memories when back online', async () => {
-    const mockMemories = [{ id: '1', content: 'test', timestamp: 123, tags: [], processingError: true }];
+    const mockMemories = [{ id: '1', content: 'test', timestamp: 123, tags: [], enrichmentStatus: 'failed_submit', processingError: true }];
 
     (storageService.getMemories as any).mockResolvedValue(mockMemories);
     (geminiService.submitEnrichment as any).mockResolvedValue(undefined);
@@ -236,10 +236,13 @@ describe('useMemories', () => {
       // Memory should be in "Enriching..." state immediately
       expect(result.current.memories[0].isPending).toBe(true);
 
-      // saveMemory should have been called once with isPending: true
-      expect(storageService.saveMemory).toHaveBeenCalledTimes(1);
-      const savedArg = (storageService.saveMemory as any).mock.calls[0][0];
-      expect(savedArg.isPending).toBe(true);
+      // First saveMemory call is the optimistic write (enrichmentStatus: 'submitting').
+      // After submitEnrichment resolves, a second saveMemory is issued to transition
+      // submitting → processing once the server has acknowledged the job.
+      expect((storageService.saveMemory as any).mock.calls.length).toBeGreaterThanOrEqual(1);
+      const optimisticSave = (storageService.saveMemory as any).mock.calls[0][0];
+      expect(optimisticSave.isPending).toBe(true);
+      expect(optimisticSave.enrichmentStatus).toBe('submitting');
     });
 
     it('should set processingError when enrichment submission fails', async () => {
