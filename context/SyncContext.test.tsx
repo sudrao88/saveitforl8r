@@ -53,6 +53,8 @@ vi.mock('../services/googleDriveService', () => ({
   uploadFile: vi.fn().mockResolvedValue({ id: 'file-1' }),
   uploadMultipleFiles: vi.fn().mockResolvedValue({ failures: [] }),
   findFileByName: vi.fn().mockResolvedValue(null),
+  findAllFilesByName: vi.fn().mockResolvedValue([]),
+  cleanupFilesByName: vi.fn().mockResolvedValue(undefined),
   deleteFileById: vi.fn().mockResolvedValue(undefined),
   isLinked: vi.fn().mockResolvedValue(true), // Now async
   deleteRemoteNote: vi.fn().mockResolvedValue(undefined),
@@ -107,6 +109,23 @@ describe('SyncContext', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] });
     // Clear mock storage values
     Object.keys(mockStorageValues).forEach(key => delete mockStorageValues[key]);
+
+    // cleanupFilesByName is a thin wrapper over findAllFilesByName +
+    // deleteFileById in the real module. Wire the default mock the same way
+    // so existing assertions on deleteFileById keep verifying behavior.
+    (driveService.cleanupFilesByName as any).mockImplementation(
+      async (filename: string, keepId?: string) => {
+        const files = await (driveService.findAllFilesByName as any)(filename);
+        for (const file of files) {
+          if (keepId && file.id === keepId) continue;
+          try {
+            await (driveService.deleteFileById as any)(file.id);
+          } catch {
+            // mirror real helper: swallow individual delete failures
+          }
+        }
+      },
+    );
   });
 
   afterEach(() => {
@@ -363,7 +382,9 @@ describe('SyncContext', () => {
 
     it('should delete remote file and local tombstone on single sync of deleted memory', async () => {
       const tombstone = { id: 'del-single', content: '', timestamp: 2000, tags: [], isDeleted: true };
-      (driveService.findFileByName as any).mockResolvedValue({ id: 'drive-del-single', name: 'del-single.json', modifiedTime: '2024-01-01T00:00:00Z' });
+      (driveService.findAllFilesByName as any).mockResolvedValue([
+        { id: 'drive-del-single', name: 'del-single.json', modifiedTime: '2024-01-01T00:00:00Z' },
+      ]);
 
       const { result } = renderHook(() => useSync(), { wrapper });
 
@@ -374,6 +395,148 @@ describe('SyncContext', () => {
       // Should use deleteFileById (not deleteRemoteNote) with the Drive file ID
       expect(driveService.deleteFileById).toHaveBeenCalledWith('drive-del-single');
       expect(storageService.deleteMemory).toHaveBeenCalledWith('del-single');
+    });
+
+    it('should delete every duplicate Drive file when single-syncing a deleted memory', async () => {
+      // Drive permits duplicate filenames, and concurrent uploads racing a
+      // delete can leave more than one file with the same name. Surviving
+      // duplicates would be re-downloaded on the next listAllFiles and
+      // resurrect the note. The deletion path must remove all of them.
+      const tombstone = { id: 'del-dup', content: '', timestamp: 2000, tags: [], isDeleted: true };
+      (driveService.findAllFilesByName as any).mockResolvedValue([
+        { id: 'drive-del-dup-1', name: 'del-dup.json', modifiedTime: '2024-01-01T00:00:00Z' },
+        { id: 'drive-del-dup-2', name: 'del-dup.json', modifiedTime: '2024-01-02T00:00:00Z' },
+      ]);
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      await act(async () => {
+        await result.current.syncFile(tombstone as any);
+      });
+
+      expect(driveService.deleteFileById).toHaveBeenCalledWith('drive-del-dup-1');
+      expect(driveService.deleteFileById).toHaveBeenCalledWith('drive-del-dup-2');
+    });
+
+    it('should delete remote moment file and synthesis and hard-delete locally on single sync of deleted moment', async () => {
+      // Mirrors the note-deletion semantics: a single moment sync of a
+      // tombstone should remove the Drive files and the local tombstone
+      // immediately, rather than uploading the tombstone and waiting for
+      // the next delta sync (which races with background updates).
+      const tombstone = {
+        id: 'mom-del',
+        objective: 'Test',
+        title: 'Test',
+        type: 'general',
+        noteIds: [],
+        createdAt: 1000,
+        updatedAt: 2000,
+        isDeleted: true,
+      };
+
+      (driveService.findAllFilesByName as any).mockImplementation((name: string) => {
+        if (name === 'moment-mom-del.json') {
+          return Promise.resolve([{ id: 'drive-mom-del', name, modifiedTime: '2024-01-01T00:00:00Z' }]);
+        }
+        if (name === 'moment-synthesis-mom-del.json') {
+          return Promise.resolve([{ id: 'drive-synth-mom-del', name, modifiedTime: '2024-01-01T00:00:00Z' }]);
+        }
+        return Promise.resolve([]);
+      });
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      await act(async () => {
+        await result.current.syncMoment(tombstone as any);
+      });
+
+      // Both moment file and synthesis file should be deleted from Drive.
+      expect(driveService.deleteFileById).toHaveBeenCalledWith('drive-mom-del');
+      expect(driveService.deleteFileById).toHaveBeenCalledWith('drive-synth-mom-del');
+      // Local tombstone hard-deleted (cascades to the synthesis cache).
+      expect(storageService.deleteMomentHard).toHaveBeenCalledWith('mom-del');
+      // The tombstone must NOT be uploaded — that was the buggy path that
+      // raced with background activity on the other device.
+      expect(driveService.uploadFile).not.toHaveBeenCalled();
+    });
+
+    it('should delete every duplicate moment and synthesis file when single-syncing a deleted moment', async () => {
+      // The user-reported resurrection bug: each delete only removed one file
+      // ID, while Drive carried multiple copies of the same moment because of
+      // a race with re-synthesis uploads. Subsequent manual syncs would pull
+      // the surviving duplicate back down.
+      const tombstone = {
+        id: 'mom-dup',
+        objective: 'Test',
+        title: 'Test',
+        type: 'general',
+        noteIds: [],
+        createdAt: 1000,
+        updatedAt: 2000,
+        isDeleted: true,
+      };
+
+      (driveService.findAllFilesByName as any).mockImplementation((name: string) => {
+        if (name === 'moment-mom-dup.json') {
+          return Promise.resolve([
+            { id: 'drive-mom-dup-1', name, modifiedTime: '2024-01-01T00:00:00Z' },
+            { id: 'drive-mom-dup-2', name, modifiedTime: '2024-01-02T00:00:00Z' },
+          ]);
+        }
+        if (name === 'moment-synthesis-mom-dup.json') {
+          return Promise.resolve([
+            { id: 'drive-synth-dup-1', name, modifiedTime: '2024-01-01T00:00:00Z' },
+            { id: 'drive-synth-dup-2', name, modifiedTime: '2024-01-02T00:00:00Z' },
+          ]);
+        }
+        return Promise.resolve([]);
+      });
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      await act(async () => {
+        await result.current.syncMoment(tombstone as any);
+      });
+
+      expect(driveService.deleteFileById).toHaveBeenCalledWith('drive-mom-dup-1');
+      expect(driveService.deleteFileById).toHaveBeenCalledWith('drive-mom-dup-2');
+      expect(driveService.deleteFileById).toHaveBeenCalledWith('drive-synth-dup-1');
+      expect(driveService.deleteFileById).toHaveBeenCalledWith('drive-synth-dup-2');
+      expect(storageService.deleteMomentHard).toHaveBeenCalledWith('mom-dup');
+    });
+
+    it('should not resurrect a moment that was deleted on another device', async () => {
+      // Background activity (e.g. addNoteToMoment from enrichment) calls
+      // syncMoment with an alive moment. If the file is missing from Drive
+      // but our snapshot says we synced it before, the deletion was made
+      // by another device — propagate the deletion instead of re-uploading.
+      mockStorageValues['gdrive_remote_snapshot'] = JSON.stringify({
+        'moment-mom-1': '2024-01-01T00:00:00Z',
+      });
+
+      const aliveLocal = {
+        id: 'mom-1',
+        objective: 'Test',
+        title: 'Test',
+        type: 'general',
+        noteIds: ['n1'],
+        createdAt: 1000,
+        updatedAt: 9000, // bumped locally by enrichment match
+      };
+
+      (driveService.findFileByName as any).mockResolvedValue(null);
+      (driveService.findAllFilesByName as any).mockResolvedValue([]);
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      await act(async () => {
+        await result.current.syncMoment(aliveLocal as any);
+      });
+
+      // Should not re-upload — that would resurrect the deleted moment.
+      expect(driveService.uploadFile).not.toHaveBeenCalled();
+      // Should propagate the deletion locally.
+      expect(storageService.deleteMomentHard).toHaveBeenCalledWith('mom-1');
     });
   });
 
@@ -552,6 +715,72 @@ describe('SyncContext', () => {
 
       // Local moment should be deleted because another device removed it from Drive
       expect(storageService.deleteMomentHard).toHaveBeenCalledWith('mom-1');
+    });
+
+    it('should hard-delete local moment when remote tombstone arrives, even if local updatedAt is newer', async () => {
+      // Regression test for moment deletion sync bug:
+      // Background activity on Device B (addNoteToMoment, markMomentSeen,
+      // loadSynthesis, recoverPendingResynthesis) bumps the local
+      // updatedAt. Without this fix, the streaming download handler would
+      // route the tombstone to "upload local" instead of deleting, silently
+      // discarding the deletion and resurrecting the moment elsewhere.
+      const remoteTombstone = makeMoment('mom-1', 1500, { isDeleted: true });
+      const localMoment = makeMoment('mom-1', 5000); // local has newer updatedAt
+
+      (storageService.getMemories as any).mockResolvedValue([]);
+      (storageService.getAllMomentsIncludingDeleted as any).mockResolvedValue([localMoment]);
+      (driveService.listAllFiles as any).mockResolvedValue([
+        { id: 'drive-mom-1', name: 'moment-mom-1.json', modifiedTime: '2024-01-02T00:00:00Z' },
+      ]);
+      mockDownloads(new Map([['drive-mom-1', remoteTombstone]]));
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      await act(async () => {
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
+      });
+
+      // Tombstone wins regardless of timestamp
+      expect(storageService.deleteMomentHard).toHaveBeenCalledWith('mom-1');
+      expect(storageService.saveMoment).not.toHaveBeenCalledWith(localMoment);
+    });
+
+    it('should plan duplicate Drive files for deletion alongside the canonical when local moment is a tombstone', async () => {
+      // doDeltaSync identifies duplicates from listAllFiles and queues them
+      // for deletion at planning time, so executeSyncPlan stays a simple
+      // execution engine — no per-item findAllFilesByName lookups.
+      const snapshot = { 'moment-mom-dup': '2024-01-01T00:00:00Z' };
+      mockStorageValues['gdrive_remote_snapshot'] = JSON.stringify(snapshot);
+      mockStorageValues['gdrive_last_sync_time'] = '5000';
+
+      const tombstone = makeMoment('mom-dup', 9000, { isDeleted: true });
+
+      (storageService.getMemories as any).mockResolvedValue([]);
+      (storageService.getAllMomentsIncludingDeleted as any).mockResolvedValue([tombstone]);
+      (driveService.listAllFiles as any).mockResolvedValue([
+        { id: 'drive-mom-dup-1', name: 'moment-mom-dup.json', modifiedTime: '2024-01-02T00:00:00Z' },
+        { id: 'drive-mom-dup-2', name: 'moment-mom-dup.json', modifiedTime: '2024-01-03T00:00:00Z' },
+        { id: 'drive-synth-dup-1', name: 'moment-synthesis-mom-dup.json', modifiedTime: '2024-01-02T00:00:00Z' },
+        { id: 'drive-synth-dup-2', name: 'moment-synthesis-mom-dup.json', modifiedTime: '2024-01-03T00:00:00Z' },
+      ]);
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      await act(async () => {
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
+      });
+
+      // Both the canonical and the duplicate file ID should be deleted.
+      expect(driveService.deleteFileById).toHaveBeenCalledWith('drive-mom-dup-1');
+      expect(driveService.deleteFileById).toHaveBeenCalledWith('drive-mom-dup-2');
+      expect(driveService.deleteFileById).toHaveBeenCalledWith('drive-synth-dup-1');
+      expect(driveService.deleteFileById).toHaveBeenCalledWith('drive-synth-dup-2');
+      // executeSyncPlan must not fall back to findAllFilesByName lookups.
+      expect(driveService.findAllFilesByName).not.toHaveBeenCalled();
     });
 
     it('should skip unchanged moment files when snapshot matches remote modifiedTime', async () => {

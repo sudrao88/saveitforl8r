@@ -185,7 +185,7 @@ export const validateResultsInput = (req, res, next) => {
 };
 
 export const validateSynthesizeInput = (req, res, next) => {
-  const { notes, momentType, momentTitle, objective, momentId, notesFileUri, notesFileName, noteCount } = req.body;
+  const { notes, momentType, momentTitle, objective, momentId, notesFileUri, notesFileName, noteCount, inputHash } = req.body;
 
   const fileRefError = validateContextFileRef(notesFileUri, notesFileName);
   if (fileRefError) return res.status(400).json({ error: `notesFileUri/Name: ${fileRefError}` });
@@ -214,6 +214,12 @@ export const validateSynthesizeInput = (req, res, next) => {
     return res.status(400).json({ error: 'momentId is required and must be a string' });
   if (!UUID_REGEX.test(momentId))
     return res.status(400).json({ error: 'momentId must be a valid UUID' });
+  if (inputHash !== undefined) {
+    if (typeof inputHash !== 'string')
+      return res.status(400).json({ error: 'inputHash must be a string' });
+    if (inputHash.length > 64)
+      return res.status(400).json({ error: 'inputHash too long (max 64 chars)' });
+  }
 
   next();
 };

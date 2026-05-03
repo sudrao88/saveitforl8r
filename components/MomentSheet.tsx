@@ -16,7 +16,6 @@ import {
   Check,
   RefreshCw,
   FileText,
-  AlertTriangle,
 } from 'lucide-react';
 import {
   Moment,
@@ -27,7 +26,8 @@ import {
   Attachment,
 } from '../types';
 import MemoryPreviewModal from './MemoryPreviewModal';
-import { overlay, btn } from '../styles/design-system';
+import MomentNoteDeletionSheet from './MomentNoteDeletionSheet';
+import { overlay, btn, chip } from '../styles/design-system';
 
 // Shared loading indicator for pending creation and resynthesis states
 const SynthesisLoadingState: React.FC = () => (
@@ -106,9 +106,6 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
   const [previewMemoryId, setPreviewMemoryId] = useState<string | null>(null);
   const [deleteConfirmStep, setDeleteConfirmStep] = useState<DeleteConfirmStep | null>(null);
 
-  const noteCount = moment.noteIds.length;
-  const noteLabel = noteCount === 1 ? 'note' : 'notes';
-
   // Build a lookup map for source note citations
   const memoriesMap = useMemo(() => {
     const map = new Map<string, Memory>();
@@ -119,6 +116,21 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
   }, [memories]);
 
   const previewMemory = previewMemoryId ? memoriesMap.get(previewMemoryId) : undefined;
+
+  // Resolved, in-order list of the moment's notes (skip missing or soft-deleted).
+  // Drives every displayed note count so the header, confirmation prompt, and
+  // deletion sheet stay in sync even when moment.noteIds contains dangling refs.
+  const momentNotes = useMemo(() => {
+    const result: Memory[] = [];
+    for (const id of moment.noteIds) {
+      const m = memoriesMap.get(id);
+      if (m && !m.isDeleted) result.push(m);
+    }
+    return result;
+  }, [moment.noteIds, memoriesMap]);
+
+  const noteCount = momentNotes.length;
+  const noteLabel = noteCount === 1 ? 'note' : 'notes';
 
   // Dismiss nested dialogs on Android back button
   useBackButton(() => setPreviewMemoryId(null), previewMemoryId !== null);
@@ -197,13 +209,13 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
   }, []);
 
   const handleDeleteClick = useCallback(() => {
-    if (moment.noteIds.length > 0 && onDeleteNotes) {
+    if (noteCount > 0 && onDeleteNotes) {
       setDeleteConfirmStep('choose');
     } else {
       onDelete(moment.id);
       onClose();
     }
-  }, [moment.id, moment.noteIds.length, onDelete, onDeleteNotes, onClose]);
+  }, [moment.id, noteCount, onDelete, onDeleteNotes, onClose]);
 
   const handleDeleteMomentOnly = useCallback(() => {
     onDelete(moment.id);
@@ -211,12 +223,14 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
     onClose();
   }, [moment.id, onDelete, onClose]);
 
-  const handleDeleteWithNotes = useCallback(() => {
+  const handleDeleteWithNotes = useCallback((noteIdsToDelete: string[]) => {
     onDelete(moment.id);
-    onDeleteNotes?.(moment.noteIds);
+    if (noteIdsToDelete.length > 0) {
+      onDeleteNotes?.(noteIdsToDelete);
+    }
     setDeleteConfirmStep(null);
     onClose();
-  }, [moment.id, moment.noteIds, onDelete, onDeleteNotes, onClose]);
+  }, [moment.id, onDelete, onDeleteNotes, onClose]);
 
   // Pending state — moment is still being created
   if (moment.isPending) {
@@ -262,7 +276,7 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
       subtitle={synthesis?.subtitle}
       headerRight={
         <div className="flex items-center gap-2 text-xs text-(--color-text-tertiary)">
-          <span>{moment.noteIds.length} notes</span>
+          <span>{noteCount} {noteLabel}</span>
         </div>
       }
       onClose={onClose}
@@ -278,9 +292,21 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-2xl mx-auto p-4 sm:p-8 pb-32">
-          {isLoading && (
+          {/* Cold-load: no cached synthesis yet — block with the full-screen spinner */}
+          {isLoading && !synthesis && (
             <div className="flex items-center justify-center py-24">
               <SynthesisLoadingState />
+            </div>
+          )}
+
+          {/* Background resync: a previous synthesis is already on screen.
+              Show an inline "Updating…" pill instead of hiding the content. */}
+          {isLoading && synthesis && (
+            <div className="flex justify-center mb-4">
+              <div className={`${chip.base} ${chip.inactive}`}>
+                <Loader2 size={14} className="animate-spin text-(--color-accent)" />
+                <span>Updating…</span>
+              </div>
             </div>
           )}
 
@@ -304,7 +330,7 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
             </div>
           )}
 
-          {synthesis && !isLoading && (
+          {synthesis && !error && (
             <>
               <div className="space-y-6">
                 {synthesis.sections.map((section, sIdx) => (
@@ -401,38 +427,17 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
         </div>
       )}
 
-      {/* Delete Confirmation Dialog — Step 2: Confirm note deletion */}
+      {/* Delete Confirmation — Step 2: Select notes to delete */}
       {deleteConfirmStep === 'confirm-notes' && (
-        <div className={overlay.dialogBackdrop} onClick={() => setDeleteConfirmStep(null)}>
-          <div
-            className={`${overlay.modal} p-6 mx-4 w-full max-w-sm animate-in zoom-in-95 fade-in duration-(--duration-normal)`}
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex flex-col items-center text-center mb-6">
-              <div className="w-12 h-12 bg-(--color-danger)/10 rounded-full flex items-center justify-center mb-3">
-                <AlertTriangle size={24} className="text-(--color-warning)" />
-              </div>
-              <h3 className="text-base font-bold text-(--color-text-primary) mb-1">Are you sure?</h3>
-              <p className="text-sm text-(--color-text-secondary)">
-                This will permanently delete {noteCount} {noteLabel} along with the moment. This action cannot be undone.
-              </p>
-            </div>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setDeleteConfirmStep('choose')}
-                className={`${btn.base} ${btn.secondary} flex-1 text-sm`}
-              >
-                Go back
-              </button>
-              <button
-                onClick={handleDeleteWithNotes}
-                className={`${btn.base} ${btn.danger} flex-1 text-sm`}
-              >
-                Delete all
-              </button>
-            </div>
-          </div>
-        </div>
+        <MomentNoteDeletionSheet
+          moment={moment}
+          notes={momentNotes}
+          onCancel={() => setDeleteConfirmStep(null)}
+          onConfirm={handleDeleteWithNotes}
+          onViewAttachment={onViewAttachment}
+          onMemoryEdit={onMemoryEdit}
+          onMemoryTogglePin={onMemoryTogglePin}
+        />
       )}
     </SheetShell>
   );

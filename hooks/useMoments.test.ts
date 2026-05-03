@@ -4,6 +4,7 @@ import { useMoments } from './useMoments';
 import * as storageService from '../services/storageService';
 import * as geminiService from '../services/geminiService';
 import { Memory, Moment } from '../types';
+import { computeInputHash } from '../utils/hash';
 
 // Mock the services
 vi.mock('../services/storageService');
@@ -14,6 +15,7 @@ vi.mock('./useMomentCreationPolling', () => ({
   useMomentCreationPolling: () => ({
     startPolling: vi.fn(),
     recoverPending: vi.fn(),
+    recoverPendingResynthesis: vi.fn(),
   }),
 }));
 
@@ -42,6 +44,16 @@ describe('useMoments', () => {
     (storageService.getMomentSynthesis as any).mockResolvedValue(null);
     (storageService.saveMomentSynthesis as any).mockResolvedValue(undefined);
     (storageService.deleteMomentSynthesis as any).mockResolvedValue(undefined);
+    // getMoment(id) is used by the tombstone-aware re-read pattern in
+    // loadSynthesis and the polling/recovery hooks. Default to returning
+    // whatever getMoments() returns so tests that only mock getMoments
+    // continue to work without explicitly mocking getMoment.
+    (storageService.getMoment as any).mockImplementation(async (id: string) => {
+      const all = await (storageService.getMoments as any)();
+      return Array.isArray(all) ? all.find((m: Moment) => m.id === id) ?? null : null;
+    });
+    // Default: server has no result, so loadSynthesis falls through to submit.
+    (geminiService.fetchPendingSynthesisResults as any).mockResolvedValue({});
   });
 
   it('should load moments on mount', async () => {
@@ -305,6 +317,233 @@ describe('useMoments', () => {
       // deleteMomentSynthesis should have been called for both affected moments
       expect(storageService.deleteMomentSynthesis).toHaveBeenCalledWith('m1');
       expect(storageService.deleteMomentSynthesis).toHaveBeenCalledWith('m2');
+    });
+  });
+
+  describe('loadSynthesis poll-before-submit', () => {
+    it('uses server-cached result with matching hash without calling submitResynthesis', async () => {
+      const moments = [makeMoment('m1', ['note-1'])];
+      (storageService.getMoments as any).mockResolvedValue(moments);
+      const memories = [makeMemory('note-1')];
+      const expectedHash = computeInputHash(['note-1'], memories);
+
+      const cachedSynthesis = {
+        format: 'general' as const,
+        title: 'Cached',
+        sections: [
+          {
+            heading: 'S',
+            items: [{ label: 'item', sourceNoteId: 'note-1' }],
+          },
+        ],
+        generatedFrom: ['note-1'],
+      };
+
+      (geminiService.fetchPendingSynthesisResults as any).mockResolvedValue({
+        m1: { status: 'completed', data: cachedSynthesis, inputHash: expectedHash },
+      });
+
+      const { result } = renderHook(() => useMoments(memories));
+      await waitFor(() => expect(result.current.moments).toHaveLength(1));
+
+      let synthesis: any;
+      await act(async () => {
+        synthesis = await result.current.loadSynthesis(result.current.moments[0], memories);
+      });
+
+      expect(synthesis).not.toBeNull();
+      expect(synthesis.title).toBe('Cached');
+      expect(geminiService.submitResynthesis).not.toHaveBeenCalled();
+      expect(geminiService.pollSynthesisResult).not.toHaveBeenCalled();
+      expect(storageService.saveMomentSynthesis).toHaveBeenCalled();
+    });
+
+    it('falls through to submitResynthesis when server hash differs from current', async () => {
+      const moments = [makeMoment('m1', ['note-1'])];
+      (storageService.getMoments as any).mockResolvedValue(moments);
+      const memories = [makeMemory('note-1')];
+
+      (geminiService.fetchPendingSynthesisResults as any).mockResolvedValue({
+        m1: {
+          status: 'completed',
+          data: { format: 'general', title: 'Stale', sections: [], generatedFrom: [] },
+          inputHash: 'mh_stale',
+        },
+      });
+      (geminiService.submitResynthesis as any).mockResolvedValue({ momentId: 'm1' });
+      (geminiService.pollSynthesisResult as any).mockResolvedValue({
+        format: 'general',
+        title: 'Fresh',
+        sections: [{ heading: 'S', items: [{ label: 'i', sourceNoteId: 'note-1' }] }],
+        generatedFrom: ['note-1'],
+      });
+
+      const { result } = renderHook(() => useMoments(memories));
+      await waitFor(() => expect(result.current.moments).toHaveLength(1));
+
+      let synthesis: any;
+      await act(async () => {
+        synthesis = await result.current.loadSynthesis(result.current.moments[0], memories);
+      });
+
+      expect(synthesis?.title).toBe('Fresh');
+      expect(geminiService.submitResynthesis).toHaveBeenCalledTimes(1);
+    });
+
+    it('skips submitResynthesis when server reports processing for the same hash', async () => {
+      const moments = [makeMoment('m1', ['note-1'])];
+      (storageService.getMoments as any).mockResolvedValue(moments);
+      const memories = [makeMemory('note-1')];
+      const expectedHash = computeInputHash(['note-1'], memories);
+
+      (geminiService.fetchPendingSynthesisResults as any).mockResolvedValue({
+        m1: { status: 'processing', inputHash: expectedHash },
+      });
+      (geminiService.pollSynthesisResult as any).mockResolvedValue({
+        format: 'general',
+        title: 'Polled',
+        sections: [{ heading: 'S', items: [{ label: 'i', sourceNoteId: 'note-1' }] }],
+        generatedFrom: ['note-1'],
+      });
+
+      const { result } = renderHook(() => useMoments(memories));
+      await waitFor(() => expect(result.current.moments).toHaveLength(1));
+
+      await act(async () => {
+        await result.current.loadSynthesis(result.current.moments[0], memories);
+      });
+
+      expect(geminiService.submitResynthesis).not.toHaveBeenCalled();
+      expect(geminiService.pollSynthesisResult).toHaveBeenCalledWith('m1');
+    });
+
+    it('writes a recovery marker before submitting and clears it on completion', async () => {
+      const moments = [makeMoment('m1', ['note-1'])];
+      (storageService.getMoments as any).mockResolvedValue(moments);
+      const memories = [makeMemory('note-1')];
+      const expectedHash = computeInputHash(['note-1'], memories);
+
+      (geminiService.fetchPendingSynthesisResults as any).mockResolvedValue({
+        m1: { status: 'not_found' },
+      });
+      (geminiService.submitResynthesis as any).mockResolvedValue({ momentId: 'm1' });
+      (geminiService.pollSynthesisResult as any).mockResolvedValue({
+        format: 'general',
+        title: 'Done',
+        sections: [{ heading: 'S', items: [{ label: 'i', sourceNoteId: 'note-1' }] }],
+        generatedFrom: ['note-1'],
+      });
+
+      const { result } = renderHook(() => useMoments(memories));
+      await waitFor(() => expect(result.current.moments).toHaveLength(1));
+
+      (storageService.saveMoment as any).mockClear();
+
+      await act(async () => {
+        await result.current.loadSynthesis(result.current.moments[0], memories);
+      });
+
+      const saveMomentCalls = (storageService.saveMoment as any).mock.calls;
+      // At least two calls: one writing the marker, one clearing it on completion.
+      const markerWrite = saveMomentCalls.find(
+        (c: any[]) => c[0]?.pendingSynthesisHash === expectedHash,
+      );
+      expect(markerWrite).toBeDefined();
+
+      const finalMoment = result.current.moments.find(m => m.id === 'm1')!;
+      expect(finalMoment.pendingSynthesisHash).toBeUndefined();
+      expect(finalMoment.pendingSynthesisAt).toBeUndefined();
+      expect(finalMoment.inputHash).toBe(expectedHash);
+      expect(geminiService.submitResynthesis).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'm1' }),
+        memories,
+        expectedHash,
+      );
+    });
+
+    it('clears processingError when entering the cache-miss path', async () => {
+      const moments = [
+        { ...makeMoment('m1', ['note-1']), processingError: true },
+      ];
+      (storageService.getMoments as any).mockResolvedValue(moments);
+      const memories = [makeMemory('note-1')];
+
+      (geminiService.fetchPendingSynthesisResults as any).mockResolvedValue({
+        m1: { status: 'not_found' },
+      });
+      (geminiService.submitResynthesis as any).mockResolvedValue({ momentId: 'm1' });
+      (geminiService.pollSynthesisResult as any).mockResolvedValue({
+        format: 'general',
+        title: 'Done',
+        sections: [{ heading: 'S', items: [{ label: 'i', sourceNoteId: 'note-1' }] }],
+        generatedFrom: ['note-1'],
+      });
+
+      const { result } = renderHook(() => useMoments(memories));
+      await waitFor(() => expect(result.current.moments).toHaveLength(1));
+      expect(result.current.moments[0].processingError).toBe(true);
+
+      await act(async () => {
+        await result.current.loadSynthesis(result.current.moments[0], memories);
+      });
+
+      const finalMoment = result.current.moments.find(m => m.id === 'm1')!;
+      expect(finalMoment.processingError).toBe(false);
+    });
+
+    it('does not resurrect a moment deleted while loadSynthesis is in flight', async () => {
+      // Reproduces the user-reported bug: user opens a moment (triggers
+      // loadSynthesis), deletes it before the network result arrives.
+      // Without the tombstone re-read in persistResult, the captured
+      // workingMoment is spread into saveMoment() and resurrects the
+      // deleted moment in IndexedDB; the next refresh re-renders it.
+      const moments = [makeMoment('m1', ['note-1'])];
+      const memories = [makeMemory('note-1')];
+
+      (storageService.getMoments as any).mockResolvedValue(moments);
+      // First read returns the alive moment (loadSynthesis startup);
+      // after the user "deletes", subsequent reads return a tombstone.
+      let isDeleted = false;
+      (storageService.getMoment as any).mockImplementation(async (id: string) => {
+        if (id !== 'm1') return null;
+        const base = moments[0];
+        return isDeleted ? { ...base, isDeleted: true } : base;
+      });
+
+      // The "delete" happens during the polling network round-trip.
+      (geminiService.fetchPendingSynthesisResults as any).mockResolvedValue({
+        m1: { status: 'not_found' },
+      });
+      (geminiService.submitResynthesis as any).mockResolvedValue({ momentId: 'm1' });
+      (geminiService.pollSynthesisResult as any).mockImplementation(async () => {
+        isDeleted = true;
+        return {
+          format: 'general',
+          title: 'Resurrected',
+          sections: [{ heading: 'S', items: [{ label: 'i', sourceNoteId: 'note-1' }] }],
+          generatedFrom: ['note-1'],
+        };
+      });
+
+      const { result } = renderHook(() => useMoments(memories));
+      await waitFor(() => expect(result.current.moments).toHaveLength(1));
+
+      let synthesis: any;
+      await act(async () => {
+        synthesis = await result.current.loadSynthesis(result.current.moments[0], memories);
+      });
+
+      // persistResult should bail out because the moment is now tombstoned.
+      expect(synthesis).toBeNull();
+      // Critically, no alive moment should have been written back to IDB.
+      const aliveSaves = (storageService.saveMoment as any).mock.calls.filter(
+        (c: any[]) => c[0]?.id === 'm1' && !c[0]?.isDeleted,
+      );
+      const resurrectedSave = aliveSaves.find(
+        (c: any[]) => c[0]?.lastSynthesizedAt !== undefined,
+      );
+      expect(resurrectedSave).toBeUndefined();
+      expect(storageService.saveMomentSynthesis).not.toHaveBeenCalled();
     });
   });
 });

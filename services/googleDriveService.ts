@@ -55,6 +55,52 @@ export const findFileByName = async (filename: string): Promise<DriveFile | null
   return data.files?.[0] || null;
 };
 
+// Returns every Drive file matching `filename` in appDataFolder. Drive permits
+// duplicate filenames, and concurrent uploads (e.g. moment metadata + synthesis
+// re-uploads racing across devices, or against a deletion) can create them.
+// Deletion paths must remove all duplicates or the surviving copy resurrects
+// the entity on the next sync. Paginates so duplicates beyond the default
+// page size are not silently dropped.
+export const findAllFilesByName = async (filename: string): Promise<DriveFile[]> => {
+  const safeFilename = filename.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  const query = `name = '${safeFilename}' and 'appDataFolder' in parents and trashed = false`;
+
+  let allFiles: DriveFile[] = [];
+  let pageToken: string | undefined = undefined;
+
+  do {
+    let url = `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&pageSize=1000&q=${encodeURIComponent(query)}&fields=nextPageToken,files(id, name, modifiedTime)`;
+    if (pageToken) url += `&pageToken=${pageToken}`;
+
+    const res = await driveFetch(url);
+    const data = await res.json();
+
+    if (data.files) allFiles = allFiles.concat(data.files);
+    pageToken = data.nextPageToken;
+  } while (pageToken);
+
+  return allFiles;
+};
+
+// Delete every Drive file matching `filename`, optionally keeping a single id.
+// Centralizes the find-then-delete loop used by deletion paths and post-upload
+// duplicate cleanup. Errors on individual deletes are warned and swallowed so
+// one stuck file doesn't abort the rest.
+export const cleanupFilesByName = async (
+  filename: string,
+  keepId?: string,
+): Promise<void> => {
+  const files = await findAllFilesByName(filename);
+  for (const file of files) {
+    if (keepId && file.id === keepId) continue;
+    try {
+      await deleteFileById(file.id);
+    } catch (e) {
+      console.warn(`[Drive] Failed to delete duplicate ${file.id} (${filename}):`, e);
+    }
+  }
+};
+
 export const downloadFileContent = async (fileId: string) => {
   const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
   const res = await driveFetch(url);

@@ -73,6 +73,8 @@ const AppContent: React.FC = () => {
   const [showAllMoments, setShowAllMoments] = useState(false);
   const [showCreateMoment, setShowCreateMoment] = useState(false);
   const [quickNoteExpandState, setQuickNoteExpandState] = useState<QuickNoteState | null>(null);
+  const [newMemoryId, setNewMemoryId] = useState<string | null>(null);
+  const scrolledMemoryIdRef = useRef<string | null>(null);
   const quickNoteBarRef = useRef<QuickNoteBarHandle>(null);
 
   const { updateAvailable, updateApp, appVersion } = useServiceWorker();
@@ -309,8 +311,7 @@ const AppContent: React.FC = () => {
   const syncRef = useRef(sync);
   const refreshRef = useRef(handleFullRefresh);
   const handleRetryRef = useRef(handleRetry);
-  const topNavRef = useRef<HTMLDivElement>(null);
-  const [topNavHeight, setTopNavHeight] = useState(0);
+  const topNavInnerRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     syncRef.current = sync;
@@ -318,10 +319,20 @@ const AppContent: React.FC = () => {
     handleRetryRef.current = handleRetry;
   }, [sync, handleFullRefresh, handleRetry]);
 
+  // Publish the inner <nav> height as --top-nav-h on :root. The FilterBar
+  // wrapper offsets itself with calc(var(--top-nav-h) + var(--sat)), so when
+  // Android re-injects --sat the FilterBar's sticky top updates synchronously
+  // in the same CSS recompute as the TopNav's padding-top — no React render
+  // race, no gap. Measuring the inner <nav> (not the outer wrapper) keeps
+  // --top-nav-h stable across --sat changes since the nav has no safe-area
+  // padding of its own.
   useLayoutEffect(() => {
-    const el = topNavRef.current;
+    const el = topNavInnerRef.current;
     if (!el) return;
-    const update = () => setTopNavHeight(el.offsetHeight);
+    const update = () => {
+      const h = el.getBoundingClientRect().height;
+      document.documentElement.style.setProperty('--top-nav-h', `${h}px`);
+    };
     update();
     const observer = new ResizeObserver(update);
     observer.observe(el);
@@ -567,7 +578,8 @@ const AppContent: React.FC = () => {
   } = useMemoryFilters(memories);
 
   const handleCreateMemory = useCallback(async (text: string, attachments: any[], tags: string[], location?: { latitude: number; longitude: number }) => {
-    await createMemory(text, attachments, tags, location);
+    const id = await createMemory(text, attachments, tags, location);
+    setNewMemoryId(id);
     setIsCaptureOpen(false);
     logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_CREATED);
     clearShareData();
@@ -713,7 +725,8 @@ const AppContent: React.FC = () => {
     } catch (e) {
       console.warn('QuickNote location unavailable', e);
     }
-    await createMemory(text, attachments, tags, location);
+    const id = await createMemory(text, attachments, tags, location);
+    setNewMemoryId(id);
     logEvent(ANALYTICS_EVENTS.QUICK_NOTE.CATEGORY, ANALYTICS_EVENTS.QUICK_NOTE.ACTION_SAVED);
   }, [createMemory]);
 
@@ -782,6 +795,32 @@ const AppContent: React.FC = () => {
       return b.timestamp - a.timestamp;
     });
   }, [filteredMemories]);
+
+  // After a new memory is added, scroll its card into view exactly once —
+  // re-runs on displayMemories changes only until the card first renders,
+  // so background sync updates don't re-trigger the scroll.
+  useEffect(() => {
+    if (!newMemoryId) {
+      scrolledMemoryIdRef.current = null;
+      return;
+    }
+    if (scrolledMemoryIdRef.current === newMemoryId) return;
+    const el = document.querySelector(`[data-memory-id="${newMemoryId}"]`);
+    if (!el) return;
+    scrolledMemoryIdRef.current = newMemoryId;
+    const raf = requestAnimationFrame(() => {
+      (el as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [newMemoryId, displayMemories]);
+
+  // Clear the highlight after 1.5s. Independent of displayMemories so
+  // list updates during the hold don't extend the highlight window.
+  useEffect(() => {
+    if (!newMemoryId) return;
+    const timer = setTimeout(() => setNewMemoryId(null), 1500);
+    return () => clearTimeout(timer);
+  }, [newMemoryId]);
 
   const activeMemoryCount = useMemo(() => memories.filter(m => !m.isDeleted).length, [memories]);
 
@@ -864,8 +903,9 @@ const AppContent: React.FC = () => {
     <div className="min-h-screen bg-black flex flex-col">
       {/* Feed layout — always rendered, overlaid by fullscreen views */}
       <div className={feedLocked ? 'pointer-events-none' : undefined} aria-hidden={feedLocked || undefined}>
-        <div ref={topNavRef} className="sticky top-0 z-(--z-overlay) bg-(--color-surface-base) pt-[var(--sat)]">
+        <div className="sticky top-0 z-(--z-overlay) bg-(--color-surface-base)/80 backdrop-blur-md pt-[var(--sat)]">
             <TopNavigation
+              ref={topNavInnerRef}
               setView={handleSetView}
               resetFilters={handleResetFilters}
               onSettingsClick={handleSettingsClick}
@@ -920,7 +960,10 @@ const AppContent: React.FC = () => {
         )}
 
         {availableTypes.length > 0 && (
-          <div className="sticky z-(--z-dropdown) bg-(--color-surface-base) backdrop-blur-md border-b border-(--color-border-default)/50" style={{ top: `${topNavHeight}px` }}>
+          <div
+            className="sticky z-(--z-dropdown) bg-(--color-surface-base)/80 backdrop-blur-md border-b border-(--color-border-default)/50"
+            style={{ top: 'calc(var(--top-nav-h, 0px) + var(--sat, 0px))' }}
+          >
             <FilterBar
               availableTypes={availableTypes}
               filterType={filterType}
@@ -962,6 +1005,7 @@ const AppContent: React.FC = () => {
               syncStatusMap={syncStatusMap}
               onSyncRetry={retrySyncFile}
               uploadProgressMap={uploadProgressMap}
+              highlightedMemoryId={newMemoryId}
             />
           )}
         </main>

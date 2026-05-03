@@ -157,7 +157,7 @@ describe('storageService', () => {
   describe('deleteMemory', () => {
       it('should delete a memory', async () => {
           const id = '123';
-          
+
           mockDB.transaction.mockImplementation(() => {
             const tx = { ...mockTransaction, oncomplete: null };
             setTimeout(() => {
@@ -170,4 +170,5 @@ describe('storageService', () => {
           expect(mockStore.delete).toHaveBeenCalledWith(id);
       });
   });
+
 });

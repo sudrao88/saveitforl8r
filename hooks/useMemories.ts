@@ -397,8 +397,8 @@ export const useMemories = () => {
       // 3. Upload large attachments (if any) then submit enrichment
       uploadAndEnrich(memoryId, text, attachments, location, tags, newMemory);
 
-      // Return immediately so the modal can close
-      return Promise.resolve();
+      // Return the new memory's id so callers can scroll to / highlight it
+      return memoryId;
   }, [trySyncFile, uploadAndEnrich]);
 
   const updateMemoryContent = useCallback(async (id: string, newContent: string) => {

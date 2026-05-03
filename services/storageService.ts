@@ -400,6 +400,22 @@ export const saveMoment = async (moment: Moment): Promise<void> => {
   });
 };
 
+export const getMoment = async (id: string): Promise<Moment | null> => {
+  try {
+    const dbInstance = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = dbInstance.transaction(MOMENTS_STORE, 'readonly');
+      const store = tx.objectStore(MOMENTS_STORE);
+      const request = store.get(id);
+      request.onsuccess = () => resolve((request.result as Moment | undefined) ?? null);
+      request.onerror = () => reject(request.error);
+    });
+  } catch (error) {
+    console.error('Failed to get moment:', error);
+    return null;
+  }
+};
+
 export const deleteMomentHard = async (id: string): Promise<void> => {
   const dbInstance = await openDB();
   await new Promise<void>((resolve, reject) => {

@@ -7,6 +7,8 @@ import {
     uploadFile,
     uploadMultipleFiles,
     findFileByName,
+    findAllFilesByName,
+    cleanupFilesByName,
     deleteFileById,
     isLinked as checkIsLinked,
     deleteRemoteNote,
@@ -69,6 +71,10 @@ const executeSyncPlan = async (plan: SyncPlan, callbacks?: ExecuteSyncCallbacks)
 
     // Track successfully downloaded notes for moment-match reconciliation
     const downloadedNotes: Array<{ id: string; enrichment?: { matchedMomentIds?: string[] } }> = [];
+
+    // Track note IDs that arrived as tombstones so dangling refs can be
+    // scrubbed from moments after the download phase.
+    const deletedNoteIds = new Set<string>();
 
     // Memories whose attachments were deferred — full versions emitted after download phase
     const deferredAttachmentMemories: Memory[] = [];
@@ -155,18 +161,23 @@ const executeSyncPlan = async (plan: SyncPlan, callbacks?: ExecuteSyncCallbacks)
                     return;
                 }
 
-                // Handle moment files with proper conflict resolution
+                // Handle moment files with proper conflict resolution.
+                // Tombstones are authoritative: a remote `isDeleted` always wins,
+                // even if the local copy has a newer updatedAt. Otherwise the
+                // local timestamp gets bumped by background activity
+                // (addNoteToMoment from enrichment, markMomentSeen,
+                // loadSynthesis, recoverPendingResynthesis) and the deletion
+                // would be silently discarded — then the alive local copy is
+                // re-uploaded, resurrecting the moment on every device.
                 if (item.noteId.startsWith('moment-')) {
                     const momentContent = content as unknown as Moment;
                     const verifiedMomentId = item.noteId.replace('moment-', '');
                     const safeMoment: Moment = { ...momentContent, id: verifiedMomentId };
-                    if (item.localMoment) {
+                    if (safeMoment.isDeleted) {
+                        await withProgress(deleteMomentHard(verifiedMomentId));
+                    } else if (item.localMoment) {
                         if (safeMoment.updatedAt > item.localMoment.updatedAt) {
-                            if (safeMoment.isDeleted) {
-                                await withProgress(deleteMomentHard(verifiedMomentId));
-                            } else {
-                                await withProgress(saveMoment(safeMoment));
-                            }
+                            await withProgress(saveMoment(safeMoment));
                         } else if (item.localMoment.updatedAt > safeMoment.updatedAt) {
                             plan.toUpload.push({
                                 noteId: item.noteId,
@@ -175,11 +186,7 @@ const executeSyncPlan = async (plan: SyncPlan, callbacks?: ExecuteSyncCallbacks)
                             });
                         }
                     } else {
-                        if (safeMoment.isDeleted) {
-                            await withProgress(deleteMomentHard(verifiedMomentId));
-                        } else {
-                            await withProgress(saveMoment(safeMoment));
-                        }
+                        await withProgress(saveMoment(safeMoment));
                     }
                     return;
                 }
@@ -212,6 +219,7 @@ const executeSyncPlan = async (plan: SyncPlan, callbacks?: ExecuteSyncCallbacks)
                 } else if (shouldSave) {
                     if (content.isDeleted) {
                         await withProgress(deleteMemory(item.noteId));
+                        deletedNoteIds.add(item.noteId);
                     } else {
                         // Save full memory to IDB
                         await withProgress(saveMemory(content));
@@ -272,19 +280,47 @@ const executeSyncPlan = async (plan: SyncPlan, callbacks?: ExecuteSyncCallbacks)
     // to apply these matches locally when it downloads the note.
     // (downloadedNotes was populated during the streaming download phase above)
     const matchesToApply = collectMatchedMomentIds(downloadedNotes);
-    if (matchesToApply.size > 0) {
-        const allMoments = await getAllMomentsIncludingDeleted();
-        const updatedMoments = await applyNoteToMomentMatches(matchesToApply, allMoments, 'Sync:Download');
+    const needMomentsFetch = matchesToApply.size > 0 || deletedNoteIds.size > 0;
 
-        // Queue updated moments for upload so changes propagate to other devices.
-        // If a moment is already queued, update it in-place to avoid data loss.
-        for (const updated of updatedMoments) {
-            const key = `moment-${updated.id}`;
-            const existingIdx = plan.toUpload.findIndex(u => u.noteId === key);
-            if (existingIdx >= 0) {
-                plan.toUpload[existingIdx] = { ...plan.toUpload[existingIdx], memory: updated };
-            } else {
-                plan.toUpload.push({ noteId: key, memory: updated });
+    // Index plan.toUpload by noteId so queueMomentUpload is O(1) per call
+    // even when many moments are updated in a single sync pass.
+    const uploadIdxByNoteId = new Map<string, number>();
+    plan.toUpload.forEach((u, i) => uploadIdxByNoteId.set(u.noteId, i));
+    const queueMomentUpload = (updated: Moment) => {
+        const key = `moment-${updated.id}`;
+        const existingIdx = uploadIdxByNoteId.get(key);
+        if (existingIdx !== undefined) {
+            plan.toUpload[existingIdx] = { ...plan.toUpload[existingIdx], memory: updated };
+        } else {
+            uploadIdxByNoteId.set(key, plan.toUpload.length);
+            plan.toUpload.push({ noteId: key, memory: updated });
+        }
+    };
+
+    if (needMomentsFetch) {
+        const allMoments = await getAllMomentsIncludingDeleted();
+        const momentsById = new Map(allMoments.map(m => [m.id, m]));
+
+        // Drop dangling noteIds from moments when remote tombstones arrive.
+        // Done before applyNoteToMomentMatches so a noteId can't be both
+        // removed (because the note was tombstoned) and re-added (because a
+        // separately-downloaded note's matchedMomentIds still references it).
+        if (deletedNoteIds.size > 0) {
+            const cleanedMoments = await removeDanglingNoteIdsFromMoments(deletedNoteIds, allMoments, 'Sync:Download');
+            for (const updated of cleanedMoments) {
+                momentsById.set(updated.id, updated);
+                queueMomentUpload(updated);
+            }
+        }
+
+        if (matchesToApply.size > 0) {
+            const updatedMoments = await applyNoteToMomentMatches(
+                matchesToApply,
+                Array.from(momentsById.values()),
+                'Sync:Download',
+            );
+            for (const updated of updatedMoments) {
+                queueMomentUpload(updated);
             }
         }
     }
@@ -343,19 +379,15 @@ const executeSyncPlan = async (plan: SyncPlan, callbacks?: ExecuteSyncCallbacks)
         }
     }
 
+    // toDeleteRemote contains canonical file IDs plus any duplicate file IDs
+    // discovered during planning (see pushDeleteRemote in doDeltaSync). For
+    // moment deletions, the synthesis is included as a separate entry by the
+    // synthesis branch of the planner, so this loop stays a pure execution
+    // engine without extra Drive lookups. Synthesis files that exist on Drive
+    // but were never in the snapshot are caught by the orphan-cleanup pass.
     for (const item of plan.toDeleteRemote) {
         try {
             await deleteFileById(item.fileId);
-            // When deleting a moment, also delete its synthesis file from remote
-            if (item.noteId.startsWith('moment-') && !item.noteId.startsWith('moment-synthesis-')) {
-                const momentId = item.noteId.replace('moment-', '');
-                try {
-                    const synthFile = await findFileByName(`moment-synthesis-${momentId}.json`);
-                    if (synthFile) await deleteFileById(synthFile.id);
-                } catch (e) {
-                    console.warn(`[Sync] Failed to delete remote synthesis for ${momentId}:`, e);
-                }
-            }
         } catch (e) {
             console.error(`[Sync] Failed to delete remote file for ${item.noteId}:`, e);
             errors.push(item.noteId);
@@ -427,6 +459,44 @@ const applyNoteToMomentMatches = async (
         };
 
         await saveMoment(updated);
+        updatedMoments.push(updated);
+    }
+
+    return updatedMoments;
+};
+
+/**
+ * Strip any noteIds that no longer correspond to a live memory from each moment.
+ * Triggered when remote tombstones arrive via sync — without this, a moment can
+ * keep claiming "22 notes" while only 19 actually resolve, producing a mismatch
+ * between the moment header and the deletion sheet.
+ *
+ * @returns Array of updated moments (for syncing to Drive).
+ */
+const removeDanglingNoteIdsFromMoments = async (
+    deletedNoteIds: Set<string>,
+    moments: Moment[],
+    logPrefix: string,
+): Promise<Moment[]> => {
+    if (deletedNoteIds.size === 0) return [];
+    const updatedMoments: Moment[] = [];
+
+    for (const moment of moments) {
+        if (moment.isDeleted) continue;
+        if (!moment.noteIds.some(id => deletedNoteIds.has(id))) continue;
+
+        const filtered = moment.noteIds.filter(id => !deletedNoteIds.has(id));
+        const updated: Moment = {
+            ...moment,
+            noteIds: filtered,
+            inputHash: undefined,
+            updatedAt: Date.now(),
+        };
+
+        await saveMoment(updated);
+        await deleteMomentSynthesis(moment.id).catch(e =>
+            console.warn(`[${logPrefix}] Failed to clear synthesis for ${moment.id}:`, e)
+        );
         updatedMoments.push(updated);
     }
 
@@ -559,27 +629,74 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const syncMomentInternal = useCallback(async (moment: Moment) => {
       try {
-          const filename = `moment-${moment.id}.json`;
-          const remoteFile = await findFileByName(filename);
-          const uploadedMoment = await uploadFile(filename, moment, remoteFile?.id);
-
           const snapshotJSON = await storage.get(SNAPSHOT_KEY);
           const snapshot = snapshotJSON ? JSON.parse(snapshotJSON) : {};
 
-          if (uploadedMoment?.modifiedTime) {
-              snapshot[`moment-${moment.id}`] = uploadedMoment.modifiedTime;
+          // For tombstones, skip the synthesis upload — the file is about to
+          // be deleted from Drive anyway (see performMomentSync).
+          if (!moment.isDeleted) {
+              // Upload the synthesis first, then the moment metadata. If the
+              // sequence is interrupted, Drive may carry an updated synthesis
+              // without updated metadata (harmless — next sync converges) instead
+              // of metadata pointing at a synthesis Drive doesn't yet have (which
+              // would force another device to refetch from scratch).
+              const synthesis = await getMomentSynthesis(moment.id);
+              if (synthesis) {
+                  const synthFilename = `moment-synthesis-${moment.id}.json`;
+                  // findAllFilesByName so we can clean up any duplicates left
+                  // by a prior race (concurrent upload from another device, or
+                  // a re-synthesis that POSTed because findFileByName missed).
+                  const remoteSynthFiles = await findAllFilesByName(synthFilename);
+                  const primarySynth = remoteSynthFiles[0];
+                  const uploadedSynth = await uploadFile(synthFilename, synthesis, primarySynth?.id);
+
+                  // Delete any extras so they don't resurrect a deleted moment
+                  // and don't sit on Drive consuming quota.
+                  for (let i = 1; i < remoteSynthFiles.length; i++) {
+                      try {
+                          await deleteFileById(remoteSynthFiles[i].id);
+                      } catch (e) {
+                          console.warn(`[Sync] Failed to remove duplicate synthesis ${remoteSynthFiles[i].id}:`, e);
+                      }
+                  }
+
+                  if (uploadedSynth?.modifiedTime) {
+                      snapshot[`moment-synthesis-${moment.id}`] = uploadedSynth.modifiedTime;
+                  }
+              }
           }
 
-          // Also sync the synthesis cache if available
-          const synthesis = await getMomentSynthesis(moment.id);
-          if (synthesis) {
-              const synthFilename = `moment-synthesis-${moment.id}.json`;
-              const remoteSynthFile = await findFileByName(synthFilename);
-              const uploadedSynth = await uploadFile(synthFilename, synthesis, remoteSynthFile?.id);
+          const filename = `moment-${moment.id}.json`;
+          const remoteFiles = await findAllFilesByName(filename);
+          const primaryRemote = remoteFiles[0];
 
-              if (uploadedSynth?.modifiedTime) {
-                  snapshot[`moment-synthesis-${moment.id}`] = uploadedSynth.modifiedTime;
+          // If the moment was previously synced (snapshot has an entry) but is
+          // missing from Drive, another device has deleted it. Re-uploading
+          // would resurrect it on every device. Instead, propagate the deletion
+          // locally so background updates (addNoteToMoment, markMomentSeen,
+          // loadSynthesis, etc.) don't bring it back from the dead.
+          if (!primaryRemote && snapshot[`moment-${moment.id}`]) {
+              await deleteMomentHard(moment.id);
+              delete snapshot[`moment-${moment.id}`];
+              delete snapshot[`moment-synthesis-${moment.id}`];
+              await storage.set(SNAPSHOT_KEY, JSON.stringify(snapshot));
+              return;
+          }
+
+          const uploadedMoment = await uploadFile(filename, moment, primaryRemote?.id);
+
+          // Clean up duplicate moment files. Otherwise a delete could leave
+          // an orphan that gets pulled back down by the next listAllFiles.
+          for (let i = 1; i < remoteFiles.length; i++) {
+              try {
+                  await deleteFileById(remoteFiles[i].id);
+              } catch (e) {
+                  console.warn(`[Sync] Failed to remove duplicate moment ${remoteFiles[i].id}:`, e);
               }
+          }
+
+          if (uploadedMoment?.modifiedTime) {
+              snapshot[`moment-${moment.id}`] = uploadedMoment.modifiedTime;
           }
 
           await storage.set(SNAPSHOT_KEY, JSON.stringify(snapshot));
@@ -614,7 +731,23 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const localTodoMap = new Map(localTodoItems.map(t => [`todo-${t.id}`, t]));
 
     const remoteFiles = await listAllFiles();
-    const remoteMap = new Map(remoteFiles.map(f => [f.name.replace('.json', ''), f]));
+    // Build remoteMap (first occurrence per name) and duplicatesByName (extras).
+    // Drive permits multiple files with the same name; concurrent uploads from
+    // different devices, or a POST-after-missed-lookup, can create duplicates.
+    // The canonical entry drives planning; the extras get queued for deletion
+    // alongside whatever fate befalls the canonical.
+    const remoteMap = new Map<string, DriveFile>();
+    const duplicatesByName = new Map<string, DriveFile[]>();
+    for (const f of remoteFiles) {
+        const noteId = f.name.replace('.json', '');
+        if (!remoteMap.has(noteId)) {
+            remoteMap.set(noteId, f);
+        } else {
+            const list = duplicatesByName.get(noteId) || [];
+            list.push(f);
+            duplicatesByName.set(noteId, list);
+        }
+    }
 
     const lastSyncTimeStr = await storage.get(LAST_SYNC_KEY);
     const lastSyncTime = parseInt(lastSyncTimeStr || '0');
@@ -625,6 +758,21 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         toDeleteLocal: [],
         toDeleteRemote: [],
         toHardDeleteLocal: [],
+    };
+
+    // Push a delete-remote entry plus any duplicates for the same logical id,
+    // so executeSyncPlan can stay a simple execution engine without making
+    // extra Drive lookups per item. Also scheduled when the entity is being
+    // uploaded to a moment file — performMomentSync's cleanup covers that
+    // path; here we only fan out on actual deletes.
+    const pushDeleteRemote = (noteId: string, fileId: string) => {
+        plan.toDeleteRemote.push({ noteId, fileId });
+        const dups = duplicatesByName.get(noteId);
+        if (dups) {
+            for (const dup of dups) {
+                plan.toDeleteRemote.push({ noteId, fileId: dup.id });
+            }
+        }
     };
 
     const handled = new Set<string>();
@@ -640,7 +788,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (noteId.startsWith('event-')) {
             const localEvent = localEventMap.get(noteId);
             if (localEvent?.isDeleted) {
-                plan.toDeleteRemote.push({ noteId, fileId: remoteFile.id });
+                pushDeleteRemote(noteId, remoteFile.id);
                 plan.toHardDeleteLocal.push(noteId);
             } else {
                 plan.toDownload.push({ noteId, fileId: remoteFile.id, localCalendarEvent: localEvent });
@@ -652,7 +800,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (noteId.startsWith('todo-')) {
             const localTodo = localTodoMap.get(noteId);
             if (localTodo?.isDeleted) {
-                plan.toDeleteRemote.push({ noteId, fileId: remoteFile.id });
+                pushDeleteRemote(noteId, remoteFile.id);
                 plan.toHardDeleteLocal.push(noteId);
             } else {
                 plan.toDownload.push({ noteId, fileId: remoteFile.id, localTodoItem: localTodo });
@@ -666,7 +814,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             const localMoment = localMomentMap.get(`moment-${momentId}`);
             if (localMoment?.isDeleted) {
                 // Parent moment is deleted locally — clean up the remote synthesis
-                plan.toDeleteRemote.push({ noteId, fileId: remoteFile.id });
+                pushDeleteRemote(noteId, remoteFile.id);
                 plan.toHardDeleteLocal.push(noteId);
             } else {
                 plan.toDownload.push({ noteId, fileId: remoteFile.id });
@@ -678,7 +826,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (noteId.startsWith('moment-')) {
             const localMoment = localMomentMap.get(noteId);
             if (localMoment?.isDeleted) {
-                plan.toDeleteRemote.push({ noteId, fileId: remoteFile.id });
+                pushDeleteRemote(noteId, remoteFile.id);
                 plan.toHardDeleteLocal.push(noteId);
             } else {
                 plan.toDownload.push({ noteId, fileId: remoteFile.id, localMoment: localMoment });
@@ -689,7 +837,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const local = localMap.get(noteId);
 
         if (local?.isDeleted) {
-            plan.toDeleteRemote.push({ noteId, fileId: remoteFile.id });
+            pushDeleteRemote(noteId, remoteFile.id);
             plan.toHardDeleteLocal.push(noteId);
         } else if (!local) {
             plan.toDownload.push({ noteId, fileId: remoteFile.id });
@@ -760,7 +908,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (local.isDeleted) {
             const remote = remoteMap.get(local.id);
             if (remote) {
-                plan.toDeleteRemote.push({ noteId: local.id, fileId: remote.id });
+                pushDeleteRemote(local.id, remote.id);
             }
             plan.toHardDeleteLocal.push(local.id);
             handled.add(local.id);
@@ -780,7 +928,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (moment.isDeleted) {
             const remote = remoteMap.get(key);
             if (remote) {
-                plan.toDeleteRemote.push({ noteId: key, fileId: remote.id });
+                pushDeleteRemote(key, remote.id);
             }
             plan.toHardDeleteLocal.push(key);
             handled.add(key);
@@ -799,7 +947,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (event.isDeleted) {
             const remote = remoteMap.get(key);
             if (remote) {
-                plan.toDeleteRemote.push({ noteId: key, fileId: remote.id });
+                pushDeleteRemote(key, remote.id);
             }
             plan.toHardDeleteLocal.push(key);
             handled.add(key);
@@ -818,7 +966,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (item.isDeleted) {
             const remote = remoteMap.get(key);
             if (remote) {
-                plan.toDeleteRemote.push({ noteId: key, fileId: remote.id });
+                pushDeleteRemote(key, remote.id);
             }
             plan.toHardDeleteLocal.push(key);
             handled.add(key);
@@ -838,7 +986,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const hasMomentRemote = remoteMap.has(momentKey);
         const hasMomentLocal = localMomentMap.has(momentKey);
         if (!hasMomentRemote && !hasMomentLocal) {
-            plan.toDeleteRemote.push({ noteId, fileId: remoteFile.id });
+            pushDeleteRemote(noteId, remoteFile.id);
             plan.toHardDeleteLocal.push(noteId);
             handled.add(noteId);
         }
@@ -997,11 +1145,59 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const linked = await checkIsLinked();
       if (isSyncingRef.current || !linked) return;
 
+      // Tombstone path mirrors performSingleSync: hold the global sync mutex so
+      // a manual delta sync can't run concurrently with the delete-from-Drive
+      // sequence and re-download the moment from a duplicate file we haven't
+      // gotten to yet. Non-deletion paths preserve the existing behavior so
+      // parallel updates from removeNoteFromMoments still proceed.
+      if (moment.isDeleted) {
+          setIsSyncing(true);
+          isSyncingRef.current = true;
+      }
+
       try {
           await getAccessToken();
+
+          if (moment.isDeleted) {
+              // Mirror the note deletion path (performSingleSync): delete the
+              // remote files directly and hard-delete locally. The previous
+              // approach uploaded the tombstone and waited for the next delta
+              // sync to clean up — that left a window where a remote device
+              // could push a local update with a higher updatedAt and override
+              // the deletion, then re-upload it (resurrecting the moment on
+              // the deleting device).
+              //
+              // Delete EVERY Drive file matching the moment/synthesis name,
+              // not just the first match. Drive permits duplicates, and
+              // concurrent uploads (e.g. a fresh synthesis racing the delete,
+              // or two devices both POSTing after a missed findFileByName)
+              // can leave duplicates behind. If any survive, the next delta
+              // sync's listAllFiles will pull one of them down and resurrect
+              // the moment locally.
+              await cleanupFilesByName(`moment-${moment.id}.json`);
+              await cleanupFilesByName(`moment-synthesis-${moment.id}.json`);
+
+              // Cascade-deletes the synthesis from IDB too.
+              await deleteMomentHard(moment.id);
+
+              const snapshotJSON = await storage.get(SNAPSHOT_KEY);
+              if (snapshotJSON) {
+                  const snapshot = JSON.parse(snapshotJSON);
+                  delete snapshot[`moment-${moment.id}`];
+                  delete snapshot[`moment-synthesis-${moment.id}`];
+                  await storage.set(SNAPSHOT_KEY, JSON.stringify(snapshot));
+              }
+              return;
+          }
+
           await syncMomentInternal(moment);
       } catch (e: any) {
           console.error(`[Sync] Moment sync failed for ${moment.id}:`, e);
+      } finally {
+          if (moment.isDeleted) {
+              setIsSyncing(false);
+              isSyncingRef.current = false;
+          }
       }
   }, [syncMomentInternal, getAccessToken]);
 
@@ -1088,10 +1284,10 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           await getAccessToken();
 
           if (memory.isDeleted) {
-              const remoteFile = await findFileByName(`${memory.id}.json`);
-              if (remoteFile) {
-                  await deleteFileById(remoteFile.id);
-              }
+              // Delete every Drive file matching the name — duplicates can
+              // exist when concurrent uploads race a deletion. See the
+              // performMomentSync comment for the full rationale.
+              await cleanupFilesByName(`${memory.id}.json`);
               await deleteMemory(memory.id);
               const snapshotJSON = await storage.get(SNAPSHOT_KEY);
               if (snapshotJSON) {

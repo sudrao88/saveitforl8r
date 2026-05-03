@@ -1,8 +1,9 @@
 import React from 'react';
-import { Settings, Search, RefreshCw, AlertCircle, Download, AlertTriangle, Loader2 } from 'lucide-react';
+import { Settings, Search, RefreshCw, AlertCircle, Download, AlertTriangle, Loader2, CloudOff } from 'lucide-react';
 import { Logo } from './icons';
 import { ViewMode } from '../types';
 import { ModelStatus } from '../hooks/useAdaptiveSearch';
+import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { btn } from '../styles/design-system';
 
 interface TopNavigationProps {
@@ -17,7 +18,7 @@ interface TopNavigationProps {
   isOtaDownloading?: boolean;
 }
 
-const TopNavigation: React.FC<TopNavigationProps> = ({
+const TopNavigation = React.forwardRef<HTMLElement, TopNavigationProps>(({
     setView,
     resetFilters,
     onSettingsClick,
@@ -27,9 +28,12 @@ const TopNavigation: React.FC<TopNavigationProps> = ({
     isSyncingDownload,
     modelStatus,
     isOtaDownloading
-}) => {
+}, ref) => {
+  const isOnline = useOnlineStatus();
+  const showOffline = !isOnline && (syncError || modelStatus === 'error');
+  const showSyncError = isOnline && syncError;
   return (
-    <nav className="px-4 py-3 sm:px-8 flex justify-center">
+    <nav ref={ref} className="px-4 py-3 sm:px-8 flex justify-center">
       <div className="w-full max-w-4xl flex items-center justify-between gap-4">
         <div 
             className="flex items-center gap-3 text-(--color-accent) shrink-0 cursor-pointer group active:scale-95 transition-transform"
@@ -76,21 +80,23 @@ const TopNavigation: React.FC<TopNavigationProps> = ({
           <button
             onClick={onSettingsClick}
             className={`relative ${btn.base} ${btn.iconLg} bg-(--color-surface-raised) border border-(--color-border-default) hover:bg-white/5 hover:border-(--color-accent) group shrink-0 touch-manipulation`}
-            title="Settings"
+            title={showOffline ? 'Offline — sync will resume when reconnected' : 'Settings'}
           >
             {isSyncingDownload ? (
                 <RefreshCw size={20} className="text-(--color-accent) animate-spin" />
             ) : modelStatus === 'downloading' ? (
                 <Loader2 size={20} className="text-(--color-accent) animate-spin" />
-            ) : syncError ? (
+            ) : showOffline ? (
+                <CloudOff size={20} className="text-(--color-text-tertiary)" />
+            ) : showSyncError ? (
                 <AlertCircle size={20} className="text-(--color-danger)" />
             ) : modelStatus === 'error' ? (
                 <AlertTriangle size={20} className="text-(--color-danger)" />
             ) : (
                 <Settings size={20} className="text-(--color-text-tertiary) group-hover:text-(--color-text-primary) group-hover:rotate-90 transition-transform duration-(--duration-normal)" />
             )}
-            
-            {(syncError || modelStatus === 'error') && !isSyncingDownload && modelStatus !== 'downloading' && (
+
+            {(showSyncError || (isOnline && modelStatus === 'error')) && !isSyncingDownload && modelStatus !== 'downloading' && (
                 <span className="absolute -top-1 -right-1 flex h-3 w-3">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-(--color-danger) opacity-75"></span>
                     <span className="relative inline-flex rounded-full h-3 w-3 bg-(--color-danger)"></span>
@@ -101,6 +107,8 @@ const TopNavigation: React.FC<TopNavigationProps> = ({
       </div>
     </nav>
   );
-};
+});
+
+TopNavigation.displayName = 'TopNavigation';
 
 export default TopNavigation;
