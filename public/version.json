@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v97",
-  "buildNumber": 97,
-  "buildDate": "2026-05-03T07:30:00.000Z",
+  "version": "saveitforl8r-v98",
+  "buildNumber": 98,
+  "buildDate": "2026-05-03T10:50:00.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Drive-synced memories now show the correct enrichment status icon immediately. Previously, legacy records arriving via Drive sync skipped the read-time migration and rendered without a status icon (and skipped online auto-retry) until the next app reload. Status normalization now happens at the sync boundary."
+  "changelog": "Memory cards now show the full enrichment lifecycle as colored pills (Submitted, Enriching, Submit failed, Enrichment failed) with inline retry buttons on the failure states. Sync indicators have been simplified: success and in-progress states are no longer shown, and sync failure now takes over the entity-type/timestamp slot on the left of the card header so it's visible and tappable to retry."
 }
