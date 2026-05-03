@@ -30,6 +30,7 @@ vi.mock('../services/storageService', () => ({
   getMemories: vi.fn().mockResolvedValue([]),
   saveMemory: vi.fn().mockResolvedValue(undefined),
   deleteMemory: vi.fn().mockResolvedValue(undefined),
+  normalizeMemory: vi.fn((memory: any) => memory),
   reconcileEmbeddings: vi.fn().mockResolvedValue({ total: 0, enriched: 0, toQueue: 0, alreadyIndexed: 0, pendingInQueue: 0, error: null, timestamp: Date.now() }),
   getAllMomentsIncludingDeleted: vi.fn().mockResolvedValue([]),
   saveMoment: vi.fn().mockResolvedValue(undefined),
@@ -204,6 +205,38 @@ describe('SyncContext', () => {
       expect(driveService.downloadFilesStreaming).toHaveBeenCalled();
       expect(storageService.saveMemory).toHaveBeenCalledWith(
         expect.objectContaining({ id: 'remote-1' })
+      );
+    });
+
+    it('routes downloaded memories through normalizeMemory before save', async () => {
+      // Legacy record from an older client: has processingError but no
+      // enrichmentStatus. Without normalization at the sync boundary, it
+      // would land in IDB and React state with enrichmentStatus undefined,
+      // breaking strict-equality checks (icon rendering, online auto-retry).
+      const legacyRemote = {
+        id: 'legacy-1',
+        content: 'Old failed memory',
+        timestamp: 2000,
+        tags: [],
+        processingError: true,
+      };
+
+      (storageService.getMemories as any).mockResolvedValue([]);
+      (driveService.listAllFiles as any).mockResolvedValue([
+        { id: 'drive-file-1', name: 'legacy-1.json', modifiedTime: '2024-01-01T00:00:00Z' },
+      ]);
+      mockDownloads(new Map([['drive-file-1', legacyRemote]]));
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      await act(async () => {
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
+      });
+
+      expect(storageService.normalizeMemory).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'legacy-1', processingError: true })
       );
     });
 

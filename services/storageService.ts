@@ -87,7 +87,7 @@ const openDB = (): Promise<IDBDatabase> => {
 // Data from IndexedDB, Google Drive sync, or older app versions may have
 // null/undefined tags (or other missing fields). This prevents runtime crashes
 // like "null is not an object (evaluating 'c.tags.map')" on iOS standalone PWA.
-const normalizeMemory = (memory: Memory): Memory => {
+export const normalizeMemory = (memory: Memory): Memory => {
   if (!Array.isArray(memory.tags)) {
     memory.tags = [];
   }

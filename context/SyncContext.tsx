@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, ReactNode, useRef, useEffect } from 'react';
-import { getMemories, getMemory, saveMemory, deleteMemory, reconcileEmbeddings, getAllMomentsIncludingDeleted, saveMoment, deleteMomentHard, getMomentSynthesis, saveMomentSynthesis, deleteMomentSynthesis, getAllCalendarEventsIncludingDeleted, saveCalendarEvent, deleteCalendarEventHard, getAllTodoItemsIncludingDeleted, updateTodoItem, deleteTodoItemHard } from '../services/storageService';
+import { getMemories, getMemory, saveMemory, deleteMemory, reconcileEmbeddings, getAllMomentsIncludingDeleted, saveMoment, deleteMomentHard, getMomentSynthesis, saveMomentSynthesis, deleteMomentSynthesis, getAllCalendarEventsIncludingDeleted, saveCalendarEvent, deleteCalendarEventHard, getAllTodoItemsIncludingDeleted, updateTodoItem, deleteTodoItemHard, normalizeMemory } from '../services/storageService';
 
 import {
     listAllFiles,
@@ -203,6 +203,13 @@ const executeSyncPlan = async (plan: SyncPlan, callbacks?: ExecuteSyncCallbacks)
                     content.timestamp = healed;
                     plan.toUpload.push({ noteId: item.noteId, memory: content, remoteFileId: item.fileId });
                 }
+
+                // Backfill enrichmentStatus for records written by older clients
+                // before this field existed. Without this, sync-downloaded legacy
+                // records skip the read-time migration in storageService and land
+                // in IDB + React state with enrichmentStatus undefined, breaking
+                // strict-equality checks (icon rendering, online auto-retry).
+                content = normalizeMemory(content);
 
                 const shouldSave = item.local
                     ? content.timestamp > item.local.timestamp
