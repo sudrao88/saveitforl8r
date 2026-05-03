@@ -3,6 +3,7 @@ import { EnrichmentData, Memory, Attachment, ChatMessage, Moment, SynthesisRespo
 import { postProxy, getProxyUrl } from './proxyService.ts';
 import { getValidToken } from './googleAuth.ts';
 import { enqueue as bgSyncEnqueue } from './backgroundSyncQueue.ts';
+import { uploadFileChunked, LARGE_PAYLOAD_THRESHOLD } from './chunkUploadService.ts';
 
 export interface QuerySource {
   id: string;
@@ -165,14 +166,108 @@ interface LightMemory {
 
 interface QueryPayload {
   query: string;
-  memories: LightMemory[];
+  memories?: LightMemory[];
   history: ChatMessage[];
+  memoriesFileUri?: string;
+  memoriesFileName?: string;
 }
 
 // Cap the number of memories sent in query context.
 // Keeps payload under ~1 MB even with large collections.
 // Memories are already sorted by recency, so this sends the most relevant.
 const MAX_QUERY_MEMORIES = 200;
+
+/**
+ * Builds the [ID]/[CONTENT]/[SUMMARY]... text block for query context.
+ * Mirrors the format the server constructs in server/routes/query.js when
+ * memories are inlined. When this is uploaded as a text/plain file via
+ * the Gemini File API, the LLM sees identical structure.
+ */
+const buildMemoriesContextString = (memories: LightMemory[]): string =>
+  memories
+    .map(
+      (m) =>
+        `[ID: ${m.id}] [DATE: ${new Date(m.timestamp).toISOString().split('T')[0]}]
+[CONTENT]: ${m.content || ''}
+[SUMMARY]: ${m.enrichment?.summary || 'N/A'}
+[TAGS]: ${(m.tags || []).join(', ')}
+[PLACE]: ${m.enrichment?.locationContext?.name || 'N/A'}
+[ENTITY]: ${m.enrichment?.entityContext?.title || 'N/A'} (${m.enrichment?.entityContext?.type || ''})
+[SUBTITLE]: ${m.enrichment?.entityContext?.subtitle || 'N/A'}
+[DESCRIPTION]: ${m.enrichment?.entityContext?.description || 'N/A'}
+[ATTACHMENTS]: ${(m.attachments || []).map((a) => a.name).join(', ')}
+[KEY_POINTS]: ${(m.enrichment?.keyPoints || []).join('; ') || 'N/A'}
+[ACTION_ITEMS]: ${(m.enrichment?.actionItems || []).join('; ') || 'N/A'}
+[THEMES]: ${(m.enrichment?.themes || []).join(', ') || 'N/A'}`
+    )
+    .join('\n---\n');
+
+interface LightNote {
+  id: string;
+  content: string;
+  tags: string[];
+  enrichment?: {
+    summary?: string;
+    locationContext?: EnrichmentData['locationContext'];
+    entityContext?: EnrichmentData['entityContext'];
+  };
+}
+
+/**
+ * Builds the moment-creation/synthesis context string. Mirrors the format
+ * server/routes/moment.js (stepNoteSelection, stepSynthesis, singleCallFallback)
+ * and server/index.js (synthesize handler) construct when notes are inlined.
+ */
+const buildNotesContextString = (notes: LightNote[]): string =>
+  notes
+    .map(
+      (n) =>
+        `[ID: ${n.id}]
+[CONTENT]: ${n.content || ''}
+[TAGS]: ${(n.tags || []).join(', ')}
+[SUMMARY]: ${n.enrichment?.summary || 'N/A'}
+[ENTITY]: ${n.enrichment?.entityContext?.title || 'N/A'} (${n.enrichment?.entityContext?.type || ''})
+[DESCRIPTION]: ${n.enrichment?.entityContext?.description || 'N/A'}`
+    )
+    .join('\n---\n');
+
+/**
+ * Generate a v4 UUID. Used as the upload-session "owner id" for context-file
+ * uploads (the upload-init validator requires a UUID, but accepts any).
+ */
+const newUuid = (): string => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  // Fallback for environments without crypto.randomUUID
+  const bytes = new Uint8Array(16);
+  (typeof crypto !== 'undefined' ? crypto : { getRandomValues: (b: Uint8Array) => { for (let i = 0; i < b.length; i++) b[i] = Math.floor(Math.random() * 256); return b; } }).getRandomValues(bytes);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+};
+
+/**
+ * If the serialized payload would exceed LARGE_PAYLOAD_THRESHOLD, upload the
+ * supplied context string via the chunked-upload pipeline so the server can
+ * reference it by Gemini File API URI instead of embedding it in the body.
+ *
+ * Returns null when the payload is small enough to send inline (no upload).
+ * Returns { fileUri, geminiFileName } when an upload happened.
+ */
+const uploadContextIfLarge = async (
+  contextText: string,
+  inlinePayloadSize: number,
+  fileNamePrefix: string,
+): Promise<{ fileUri: string; geminiFileName: string } | null> => {
+  if (inlinePayloadSize <= LARGE_PAYLOAD_THRESHOLD) return null;
+
+  const ownerId = newUuid();
+  const blob = new Blob([contextText], { type: 'text/plain' });
+  const fileName = `${fileNamePrefix}-${ownerId}.txt`;
+  return uploadFileChunked(blob, 'text/plain', fileName, ownerId);
+};
 
 // --- Async Moment Creation ---
 
@@ -192,7 +287,7 @@ export const submitMomentCreation = async (
   memories: Memory[],
   momentId: string,
 ): Promise<{ momentId: string }> => {
-  const lightNotes = memories
+  const lightNotes: LightNote[] = memories
     .filter(m => !isMemoryInFlight(m) && !isMemoryFailed(m) && !m.isDeleted)
     .map(m => ({
       id: m.id,
@@ -207,11 +302,19 @@ export const submitMomentCreation = async (
         : undefined,
     }));
 
-  const result = await postProxy<SubmitMomentCreationResponse>('/api/create-moment', {
-    objective,
-    notes: lightNotes,
-    momentId,
-  });
+  const inlineBody: Record<string, unknown> = { objective, notes: lightNotes, momentId };
+  const inlineSize = JSON.stringify(inlineBody).length;
+  const uploaded = await uploadContextIfLarge(
+    buildNotesContextString(lightNotes),
+    inlineSize,
+    'create-moment-notes',
+  );
+
+  const body: Record<string, unknown> = uploaded
+    ? { objective, momentId, notesFileUri: uploaded.fileUri, notesFileName: uploaded.geminiFileName, noteCount: lightNotes.length }
+    : inlineBody;
+
+  const result = await postProxy<SubmitMomentCreationResponse>('/api/create-moment', body);
 
   if (result.status !== 'accepted') {
     throw new Error(`Unexpected moment creation response: ${result.status}`);
@@ -290,7 +393,7 @@ export const submitResynthesis = async (
   memories: Memory[],
   inputHash?: string,
 ): Promise<{ momentId: string }> => {
-  const notes = moment.noteIds
+  const notes: LightNote[] = moment.noteIds
     .map(id => memories.find(m => m.id === id))
     .filter((m): m is Memory => !!m)
     .map(m => ({
@@ -306,14 +409,36 @@ export const submitResynthesis = async (
         : undefined,
     }));
 
-  const result = await postProxy<SubmitResynthesisResponse>('/api/synthesize', {
+  const inlineBody: Record<string, unknown> = {
     notes,
     momentType: moment.type,
     momentTitle: moment.title,
     objective: moment.objective,
     momentId: moment.id,
     ...(inputHash ? { inputHash } : {}),
-  });
+  };
+
+  const inlineSize = JSON.stringify(inlineBody).length;
+  const uploaded = await uploadContextIfLarge(
+    buildNotesContextString(notes),
+    inlineSize,
+    'synthesize-notes',
+  );
+
+  const body: Record<string, unknown> = uploaded
+    ? {
+        momentType: moment.type,
+        momentTitle: moment.title,
+        objective: moment.objective,
+        momentId: moment.id,
+        notesFileUri: uploaded.fileUri,
+        notesFileName: uploaded.geminiFileName,
+        noteCount: notes.length,
+        ...(inputHash ? { inputHash } : {}),
+      }
+    : inlineBody;
+
+  const result = await postProxy<SubmitResynthesisResponse>('/api/synthesize', body);
 
   if (result.status !== 'accepted') {
     throw new Error(`Unexpected synthesis response: ${result.status}`);
@@ -436,6 +561,11 @@ export const pollSynthesisResult = async (
 
 /**
  * Sends a query + memory context to the server proxy for AI-powered recall.
+ *
+ * If the inline JSON payload would exceed LARGE_PAYLOAD_THRESHOLD, the
+ * memories context is uploaded via the chunked-upload pipeline and the
+ * server reads it from the Gemini File API instead of receiving it in
+ * the request body.
  */
 export const queryBrain = async (
   query: string,
@@ -458,11 +588,22 @@ export const queryBrain = async (
         processingError: m.processingError,
       }));
 
-    const payload: QueryPayload = {
+    const inlinePayload: QueryPayload = {
       query,
       memories: lightMemories,
       history,
     };
+
+    const inlineSize = JSON.stringify(inlinePayload).length;
+    const uploaded = await uploadContextIfLarge(
+      buildMemoriesContextString(lightMemories),
+      inlineSize,
+      'query-memories',
+    );
+
+    const payload: QueryPayload = uploaded
+      ? { query, history, memoriesFileUri: uploaded.fileUri, memoriesFileName: uploaded.geminiFileName }
+      : inlinePayload;
 
     // Explicitly cast the response
     const result = await postProxy<QueryResponse>('/api/query', payload as unknown as Record<string, unknown>);

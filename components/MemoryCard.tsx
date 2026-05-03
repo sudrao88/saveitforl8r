@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
-import { Trash2, Loader2, Clock, ExternalLink, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, RefreshCw, WifiOff, FileText, Paperclip, MoreVertical, AlertTriangle, AlertCircle, LogIn, Maximize2, Eye, Pin, Pencil, Lightbulb, CircleCheck, UtensilsCrossed, ListOrdered, ThumbsUp, ThumbsDown, DollarSign, MapPin, CalendarDays, ClipboardList, MessageSquare, Users, Mic, Code, Heart, Scale, GraduationCap, Briefcase, Music, Film, BookOpenCheck, Bookmark, Phone, Mail, ScrollText, Tag, Clock3, Flame, Quote } from 'lucide-react';
+import { Trash2, Loader2, Clock, ExternalLink, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, RefreshCw, WifiOff, CloudOff, FileText, Paperclip, MoreVertical, AlertTriangle, AlertCircle, LogIn, Maximize2, Eye, Pin, Pencil, Lightbulb, CircleCheck, UtensilsCrossed, ListOrdered, ThumbsUp, ThumbsDown, DollarSign, MapPin, CalendarDays, ClipboardList, MessageSquare, Users, Mic, Code, Heart, Scale, GraduationCap, Briefcase, Music, Film, BookOpenCheck, Bookmark, Phone, Mail, ScrollText, Tag, Clock3, Flame, Quote } from 'lucide-react';
 import { Memory, Attachment, UploadProgress, isMemoryInFlight, isMemoryFailed } from '../types.ts';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { btn, card, confirm, menu, overlay, text } from '../styles/design-system';
@@ -507,11 +507,18 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
              {syncStatus === 'syncing' && <RefreshCw size={12} className="text-(--color-accent) animate-spin" />}
              {syncStatus === 'synced' && <CircleCheck size={12} className="text-(--color-success)" />}
              {syncStatus === 'error' && (
-                 <button onClick={(e) => { e.stopPropagation(); onSyncRetry?.(memory.id); }}
-                         className="flex items-center gap-1 text-(--color-danger) hover:text-(--color-danger) transition-colors">
-                     <AlertCircle size={14} />
-                     <span className="text-xs font-medium">Retry sync</span>
-                 </button>
+                 isOffline ? (
+                     <span className="flex items-center gap-1 text-(--color-text-tertiary)" title="Offline — sync will resume when reconnected">
+                         <CloudOff size={14} />
+                         <span className="text-xs font-medium">Offline</span>
+                     </span>
+                 ) : (
+                     <button onClick={(e) => { e.stopPropagation(); onSyncRetry?.(memory.id); }}
+                             className="flex items-center gap-1 text-(--color-danger) hover:text-(--color-danger) transition-colors">
+                         <AlertCircle size={14} />
+                         <span className="text-xs font-medium">Retry sync</span>
+                     </button>
+                 )
              )}
           </div>
 

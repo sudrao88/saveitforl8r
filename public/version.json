@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v94",
-  "buildNumber": 94,
-  "buildDate": "2026-05-01T16:35:00.000Z",
+  "version": "saveitforl8r-v96",
+  "buildNumber": 96,
+  "buildDate": "2026-05-03T00:00:00.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Deleting a moment now removes every duplicate Drive file for that moment plus its synthesis, so a surviving copy can't be pulled back down on the next manual sync. Delta sync planning detects duplicates from the existing listAllFiles result, eliminating per-item Drive lookups during deletion."
+  "changelog": "Search and moment synthesis requests over 1.2 MB now route through the Gemini File API instead of being inlined. The same chunked-upload pipeline used for large attachments now uploads the notes/memories context as a text file, keeping requests well under Cloud Run's body-size cap and unblocking large memory collections."
 }
