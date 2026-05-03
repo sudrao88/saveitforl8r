@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v99",
-  "buildNumber": 99,
-  "buildDate": "2026-05-03T11:05:00.000Z",
+  "version": "saveitforl8r-v100",
+  "buildNumber": 100,
+  "buildDate": "2026-05-03T17:35:00.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Memory cards now show the full enrichment lifecycle as colored pills (Submitted, Enriching, Submit failed, Enrichment failed) with inline retry buttons on the failure states. Sync indicators have been simplified: success and in-progress states are no longer shown, and sync failure now takes over the entity-type/timestamp slot on the left of the card header so it's visible and tappable to retry. Enrichment failure pills are now suppressed while an upload is in flight or failed, so the card never shows two failure messages at once."
+  "changelog": "Notes saved through the Android share intent are now uploaded to Google Drive immediately and are recovered on next launch if the local IndexedDB write was lost during the activity teardown. Previously a shared note could remain invisible in the feed until the user opened Settings → Sync Now."
 }

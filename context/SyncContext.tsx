@@ -14,7 +14,7 @@ import {
     deleteRemoteNote,
     type DriveFile,
 } from '../services/googleDriveService';
-import { Memory, Attachment, Moment, MomentSynthesis, CalendarEvent, TodoItem, isMemoryInFlight, isMemoryFailed } from '../types';
+import { Memory, Attachment, Moment, MomentSynthesis, CalendarEvent, TodoItem } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { storage } from '../services/platform';
 import { enqueue as bgSyncEnqueue, peekAll as bgSyncPeekAll, remove as bgSyncRemove } from '../services/backgroundSyncQueue';
@@ -615,8 +615,14 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const getSyncStatusMap = useCallback(() => syncStatusMapRef.current, []);
 
   const syncFileInternal = useCallback(async (memory: Memory) => {
-      if (isMemoryInFlight(memory) || isMemoryFailed(memory)) return;
-
+      // Upload regardless of enrichment status. In-flight notes (submitting /
+      // processing) and failed notes still represent user intent that must be
+      // preserved on Drive — otherwise a note created via Android share intent
+      // is lost if the user closes the app before enrichment completes (the
+      // upload that would otherwise fire from onEnrichmentComplete never runs).
+      // When enrichment eventually completes, the note is re-uploaded with the
+      // enriched data; the duplicate write is a small bandwidth cost in
+      // exchange for data safety.
       try {
           const filename = `${memory.id}.json`;
           const remoteFile = await findFileByName(filename);
@@ -786,7 +792,32 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     for (const [noteId, remoteFile] of remoteMap.entries()) {
         if (previousSnapshot[noteId] && previousSnapshot[noteId] === remoteFile.modifiedTime) {
-            continue;
+            // Snapshot says we already synced this version — but only trust
+            // that if the local copy is still here. Capacitor Preferences
+            // (snapshot backing store) is flushed on pause more reliably than
+            // the WebView's IndexedDB WAL, so a process kill on Android can
+            // leave the snapshot up-to-date while the IDB write is lost. If
+            // we trusted the snapshot blindly the note would be invisible
+            // until the user forced a full sync (which rebuilds the snapshot
+            // from local data).
+            // For synthesis files we proxy through the parent moment: there's
+            // no batched synthesis map loaded here, but a synthesis whose
+            // parent moment is missing or tombstoned shouldn't be skipped —
+            // missing parent means the moment's IDB row was lost too (so let
+            // the synthesis re-download with it), and a tombstoned parent
+            // means the synthesis branch below needs to clean up the remote
+            // file. Skipping in either case would be wrong.
+            const hasLocal =
+                noteId.startsWith('event-') ? localEventMap.has(noteId) :
+                noteId.startsWith('todo-') ? localTodoMap.has(noteId) :
+                noteId.startsWith('moment-synthesis-') ? (() => {
+                    const parentKey = `moment-${noteId.replace('moment-synthesis-', '')}`;
+                    const parent = localMomentMap.get(parentKey);
+                    return parent !== undefined && !parent.isDeleted;
+                })() :
+                noteId.startsWith('moment-') ? localMomentMap.has(noteId) :
+                localMap.has(noteId);
+            if (hasLocal) continue;
         }
 
         handled.add(noteId);
@@ -910,7 +941,6 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     for (const local of localMemories) {
         if (handled.has(local.id)) continue;
-        if (isMemoryInFlight(local) || isMemoryFailed(local)) continue;
 
         if (local.isDeleted) {
             const remote = remoteMap.get(local.id);

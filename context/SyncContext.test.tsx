@@ -240,6 +240,43 @@ describe('SyncContext', () => {
       );
     });
 
+    it('should re-download when snapshot matches remote but local copy is missing', async () => {
+      // Reproduces the share-intent bug: on Android, Capacitor Preferences
+      // (snapshot backing store) is flushed on activity pause more reliably
+      // than the WebView's IndexedDB WAL. A process kill right after a share
+      // can leave the snapshot up-to-date while the IDB write is lost.
+      // Without this guard, regular delta sync would skip the download
+      // because snapshot matches remote — leaving the note invisible until
+      // the user forces a full sync (which rebuilds the snapshot from
+      // local data).
+      const remoteContent = {
+        id: 'lost-1',
+        content: 'Note IDB lost but Drive kept',
+        timestamp: 1500,
+        tags: [],
+      };
+      mockStorageValues['gdrive_remote_snapshot'] = JSON.stringify({
+        'lost-1': '2024-01-01T00:00:00Z',
+      });
+      (storageService.getMemories as any).mockResolvedValue([]);
+      (driveService.listAllFiles as any).mockResolvedValue([
+        { id: 'drive-file-lost', name: 'lost-1.json', modifiedTime: '2024-01-01T00:00:00Z' },
+      ]);
+      mockDownloads(new Map([['drive-file-lost', remoteContent]]));
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      await act(async () => {
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
+      });
+
+      expect(storageService.saveMemory).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'lost-1' })
+      );
+    });
+
     it('should prefer remote version when remote timestamp is newer', async () => {
       const localMem = { id: 'mem-1', content: 'Old local', timestamp: 1000, tags: [] };
       const remoteMem = { id: 'mem-1', content: 'New remote', timestamp: 2000, tags: [] };
@@ -401,8 +438,20 @@ describe('SyncContext', () => {
       );
     });
 
-    it('should skip pending memories', async () => {
-      const pendingMem = { id: 'pending-1', content: 'Pending', timestamp: 1000, tags: [], isPending: true };
+    it('should upload pending memories so notes survive an early app close', async () => {
+      // Notes created via Android share intent are in-flight (submitting /
+      // processing) when the user immediately closes the app. They must be
+      // pushed to Drive on the spot — otherwise the post-enrichment upload
+      // never fires and the note is left local-only.
+      const pendingMem = {
+          id: 'pending-1',
+          content: 'Pending',
+          timestamp: 1000,
+          tags: [],
+          isPending: true,
+          enrichmentStatus: 'submitting',
+      };
+      (driveService.findFileByName as any).mockResolvedValue(null);
 
       const { result } = renderHook(() => useSync(), { wrapper });
 
@@ -410,7 +459,11 @@ describe('SyncContext', () => {
         await result.current.syncFile(pendingMem as any);
       });
 
-      expect(driveService.uploadFile).not.toHaveBeenCalled();
+      expect(driveService.uploadFile).toHaveBeenCalledWith(
+        'pending-1.json',
+        pendingMem,
+        undefined
+      );
     });
 
     it('should delete remote file and local tombstone on single sync of deleted memory', async () => {
