@@ -2,11 +2,12 @@
 import React, { useState, useRef } from 'react';
 import { useBackButton } from '../hooks/useBackButton';
 
-import { X, Download, Upload, Info, RefreshCw, Cloud, AlertTriangle, AlertCircle, ShieldCheck, LogOut, Settings, Cpu, CheckCircle2, Loader2, Database, ChevronDown, Trash2, Bell, BellOff } from 'lucide-react';
+import { X, Download, Upload, Info, RefreshCw, Cloud, CloudOff, AlertTriangle, AlertCircle, ShieldCheck, LogOut, Settings, Cpu, CheckCircle2, Loader2, Database, ChevronDown, Trash2, Bell, BellOff } from 'lucide-react';
 
 import { useExportImport } from '../hooks/useExportImport';
 import { useEncryptionSettings } from '../hooks/useEncryptionSettings';
 import { useSync } from '../hooks/useSync';
+import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { useAuth } from '../hooks/useAuth';
 import { ModelStatus, EmbeddingStats } from '../hooks/useAdaptiveSearch';
 import { factoryReset, forceReindexAll, ReconcileReport } from '../services/storageService';
@@ -144,6 +145,7 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
 
   // All hooks and their logic are preserved from the original component
   const { sync, isSyncing } = useSync();
+  const isOnline = useOnlineStatus();
   const { authStatus, login, unlink } = useAuth();
   const { fileInputRef, handleExport, handleImportClick, handleImportFile } = useExportImport(onImportSuccess || (() => {}));
   const { handleDownloadKey, handleRestoreClick, handleRestoreFile, fileInputRef: keyInputRef } = useEncryptionSettings();
@@ -205,16 +207,26 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
           {(syncError || modelStatus === 'error') && (
             <div className="space-y-3">
               {syncError && (
-                <div className="flex items-start gap-3 p-3 bg-(--color-danger)/30 border border-(--color-danger)/60 rounded-(--radius-xl)">
-                  <AlertCircle size={18} className="text-(--color-danger) shrink-0 mt-0.5" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-(--color-danger)">Google Drive Sync Error</p>
-                    <p className="text-xs text-(--color-danger)/80 mt-0.5 break-words">{syncError}</p>
+                isOnline ? (
+                  <div className="flex items-start gap-3 p-3 bg-(--color-danger)/30 border border-(--color-danger)/60 rounded-(--radius-xl)">
+                    <AlertCircle size={18} className="text-(--color-danger) shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-(--color-danger)">Google Drive Sync Error</p>
+                      <p className="text-xs text-(--color-danger)/80 mt-0.5 break-words">{syncError}</p>
+                    </div>
+                    <button onClick={handleSyncNow} disabled={isSyncing} className={`${btn.base} ${btn.dangerSm} shrink-0 gap-1.5`}>
+                      {isSyncing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Retry Sync
+                    </button>
                   </div>
-                  <button onClick={handleSyncNow} disabled={isSyncing} className={`${btn.base} ${btn.dangerSm} shrink-0 gap-1.5`}>
-                    {isSyncing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Retry Sync
-                  </button>
-                </div>
+                ) : (
+                  <div className="flex items-start gap-3 p-3 bg-(--color-surface-raised) border border-(--color-border-default) rounded-(--radius-xl)">
+                    <CloudOff size={18} className="text-(--color-text-tertiary) shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-(--color-text-primary)">You're offline</p>
+                      <p className="text-xs text-(--color-text-secondary) mt-0.5">Google Drive sync will resume automatically once you're back online.</p>
+                    </div>
+                  </div>
+                )
               )}
               {modelStatus === 'error' && (
                 <div className="flex items-start gap-3 p-3 bg-(--color-warning)/30 border border-(--color-warning)/60 rounded-(--radius-xl)">
