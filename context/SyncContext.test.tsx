@@ -401,8 +401,20 @@ describe('SyncContext', () => {
       );
     });
 
-    it('should skip pending memories', async () => {
-      const pendingMem = { id: 'pending-1', content: 'Pending', timestamp: 1000, tags: [], isPending: true };
+    it('should upload pending memories so notes survive an early app close', async () => {
+      // Notes created via Android share intent are in-flight (submitting /
+      // processing) when the user immediately closes the app. They must be
+      // pushed to Drive on the spot — otherwise the post-enrichment upload
+      // never fires and the note is left local-only.
+      const pendingMem = {
+          id: 'pending-1',
+          content: 'Pending',
+          timestamp: 1000,
+          tags: [],
+          isPending: true,
+          enrichmentStatus: 'submitting',
+      };
+      (driveService.findFileByName as any).mockResolvedValue(null);
 
       const { result } = renderHook(() => useSync(), { wrapper });
 
@@ -410,7 +422,11 @@ describe('SyncContext', () => {
         await result.current.syncFile(pendingMem as any);
       });
 
-      expect(driveService.uploadFile).not.toHaveBeenCalled();
+      expect(driveService.uploadFile).toHaveBeenCalledWith(
+        'pending-1.json',
+        pendingMem,
+        undefined
+      );
     });
 
     it('should delete remote file and local tombstone on single sync of deleted memory', async () => {

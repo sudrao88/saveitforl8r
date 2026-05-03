@@ -14,7 +14,7 @@ import {
     deleteRemoteNote,
     type DriveFile,
 } from '../services/googleDriveService';
-import { Memory, Attachment, Moment, MomentSynthesis, CalendarEvent, TodoItem, isMemoryInFlight, isMemoryFailed } from '../types';
+import { Memory, Attachment, Moment, MomentSynthesis, CalendarEvent, TodoItem } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { storage } from '../services/platform';
 import { enqueue as bgSyncEnqueue, peekAll as bgSyncPeekAll, remove as bgSyncRemove } from '../services/backgroundSyncQueue';
@@ -615,8 +615,14 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const getSyncStatusMap = useCallback(() => syncStatusMapRef.current, []);
 
   const syncFileInternal = useCallback(async (memory: Memory) => {
-      if (isMemoryInFlight(memory) || isMemoryFailed(memory)) return;
-
+      // Upload regardless of enrichment status. In-flight notes (submitting /
+      // processing) and failed notes still represent user intent that must be
+      // preserved on Drive — otherwise a note created via Android share intent
+      // is lost if the user closes the app before enrichment completes (the
+      // upload that would otherwise fire from onEnrichmentComplete never runs).
+      // When enrichment eventually completes, the note is re-uploaded with the
+      // enriched data; the duplicate write is a small bandwidth cost in
+      // exchange for data safety.
       try {
           const filename = `${memory.id}.json`;
           const remoteFile = await findFileByName(filename);
@@ -910,7 +916,6 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     for (const local of localMemories) {
         if (handled.has(local.id)) continue;
-        if (isMemoryInFlight(local) || isMemoryFailed(local)) continue;
 
         if (local.isDeleted) {
             const remote = remoteMap.get(local.id);
