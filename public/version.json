@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v100",
-  "buildNumber": 100,
-  "buildDate": "2026-05-03T17:35:00.000Z",
+  "version": "saveitforl8r-v101",
+  "buildNumber": 101,
+  "buildDate": "2026-05-04T00:00:00.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Notes saved through the Android share intent are now uploaded to Google Drive immediately and are recovered on next launch if the local IndexedDB write was lost during the activity teardown. Previously a shared note could remain invisible in the feed until the user opened Settings → Sync Now."
+  "changelog": "Fixes the Edit button on the memory preview card when the preview is opened from the Todo or Calendar views. The editor was opening behind those sheets because both layers shared the same z-index — it now renders on top, matching the behavior of the preview opened from the Brain Search/Query path."
 }

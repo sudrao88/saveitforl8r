@@ -1022,49 +1022,6 @@ const AppContent: React.FC = () => {
       {/* ─── Fullscreen view overlays (stacked, animated) ──────── */}
 
       <AnimatedPresence
-        isOpen={!!editingMemory}
-        enterClassName={overlay.viewEnter}
-        exitClassName={overlay.viewExit}
-        duration={VIEW_DURATION}
-        className="fixed inset-0 z-(--z-sheet)"
-      >
-        <ErrorBoundary
-          fallbackTitle="Memory editor encountered an error"
-          fallbackMessage="Something went wrong while editing. Your data is safe — try reloading."
-        >
-          <Suspense fallback={null}>
-            <NewMemoryPage
-              onClose={handleEditClose}
-              onCreate={handleCreateMemory}
-              onUpdate={handleUpdateMemory}
-              editMemory={frozenEditingMemory!}
-            />
-          </Suspense>
-        </ErrorBoundary>
-      </AnimatedPresence>
-
-      <AnimatedPresence
-        isOpen={isCaptureOpen}
-        enterClassName={overlay.viewEnter}
-        exitClassName={overlay.viewExit}
-        duration={VIEW_DURATION}
-        className="fixed inset-0 z-(--z-sheet)"
-      >
-        <ErrorBoundary
-          fallbackTitle="Memory capture encountered an error"
-          fallbackMessage="Something went wrong while capturing. Your data is safe — try reloading."
-        >
-          <Suspense fallback={null}>
-            <NewMemoryPage
-              onClose={handleCaptureClose}
-              onCreate={handleCreateMemory}
-              initialContent={captureInitialContent}
-            />
-          </Suspense>
-        </ErrorBoundary>
-      </AnimatedPresence>
-
-      <AnimatedPresence
         isOpen={view === ViewMode.RECALL}
         enterClassName={overlay.viewEnter}
         exitClassName={overlay.viewExit}
@@ -1313,6 +1270,52 @@ const AppContent: React.FC = () => {
             onTogglePin={handleTogglePin}
           />
         </Suspense>
+      </AnimatedPresence>
+
+      {/* Editor + capture render after all sheets so the NewMemoryPage
+          overlay stacks on top at the same z-(--z-sheet) layer when
+          launched from a sheet (e.g., a preview card or deep link). */}
+      <AnimatedPresence
+        isOpen={!!editingMemory}
+        enterClassName={overlay.viewEnter}
+        exitClassName={overlay.viewExit}
+        duration={VIEW_DURATION}
+        className="fixed inset-0 z-(--z-sheet)"
+      >
+        <ErrorBoundary
+          fallbackTitle="Memory editor encountered an error"
+          fallbackMessage="Something went wrong while editing. Your data is safe — try reloading."
+        >
+          <Suspense fallback={null}>
+            <NewMemoryPage
+              onClose={handleEditClose}
+              onCreate={handleCreateMemory}
+              onUpdate={handleUpdateMemory}
+              editMemory={frozenEditingMemory!}
+            />
+          </Suspense>
+        </ErrorBoundary>
+      </AnimatedPresence>
+
+      <AnimatedPresence
+        isOpen={isCaptureOpen}
+        enterClassName={overlay.viewEnter}
+        exitClassName={overlay.viewExit}
+        duration={VIEW_DURATION}
+        className="fixed inset-0 z-(--z-sheet)"
+      >
+        <ErrorBoundary
+          fallbackTitle="Memory capture encountered an error"
+          fallbackMessage="Something went wrong while capturing. Your data is safe — try reloading."
+        >
+          <Suspense fallback={null}>
+            <NewMemoryPage
+              onClose={handleCaptureClose}
+              onCreate={handleCreateMemory}
+              initialContent={captureInitialContent}
+            />
+          </Suspense>
+        </ErrorBoundary>
       </AnimatedPresence>
 
       <AnimatedPresence
