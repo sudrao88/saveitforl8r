@@ -88,7 +88,7 @@ const AppContent: React.FC = () => {
 
   const { shareData, clearShareData } = useShareReceiver();
   
-  const { sync, isSyncing, isSyncingDownload, syncError, getSyncStatusMap, syncStatusVersion, retrySyncFile, setOnSyncProgress, setOnMemorySynced } = useSync();
+  const { sync, isSyncing, isSyncingDownload, syncError, getSyncStatusMap, syncStatusVersion, retrySyncFile, setOnSyncProgress, setOnMemorySynced, syncMoment, syncCalendarEvents, syncTodoItems } = useSync();
   const { authStatus, login, unlink, recheckAuth } = useAuth();
 
   const { modelStatus, downloadProgress, retryDownload, search, embeddingStats, retryFailedEmbeddings, deleteNoteFromIndex, lastError, closeWorkerDB } = useAdaptiveSearch();
@@ -137,7 +137,13 @@ const AppContent: React.FC = () => {
     refreshEvents,
     upcomingCount: calendarUpcomingCount,
     checkAndExpandHorizon,
-  } = useCalendarEvents();
+  } = useCalendarEvents({
+    memories,
+    memoriesLoaded: !isLoading,
+    onTombstones: (tombstones) => {
+      syncCalendarEvents(tombstones).catch(err => console.error('[Calendar] Failed to sync orphan tombstones:', err));
+    },
+  });
 
   const {
     items: todoItems,
@@ -148,7 +154,13 @@ const AppContent: React.FC = () => {
     restoreItem: restoreTodoItem,
     refreshItems: refreshTodoItems,
     pendingCount: todoPendingCount,
-  } = useTodoItems();
+  } = useTodoItems({
+    memories,
+    memoriesLoaded: !isLoading,
+    onTombstones: (tombstones) => {
+      syncTodoItems(tombstones).catch(err => console.error('[Todo] Failed to sync orphan tombstones:', err));
+    },
+  });
 
   const [showCalendarAgenda, setShowCalendarAgenda] = useState(false);
   const [showTodoList, setShowTodoList] = useState(false);
@@ -182,8 +194,6 @@ const AppContent: React.FC = () => {
     // 'home' — just open the app, which is the default
     clearNotificationRoute();
   }, [notificationPendingRoute, clearNotificationRoute]);
-
-  const { syncMoment, syncCalendarEvents, syncTodoItems } = useSync();
 
   // Wire up moments ref and callback for enrichment-time moment matching
   useEffect(() => {

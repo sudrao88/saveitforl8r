@@ -18,8 +18,17 @@ import {
 } from '../services/storageService';
 import { expandRecurringEvent, expandHorizon } from '../utils/calendarUtils';
 
+export interface UseCalendarEventsOptions {
+  /** Active (non-deleted) memories. Events whose memoryId is missing from this set are treated as orphans and auto-tombstoned. */
+  memories: Memory[];
+  /** True once `memories` reflects IndexedDB. Reconciliation is gated on this to avoid tombstoning everything on first render. */
+  memoriesLoaded: boolean;
+  /** Optional callback invoked with healed-orphan tombstones so they can be synced to Drive. */
+  onTombstones?: (tombstones: CalendarEvent[]) => void;
+}
+
 export interface UseCalendarEventsReturn {
-  /** All active calendar events, sorted by startDate ascending */
+  /** All active calendar events whose source memory still exists, sorted by startDate ascending. */
   events: CalendarEvent[];
   /** Create/replace events for a memory from enrichment results. Returns all events that need syncing (new + tombstones). */
   processDetectedEvents: (memory: Memory) => Promise<CalendarEvent[]>;
@@ -33,13 +42,18 @@ export interface UseCalendarEventsReturn {
   checkAndExpandHorizon: () => Promise<CalendarEvent[]>;
 }
 
-export const useCalendarEvents = (): UseCalendarEventsReturn => {
+export const useCalendarEvents = ({ memories, memoriesLoaded, onTombstones }: UseCalendarEventsOptions): UseCalendarEventsReturn => {
   const [eventsList, setEventsList] = useState<CalendarEvent[]>([]);
   const loaded = useRef(false);
   // Guard against concurrent processDetectedEvents calls for the same memory.
   // Without this, interleaved IDB reads/writes can cause both calls to miss
   // each other's events, resulting in duplicates.
   const processingMemoryIds = useRef(new Set<string>());
+  const reconcilingMemoryIds = useRef(new Set<string>());
+  const onTombstonesRef = useRef(onTombstones);
+  useEffect(() => { onTombstonesRef.current = onTombstones; }, [onTombstones]);
+
+  const activeMemoryIds = useMemo(() => new Set(memories.map(m => m.id)), [memories]);
 
   const refreshEvents = useCallback(async () => {
     try {
@@ -146,12 +160,55 @@ export const useCalendarEvents = (): UseCalendarEventsReturn => {
     }
   }, []);
 
-  // Sort by startDate ascending, filter out deleted
+  // Self-heal: tombstone any events whose source memory no longer exists, so they
+  // disappear from the UI and the deletion propagates to other devices via sync.
+  useEffect(() => {
+    if (!memoriesLoaded || !loaded.current) return;
+
+    const orphanMemoryIds = new Set<string>();
+    for (const event of eventsList) {
+      if (event.isDeleted) continue;
+      if (activeMemoryIds.has(event.memoryId)) continue;
+      if (reconcilingMemoryIds.current.has(event.memoryId)) continue;
+      orphanMemoryIds.add(event.memoryId);
+    }
+    if (orphanMemoryIds.size === 0) return;
+
+    let cancelled = false;
+    (async () => {
+      const allTombstones: CalendarEvent[] = [];
+      for (const memoryId of orphanMemoryIds) {
+        reconcilingMemoryIds.current.add(memoryId);
+        try {
+          const tombstones = await softDeleteCalendarEventsByMemoryId(memoryId);
+          if (tombstones.length > 0) allTombstones.push(...tombstones);
+        } catch (err) {
+          console.error(`[Calendar] Failed to reconcile orphans for memory ${memoryId}:`, err);
+        } finally {
+          reconcilingMemoryIds.current.delete(memoryId);
+        }
+      }
+      if (cancelled || allTombstones.length === 0) return;
+
+      const tombstoneIds = new Set(allTombstones.map(t => t.id));
+      setEventsList(prev => prev.map(e =>
+        tombstoneIds.has(e.id) ? { ...e, isDeleted: true, updatedAt: Date.now() } : e
+      ));
+      console.log(`[Calendar] Reconciled ${allTombstones.length} orphan event(s) across ${orphanMemoryIds.size} deleted memor${orphanMemoryIds.size === 1 ? 'y' : 'ies'}`);
+      onTombstonesRef.current?.(allTombstones);
+    })();
+
+    return () => { cancelled = true; };
+  }, [eventsList, activeMemoryIds, memoriesLoaded]);
+
+  // Sort by startDate ascending. Drops deleted events and any whose source memory
+  // is missing — defensive guard for the brief window between an orphan being
+  // detected and its tombstone landing in eventsList.
   const events = useMemo(
     () => eventsList
-      .filter(e => !e.isDeleted)
+      .filter(e => !e.isDeleted && activeMemoryIds.has(e.memoryId))
       .sort((a, b) => a.startDate.localeCompare(b.startDate)),
-    [eventsList]
+    [eventsList, activeMemoryIds]
   );
 
   // Count upcoming events (today and future)
