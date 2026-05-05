@@ -384,7 +384,7 @@ const CONTENT_TYPES_LIST = `- 'meeting_notes': Meeting minutes, standup notes, 1
 - 'travel': Trip planning, itineraries, packing lists, destination research
 - 'learning': Study notes, lecture summaries, TIL, course notes
 - 'contact': People/networking notes, CRM-style notes about individuals
-- 'event': Calendar-adjacent notes about events the user will attend or track — concerts, appointments, meetings, reservations. NOT for articles/news about events happening in the world
+- 'event': Calendar-adjacent notes about something the user will attend or track — concerts, appointments, meetings, reservations, social gatherings (dinners, parties, brunches, get-togethers, hangouts), birthdays, weddings. Use this when the note describes a planned activity with a date/time or specific people, even if no specific venue is named. NOT for articles/news about events happening in the world
 - 'wishlist': Want-to-buy lists, gift ideas, items to acquire
 - 'project': Project docs, tech specs, architecture decisions, status updates
 - 'health': Workout logs, symptom tracking, meal logs, health observations
@@ -392,7 +392,7 @@ const CONTENT_TYPES_LIST = `- 'meeting_notes': Meeting minutes, standup notes, 1
 - 'snippet': Code snippets, terminal commands, configs, technical reference
 - 'article_blog': News articles, blog posts, opinion pieces, longform written content
 - 'product': Product pages, product reviews, shopping items with specs/pricing
-- 'place_restaurant': Restaurant pages, venue info, place reviews with hours/menus
+- 'place_restaurant': Restaurant pages, venue info, place reviews with hours/menus. Requires a specific named venue in the note. If the note is about a planned activity with people but no named venue (e.g. "Dinner with friends Saturday"), classify as 'event' instead
 - 'video': YouTube videos, video content, tutorials, vlogs
 - 'social_media_post': Social media posts, tweets, threads, viral content
 - 'research_academic': Research papers, academic articles, scientific studies
@@ -531,7 +531,7 @@ Do not search externally.`,
 - 'whereToBuy': Where the product can be purchased.
 - 'ratings': User or critic ratings if available.
 Search for the product to enrich with current pricing and reviews.`,
-  place_restaurant: `This is a restaurant or place reference. You MUST extract and populate these fields:
+  place_restaurant: `This is a restaurant or place reference. Only proceed if the note actually names a venue. If no venue is named (e.g. "Dinner with friends Saturday"), this should have been classified as 'event' — fall back to event-style enrichment (extract 'date' and 'rsvpStatus' instead of menu/ratings) and do not invent a venue or place type. You MUST extract and populate these fields:
 - 'menuHighlights': Notable dishes, specialties, or popular items.
 - 'ratings': Review ratings from Google, Yelp, etc.
 Also populate 'locationContext' with address, hours, and mapsUri. Set locationIsRelevant to true.
