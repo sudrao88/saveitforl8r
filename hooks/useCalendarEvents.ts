@@ -190,9 +190,9 @@ export const useCalendarEvents = ({ memories, memoriesLoaded, onTombstones }: Us
       }
       if (cancelled || allTombstones.length === 0) return;
 
-      const tombstoneIds = new Set(allTombstones.map(t => t.id));
+      const tombstoneMap = new Map(allTombstones.map(t => [t.id, t]));
       setEventsList(prev => prev.map(e =>
-        tombstoneIds.has(e.id) ? { ...e, isDeleted: true, updatedAt: Date.now() } : e
+        tombstoneMap.has(e.id) ? tombstoneMap.get(e.id)! : e
       ));
       console.log(`[Calendar] Reconciled ${allTombstones.length} orphan event(s) across ${orphanMemoryIds.size} deleted memor${orphanMemoryIds.size === 1 ? 'y' : 'ies'}`);
       onTombstonesRef.current?.(allTombstones);
