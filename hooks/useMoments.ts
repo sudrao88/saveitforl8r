@@ -475,11 +475,17 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
 
           const updatedMoments = prev.map(m => {
             if (m.isDeleted || !m.noteIds.includes(noteId)) return m;
-            const updated = {
+            const remainingNoteIds = m.noteIds.filter(id => id !== noteId);
+            // If the last source note is gone (and this isn't a still-being-created
+            // pending moment), soft-delete the moment — a moment with no source notes
+            // is an orphan, just like an orphan to-do or calendar event.
+            const becameOrphan = remainingNoteIds.length === 0 && !m.isPending;
+            const updated: Moment = {
               ...m,
-              noteIds: m.noteIds.filter(id => id !== noteId),
+              noteIds: remainingNoteIds,
               inputHash: undefined,
               updatedAt: Date.now(),
+              ...(becameOrphan ? { isDeleted: true } : {}),
             };
             changedMoments.push(updated);
             return updated;

@@ -214,6 +214,61 @@ describe('useMoments', () => {
       expect(storageService.saveMoment).not.toHaveBeenCalled();
     });
 
+    it('should soft-delete a moment when its last source note is removed', async () => {
+      const moments = [
+        makeMoment('m1', ['note-1']),
+        makeMoment('m2', ['note-1', 'note-2']),
+      ];
+      (storageService.getMoments as any).mockResolvedValue(moments);
+
+      const memories = [makeMemory('note-1'), makeMemory('note-2')];
+      const { result } = renderHook(() => useMoments(memories));
+
+      await waitFor(() => {
+        expect(result.current.moments).toHaveLength(2);
+      });
+
+      await act(async () => {
+        await result.current.removeNoteFromMoments('note-1');
+      });
+
+      // m1 lost its only source note → should be soft-deleted and disappear from `moments`.
+      // m2 still has note-2 → should remain visible.
+      expect(result.current.moments).toHaveLength(1);
+      expect(result.current.moments[0].id).toBe('m2');
+
+      // m1 should be persisted with isDeleted: true so the deletion syncs.
+      const m1Save = (storageService.saveMoment as any).mock.calls.find(
+        (call: any[]) => call[0].id === 'm1'
+      );
+      expect(m1Save).toBeDefined();
+      expect(m1Save[0].isDeleted).toBe(true);
+    });
+
+    it('should not soft-delete a pending moment whose noteIds is emptied', async () => {
+      // A pending moment legitimately has noteIds: [] during creation, so we must
+      // not interpret a removal-induced empty array on a pending moment as orphaning.
+      const moments = [
+        { ...makeMoment('m-pending', ['note-1']), isPending: true },
+      ];
+      (storageService.getMoments as any).mockResolvedValue(moments);
+
+      const memories = [makeMemory('note-1')];
+      const { result } = renderHook(() => useMoments(memories));
+
+      await waitFor(() => {
+        expect(result.current.moments).toHaveLength(1);
+      });
+
+      await act(async () => {
+        await result.current.removeNoteFromMoments('note-1');
+      });
+
+      // The pending moment should still be present (not soft-deleted).
+      expect(result.current.moments).toHaveLength(1);
+      expect(result.current.moments[0].isDeleted).toBeFalsy();
+    });
+
     it('should clear in-memory synthesis cache for affected moments', async () => {
       const moments = [
         { ...makeMoment('m1', ['note-1', 'note-2']), inputHash: 'old-hash' },

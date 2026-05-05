@@ -24,8 +24,17 @@ import {
 const normalizeTodoTitle = (title: string): string =>
   title.toLowerCase().trim().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ');
 
+export interface UseTodoItemsOptions {
+  /** Active (non-deleted) memories. Items whose memoryId is missing from this set are treated as orphans and auto-tombstoned. */
+  memories: Memory[];
+  /** True once `memories` reflects IndexedDB. Reconciliation is gated on this to avoid tombstoning everything on first render. */
+  memoriesLoaded: boolean;
+  /** Optional callback invoked with healed-orphan tombstones so they can be synced to Drive. */
+  onTombstones?: (tombstones: TodoItem[]) => void;
+}
+
 export interface UseTodoItemsReturn {
-  /** All active todo items, sorted by deadline ascending (no-deadline last), completed last, dismissed last */
+  /** All active todo items whose source memory still exists, sorted by deadline asc (no-deadline last), completed last, dismissed last. */
   items: TodoItem[];
   /** Create/replace items for a memory from enrichment results. Returns all items that need syncing (new + tombstones). */
   processDetectedActionItems: (memory: Memory) => Promise<TodoItem[]>;
@@ -43,10 +52,15 @@ export interface UseTodoItemsReturn {
   pendingCount: number;
 }
 
-export const useTodoItems = (): UseTodoItemsReturn => {
+export const useTodoItems = ({ memories, memoriesLoaded, onTombstones }: UseTodoItemsOptions): UseTodoItemsReturn => {
   const [itemsList, setItemsList] = useState<TodoItem[]>([]);
   const loaded = useRef(false);
   const processingMemoryIds = useRef(new Set<string>());
+  const reconcilingMemoryIds = useRef(new Set<string>());
+  const onTombstonesRef = useRef(onTombstones);
+  useEffect(() => { onTombstonesRef.current = onTombstones; }, [onTombstones]);
+
+  const activeMemoryIds = useMemo(() => new Set(memories.map(m => m.id)), [memories]);
 
   const refreshItems = useCallback(async () => {
     try {
@@ -209,10 +223,53 @@ export const useTodoItems = (): UseTodoItemsReturn => {
     return updated;
   }, [itemsList]);
 
-  // Sort: active first (by deadline asc, no-deadline last), then completed, then dismissed
+  // Self-heal: tombstone any items whose source memory no longer exists, so they
+  // disappear from the UI and the deletion propagates to other devices via sync.
+  useEffect(() => {
+    if (!memoriesLoaded || !loaded.current) return;
+
+    const orphanMemoryIds = new Set<string>();
+    for (const item of itemsList) {
+      if (item.isDeleted) continue;
+      if (activeMemoryIds.has(item.memoryId)) continue;
+      if (reconcilingMemoryIds.current.has(item.memoryId)) continue;
+      orphanMemoryIds.add(item.memoryId);
+    }
+    if (orphanMemoryIds.size === 0) return;
+
+    let cancelled = false;
+    (async () => {
+      const allTombstones: TodoItem[] = [];
+      for (const memoryId of orphanMemoryIds) {
+        reconcilingMemoryIds.current.add(memoryId);
+        try {
+          const tombstones = await softDeleteTodoItemsByMemoryId(memoryId);
+          if (tombstones.length > 0) allTombstones.push(...tombstones);
+        } catch (err) {
+          console.error(`[Todo] Failed to reconcile orphans for memory ${memoryId}:`, err);
+        } finally {
+          reconcilingMemoryIds.current.delete(memoryId);
+        }
+      }
+      if (cancelled || allTombstones.length === 0) return;
+
+      const tombstoneMap = new Map(allTombstones.map(t => [t.id, t]));
+      setItemsList(prev => prev.map(item =>
+        tombstoneMap.has(item.id) ? tombstoneMap.get(item.id)! : item
+      ));
+      console.log(`[Todo] Reconciled ${allTombstones.length} orphan item(s) across ${orphanMemoryIds.size} deleted memor${orphanMemoryIds.size === 1 ? 'y' : 'ies'}`);
+      onTombstonesRef.current?.(allTombstones);
+    })();
+
+    return () => { cancelled = true; };
+  }, [itemsList, activeMemoryIds, memoriesLoaded]);
+
+  // Sort: active first (by deadline asc, no-deadline last), then completed, then dismissed.
+  // Also drops any item whose source memory is missing — defensive guard for the brief
+  // window between an orphan being detected and its tombstone landing in itemsList.
   const items = useMemo(
     () => itemsList
-      .filter(item => !item.isDeleted)
+      .filter(item => !item.isDeleted && activeMemoryIds.has(item.memoryId))
       .sort((a, b) => {
         // Dismissed items go last
         if (a.isDismissed !== b.isDismissed) return a.isDismissed ? 1 : -1;
@@ -228,7 +285,7 @@ export const useTodoItems = (): UseTodoItemsReturn => {
         if (!a.deadline && b.deadline) return 1;
         return 0;
       }),
-    [itemsList]
+    [itemsList, activeMemoryIds]
   );
 
   const pendingCount = useMemo(
