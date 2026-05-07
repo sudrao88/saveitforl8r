@@ -326,11 +326,15 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
         return synthesis;
       };
 
-      try {
-        // If we already have a polling promise for the same hash, reuse it
-        // without re-checking the server.
-        let pollingPromise = reusableExistingPoll?.promise;
+      // Hoisted out of the try so the catch block can use promise identity
+      // (rather than hash equality) to decide whether to clear the in-flight
+      // entry — same approach as the success path at line ~388. This avoids a
+      // failing call wiping a *concurrent* call's entry when both share the
+      // same hash but each created its own polling promise during the
+      // narrow setup-phase race window.
+      let pollingPromise: Promise<SynthesisResponse> | undefined = reusableExistingPoll?.promise;
 
+      try {
         if (!pollingPromise) {
           // Step 1: check if the server already has a result for this moment.
           const existing = await fetchPendingSynthesisResults([moment.id]);
@@ -399,10 +403,15 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
 
         return synthesis;
       } catch (err) {
-        // If a superseding call replaced our entry, leave it alone.
-        const stillOurs = inFlightPolling.current.get(moment.id);
-        if (stillOurs && stillOurs.hash === currentHash) {
-          inFlightPolling.current.delete(moment.id);
+        // Only clear the in-flight entry if it still references our promise.
+        // Using promise identity (not hash) avoids wiping a concurrent
+        // same-hash call's entry, and naturally leaves any superseding entry
+        // alone (its promise differs).
+        if (pollingPromise) {
+          const stillOurs = inFlightPolling.current.get(moment.id);
+          if (stillOurs && stillOurs.promise === pollingPromise) {
+            inFlightPolling.current.delete(moment.id);
+          }
         }
         // An AbortError means a newer call superseded us — that newer call
         // owns the pendingSynthesisHash marker and will persist its own
