@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v102",
-  "buildNumber": 102,
-  "buildDate": "2026-05-05T00:00:00.000Z",
+  "version": "saveitforl8r-v103",
+  "buildNumber": 103,
+  "buildDate": "2026-05-07T00:00:00.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Fixes a bug where to-do items, calendar events, and moments could persist after their source note was deleted, leaving the user with no reliable way to remove them. The To Do and Calendar views now filter out orphans and quietly clean them up so deletions stay in sync across devices, and a moment is removed automatically when its last source note is deleted."
+  "changelog": "Moments now refresh in the background as soon as a new note matches them, so they're already up to date the next time you open them. If a second matching note arrives mid-refresh, the in-flight synthesis is replaced with a fresh one for the new note set rather than persisting a stale result."
 }

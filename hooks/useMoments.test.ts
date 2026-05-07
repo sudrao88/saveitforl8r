@@ -469,7 +469,7 @@ describe('useMoments', () => {
       });
 
       expect(geminiService.submitResynthesis).not.toHaveBeenCalled();
-      expect(geminiService.pollSynthesisResult).toHaveBeenCalledWith('m1');
+      expect(geminiService.pollSynthesisResult).toHaveBeenCalledWith('m1', expect.any(AbortSignal));
     });
 
     it('writes a recovery marker before submitting and clears it on completion', async () => {
@@ -599,6 +599,147 @@ describe('useMoments', () => {
       );
       expect(resurrectedSave).toBeUndefined();
       expect(storageService.saveMomentSynthesis).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('addNoteToMoment background re-synthesis', () => {
+    /**
+     * Hook saveMoment up to a Map and back through getMoment so the
+     * persistResult re-read inside loadSynthesis sees the noteIds that
+     * addNoteToMoment just wrote. Without this, the default mock returns the
+     * original moments and persistResult silently reverts the noteIds.
+     */
+    const wireMomentStorage = (initial: Moment[]) => {
+      const store = new Map<string, Moment>(initial.map(m => [m.id, m]));
+      (storageService.getMoments as any).mockImplementation(async () =>
+        Array.from(store.values())
+      );
+      (storageService.getMoment as any).mockImplementation(async (id: string) =>
+        store.get(id) ?? null
+      );
+      (storageService.saveMoment as any).mockImplementation(async (m: Moment) => {
+        store.set(m.id, m);
+      });
+      return store;
+    };
+
+    it('triggers a background submitResynthesis after a note matches', async () => {
+      wireMomentStorage([makeMoment('m1', ['note-1'])]);
+      const memories = [makeMemory('note-1'), makeMemory('note-2')];
+
+      (geminiService.fetchPendingSynthesisResults as any).mockResolvedValue({
+        m1: { status: 'not_found' },
+      });
+      (geminiService.submitResynthesis as any).mockResolvedValue({ momentId: 'm1' });
+      (geminiService.pollSynthesisResult as any).mockResolvedValue({
+        format: 'general',
+        title: 'Done',
+        sections: [{ heading: 'S', items: [{ label: 'i', sourceNoteId: 'note-1' }] }],
+        generatedFrom: ['note-1'],
+      });
+
+      const { result } = renderHook(() => useMoments(memories));
+      await waitFor(() => expect(result.current.moments).toHaveLength(1));
+
+      await act(async () => {
+        await result.current.addNoteToMoment('m1', 'note-2');
+      });
+
+      // Wait for the fire-and-forget loadSynthesis to drive submitResynthesis.
+      await waitFor(() => {
+        expect(geminiService.submitResynthesis).toHaveBeenCalledTimes(1);
+      });
+
+      const m1 = result.current.moments.find(m => m.id === 'm1');
+      expect(m1?.noteIds).toEqual(['note-1', 'note-2']);
+    });
+
+    it('does not trigger background re-synthesis for a pending moment', async () => {
+      wireMomentStorage([{ ...makeMoment('m1', ['note-1']), isPending: true }]);
+      const memories = [makeMemory('note-1'), makeMemory('note-2')];
+
+      const { result } = renderHook(() => useMoments(memories));
+      await waitFor(() => expect(result.current.moments).toHaveLength(1));
+
+      await act(async () => {
+        await result.current.addNoteToMoment('m1', 'note-2');
+      });
+
+      // Give any background promise a chance to run before asserting.
+      await act(async () => {
+        await new Promise(r => setTimeout(r, 0));
+      });
+
+      expect(geminiService.submitResynthesis).not.toHaveBeenCalled();
+      expect(geminiService.fetchPendingSynthesisResults).not.toHaveBeenCalled();
+    });
+
+    it('aborts the in-flight poll and submits fresh when a second match arrives mid-flight', async () => {
+      wireMomentStorage([makeMoment('m1', ['note-1'])]);
+      const memories = [makeMemory('note-1'), makeMemory('note-2'), makeMemory('note-3')];
+
+      (geminiService.fetchPendingSynthesisResults as any).mockResolvedValue({
+        m1: { status: 'not_found' },
+      });
+      (geminiService.submitResynthesis as any).mockResolvedValue({ momentId: 'm1' });
+
+      // First poll: hangs until aborted, then rejects with AbortError.
+      // Second poll: resolves with the fresh result.
+      let pollCallCount = 0;
+      (geminiService.pollSynthesisResult as any).mockImplementation(
+        (_id: string, signal?: AbortSignal) => {
+          pollCallCount++;
+          if (pollCallCount === 1) {
+            return new Promise((_, reject) => {
+              const onAbort = () => reject(
+                new DOMException('Synthesis polling aborted', 'AbortError')
+              );
+              if (signal?.aborted) onAbort();
+              else signal?.addEventListener('abort', onAbort, { once: true });
+            });
+          }
+          return Promise.resolve({
+            format: 'general',
+            title: 'Fresh (n=3)',
+            sections: [{ heading: 'S', items: [{ label: 'i', sourceNoteId: 'note-1' }] }],
+            generatedFrom: ['note-1'],
+          });
+        }
+      );
+
+      const { result } = renderHook(() => useMoments(memories));
+      await waitFor(() => expect(result.current.moments).toHaveLength(1));
+
+      // First match — kicks off in-flight poll for [note-1, note-2].
+      await act(async () => {
+        await result.current.addNoteToMoment('m1', 'note-2');
+      });
+      await waitFor(() => expect(pollCallCount).toBe(1));
+
+      // Second match — should abort the first poll and submit a fresh
+      // resynthesis for [note-1, note-2, note-3].
+      await act(async () => {
+        await result.current.addNoteToMoment('m1', 'note-3');
+      });
+
+      await waitFor(() => {
+        expect(geminiService.submitResynthesis).toHaveBeenCalledTimes(2);
+      });
+      await waitFor(() => expect(pollCallCount).toBe(2));
+
+      // Only the second submission's result is persisted (the first poll's
+      // AbortError causes its loadSynthesis caller to bail before persist).
+      await waitFor(() => {
+        expect(storageService.saveMomentSynthesis).toHaveBeenCalled();
+      });
+      const synthesisCalls = (storageService.saveMomentSynthesis as any).mock.calls;
+      const persistedTitles = synthesisCalls.map((c: any[]) => c[0]?.content?.title);
+      expect(persistedTitles).toContain('Fresh (n=3)');
+      // The aborted call did not persist anything for the n=2 set.
+      expect(persistedTitles.filter((t: string | undefined) => t === undefined)).toHaveLength(0);
+
+      const m1 = result.current.moments.find(m => m.id === 'm1');
+      expect(m1?.noteIds).toEqual(['note-1', 'note-2', 'note-3']);
     });
   });
 });
