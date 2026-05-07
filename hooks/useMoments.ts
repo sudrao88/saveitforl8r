@@ -70,9 +70,16 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
   const loaded = useRef(false);
   const onMomentChangedRef = useRef<((moment: Moment) => void) | undefined>(undefined);
 
-  // Track in-flight synthesis polling promises so concurrent calls for the
-  // same moment reuse the same promise instead of submitting duplicate requests.
-  const inFlightPolling = useRef<Map<string, Promise<SynthesisResponse>>>(new Map());
+  // Track in-flight synthesis polling so concurrent calls for the same moment
+  // can either reuse (same input hash) or supersede (different hash, e.g. a
+  // fresh note matched while polling). The AbortController cancels the older
+  // poll when a newer call submits a fresh resynthesis for an updated note set.
+  type InFlightPoll = {
+    hash: string;
+    promise: Promise<SynthesisResponse>;
+    abort: AbortController;
+  };
+  const inFlightPolling = useRef<Map<string, InFlightPoll>>(new Map());
 
   // Keep refs for polling access
   const momentsListRef = useRef<Moment[]>([]);
@@ -244,17 +251,26 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
       // is cached and ready when the user returns.
       //
       // If a poll is already in flight for this moment from an earlier call in
-      // this session (e.g. user reopens the sheet while polling continues),
-      // skip the redundant processingError-clear write and the server status
-      // check — that work was already done by the original call.
+      // this session (e.g. user reopens the sheet while polling continues), we
+      // either reuse it (same input hash → same result) or supersede it
+      // (different hash → the older poll's result is now stale).
       const existingPoll = inFlightPolling.current.get(moment.id);
+      const reusableExistingPoll = existingPoll && existingPoll.hash === currentHash
+        ? existingPoll
+        : undefined;
+      if (existingPoll && !reusableExistingPoll) {
+        // Newer note set — abort the older poll. Its caller's `await` throws
+        // AbortError and the catch-block bails without persisting stale data.
+        existingPoll.abort.abort();
+        inFlightPolling.current.delete(moment.id);
+      }
 
       setSynthesisLoading(prev => prev.has(moment.id) ? prev : new Set(prev).add(moment.id));
 
       // Snapshot the moment with processingError cleared (issue 2). We hold
       // this so subsequent persistence writes layer on a clean slate.
       let workingMoment: Moment = moment;
-      if (!existingPoll && moment.processingError) {
+      if (!reusableExistingPoll && moment.processingError) {
         workingMoment = { ...moment, processingError: false, updatedAt: Date.now() };
         await saveMoment(workingMoment);
         setMomentsList(prev => prev.map(m => m.id === moment.id ? workingMoment : m));
@@ -311,9 +327,9 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
       };
 
       try {
-        // If we already have a polling promise from this session (e.g. user
-        // re-opened the sheet), reuse it without re-checking the server.
-        let pollingPromise = existingPoll;
+        // If we already have a polling promise for the same hash, reuse it
+        // without re-checking the server.
+        let pollingPromise = reusableExistingPoll?.promise;
 
         if (!pollingPromise) {
           // Step 1: check if the server already has a result for this moment.
@@ -330,13 +346,17 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
             return signal?.aborted ? null : synthesis;
           }
 
+          // Each fresh poll gets its own AbortController so a later
+          // supersede-call can cancel it without affecting unrelated polls.
+          const abort = new AbortController();
+
           if (
             serverEntry?.status === 'processing' &&
             (!serverEntry.inputHash || serverEntry.inputHash === currentHash)
           ) {
             // Server is still synthesizing for the same input — just poll.
-            pollingPromise = pollSynthesisResult(moment.id);
-            inFlightPolling.current.set(moment.id, pollingPromise);
+            pollingPromise = pollSynthesisResult(moment.id, abort.signal);
+            inFlightPolling.current.set(moment.id, { hash: currentHash, promise: pollingPromise, abort });
           } else {
             // No usable server result — submit a fresh resynthesis. Persist a
             // recovery marker so that if this session is interrupted, the next
@@ -356,13 +376,18 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
             setMomentsList(prev => prev.map(m => m.id === moment.id ? workingMoment : m));
 
             await submitResynthesis(moment, currentMemories, currentHash);
-            pollingPromise = pollSynthesisResult(moment.id);
-            inFlightPolling.current.set(moment.id, pollingPromise);
+            pollingPromise = pollSynthesisResult(moment.id, abort.signal);
+            inFlightPolling.current.set(moment.id, { hash: currentHash, promise: pollingPromise, abort });
           }
         }
 
         const rawSynthesis = await pollingPromise;
-        inFlightPolling.current.delete(moment.id);
+        // Only clear the in-flight entry if it's still ours — a superseding
+        // call may have already replaced it with a fresh poll.
+        const stillOurs = inFlightPolling.current.get(moment.id);
+        if (stillOurs && stillOurs.promise === pollingPromise) {
+          inFlightPolling.current.delete(moment.id);
+        }
 
         const synthesis = await persistResult(rawSynthesis);
 
@@ -374,14 +399,29 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
 
         return synthesis;
       } catch (err) {
-        inFlightPolling.current.delete(moment.id);
+        // If a superseding call replaced our entry, leave it alone.
+        const stillOurs = inFlightPolling.current.get(moment.id);
+        if (stillOurs && stillOurs.hash === currentHash) {
+          inFlightPolling.current.delete(moment.id);
+        }
+        // An AbortError means a newer call superseded us — that newer call
+        // owns the pendingSynthesisHash marker and will persist its own
+        // result. Don't log, don't clear, don't persist.
+        if ((err as Error)?.name === 'AbortError') {
+          return null;
+        }
         console.error('[Moments] Synthesis failed:', err);
-        // Clear the recovery marker so app start doesn't keep polling a dead request.
+        // Clear the recovery marker so app start doesn't keep polling a dead
+        // request — but only if it still matches the marker *this call* set.
+        // A concurrent newer call may have overwritten it with its own hash;
+        // wiping that would leave the newer in-flight orphan.
         if (workingMoment.pendingSynthesisHash || workingMoment.pendingSynthesisAt) {
-          // Re-read latest from IDB so a deletion that happened during the
-          // failed synthesis isn't reverted.
           const latest = await getMoment(moment.id);
-          if (latest && !latest.isDeleted) {
+          if (
+            latest &&
+            !latest.isDeleted &&
+            latest.pendingSynthesisHash === workingMoment.pendingSynthesisHash
+          ) {
             const cleared: Moment = {
               ...latest,
               pendingSynthesisHash: undefined,
@@ -404,11 +444,25 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
     [synthesesMap]
   );
 
+  // Stable ref for cross-callback access to loadSynthesis. addNoteToMoment
+  // uses it to kick off background re-synthesis when a new note matches a
+  // moment, without dragging synthesesMap into the addNoteToMoment dep list
+  // (which would churn the App.tsx setOnNoteMatchedMoments wiring).
+  const loadSynthesisRef = useRef<typeof loadSynthesis>(loadSynthesis);
+  useEffect(() => { loadSynthesisRef.current = loadSynthesis; }, [loadSynthesis]);
+
   // Add a note to a moment (called when enrichment matches).
   // Re-reads the latest record from IndexedDB before saving (mirrors the
   // note enrichment polling pattern) so a moment that's been tombstoned
   // — locally or via a sync from another device — isn't resurrected by
   // a stale React-state copy.
+  //
+  // After persisting, kicks off a background re-synthesis so the moment is
+  // ready when the user next opens its sheet. loadSynthesis itself handles
+  // the supersede case if multiple matches arrive in quick succession (an
+  // older in-flight poll for a stale note set is aborted in favor of a fresh
+  // submit). Pending moments are skipped — the creation pipeline already
+  // produces their initial synthesis.
   const addNoteToMoment = useCallback(
     async (momentId: string, noteId: string): Promise<void> => {
       const latest = await getMoment(momentId);
@@ -428,6 +482,12 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
         return exists ? prev.map(m => m.id === momentId ? updated : m) : [...prev, updated];
       });
       onMomentChangedRef.current?.(updated);
+
+      if (!updated.isPending) {
+        loadSynthesisRef.current(updated, memoriesRef.current).catch(err =>
+          console.error(`[Moments] Background re-synthesis failed for ${momentId}:`, err)
+        );
+      }
     },
     []
   );
