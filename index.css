@@ -43,6 +43,7 @@
   --z-overlay: 50;
   --z-modal: 60;
   --z-sheet: 70;
+  --z-nested-modal: 75;
   --z-toast: 80;
   --z-tooltip: 90;
 
