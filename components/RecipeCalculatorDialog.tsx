@@ -121,7 +121,7 @@ const RecipeCalculatorDialog: React.FC<RecipeCalculatorDialogProps> = ({ ingredi
   const animClass = phase === 'exit' ? overlay.modalExit : overlay.modalEnter;
   const backdropClass = phase === 'exit' ? overlay.backdropExit : overlay.backdropEnter;
   const hasParseable = parsed.some((p) => p.kind === 'parsed');
-  const scaleLabel = scale === 1 ? null : `× ${formatQuantity(scale, null)}`;
+  const scaleLabel = Math.abs(scale - 1) < 0.001 ? null : `× ${formatQuantity(scale, null)}`;
 
   const dialog = (
     <div
@@ -214,7 +214,7 @@ const RecipeCalculatorDialog: React.FC<RecipeCalculatorDialogProps> = ({ ingredi
               >
                 <input
                   type="text"
-                  inputMode="decimal"
+                  inputMode="text"
                   value={inputValue}
                   aria-label={`Quantity for ${row.name}`}
                   onChange={(e) => setDrafts((d) => ({ ...d, [idx]: e.target.value }))}
