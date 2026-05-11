@@ -78,7 +78,7 @@ interface MomentSheetProps {
   moment: Moment;
   memories: Memory[];
   onClose: () => void;
-  loadSynthesis: (moment: Moment, memories: Memory[], signal?: AbortSignal) => Promise<SynthesisResponse | null>;
+  loadSynthesis: (moment: Moment, memories: Memory[], signal?: AbortSignal, force?: boolean) => Promise<SynthesisResponse | null>;
   onDelete: (momentId: string) => Promise<void>;
   onDeleteNotes?: (noteIds: string[]) => void;
   onViewAttachment?: (attachment: Attachment, allAttachments: Attachment[]) => void;
@@ -186,7 +186,8 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
     setIsLoading(true);
     setError(false);
     try {
-      const result = await loadSynthesis(moment, memories);
+      // force=true bypasses caches so the user always gets a fresh synthesis
+      const result = await loadSynthesis(moment, memories, undefined, true);
       setSynthesis(result);
       if (!result) setError(true);
     } catch {
