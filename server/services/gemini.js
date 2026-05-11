@@ -376,7 +376,7 @@ const CONTENT_TYPES_LIST = `- 'meeting_notes': Meeting minutes, standup notes, 1
 - 'recommendation': Someone recommended a movie/book/restaurant/product to the user
 - 'idea': Brainstorms, concepts, creative thoughts, hypotheses
 - 'task_list': To-do items, task tracking, checklists, action plans
-- 'recipe': Cooking recipes, food/drink preparation instructions
+- 'recipe': Cooking recipes, food/drink preparation instructions. Any note with an ingredient list and/or preparation steps is a 'recipe', even when ingredient brand names appear in the title or text (e.g. "Basque Cheesecake with Amul Cream" is a 'recipe', not a 'product')
 - 'quote': Quotes, sayings, excerpts from other sources
 - 'observation': Things the user noticed or experienced in the moment
 - 'reference': Explicit reference to a known entity (movie, book, place, product, person, event)
@@ -391,7 +391,7 @@ const CONTENT_TYPES_LIST = `- 'meeting_notes': Meeting minutes, standup notes, 1
 - 'comparison': Pros/cons lists, product comparisons, decision matrices
 - 'snippet': Code snippets, terminal commands, configs, technical reference
 - 'article_blog': News articles, blog posts, opinion pieces, longform written content
-- 'product': Product pages, product reviews, shopping items with specs/pricing
+- 'product': Product pages, product reviews, or shopping items with specs/pricing where the note is ABOUT acquiring or evaluating that product. Do NOT use this for notes where branded items only appear as ingredients in a 'recipe' — classify those as 'recipe'
 - 'place_restaurant': Restaurant pages, venue info, place reviews with hours/menus
 - 'video': YouTube videos, video content, tutorials, vlogs
 - 'social_media_post': Social media posts, tweets, threads, viral content
@@ -427,6 +427,10 @@ highly confident the content is self-contained and would not benefit from extern
 CONTENT TYPES:
 ${CONTENT_TYPES_LIST}
 
+DISAMBIGUATION RULES:
+- Recipe vs. Product: If the note contains an ingredient list (quantities + foods) or cooking/baking/preparation steps, classify as 'recipe'. Brand names of ingredients (e.g. "Amul Cream", "Hershey's cocoa") or recipe titles that reference branded ingredients do NOT make it a 'product'. Use 'product' only when the note is about evaluating, comparing, or shopping for a specific item.
+- Honor user tags: tags like #Recipe, #Baking, #Dessert strongly indicate 'recipe'; tags like #Shopping, #Wishlist indicate 'product' or 'wishlist'.
+
 SEARCH RECOMMENDATION GUIDELINES:
 - 'high': Note references specific entities (movies, books, restaurants, products, places, people, events) or topics that external data would enrich. THIS IS THE DEFAULT when uncertain.
 - 'medium': Note has some elements that could benefit from search, but also has significant self-contained content.
@@ -447,6 +451,10 @@ STEP 3: Based on the fetched content, classify it into one of the content types 
 
 CONTENT TYPES:
 ${CONTENT_TYPES_LIST}
+
+DISAMBIGUATION RULES:
+- Recipe vs. Product: If the fetched content contains an ingredient list (quantities + foods) or cooking/baking/preparation steps, classify as 'recipe'. Brand names of ingredients (e.g. "Amul Cream", "Hershey's cocoa") or recipe titles that reference branded ingredients do NOT make it a 'product'. Use 'product' only when the content is about evaluating, comparing, or shopping for a specific item.
+- Honor user tags: tags like #Recipe, #Baking, #Dessert strongly indicate 'recipe'; tags like #Shopping, #Wishlist indicate 'product' or 'wishlist'.
 
 CRITICAL DEFAULT: When in doubt, classify as 'general' with searchRecommendation value 'high'.
 
