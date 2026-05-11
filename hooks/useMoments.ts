@@ -38,8 +38,9 @@ interface UseMomentsReturn {
   moments: Moment[];
   /** Create a new moment from an objective (returns immediately with pending placeholder) */
   createNewMoment: (objective: string, memories: Memory[]) => Promise<Moment | null>;
-  /** Load synthesis for a moment (cache-aware, triggers re-synthesis if new notes) */
-  loadSynthesis: (moment: Moment, memories: Memory[], signal?: AbortSignal) => Promise<SynthesisResponse | null>;
+  /** Load synthesis for a moment (cache-aware, triggers re-synthesis if new notes).
+   *  Pass `force: true` to bypass caches and always submit a fresh resynthesis. */
+  loadSynthesis: (moment: Moment, memories: Memory[], signal?: AbortSignal, force?: boolean) => Promise<SynthesisResponse | null>;
   /** Set of moment IDs currently loading synthesis */
   synthesisLoading: Set<string>;
   /** Current moment creation loading state */
@@ -202,9 +203,12 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
     [startPolling]
   );
 
-  // Load synthesis (cache-aware; re-synthesizes if notes have changed)
+  // Load synthesis (cache-aware; re-synthesizes if notes have changed).
+  // `force` bypasses every cache/server-result check and always submits a
+  // fresh resynthesis — used by the "Re-synthesize" button so the user can
+  // regenerate even when nothing about the input has changed.
   const loadSynthesis = useCallback(
-    async (moment: Moment, currentMemories: Memory[], signal?: AbortSignal): Promise<SynthesisResponse | null> => {
+    async (moment: Moment, currentMemories: Memory[], signal?: AbortSignal, force?: boolean): Promise<SynthesisResponse | null> => {
       const currentHash = computeInputHash(moment.noteIds, currentMemories);
       const currentNoteIdSet = new Set(moment.noteIds);
 
@@ -224,21 +228,23 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
         return true;
       };
 
-      // Check in-memory cache first
-      const cached = synthesesMap.get(moment.id);
-      if (cached && isSynthesisFresh(cached)) {
-        return cached.content;
-      }
+      if (!force) {
+        // Check in-memory cache first
+        const cached = synthesesMap.get(moment.id);
+        if (cached && isSynthesisFresh(cached)) {
+          return cached.content;
+        }
 
-      // Check IndexedDB
-      const persisted = await getMomentSynthesis(moment.id);
-      if (persisted && isSynthesisFresh(persisted)) {
-        setSynthesesMap(prev => {
-          const next = new Map(prev);
-          next.set(moment.id, persisted);
-          return next;
-        });
-        return persisted.content;
+        // Check IndexedDB
+        const persisted = await getMomentSynthesis(moment.id);
+        if (persisted && isSynthesisFresh(persisted)) {
+          setSynthesesMap(prev => {
+            const next = new Map(prev);
+            next.set(moment.id, persisted);
+            return next;
+          });
+          return persisted.content;
+        }
       }
 
       // Cache miss — first check the server's Firestore-backed result store
@@ -255,12 +261,15 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
       // either reuse it (same input hash → same result) or supersede it
       // (different hash → the older poll's result is now stale).
       const existingPoll = inFlightPolling.current.get(moment.id);
-      const reusableExistingPoll = existingPoll && existingPoll.hash === currentHash
+      // When forcing, never reuse an existing poll — the user wants a fresh
+      // synthesis, even if a same-hash poll is already in flight.
+      const reusableExistingPoll = !force && existingPoll && existingPoll.hash === currentHash
         ? existingPoll
         : undefined;
       if (existingPoll && !reusableExistingPoll) {
-        // Newer note set — abort the older poll. Its caller's `await` throws
-        // AbortError and the catch-block bails without persisting stale data.
+        // Newer note set (or forced) — abort the older poll. Its caller's
+        // `await` throws AbortError and the catch-block bails without
+        // persisting stale data.
         existingPoll.abort.abort();
         inFlightPolling.current.delete(moment.id);
       }
@@ -337,7 +346,9 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
       try {
         if (!pollingPromise) {
           // Step 1: check if the server already has a result for this moment.
-          const existing = await fetchPendingSynthesisResults([moment.id]);
+          // When forcing, skip this check entirely — the user wants a new
+          // synthesis, not the previously-cached server result.
+          const existing = force ? {} : await fetchPendingSynthesisResults([moment.id]);
           const serverEntry = existing[moment.id];
 
           if (
