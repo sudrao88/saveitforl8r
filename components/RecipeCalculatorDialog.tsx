@@ -70,6 +70,15 @@ const RecipeCalculatorDialog: React.FC<RecipeCalculatorDialogProps> = ({ ingredi
   }
 
   const parsed = useMemo(() => ingredients.map((line) => parseIngredient(line)), [ingredients]);
+  const { parseableRows, unparseableRows } = useMemo(() => {
+    const parseableRows: Array<{ row: ParsedIngredient & { kind: 'parsed' }; idx: number }> = [];
+    const unparseableRows: Array<{ row: ParsedIngredient & { kind: 'unparseable' }; idx: number }> = [];
+    parsed.forEach((row, idx) => {
+      if (row.kind === 'parsed') parseableRows.push({ row, idx });
+      else unparseableRows.push({ row, idx });
+    });
+    return { parseableRows, unparseableRows };
+  }, [parsed]);
 
   const commitDraft = useCallback((index: number, raw: string, parsedRow: ParsedIngredient) => {
     setDrafts((d) => {
@@ -120,7 +129,6 @@ const RecipeCalculatorDialog: React.FC<RecipeCalculatorDialogProps> = ({ ingredi
 
   const animClass = phase === 'exit' ? overlay.modalExit : overlay.modalEnter;
   const backdropClass = phase === 'exit' ? overlay.backdropExit : overlay.backdropEnter;
-  const hasParseable = parsed.some((p) => p.kind === 'parsed');
   const scaleLabel = Math.abs(scale - 1) < 0.001 ? null : `× ${formatQuantity(scale, null)}`;
 
   const dialog = (
@@ -183,25 +191,11 @@ const RecipeCalculatorDialog: React.FC<RecipeCalculatorDialogProps> = ({ ingredi
         </div>
 
         <div className="overflow-y-auto flex-1 min-h-0 p-4 space-y-2">
-          {parsed.length === 0 ? (
+          {parsed.length === 0 && (
             <p className={`${text.body} text-center py-6`}>No ingredients to scale.</p>
-          ) : !hasParseable ? (
-            <p className={`${text.caption} text-center py-2`}>None of these ingredients have a numeric quantity.</p>
-          ) : null}
+          )}
 
-          {parsed.map((row, idx) => {
-            if (row.kind === 'unparseable') {
-              return (
-                <div
-                  key={idx}
-                  className="flex items-center gap-2 py-1.5 text-sm text-(--color-text-tertiary) opacity-60"
-                  data-testid="ingredient-row-unparseable"
-                >
-                  <span className="break-words">{row.original}</span>
-                </div>
-              );
-            }
-
+          {parseableRows.map(({ row, idx }) => {
             const display = deriveDisplay(row, scale, unitSystem);
             const draftValue = drafts[idx];
             const inputValue = draftValue !== undefined ? draftValue : formatQuantity(display.quantity, display.unit);
@@ -239,6 +233,21 @@ const RecipeCalculatorDialog: React.FC<RecipeCalculatorDialogProps> = ({ ingredi
               </div>
             );
           })}
+
+          {unparseableRows.length > 0 && (
+            <div className={parseableRows.length > 0 ? 'pt-3 border-t border-(--color-border-subtle) space-y-2' : 'space-y-2'}>
+              <p className={text.label}>None of these ingredients have a numeric quantity</p>
+              {unparseableRows.map(({ row, idx }) => (
+                <div
+                  key={idx}
+                  className="flex items-center gap-2 py-1.5 text-sm text-(--color-text-tertiary) opacity-60"
+                  data-testid="ingredient-row-unparseable"
+                >
+                  <span className="break-words">{row.original}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
