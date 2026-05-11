@@ -235,7 +235,7 @@ const RecipeCalculatorDialog: React.FC<RecipeCalculatorDialogProps> = ({ ingredi
           })}
 
           {unparseableRows.length > 0 && (
-            <div className="pt-3 mt-2 border-t border-(--color-border-subtle) space-y-2">
+            <div className={parseableRows.length > 0 ? 'pt-3 border-t border-(--color-border-subtle) space-y-2' : 'space-y-2'}>
               <p className={text.label}>None of these ingredients have a numeric quantity</p>
               {unparseableRows.map(({ row, idx }) => (
                 <div
