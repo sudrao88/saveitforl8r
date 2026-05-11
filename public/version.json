@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v104",
-  "buildNumber": 104,
+  "version": "saveitforl8r-v105",
+  "buildNumber": 105,
   "buildDate": "2026-05-11T00:00:00.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Recipe memories now have a built-in calculator: open it to rescale ingredient quantities to a new serving size and toggle between Imperial and Metric units. Fraction inputs like '1 1/2' are supported on mobile keyboards."
+  "changelog": "Recipe Calculator now groups ingredients without numeric quantities (like \"Pinch of salt\") at the bottom under a clear section header, so editable rows stay together at the top."
 }
