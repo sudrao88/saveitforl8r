@@ -150,6 +150,7 @@ export const zIndex = {
   overlay: 'z-(--z-overlay)',
   modal: 'z-(--z-modal)',
   sheet: 'z-(--z-sheet)',
+  nestedModal: 'z-(--z-nested-modal)',
   toast: 'z-(--z-toast)',
   tooltip: 'z-(--z-tooltip)',
 } as const;

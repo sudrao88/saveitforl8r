@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
-import { Trash2, Loader2, Clock, ExternalLink, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, WifiOff, CloudOff, FileText, Paperclip, MoreVertical, AlertTriangle, AlertCircle, LogIn, Maximize2, Eye, Pin, Pencil, Lightbulb, CircleCheck, UtensilsCrossed, ListOrdered, ThumbsUp, ThumbsDown, DollarSign, MapPin, CalendarDays, ClipboardList, MessageSquare, Users, Mic, Code, Heart, Scale, GraduationCap, Briefcase, Music, Film, BookOpenCheck, Bookmark, Phone, Mail, ScrollText, Tag, Clock3, Flame, Quote, Hourglass, Sparkles } from 'lucide-react';
+import { Trash2, Loader2, Clock, ExternalLink, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, WifiOff, CloudOff, FileText, Paperclip, MoreVertical, AlertTriangle, AlertCircle, LogIn, Maximize2, Eye, Pin, Pencil, Lightbulb, CircleCheck, UtensilsCrossed, ListOrdered, ThumbsUp, ThumbsDown, DollarSign, MapPin, CalendarDays, ClipboardList, MessageSquare, Users, Mic, Code, Heart, Scale, GraduationCap, Briefcase, Music, Film, BookOpenCheck, Bookmark, Phone, Mail, ScrollText, Tag, Clock3, Flame, Quote, Hourglass, Sparkles, Calculator } from 'lucide-react';
 import { Memory, Attachment, UploadProgress, isMemoryInFlight, isMemoryFailed } from '../types.ts';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { btn, card, confirm, menu, overlay, text } from '../styles/design-system';
 import { downloadDataUri } from '../services/downloadService';
 import { ChecklistDisplay, parseChecklistFromHtml, serializeChecklistToHtml, cascadeToggle } from './ChecklistItems';
+import RecipeCalculatorDialog from './RecipeCalculatorDialog';
 
 interface EnrichmentSectionProps {
   icon: React.ReactNode;
@@ -242,6 +243,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
   const [showSummary, setShowSummary] = useState(false);
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
   const [isShaking, setIsShaking] = useState(false);
+  const [showCalculator, setShowCalculator] = useState(false);
 
   const [isTruncated, setIsTruncated] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -643,6 +645,16 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                                     <span className="[&>svg]:w-4 [&>svg]:h-4">{section.icon}</span>
                                 </button>
                             ))}
+                            {enrichment?.contentType === 'recipe' && Array.isArray(enrichment.ingredients) && enrichment.ingredients.length > 0 && (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); setShowCalculator(true); }}
+                                    title="Recipe calculator"
+                                    aria-label="Open recipe calculator"
+                                    className="p-2 rounded-(--radius-lg) transition-colors text-(--color-text-tertiary) hover:text-(--color-accent) hover:bg-white/5"
+                                >
+                                    <Calculator size={16} />
+                                </button>
+                            )}
                             {targetUri && (
                                 <a
                                     href={targetUri}
@@ -790,6 +802,11 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                     </div>
                 </div>
             )}
+            <RecipeCalculatorDialog
+                isOpen={showCalculator}
+                ingredients={Array.isArray(enrichment?.ingredients) ? enrichment.ingredients : []}
+                onClose={() => setShowCalculator(false)}
+            />
           </div>
         </div>
       </div>
