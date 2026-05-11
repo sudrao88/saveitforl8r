@@ -129,7 +129,6 @@ const RecipeCalculatorDialog: React.FC<RecipeCalculatorDialogProps> = ({ ingredi
 
   const animClass = phase === 'exit' ? overlay.modalExit : overlay.modalEnter;
   const backdropClass = phase === 'exit' ? overlay.backdropExit : overlay.backdropEnter;
-  const hasParseable = parsed.some((p) => p.kind === 'parsed');
   const scaleLabel = Math.abs(scale - 1) < 0.001 ? null : `× ${formatQuantity(scale, null)}`;
 
   const dialog = (
@@ -192,11 +191,9 @@ const RecipeCalculatorDialog: React.FC<RecipeCalculatorDialogProps> = ({ ingredi
         </div>
 
         <div className="overflow-y-auto flex-1 min-h-0 p-4 space-y-2">
-          {parsed.length === 0 ? (
+          {parsed.length === 0 && (
             <p className={`${text.body} text-center py-6`}>No ingredients to scale.</p>
-          ) : !hasParseable ? (
-            <p className={`${text.caption} text-center py-2`}>None of these ingredients have a numeric quantity.</p>
-          ) : null}
+          )}
 
           {parseableRows.map(({ row, idx }) => {
             const display = deriveDisplay(row, scale, unitSystem);
@@ -239,7 +236,7 @@ const RecipeCalculatorDialog: React.FC<RecipeCalculatorDialogProps> = ({ ingredi
 
           {unparseableRows.length > 0 && (
             <div className="pt-3 mt-2 border-t border-(--color-border-subtle) space-y-2">
-              <p className={text.label}>No change</p>
+              <p className={text.label}>None of these ingredients have a numeric quantity</p>
               {unparseableRows.map(({ row, idx }) => (
                 <div
                   key={idx}
