@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v107",
-  "buildNumber": 107,
+  "version": "saveitforl8r-v108",
+  "buildNumber": 108,
   "buildDate": "2026-05-19T00:00:00.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Settings now includes an Appearance section with Light, Dark, and System theme options. Your choice is remembered across launches and syncs live with your OS preference when set to System."
+  "changelog": "Light-mode legibility: enrichment sections (Instructions, Ingredients, Pros, Cons, etc.) now use darker shades for body text and bullets so they're readable on light backgrounds."
 }
