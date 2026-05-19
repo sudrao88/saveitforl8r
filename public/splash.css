@@ -1,5 +1,7 @@
-/* Splash screen styles — loaded before JS/CSS bundles for instant rendering. */
+/* Splash screen styles — loaded before JS/CSS bundles for instant rendering.
+   Theme is set on <html data-theme="..."> by the inline init script in index.html. */
 body { background-color: #000000; margin: 0; }
+html[data-theme="light"] body { background-color: #ffffff; }
 .splash-container {
   display: flex;
   flex-direction: column;
@@ -10,6 +12,7 @@ body { background-color: #000000; margin: 0; }
   color: white;
   font-family: 'Shantell Sans', sans-serif;
 }
+html[data-theme="light"] .splash-container { color: #111827; }
 .splash-logo {
   width: 80px;
   height: 80px;

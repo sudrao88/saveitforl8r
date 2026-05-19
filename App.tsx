@@ -48,6 +48,7 @@ import useNativeOTA from './hooks/useNativeOTA';
 import { useWidgetDeepLink } from './hooks/useWidgetDeepLink';
 import { tryBackHandlers } from './hooks/useBackButton';
 import { SyncProvider } from './context/SyncContext';
+import { ThemeProvider } from './context/ThemeContext';
 import { reconcileEmbeddings, ReconcileReport, getMemories as getStoredMemories } from './services/storageService';
 import { ViewMode, Memory, Attachment, Moment, QuickNoteState, CalendarEvent, isMemoryInFlight, isMemoryFailed } from './types';
 import { initGA, logPageView, logEvent } from './services/analytics';
@@ -872,7 +873,7 @@ const AppContent: React.FC = () => {
     return undefined;
   }, [isCaptureOpen, quickNoteExpandState, shareData]);
 
-  // Truly fullscreen views (opaque bg-black at z-sheet / z-modal) — QuickNoteBar must hide
+  // Truly fullscreen views (opaque surface at z-sheet / z-modal) — QuickNoteBar must hide
   const isFullscreenViewOpen = !!editingMemory || isCaptureOpen || view === ViewMode.RECALL || !!viewingGallery;
   // Any overlay (fullscreen OR sheet) — feed behind gets pointer-events-none + aria-hidden
   const anyOverlayOpen = isFullscreenViewOpen || !!liveExpandedMemory || isSettingsOpen || !!liveActiveMoment || showAllMoments || showCalendarAgenda || showTodoList || showDeletionCandidates;
@@ -910,7 +911,7 @@ const AppContent: React.FC = () => {
   const frozenMomentError = useFrozenValue(momentError);
 
   return (
-    <div className="min-h-screen bg-black flex flex-col">
+    <div className="min-h-screen bg-(--color-surface-base) flex flex-col">
       {/* Feed layout — always rendered, overlaid by fullscreen views */}
       <div className={feedLocked ? 'pointer-events-none' : undefined} aria-hidden={feedLocked || undefined}>
         <div className="sticky top-0 z-(--z-overlay) bg-(--color-surface-base)/80 backdrop-blur-md pt-[var(--sat)]">
@@ -1063,7 +1064,7 @@ const AppContent: React.FC = () => {
         enterClassName={overlay.backdropEnter}
         exitClassName={overlay.backdropExit}
         duration={VIEW_DURATION}
-        className="fixed inset-0 z-(--z-sheet) bg-black/90 backdrop-blur-md flex flex-col"
+        className="fixed inset-0 z-(--z-sheet) bg-(--color-surface-base)/90 backdrop-blur-md flex flex-col"
       >
         <div className="sticky top-0 z-(--z-sticky) px-4 py-3 border-b border-(--color-border-default) flex items-center justify-between bg-(--color-surface-base)/50 backdrop-blur-xl pt-[var(--sat)]">
            <div className="flex items-center gap-3">
@@ -1358,7 +1359,7 @@ const AppContent: React.FC = () => {
       </AnimatedPresence>
 
       {isOtaDownloading && (
-        <div className="fixed inset-0 z-(--z-tooltip) bg-black/95 backdrop-blur-md flex flex-col items-center justify-center gap-6">
+        <div className="fixed inset-0 z-(--z-tooltip) bg-(--color-surface-base)/95 backdrop-blur-md flex flex-col items-center justify-center gap-6">
           <Logo className="w-16 h-16 text-(--color-accent)" />
           <div className="flex flex-col items-center gap-3">
             <RefreshCw size={32} className="text-(--color-accent) animate-spin" />
@@ -1375,9 +1376,11 @@ const AppContent: React.FC = () => {
 
 const App = () => (
     <ErrorBoundary>
-      <SyncProvider>
-          <AppContent />
-      </SyncProvider>
+      <ThemeProvider>
+        <SyncProvider>
+            <AppContent />
+        </SyncProvider>
+      </ThemeProvider>
     </ErrorBoundary>
 );
 

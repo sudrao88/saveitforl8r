@@ -205,9 +205,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
   const previewMemory = memories.find(m => m.id === previewMemoryId);
 
   return (
-    <div className="fixed inset-0 z-(--z-modal) flex flex-col overflow-hidden bg-black">
+    <div className="fixed inset-0 z-(--z-modal) flex flex-col overflow-hidden bg-(--color-surface-base)">
       {/* Header */}
-      <div className="flex-none border-b border-(--color-border-default) px-4 pb-3 pt-[calc(0.75rem+var(--sat))] flex items-center justify-between bg-black z-(--z-sticky) shadow-sm shrink-0">
+      <div className="flex-none border-b border-(--color-border-default) px-4 pb-3 pt-[calc(0.75rem+var(--sat))] flex items-center justify-between bg-(--color-surface-base) z-(--z-sticky) shadow-sm shrink-0">
         <div className="flex items-center gap-2">
             <BrainCircuit size={24} className="text-(--color-accent)" />
             <h2 className="text-lg font-bold text-(--color-text-primary)">Brain Search</h2>
@@ -220,7 +220,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
       {/* Messages Area */}
       <div 
         ref={messagesEndRef} 
-        className="flex-1 overflow-y-auto p-4 md:px-20 lg:px-64 space-y-6 bg-black overscroll-contain"
+        className="flex-1 overflow-y-auto p-4 md:px-20 lg:px-64 space-y-6 bg-(--color-surface-base) overscroll-contain"
         style={{ overscrollBehaviorY: 'contain' }}
       >
         {messages.length === 0 && (
@@ -300,7 +300,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
 
       {/* Input Area */}
       <div
-        className={`flex-none w-full bg-black shrink-0 z-(--z-dropdown)${isNative() ? ' transition-[padding-bottom] duration-(--duration-keyboard) ease-(--ease-keyboard)' : ''}`}
+        className={`flex-none w-full bg-(--color-surface-base) shrink-0 z-(--z-dropdown)${isNative() ? ' transition-[padding-bottom] duration-(--duration-keyboard) ease-(--ease-keyboard)' : ''}`}
         style={{
             paddingBottom: 'max(calc(var(--kb-inset, 0px) + 0.5rem), 1rem, var(--sab))',
             paddingTop: '1rem',

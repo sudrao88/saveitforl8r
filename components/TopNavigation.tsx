@@ -79,7 +79,7 @@ const TopNavigation = React.forwardRef<HTMLElement, TopNavigationProps>(({
 
           <button
             onClick={onSettingsClick}
-            className={`relative ${btn.base} ${btn.iconLg} bg-(--color-surface-raised) border border-(--color-border-default) hover:bg-white/5 hover:border-(--color-accent) group shrink-0 touch-manipulation`}
+            className={`relative ${btn.base} ${btn.iconLg} bg-(--color-surface-raised) border border-(--color-border-default) hover:bg-(--color-surface-hover-subtle) hover:border-(--color-accent) group shrink-0 touch-manipulation`}
             title={showOffline ? 'Offline — sync will resume when reconnected' : 'Settings'}
           >
             {isSyncingDownload ? (

@@ -629,7 +629,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                                 <button
                                     onClick={(e) => { e.stopPropagation(); setShowSummary(!showSummary); }}
                                     title="Summary"
-                                    className={`p-2 rounded-(--radius-lg) transition-colors ${showSummary ? 'bg-(--color-surface-raised)/60 text-(--color-text-primary)' : 'text-(--color-text-tertiary) hover:text-(--color-text-secondary) hover:bg-white/5'}`}
+                                    className={`p-2 rounded-(--radius-lg) transition-colors ${showSummary ? 'bg-(--color-surface-raised)/60 text-(--color-text-primary)' : 'text-(--color-text-tertiary) hover:text-(--color-text-secondary) hover:bg-(--color-surface-hover-subtle)'}`}
                                 >
                                     <FileText size={16} />
                                 </button>
@@ -639,7 +639,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                                     key={section.key}
                                     onClick={(e) => { e.stopPropagation(); setExpandedSection(expandedSection === section.key ? null : section.key); }}
                                     title={section.label}
-                                    className={`p-2 rounded-(--radius-lg) transition-colors ${expandedSection === section.key ? 'bg-(--color-surface-raised)/60 text-(--color-text-primary)' : 'text-(--color-text-tertiary) hover:text-(--color-text-secondary) hover:bg-white/5'}`}
+                                    className={`p-2 rounded-(--radius-lg) transition-colors ${expandedSection === section.key ? 'bg-(--color-surface-raised)/60 text-(--color-text-primary)' : 'text-(--color-text-tertiary) hover:text-(--color-text-secondary) hover:bg-(--color-surface-hover-subtle)'}`}
                                 >
                                     {/* Icons in sections are size 12; scale up for button display */}
                                     <span className="[&>svg]:w-4 [&>svg]:h-4">{section.icon}</span>
@@ -650,7 +650,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                                     onClick={(e) => { e.stopPropagation(); setShowCalculator(true); }}
                                     title="Recipe calculator"
                                     aria-label="Open recipe calculator"
-                                    className="p-2 rounded-(--radius-lg) transition-colors text-(--color-text-tertiary) hover:text-(--color-accent) hover:bg-white/5"
+                                    className="p-2 rounded-(--radius-lg) transition-colors text-(--color-text-tertiary) hover:text-(--color-accent) hover:bg-(--color-surface-hover-subtle)"
                                 >
                                     <Calculator size={16} />
                                 </button>
@@ -662,7 +662,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                                     rel="noopener noreferrer"
                                     onClick={(e) => e.stopPropagation()}
                                     title="Open Link"
-                                    className="p-2 rounded-(--radius-lg) text-(--color-text-tertiary) hover:text-(--color-accent) hover:bg-white/5 transition-colors"
+                                    className="p-2 rounded-(--radius-lg) text-(--color-text-tertiary) hover:text-(--color-accent) hover:bg-(--color-surface-hover-subtle) transition-colors"
                                 >
                                     <ExternalLink size={16} />
                                 </a>
