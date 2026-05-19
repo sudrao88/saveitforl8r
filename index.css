@@ -1,6 +1,13 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* Light-mode variant: target descendants of <html data-theme="light">.
+   Mirrors Tailwind's built-in `dark:` variant pattern. Use sparingly —
+   semantic tokens in @theme handle most light/dark differences. Reserved
+   for enrichment/content-type accent colors that need a darker shade on
+   light backgrounds. */
+@custom-variant light (&:where([data-theme="light"], [data-theme="light"] *));
+
 @font-face {
   font-family: 'Shantell Sans';
   font-style: normal;

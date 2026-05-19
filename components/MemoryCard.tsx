@@ -65,117 +65,117 @@ type EnrichmentFields = Record<string, string | string[] | undefined>;
 /* eslint-disable design-system/no-raw-tailwind-colors */
 const SECTION_CONFIG_MAP: Record<string, SectionDef[]> = {
   recipe: [
-    { key: 'ingredients', label: 'Ingredients', icon: <UtensilsCrossed size={12} className="text-orange-400" />, type: 'list', textClass: 'text-orange-300/80', bulletClass: 'text-orange-500/50' },
-    { key: 'instructions', label: 'Instructions', icon: <ListOrdered size={12} className="text-green-400" />, type: 'list', textClass: 'text-green-300/80', bulletClass: 'text-green-500/50' },
+    { key: 'ingredients', label: 'Ingredients', icon: <UtensilsCrossed size={12} className="text-orange-400 light:text-orange-600" />, type: 'list', textClass: 'text-orange-300/80 light:text-orange-700', bulletClass: 'text-orange-500/50 light:text-orange-600' },
+    { key: 'instructions', label: 'Instructions', icon: <ListOrdered size={12} className="text-green-400 light:text-green-600" />, type: 'list', textClass: 'text-green-300/80 light:text-green-700', bulletClass: 'text-green-500/50 light:text-green-600' },
   ],
   article_blog: [
-    { key: 'keyPoints', label: 'Key Points', icon: <Lightbulb size={12} className="text-amber-500" />, type: 'list' },
+    { key: 'keyPoints', label: 'Key Points', icon: <Lightbulb size={12} className="text-amber-500 light:text-amber-600" />, type: 'list' },
   ],
   product: [
-    { key: 'pros', label: 'Pros', icon: <ThumbsUp size={12} className="text-green-400" />, type: 'list', textClass: 'text-green-300/80', bulletClass: 'text-green-500/50' },
-    { key: 'cons', label: 'Cons', icon: <ThumbsDown size={12} className="text-red-400" />, type: 'list', textClass: 'text-red-300/80', bulletClass: 'text-red-500/50' },
-    { key: 'price', label: 'Price', icon: <DollarSign size={12} className="text-emerald-400" />, type: 'detail' },
-    { key: 'whereToBuy', label: 'Where to Buy', icon: <ShoppingBag size={12} className="text-blue-400" />, type: 'detail' },
+    { key: 'pros', label: 'Pros', icon: <ThumbsUp size={12} className="text-green-400 light:text-green-600" />, type: 'list', textClass: 'text-green-300/80 light:text-green-700', bulletClass: 'text-green-500/50 light:text-green-600' },
+    { key: 'cons', label: 'Cons', icon: <ThumbsDown size={12} className="text-red-400 light:text-red-600" />, type: 'list', textClass: 'text-red-300/80 light:text-red-700', bulletClass: 'text-red-500/50 light:text-red-600' },
+    { key: 'price', label: 'Price', icon: <DollarSign size={12} className="text-emerald-400 light:text-emerald-600" />, type: 'detail' },
+    { key: 'whereToBuy', label: 'Where to Buy', icon: <ShoppingBag size={12} className="text-blue-400 light:text-blue-600" />, type: 'detail' },
   ],
   event: [
-    { key: 'date', label: 'Date', icon: <CalendarDays size={12} className="text-blue-400" />, type: 'detail' },
-    { key: 'rsvpStatus', label: 'RSVP Status', icon: <ClipboardList size={12} className="text-purple-400" />, type: 'detail' },
+    { key: 'date', label: 'Date', icon: <CalendarDays size={12} className="text-blue-400 light:text-blue-600" />, type: 'detail' },
+    { key: 'rsvpStatus', label: 'RSVP Status', icon: <ClipboardList size={12} className="text-purple-400 light:text-purple-600" />, type: 'detail' },
   ],
   place_restaurant: [
-    { key: 'menuHighlights', label: 'Menu Highlights', icon: <UtensilsCrossed size={12} className="text-orange-400" />, type: 'list', textClass: 'text-orange-300/80', bulletClass: 'text-orange-500/50' },
-    { key: 'ratings', label: 'Ratings', icon: <Star size={12} className="text-yellow-500" />, type: 'detail' },
+    { key: 'menuHighlights', label: 'Menu Highlights', icon: <UtensilsCrossed size={12} className="text-orange-400 light:text-orange-600" />, type: 'list', textClass: 'text-orange-300/80 light:text-orange-700', bulletClass: 'text-orange-500/50 light:text-orange-600' },
+    { key: 'ratings', label: 'Ratings', icon: <Star size={12} className="text-yellow-500 light:text-yellow-600" />, type: 'detail' },
   ],
   video: [
-    { key: 'keyMoments', label: 'Key Moments', icon: <Film size={12} className="text-purple-400" />, type: 'list', textClass: 'text-purple-300/80', bulletClass: 'text-purple-500/50' },
-    { key: 'transcriptSummary', label: 'Transcript Summary', icon: <FileText size={12} className="text-gray-400" />, type: 'detail' },
+    { key: 'keyMoments', label: 'Key Moments', icon: <Film size={12} className="text-purple-400 light:text-purple-600" />, type: 'list', textClass: 'text-purple-300/80 light:text-purple-700', bulletClass: 'text-purple-500/50 light:text-purple-600' },
+    { key: 'transcriptSummary', label: 'Transcript Summary', icon: <FileText size={12} className="text-gray-400 light:text-gray-600" />, type: 'detail' },
   ],
   social_media_post: [
-    { key: 'author', label: 'Author', icon: <Users size={12} className="text-blue-400" />, type: 'detail' },
-    { key: 'engagement', label: 'Engagement', icon: <MessageSquare size={12} className="text-pink-400" />, type: 'detail' },
-    { key: 'relatedPosts', label: 'Related Posts', icon: <Bookmark size={12} className="text-gray-400" />, type: 'list' },
+    { key: 'author', label: 'Author', icon: <Users size={12} className="text-blue-400 light:text-blue-600" />, type: 'detail' },
+    { key: 'engagement', label: 'Engagement', icon: <MessageSquare size={12} className="text-pink-400 light:text-pink-600" />, type: 'detail' },
+    { key: 'relatedPosts', label: 'Related Posts', icon: <Bookmark size={12} className="text-gray-400 light:text-gray-600" />, type: 'list' },
   ],
   research_academic: [
-    { key: 'methodology', label: 'Methodology', icon: <ClipboardList size={12} className="text-indigo-400" />, type: 'detail' },
-    { key: 'keyFindings', label: 'Key Findings', icon: <Lightbulb size={12} className="text-amber-500" />, type: 'list' },
-    { key: 'citations', label: 'Citations', icon: <BookOpenCheck size={12} className="text-gray-400" />, type: 'list' },
+    { key: 'methodology', label: 'Methodology', icon: <ClipboardList size={12} className="text-indigo-400 light:text-indigo-600" />, type: 'detail' },
+    { key: 'keyFindings', label: 'Key Findings', icon: <Lightbulb size={12} className="text-amber-500 light:text-amber-600" />, type: 'list' },
+    { key: 'citations', label: 'Citations', icon: <BookOpenCheck size={12} className="text-gray-400 light:text-gray-600" />, type: 'list' },
   ],
   job_listing: [
-    { key: 'company', label: 'Company', icon: <Briefcase size={12} className="text-blue-400" />, type: 'detail' },
-    { key: 'role', label: 'Role', icon: <Users size={12} className="text-purple-400" />, type: 'detail' },
-    { key: 'requirements', label: 'Requirements', icon: <ClipboardList size={12} className="text-amber-400" />, type: 'list' },
-    { key: 'salary', label: 'Salary', icon: <DollarSign size={12} className="text-emerald-400" />, type: 'detail' },
+    { key: 'company', label: 'Company', icon: <Briefcase size={12} className="text-blue-400 light:text-blue-600" />, type: 'detail' },
+    { key: 'role', label: 'Role', icon: <Users size={12} className="text-purple-400 light:text-purple-600" />, type: 'detail' },
+    { key: 'requirements', label: 'Requirements', icon: <ClipboardList size={12} className="text-amber-400 light:text-amber-600" />, type: 'list' },
+    { key: 'salary', label: 'Salary', icon: <DollarSign size={12} className="text-emerald-400 light:text-emerald-600" />, type: 'detail' },
   ],
   travel: [
-    { key: 'itinerary', label: 'Itinerary', icon: <MapPin size={12} className="text-blue-400" />, type: 'list', textClass: 'text-blue-300/80', bulletClass: 'text-blue-500/50' },
-    { key: 'costEstimate', label: 'Cost Estimate', icon: <DollarSign size={12} className="text-emerald-400" />, type: 'detail' },
-    { key: 'packingList', label: 'Packing List', icon: <ClipboardList size={12} className="text-orange-400" />, type: 'list' },
+    { key: 'itinerary', label: 'Itinerary', icon: <MapPin size={12} className="text-blue-400 light:text-blue-600" />, type: 'list', textClass: 'text-blue-300/80 light:text-blue-700', bulletClass: 'text-blue-500/50 light:text-blue-600' },
+    { key: 'costEstimate', label: 'Cost Estimate', icon: <DollarSign size={12} className="text-emerald-400 light:text-emerald-600" />, type: 'detail' },
+    { key: 'packingList', label: 'Packing List', icon: <ClipboardList size={12} className="text-orange-400 light:text-orange-600" />, type: 'list' },
   ],
   music: [
-    { key: 'artist', label: 'Artist', icon: <Music size={12} className="text-pink-400" />, type: 'detail' },
-    { key: 'album', label: 'Album', icon: <Music size={12} className="text-purple-400" />, type: 'detail' },
-    { key: 'genre', label: 'Genre', icon: <Tag size={12} className="text-blue-400" />, type: 'detail' },
-    { key: 'mood', label: 'Mood', icon: <Flame size={12} className="text-orange-400" />, type: 'detail' },
+    { key: 'artist', label: 'Artist', icon: <Music size={12} className="text-pink-400 light:text-pink-600" />, type: 'detail' },
+    { key: 'album', label: 'Album', icon: <Music size={12} className="text-purple-400 light:text-purple-600" />, type: 'detail' },
+    { key: 'genre', label: 'Genre', icon: <Tag size={12} className="text-blue-400 light:text-blue-600" />, type: 'detail' },
+    { key: 'mood', label: 'Mood', icon: <Flame size={12} className="text-orange-400 light:text-orange-600" />, type: 'detail' },
   ],
   book: [
-    { key: 'author', label: 'Author', icon: <Users size={12} className="text-amber-500" />, type: 'detail' },
-    { key: 'genre', label: 'Genre', icon: <Tag size={12} className="text-blue-400" />, type: 'detail' },
-    { key: 'themes', label: 'Themes', icon: <Lightbulb size={12} className="text-purple-400" />, type: 'list' },
-    { key: 'ratings', label: 'Rating', icon: <Star size={12} className="text-yellow-500" />, type: 'detail' },
+    { key: 'author', label: 'Author', icon: <Users size={12} className="text-amber-500 light:text-amber-600" />, type: 'detail' },
+    { key: 'genre', label: 'Genre', icon: <Tag size={12} className="text-blue-400 light:text-blue-600" />, type: 'detail' },
+    { key: 'themes', label: 'Themes', icon: <Lightbulb size={12} className="text-purple-400 light:text-purple-600" />, type: 'list' },
+    { key: 'ratings', label: 'Rating', icon: <Star size={12} className="text-yellow-500 light:text-yellow-600" />, type: 'detail' },
   ],
   movie_tv: [
-    { key: 'cast', label: 'Cast', icon: <Users size={12} className="text-purple-400" />, type: 'list' },
-    { key: 'genre', label: 'Genre', icon: <Tag size={12} className="text-blue-400" />, type: 'detail' },
-    { key: 'ratings', label: 'Rating', icon: <Star size={12} className="text-yellow-500" />, type: 'detail' },
-    { key: 'whereToWatch', label: 'Where to Watch', icon: <Tv size={12} className="text-green-400" />, type: 'detail' },
+    { key: 'cast', label: 'Cast', icon: <Users size={12} className="text-purple-400 light:text-purple-600" />, type: 'list' },
+    { key: 'genre', label: 'Genre', icon: <Tag size={12} className="text-blue-400 light:text-blue-600" />, type: 'detail' },
+    { key: 'ratings', label: 'Rating', icon: <Star size={12} className="text-yellow-500 light:text-yellow-600" />, type: 'detail' },
+    { key: 'whereToWatch', label: 'Where to Watch', icon: <Tv size={12} className="text-green-400 light:text-green-600" />, type: 'detail' },
   ],
   podcast: [
-    { key: 'host', label: 'Host', icon: <Mic size={12} className="text-red-400" />, type: 'detail' },
-    { key: 'keyTopics', label: 'Key Topics', icon: <Lightbulb size={12} className="text-amber-500" />, type: 'list' },
-    { key: 'episodeLength', label: 'Episode Length', icon: <Clock3 size={12} className="text-gray-400" />, type: 'detail' },
+    { key: 'host', label: 'Host', icon: <Mic size={12} className="text-red-400 light:text-red-600" />, type: 'detail' },
+    { key: 'keyTopics', label: 'Key Topics', icon: <Lightbulb size={12} className="text-amber-500 light:text-amber-600" />, type: 'list' },
+    { key: 'episodeLength', label: 'Episode Length', icon: <Clock3 size={12} className="text-gray-400 light:text-gray-600" />, type: 'detail' },
   ],
   personal_note: [
-    { key: 'actionItems', label: 'Action Items', icon: <CircleCheck size={12} className="text-blue-400" />, type: 'list', textClass: 'text-blue-300/80', bulletClass: 'text-blue-500/50' },
-    { key: 'keyPoints', label: 'Key Points', icon: <Lightbulb size={12} className="text-amber-500" />, type: 'list' },
+    { key: 'actionItems', label: 'Action Items', icon: <CircleCheck size={12} className="text-blue-400 light:text-blue-600" />, type: 'list', textClass: 'text-blue-300/80 light:text-blue-700', bulletClass: 'text-blue-500/50 light:text-blue-600' },
+    { key: 'keyPoints', label: 'Key Points', icon: <Lightbulb size={12} className="text-amber-500 light:text-amber-600" />, type: 'list' },
   ],
   quote: [
-    { key: 'author', label: 'Author', icon: <Quote size={12} className="text-amber-500" />, type: 'detail' },
-    { key: 'source', label: 'Source', icon: <BookOpen size={12} className="text-blue-400" />, type: 'detail' },
-    { key: 'context', label: 'Context', icon: <FileText size={12} className="text-gray-400" />, type: 'detail' },
+    { key: 'author', label: 'Author', icon: <Quote size={12} className="text-amber-500 light:text-amber-600" />, type: 'detail' },
+    { key: 'source', label: 'Source', icon: <BookOpen size={12} className="text-blue-400 light:text-blue-600" />, type: 'detail' },
+    { key: 'context', label: 'Context', icon: <FileText size={12} className="text-gray-400 light:text-gray-600" />, type: 'detail' },
   ],
   snippet: [
-    { key: 'language', label: 'Language', icon: <Code size={12} className="text-green-400" />, type: 'detail' },
-    { key: 'purpose', label: 'Purpose', icon: <FileText size={12} className="text-blue-400" />, type: 'detail' },
-    { key: 'dependencies', label: 'Dependencies', icon: <ClipboardList size={12} className="text-orange-400" />, type: 'list' },
+    { key: 'language', label: 'Language', icon: <Code size={12} className="text-green-400 light:text-green-600" />, type: 'detail' },
+    { key: 'purpose', label: 'Purpose', icon: <FileText size={12} className="text-blue-400 light:text-blue-600" />, type: 'detail' },
+    { key: 'dependencies', label: 'Dependencies', icon: <ClipboardList size={12} className="text-orange-400 light:text-orange-600" />, type: 'list' },
   ],
   contact: [
-    { key: 'contactName', label: 'Name', icon: <Users size={12} className="text-blue-400" />, type: 'detail' },
-    { key: 'phone', label: 'Phone', icon: <Phone size={12} className="text-green-400" />, type: 'detail' },
-    { key: 'email', label: 'Email', icon: <Mail size={12} className="text-purple-400" />, type: 'detail' },
-    { key: 'contactNotes', label: 'Notes', icon: <FileText size={12} className="text-gray-400" />, type: 'detail' },
+    { key: 'contactName', label: 'Name', icon: <Users size={12} className="text-blue-400 light:text-blue-600" />, type: 'detail' },
+    { key: 'phone', label: 'Phone', icon: <Phone size={12} className="text-green-400 light:text-green-600" />, type: 'detail' },
+    { key: 'email', label: 'Email', icon: <Mail size={12} className="text-purple-400 light:text-purple-600" />, type: 'detail' },
+    { key: 'contactNotes', label: 'Notes', icon: <FileText size={12} className="text-gray-400 light:text-gray-600" />, type: 'detail' },
   ],
   health: [
-    { key: 'condition', label: 'Condition', icon: <Heart size={12} className="text-red-400" />, type: 'detail' },
-    { key: 'recommendations', label: 'Recommendations', icon: <ClipboardList size={12} className="text-green-400" />, type: 'list' },
-    { key: 'followUp', label: 'Follow-up', icon: <CalendarDays size={12} className="text-blue-400" />, type: 'detail' },
+    { key: 'condition', label: 'Condition', icon: <Heart size={12} className="text-red-400 light:text-red-600" />, type: 'detail' },
+    { key: 'recommendations', label: 'Recommendations', icon: <ClipboardList size={12} className="text-green-400 light:text-green-600" />, type: 'list' },
+    { key: 'followUp', label: 'Follow-up', icon: <CalendarDays size={12} className="text-blue-400 light:text-blue-600" />, type: 'detail' },
   ],
   financial: [
-    { key: 'amount', label: 'Amount', icon: <DollarSign size={12} className="text-emerald-400" />, type: 'detail' },
-    { key: 'category', label: 'Category', icon: <Tag size={12} className="text-blue-400" />, type: 'detail' },
-    { key: 'dueDate', label: 'Due Date', icon: <CalendarDays size={12} className="text-red-400" />, type: 'detail' },
+    { key: 'amount', label: 'Amount', icon: <DollarSign size={12} className="text-emerald-400 light:text-emerald-600" />, type: 'detail' },
+    { key: 'category', label: 'Category', icon: <Tag size={12} className="text-blue-400 light:text-blue-600" />, type: 'detail' },
+    { key: 'dueDate', label: 'Due Date', icon: <CalendarDays size={12} className="text-red-400 light:text-red-600" />, type: 'detail' },
   ],
   legal: [
-    { key: 'documentType', label: 'Document Type', icon: <ScrollText size={12} className="text-amber-500" />, type: 'detail' },
-    { key: 'keyClauses', label: 'Key Clauses', icon: <ClipboardList size={12} className="text-blue-400" />, type: 'list' },
-    { key: 'deadlines', label: 'Deadlines', icon: <CalendarDays size={12} className="text-red-400" />, type: 'list' },
+    { key: 'documentType', label: 'Document Type', icon: <ScrollText size={12} className="text-amber-500 light:text-amber-600" />, type: 'detail' },
+    { key: 'keyClauses', label: 'Key Clauses', icon: <ClipboardList size={12} className="text-blue-400 light:text-blue-600" />, type: 'list' },
+    { key: 'deadlines', label: 'Deadlines', icon: <CalendarDays size={12} className="text-red-400 light:text-red-600" />, type: 'list' },
   ],
   educational: [
-    { key: 'subject', label: 'Subject', icon: <GraduationCap size={12} className="text-blue-400" />, type: 'detail' },
-    { key: 'keyConcepts', label: 'Key Concepts', icon: <Lightbulb size={12} className="text-amber-500" />, type: 'list' },
-    { key: 'studyNotes', label: 'Study Notes', icon: <BookOpen size={12} className="text-green-400" />, type: 'list' },
+    { key: 'subject', label: 'Subject', icon: <GraduationCap size={12} className="text-blue-400 light:text-blue-600" />, type: 'detail' },
+    { key: 'keyConcepts', label: 'Key Concepts', icon: <Lightbulb size={12} className="text-amber-500 light:text-amber-600" />, type: 'list' },
+    { key: 'studyNotes', label: 'Study Notes', icon: <BookOpen size={12} className="text-green-400 light:text-green-600" />, type: 'list' },
   ],
   comparison: [
-    { key: 'pros', label: 'Pros', icon: <ThumbsUp size={12} className="text-green-400" />, type: 'list', textClass: 'text-green-300/80', bulletClass: 'text-green-500/50' },
-    { key: 'cons', label: 'Cons', icon: <ThumbsDown size={12} className="text-red-400" />, type: 'list', textClass: 'text-red-300/80', bulletClass: 'text-red-500/50' },
+    { key: 'pros', label: 'Pros', icon: <ThumbsUp size={12} className="text-green-400 light:text-green-600" />, type: 'list', textClass: 'text-green-300/80 light:text-green-700', bulletClass: 'text-green-500/50 light:text-green-600' },
+    { key: 'cons', label: 'Cons', icon: <ThumbsDown size={12} className="text-red-400 light:text-red-600" />, type: 'list', textClass: 'text-red-300/80 light:text-red-700', bulletClass: 'text-red-500/50 light:text-red-600' },
   ],
 };
 /* eslint-enable design-system/no-raw-tailwind-colors */
@@ -183,8 +183,8 @@ const SECTION_CONFIG_MAP: Record<string, SectionDef[]> = {
 // Default sections for content types without a specific config
 /* eslint-disable design-system/no-raw-tailwind-colors */
 const DEFAULT_SECTIONS: SectionDef[] = [
-  { key: 'keyPoints', label: 'Key Points', icon: <Lightbulb size={12} className="text-amber-500" />, type: 'list' },
-  { key: 'actionItems', label: 'Action Items', icon: <CircleCheck size={12} className="text-blue-400" />, type: 'list', textClass: 'text-blue-300/80', bulletClass: 'text-blue-500/50' },
+  { key: 'keyPoints', label: 'Key Points', icon: <Lightbulb size={12} className="text-amber-500 light:text-amber-600" />, type: 'list' },
+  { key: 'actionItems', label: 'Action Items', icon: <CircleCheck size={12} className="text-blue-400 light:text-blue-600" />, type: 'list', textClass: 'text-blue-300/80 light:text-blue-700', bulletClass: 'text-blue-500/50 light:text-blue-600' },
 ];
 /* eslint-enable design-system/no-raw-tailwind-colors */
 
@@ -344,10 +344,10 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
   /* eslint-disable design-system/no-raw-tailwind-colors -- enrichment entity icons */
   const getEntityIcon = (type?: string) => {
     const t = type?.toLowerCase() || '';
-    if (t.includes('movie') || t.includes('tv') || t.includes('show')) return <Tv size={14} className="text-purple-400" />;
-    if (t.includes('book')) return <BookOpen size={14} className="text-amber-500" />;
-    if (t.includes('product')) return <ShoppingBag size={14} className="text-green-500" />;
-    return <Star size={14} className="text-yellow-500" />;
+    if (t.includes('movie') || t.includes('tv') || t.includes('show')) return <Tv size={14} className="text-purple-400 light:text-purple-600" />;
+    if (t.includes('book')) return <BookOpen size={14} className="text-amber-500 light:text-amber-600" />;
+    if (t.includes('product')) return <ShoppingBag size={14} className="text-green-500 light:text-green-600" />;
+    return <Star size={14} className="text-yellow-500 light:text-yellow-600" />;
   };
   /* eslint-enable design-system/no-raw-tailwind-colors */
 
@@ -574,7 +574,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                   <div className="flex items-center gap-2 mt-1">
                       {entity.subtitle && <span className="text-xs text-(--color-text-secondary)">{entity.subtitle}</span>}
                       {/* eslint-disable-next-line design-system/no-raw-tailwind-colors -- enrichment content */}
-                      {entity.rating && <span className="text-xs px-1.5 py-0.5 bg-yellow-500/10 text-yellow-500 rounded font-medium">★ {entity.rating}</span>}
+                      {entity.rating && <span className="text-xs px-1.5 py-0.5 bg-yellow-500/10 text-yellow-500 light:bg-yellow-600/10 light:text-yellow-700 rounded font-medium">★ {entity.rating}</span>}
                   </div>
               </div>
           )}
