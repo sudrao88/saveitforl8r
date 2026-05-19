@@ -33,13 +33,31 @@ export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const [theme, setThemeState] = useState<ThemePreference>(readStoredPreference);
   const [systemLight, setSystemLight] = useState<boolean>(systemPrefersLight);
 
-  // Track OS preference changes so 'system' mode follows live.
+  // Track OS preference changes so 'system' mode follows live, and listen
+  // for `storage` events so theme changes propagate to other open tabs.
   useEffect(() => {
-    if (typeof window === 'undefined' || !window.matchMedia) return;
-    const mq = window.matchMedia('(prefers-color-scheme: light)');
-    const handler = (e: MediaQueryListEvent) => setSystemLight(e.matches);
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
+    if (typeof window === 'undefined') return;
+
+    const mq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: light)') : null;
+    const mqHandler = (e: MediaQueryListEvent) => setSystemLight(e.matches);
+    mq?.addEventListener('change', mqHandler);
+
+    const storageHandler = (e: StorageEvent) => {
+      if (e.key !== STORAGE_KEY) return;
+      const val = e.newValue;
+      if (val === 'light' || val === 'dark' || val === 'system') {
+        setThemeState(val);
+      } else if (val === null) {
+        // Cleared in another tab → fall back to system.
+        setThemeState('system');
+      }
+    };
+    window.addEventListener('storage', storageHandler);
+
+    return () => {
+      mq?.removeEventListener('change', mqHandler);
+      window.removeEventListener('storage', storageHandler);
+    };
   }, []);
 
   const resolvedTheme: ResolvedTheme = useMemo(
