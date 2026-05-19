@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v106",
-  "buildNumber": 106,
-  "buildDate": "2026-05-11T00:00:00.000Z",
+  "version": "saveitforl8r-v107",
+  "buildNumber": 107,
+  "buildDate": "2026-05-19T00:00:00.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "The Re-synthesize button on a moment now actually regenerates the synthesis instead of silently returning the cached result."
+  "changelog": "Settings now includes an Appearance section with Light, Dark, and System theme options. Your choice is remembered across launches and syncs live with your OS preference when set to System."
 }

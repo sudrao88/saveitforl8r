@@ -77,6 +77,27 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="SaveItForL8R" />
 
+    <!-- Theme init: apply user preference synchronously before splash paints so
+         there's no flash of dark while loading on light theme (and vice versa).
+         Must run before splash.css is applied — placed before the stylesheet link. -->
+    <script>
+      (function() {
+        try {
+          var stored = localStorage.getItem('theme-preference'); // 'light' | 'dark' | 'system' | null
+          var resolved;
+          if (stored === 'light' || stored === 'dark') {
+            resolved = stored;
+          } else {
+            // system (default) — match OS preference
+            resolved = (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
+          }
+          document.documentElement.setAttribute('data-theme', resolved);
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute('content', resolved === 'light' ? '#ffffff' : '#000000');
+        } catch (e) { /* localStorage unavailable — fall back to dark default */ }
+      })();
+    </script>
+
     <!-- Fonts (self-hosted for offline-first, instant launch) -->
     <link rel="preload" href="/fonts/ShantellSans-Variable.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="/splash.css">

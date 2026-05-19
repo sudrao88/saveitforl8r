@@ -10,7 +10,7 @@
 }
 
 @theme {
-  /* Surface colors */
+  /* Surface colors (dark theme — default) */
   --color-surface-base: #000000;
   --color-surface-raised: #1f2937;
   --color-surface-overlay: #030712;
@@ -36,6 +36,11 @@
   --color-danger-hover: #b91c1c;
   --color-success: #22c55e;
   --color-warning: #f59e0b;
+
+  /* Scrollbar (theme-aware via overrides below) */
+  --color-scrollbar-track: #1f2937;
+  --color-scrollbar-thumb: #374151;
+  --color-scrollbar-thumb-hover: #4b5563;
 
   /* Z-index layers */
   --z-sticky: 10;
@@ -74,6 +79,44 @@
   --sal: env(safe-area-inset-left);
 }
 
+/* Light theme — applied when [data-theme="light"] is set on <html>.
+   Override semantic tokens; component styles remain theme-agnostic. */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  /* Surface colors */
+  --color-surface-base: #ffffff;
+  --color-surface-raised: #f3f4f6;
+  --color-surface-overlay: #ffffff;
+  --color-surface-hover-subtle: rgba(0, 0, 0, 0.04);
+  --color-surface-hover: rgba(0, 0, 0, 0.08);
+
+  /* Border colors */
+  --color-border-default: #d1d5db;
+  --color-border-subtle: rgba(209, 213, 219, 0.6);
+
+  /* Text colors */
+  --color-text-primary: #111827;
+  --color-text-secondary: #4b5563;
+  --color-text-tertiary: #6b7280;
+
+  /* Accent colors — flip hover so darker = pressed on a light surface */
+  --color-accent: #2563eb;
+  --color-accent-hover: #1d4ed8;
+  --color-accent-muted: rgba(37, 99, 235, 0.12);
+
+  /* Semantic colors — slightly darker for AA contrast on light bg */
+  --color-danger: #dc2626;
+  --color-danger-hover: #b91c1c;
+  --color-success: #16a34a;
+  --color-warning: #d97706;
+
+  /* Scrollbar */
+  --color-scrollbar-track: #f3f4f6;
+  --color-scrollbar-thumb: #d1d5db;
+  --color-scrollbar-thumb-hover: #9ca3af;
+}
+
 html {
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
@@ -86,8 +129,8 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #000000;
-  color: #f3f4f6;
+  background-color: var(--color-surface-base);
+  color: var(--color-text-primary);
   overscroll-behavior-y: none; /* Prevent pull-to-refresh on mobile */
   
   padding-right: var(--sar);
@@ -194,16 +237,16 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #1f2937; 
+  background: var(--color-scrollbar-track);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #374151; 
+  background: var(--color-scrollbar-thumb);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #4b5563; 
+  background: var(--color-scrollbar-thumb-hover);
 }
 
 /* Hide scrollbar for clean horizontal scrolling areas */

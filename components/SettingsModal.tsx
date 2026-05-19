@@ -2,7 +2,7 @@
 import React, { useState, useRef } from 'react';
 import { useBackButton } from '../hooks/useBackButton';
 
-import { X, Download, Upload, Info, RefreshCw, Cloud, CloudOff, AlertTriangle, AlertCircle, ShieldCheck, LogOut, Settings, Cpu, CheckCircle2, Loader2, Database, ChevronDown, Trash2, Bell, BellOff } from 'lucide-react';
+import { X, Download, Upload, Info, RefreshCw, Cloud, CloudOff, AlertTriangle, AlertCircle, ShieldCheck, LogOut, Settings, Cpu, CheckCircle2, Loader2, Database, ChevronDown, Trash2, Bell, BellOff, Sun, Moon, Monitor, Palette } from 'lucide-react';
 
 import { useExportImport } from '../hooks/useExportImport';
 import { useEncryptionSettings } from '../hooks/useEncryptionSettings';
@@ -12,6 +12,7 @@ import { useAuth } from '../hooks/useAuth';
 import { ModelStatus, EmbeddingStats } from '../hooks/useAdaptiveSearch';
 import { factoryReset, forceReindexAll, ReconcileReport } from '../services/storageService';
 import { btn, overlay } from '../styles/design-system';
+import { useTheme, ThemePreference } from '../context/ThemeContext';
 
 // Props interface remains the same as all functionality is preserved
 interface SettingsModalProps {
@@ -87,7 +88,7 @@ const FactoryResetModal: React.FC<{ isOpen: boolean; onClose: () => void; onConf
     const isConfirmed = confirmationText === 'DELETE';
 
     return (
-        <div className="absolute inset-0 z-(--z-dropdown) flex items-center justify-center bg-black/80 backdrop-blur-md animate-in fade-in duration-(--duration-normal) p-4">
+        <div className="absolute inset-0 z-(--z-dropdown) flex items-center justify-center bg-(--color-surface-overlay)/80 backdrop-blur-md animate-in fade-in duration-(--duration-normal) p-4">
             <div className="bg-(--color-danger)/20 border border-(--color-danger) rounded-(--radius-xl) max-w-sm w-full p-6 shadow-2xl text-center">
                 <div className="w-14 h-14 bg-(--color-danger)/50 border-4 border-(--color-danger) rounded-full mx-auto flex items-center justify-center">
                     <AlertTriangle size={32} className="text-(--color-danger)" />
@@ -125,6 +126,27 @@ const FactoryResetModal: React.FC<{ isOpen: boolean; onClose: () => void; onConf
     );
 };
 
+const ThemeOption: React.FC<{
+  label: string;
+  icon: React.ElementType;
+  selected: boolean;
+  onClick: () => void;
+}> = ({ label, icon: Icon, selected, onClick }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    aria-pressed={selected}
+    className={`flex-1 flex flex-col items-center justify-center gap-1.5 px-3 py-3 rounded-(--radius-lg) border text-xs font-medium transition-colors duration-(--duration-fast) active:scale-95 ${
+      selected
+        ? 'bg-(--color-accent-muted) border-(--color-accent) text-(--color-accent)'
+        : 'bg-(--color-surface-raised) border-(--color-border-default) text-(--color-text-secondary) hover:text-(--color-text-primary) hover:border-(--color-border-default)'
+    }`}
+  >
+    <Icon size={18} />
+    <span>{label}</span>
+  </button>
+);
+
 const SettingsModal: React.FC<SettingsModalProps> = (props) => {
   const {
     onClose, onImportSuccess, appVersion,
@@ -139,6 +161,7 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
   
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [isReindexing, setIsReindexing] = useState(false);
+  const { theme, resolvedTheme, setTheme } = useTheme();
 
   // Dismiss factory reset dialog on Android back button
   useBackButton(() => setIsResetModalOpen(false), isResetModalOpen);
@@ -184,11 +207,11 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
   const statsFailed = embeddingStats?.failed || 0;
 
   return (
-    <div className="fixed inset-0 z-(--z-sheet) flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4">
+    <div className="fixed inset-0 z-(--z-sheet) flex items-end sm:items-center justify-center bg-(--color-surface-overlay)/80 backdrop-blur-sm p-0 sm:p-4">
       {/* Modal container: Use calc with safe-area for Safari incognito compatibility */}
-      <div className="bg-black border border-(--color-border-default) rounded-t-(--radius-xl) sm:rounded-(--radius-xl) max-w-2xl w-full shadow-2xl relative flex flex-col overflow-hidden"
+      <div className="bg-(--color-surface-base) border border-(--color-border-default) rounded-t-(--radius-xl) sm:rounded-(--radius-xl) max-w-2xl w-full shadow-2xl relative flex flex-col overflow-hidden"
            style={{ maxHeight: 'calc(100dvh - var(--sat) - var(--sab) - 16px)' }}>
-        <div className="p-4 sm:p-6 border-b border-(--color-border-default) flex items-center justify-between shrink-0 bg-black z-(--z-sticky) pt-[max(16px,var(--sat))] sm:pt-6">
+        <div className="p-4 sm:p-6 border-b border-(--color-border-default) flex items-center justify-between shrink-0 bg-(--color-surface-base) z-(--z-sticky) pt-[max(16px,var(--sat))] sm:pt-6">
           <div className="flex items-center gap-3">
              <div className="w-10 h-10 bg-(--color-surface-raised) rounded-(--radius-xl) flex items-center justify-center text-(--color-text-secondary) shrink-0"><Settings size={20} /></div>
              <div>
@@ -244,6 +267,20 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
           )}
 
 
+          <SettingsCard title="Appearance" icon={Palette}>
+            <div>
+              <p className="text-sm font-medium text-(--color-text-primary)">Theme</p>
+              <p className="text-xs text-(--color-text-secondary) mb-3">
+                {theme === 'system' ? `Following system (${resolvedTheme})` : `Always ${theme}`}
+              </p>
+              <div className="flex items-stretch gap-2">
+                <ThemeOption label="Light" icon={Sun} selected={theme === 'light'} onClick={() => setTheme('light')} />
+                <ThemeOption label="Dark" icon={Moon} selected={theme === 'dark'} onClick={() => setTheme('dark')} />
+                <ThemeOption label="System" icon={Monitor} selected={theme === 'system'} onClick={() => setTheme('system')} />
+              </div>
+            </div>
+          </SettingsCard>
+
           <SettingsCard title="AI & Index" icon={Cpu}>
             <SettingsRow>
                <SettingsInfo label="Local AI Index" description="On-device model for offline search capabilities." />
@@ -282,9 +319,9 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
                 <SettingsInfo label="Morning Briefing" description="Get a daily summary of your events and tasks." />
                 <button
                   onClick={() => onNotificationsEnabledChange?.(!notificationsEnabled)}
-                  className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${notificationsEnabled ? 'bg-(--color-accent)' : 'bg-(--color-surface-raised)'}`}
+                  className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${notificationsEnabled ? 'bg-(--color-accent)' : 'bg-(--color-border-default)'}`}
                 >
-                  <span className={`inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${notificationsEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                  <span className={`inline-block h-5 w-5 rounded-full bg-(--color-text-primary) shadow-sm transition-transform ${notificationsEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
                 </button>
               </SettingsRow>
               {notificationsEnabled && notificationPermission === 'granted' && (
@@ -364,7 +401,7 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
           </div>
         </div>
         
-        {appVersion && <div className="text-center py-2 border-t border-(--color-border-default) text-xs font-mono text-(--color-text-tertiary) shrink-0 bg-black">Version: {appVersion}</div>}
+        {appVersion && <div className="text-center py-2 border-t border-(--color-border-default) text-xs font-mono text-(--color-text-tertiary) shrink-0 bg-(--color-surface-base)">Version: {appVersion}</div>}
         
         <FactoryResetModal 
             isOpen={isResetModalOpen}
