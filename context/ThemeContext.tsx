@@ -65,12 +65,34 @@ export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     [theme, systemLight]
   );
 
-  // Apply theme to <html> and update the theme-color meta tag whenever it changes.
+  // Apply theme to <html>, update the theme-color meta tag, and sync the native
+  // status bar (Capacitor) / iOS PWA meta whenever the resolved theme changes.
   useEffect(() => {
     if (typeof document === 'undefined') return;
     document.documentElement.setAttribute('data-theme', resolvedTheme);
-    const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', resolvedTheme === 'light' ? '#ffffff' : '#000000');
+
+    const themeMeta = document.querySelector('meta[name="theme-color"]');
+    if (themeMeta) themeMeta.setAttribute('content', resolvedTheme === 'light' ? '#ffffff' : '#000000');
+
+    // iOS PWA: 'default' = dark icons on light bg, 'black-translucent' = light icons on dark bg.
+    // iOS only reads this once at launch, but keeping it in sync is correct for re-installs.
+    const sbMeta = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
+    if (sbMeta) sbMeta.setAttribute('content', resolvedTheme === 'light' ? 'default' : 'black-translucent');
+
+    // Native Capacitor: drive the system status bar dynamically. Capacitor's
+    // Style.Light = dark icons (for light backgrounds); Style.Dark = light icons (for dark backgrounds).
+    void (async () => {
+      try {
+        const { Capacitor } = await import('@capacitor/core');
+        if (!Capacitor.isNativePlatform()) return;
+        const { StatusBar, Style } = await import('@capacitor/status-bar');
+        const isLight = resolvedTheme === 'light';
+        await StatusBar.setStyle({ style: isLight ? Style.Light : Style.Dark });
+        if (Capacitor.getPlatform() === 'android') {
+          await StatusBar.setBackgroundColor({ color: isLight ? '#ffffff' : '#000000' });
+        }
+      } catch { /* StatusBar plugin unavailable (web) */ }
+    })();
   }, [resolvedTheme]);
 
   const setTheme = useCallback((next: ThemePreference) => {

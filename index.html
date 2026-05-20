@@ -74,6 +74,8 @@
 
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <!-- iOS PWA status bar style. Set dynamically by the init script below so it
+         matches the resolved theme at launch (only read once at PWA launch on iOS). -->
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="SaveItForL8R" />
 
@@ -92,8 +94,11 @@
             resolved = (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
           }
           document.documentElement.setAttribute('data-theme', resolved);
-          var meta = document.querySelector('meta[name="theme-color"]');
-          if (meta) meta.setAttribute('content', resolved === 'light' ? '#ffffff' : '#000000');
+          var themeMeta = document.querySelector('meta[name="theme-color"]');
+          if (themeMeta) themeMeta.setAttribute('content', resolved === 'light' ? '#ffffff' : '#000000');
+          // iOS PWA status bar: 'default' = dark icons (light bg), 'black-translucent' = light icons (dark bg).
+          var sbMeta = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
+          if (sbMeta) sbMeta.setAttribute('content', resolved === 'light' ? 'default' : 'black-translucent');
         } catch (e) { /* localStorage unavailable — fall back to dark default */ }
       })();
     </script>
