@@ -541,6 +541,11 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
   // Clears `inputHash` on affected moments so that:
   // 1. MomentBubble shows the stale indicator (hash mismatch)
   // 2. loadSynthesis triggers re-synthesis on next open (cache miss)
+  //
+  // After persisting, kicks off a background re-synthesis for each surviving
+  // moment (mirrors addNoteToMoment) so the moment is refreshed without the
+  // deleted note's content without waiting for the user to reopen it. Orphan
+  // (soft-deleted) and pending moments are skipped.
   const removeNoteFromMoments = useCallback(
     async (noteId: string): Promise<void> => {
       const changedMoments: Moment[] = [];
@@ -600,6 +605,17 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
           })
         )
       );
+
+      // Kick off background re-synthesis for each surviving moment so its
+      // synthesis is regenerated without the deleted note's content. Mirrors
+      // addNoteToMoment — loadSynthesis handles the supersede case when
+      // multiple updates arrive in quick succession.
+      for (const m of changedMoments) {
+        if (m.isDeleted || m.isPending) continue;
+        loadSynthesisRef.current(m, memoriesRef.current).catch(err =>
+          console.error(`[Moments] Background re-synthesis failed for ${m.id}:`, err)
+        );
+      }
     },
     []
   );
