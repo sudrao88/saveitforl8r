@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v108",
-  "buildNumber": 108,
-  "buildDate": "2026-05-19T00:00:00.000Z",
+  "version": "saveitforl8r-v109",
+  "buildNumber": 109,
+  "buildDate": "2026-05-27T00:00:00.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Light-mode legibility: enrichment sections (Instructions, Ingredients, Pros, Cons, etc.) now use darker shades for body text and bullets so they're readable on light backgrounds."
+  "changelog": "Android: dismiss the soft keyboard when switching to the app from another app that left it open, so the full viewport is restored."
 }
