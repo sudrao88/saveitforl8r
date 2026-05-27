@@ -20,10 +20,18 @@ import { isNative } from '../services/platform';
 function isEditableElementFocused(): boolean {
   const el = document.activeElement as HTMLElement | null;
   if (!el || el === document.body) return false;
-  const tag = el.tagName;
-  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
-  if (el.isContentEditable) return true;
-  return false;
+
+  if (el instanceof HTMLInputElement) {
+    if (el.disabled || el.readOnly) return false;
+    const nonKeyboardTypes = ['button', 'checkbox', 'color', 'file', 'hidden', 'image', 'radio', 'range', 'reset', 'submit'];
+    return !nonKeyboardTypes.includes(el.type);
+  }
+
+  if (el instanceof HTMLTextAreaElement) {
+    return !el.disabled && !el.readOnly;
+  }
+
+  return el.isContentEditable;
 }
 
 export function useDismissOrphanKeyboard(): void {
