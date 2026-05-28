@@ -29,6 +29,14 @@ export interface UseTodoItemsOptions {
   memories: Memory[];
   /** True once `memories` reflects IndexedDB. Reconciliation is gated on this to avoid tombstoning everything on first render. */
   memoriesLoaded: boolean;
+  /**
+   * True while a Drive sync is downloading. Reconciliation must wait for it
+   * to finish — fresh syncs land todo-*.json files in IDB before the bulkier
+   * memory files, so a mid-sync orphan pass would tombstone every just-arrived
+   * item whose parent memory hasn't downloaded yet (and then push those
+   * tombstones back to Drive, deleting them on every device).
+   */
+  syncInProgress?: boolean;
   /** Optional callback invoked with healed-orphan tombstones so they can be synced to Drive. */
   onTombstones?: (tombstones: TodoItem[]) => void;
 }
@@ -52,7 +60,7 @@ export interface UseTodoItemsReturn {
   pendingCount: number;
 }
 
-export const useTodoItems = ({ memories, memoriesLoaded, onTombstones }: UseTodoItemsOptions): UseTodoItemsReturn => {
+export const useTodoItems = ({ memories, memoriesLoaded, syncInProgress = false, onTombstones }: UseTodoItemsOptions): UseTodoItemsReturn => {
   const [itemsList, setItemsList] = useState<TodoItem[]>([]);
   const loaded = useRef(false);
   const processingMemoryIds = useRef(new Set<string>());
@@ -225,8 +233,10 @@ export const useTodoItems = ({ memories, memoriesLoaded, onTombstones }: UseTodo
 
   // Self-heal: tombstone any items whose source memory no longer exists, so they
   // disappear from the UI and the deletion propagates to other devices via sync.
+  // Skipped while a sync is in progress — see `syncInProgress` docstring above.
   useEffect(() => {
     if (!memoriesLoaded || !loaded.current) return;
+    if (syncInProgress) return;
 
     const orphanMemoryIds = new Set<string>();
     for (const item of itemsList) {
@@ -262,7 +272,7 @@ export const useTodoItems = ({ memories, memoriesLoaded, onTombstones }: UseTodo
     })();
 
     return () => { cancelled = true; };
-  }, [itemsList, activeMemoryIds, memoriesLoaded]);
+  }, [itemsList, activeMemoryIds, memoriesLoaded, syncInProgress]);
 
   // Sort: active first (by deadline asc, no-deadline last), then completed, then dismissed.
   // Also drops any item whose source memory is missing — defensive guard for the brief

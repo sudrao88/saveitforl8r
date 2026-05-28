@@ -132,4 +132,59 @@ describe('useTodoItems orphan reconciliation', () => {
     });
     expect(storageService.softDeleteTodoItemsByMemoryId).not.toHaveBeenCalled();
   });
+
+  // Regression: see the matching test in useCalendarEvents.test.ts. After a
+  // wipe-and-fresh-sync the todo shard finishes before the bulkier memory
+  // files. Reconciliation must defer until sync drains, otherwise every
+  // just-restored item is tombstoned and the tombstone is pushed back to Drive.
+  it('does not tombstone items with not-yet-synced memoryIds while syncInProgress=true', async () => {
+    const items = [makeTodo('t1', 'note-not-yet-synced')];
+    (storageService.getTodoItems as any).mockResolvedValue(items);
+    const tombstone = { ...items[0], isDeleted: true, updatedAt: Date.now() };
+    (storageService.softDeleteTodoItemsByMemoryId as any).mockResolvedValue([tombstone]);
+
+    const onTombstones = vi.fn();
+    const { rerender } = renderHook(
+      ({ memories, syncInProgress }) =>
+        useTodoItems({ memories, memoriesLoaded: true, syncInProgress, onTombstones }),
+      { initialProps: { memories: [] as Memory[], syncInProgress: true } }
+    );
+
+    await waitFor(() => {
+      expect(storageService.getTodoItems).toHaveBeenCalled();
+    });
+    await new Promise(r => setTimeout(r, 20));
+    expect(storageService.softDeleteTodoItemsByMemoryId).not.toHaveBeenCalled();
+    expect(onTombstones).not.toHaveBeenCalled();
+
+    rerender({ memories: [makeMemory('note-not-yet-synced')], syncInProgress: false });
+    await new Promise(r => setTimeout(r, 20));
+    expect(storageService.softDeleteTodoItemsByMemoryId).not.toHaveBeenCalled();
+    expect(onTombstones).not.toHaveBeenCalled();
+  });
+
+  it('reconciles real orphans once syncInProgress transitions to false', async () => {
+    const items = [makeTodo('t-orphan', 'deleted-note')];
+    (storageService.getTodoItems as any).mockResolvedValue(items);
+    const tombstone = { ...items[0], isDeleted: true, updatedAt: Date.now() };
+    (storageService.softDeleteTodoItemsByMemoryId as any).mockResolvedValue([tombstone]);
+
+    const onTombstones = vi.fn();
+    const { rerender } = renderHook(
+      ({ syncInProgress }) =>
+        useTodoItems({ memories: [], memoriesLoaded: true, syncInProgress, onTombstones }),
+      { initialProps: { syncInProgress: true } }
+    );
+
+    await waitFor(() => {
+      expect(storageService.getTodoItems).toHaveBeenCalled();
+    });
+    expect(storageService.softDeleteTodoItemsByMemoryId).not.toHaveBeenCalled();
+
+    rerender({ syncInProgress: false });
+    await waitFor(() => {
+      expect(storageService.softDeleteTodoItemsByMemoryId).toHaveBeenCalledWith('deleted-note');
+      expect(onTombstones).toHaveBeenCalledWith([tombstone]);
+    });
+  });
 });
