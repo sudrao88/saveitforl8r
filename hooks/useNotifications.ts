@@ -20,6 +20,10 @@ import {
   setNotificationEnabled as setEnabledPref,
   getNotificationTime as getTimePref,
   setNotificationTime as setTimePref,
+  isPreviousDayNotificationEnabled,
+  setPreviousDayNotificationEnabled as setPreviousDayEnabledPref,
+  getPreviousDayNotificationTime as getPreviousDayTimePref,
+  setPreviousDayNotificationTime as setPreviousDayTimePref,
   registerPeriodicSync,
   cancelAllNotifications,
   checkExactAlarmPermission,
@@ -30,9 +34,15 @@ export interface UseNotificationsReturn {
   permissionStatus: 'granted' | 'denied' | 'prompt';
   isEnabled: boolean;
   notificationTime: string;
+  /** Whether the previous-day heads-up notification is enabled. */
+  previousDayEnabled: boolean;
+  /** Time of day to fire the previous-day heads-up notification (HH:MM). */
+  previousDayTime: string;
   requestPermission: () => Promise<void>;
   setEnabled: (enabled: boolean) => Promise<void>;
   setNotificationTime: (time: string) => Promise<void>;
+  setPreviousDayEnabled: (enabled: boolean) => Promise<void>;
+  setPreviousDayTime: (time: string) => Promise<void>;
   isSupported: boolean;
   /** Route to navigate to when a notification is tapped */
   pendingRoute: string | null;
@@ -50,6 +60,8 @@ export const useNotifications = (
   const [permissionStatus, setPermissionStatus] = useState<'granted' | 'denied' | 'prompt'>('prompt');
   const [isEnabled, setIsEnabled] = useState(false);
   const [notificationTime, setNotificationTime] = useState('07:00');
+  const [previousDayEnabled, setPreviousDayEnabled] = useState(true);
+  const [previousDayTime, setPreviousDayTime] = useState('18:00');
   const [pendingRoute, setPendingRoute] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initialized = useRef(false);
@@ -59,14 +71,18 @@ export const useNotifications = (
   // Load settings on mount
   useEffect(() => {
     const init = async () => {
-      const [perm, enabled, time] = await Promise.all([
+      const [perm, enabled, time, prevEnabled, prevTime] = await Promise.all([
         checkNotificationPermission(),
         isNotificationEnabled(),
         getTimePref(),
+        isPreviousDayNotificationEnabled(),
+        getPreviousDayTimePref(),
       ]);
       setPermissionStatus(perm);
       setIsEnabled(enabled);
       setNotificationTime(time);
+      setPreviousDayEnabled(prevEnabled);
+      setPreviousDayTime(prevTime);
       initialized.current = true;
 
       // Initial sync
@@ -196,6 +212,20 @@ export const useNotifications = (
     await synchronizeNotifications();
   }, []);
 
+  const setPreviousDayEnabledHandler = useCallback(async (enabled: boolean) => {
+    setPreviousDayEnabled(enabled);
+    await setPreviousDayEnabledPref(enabled);
+    // The diff-based scheduler will cancel previous-day notifications when the
+    // provider returns an empty list (disabled) and add them back when enabled.
+    await synchronizeNotifications();
+  }, []);
+
+  const setPreviousDayTimeHandler = useCallback(async (time: string) => {
+    setPreviousDayTime(time);
+    await setPreviousDayTimePref(time);
+    await synchronizeNotifications();
+  }, []);
+
   const clearPendingRoute = useCallback(() => {
     setPendingRoute(null);
   }, []);
@@ -204,9 +234,13 @@ export const useNotifications = (
     permissionStatus,
     isEnabled,
     notificationTime,
+    previousDayEnabled,
+    previousDayTime,
     requestPermission,
     setEnabled,
     setNotificationTime: setTime,
+    setPreviousDayEnabled: setPreviousDayEnabledHandler,
+    setPreviousDayTime: setPreviousDayTimeHandler,
     isSupported,
     pendingRoute,
     clearPendingRoute,

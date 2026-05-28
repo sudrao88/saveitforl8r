@@ -6,7 +6,8 @@
  *
  * ID Range Assignments:
  *   Morning Briefing: 1000–1999
- *   (Reserved):       2000–2999, 3000–3999, ...
+ *   Previous Day:     2000–2999
+ *   (Reserved):       3000–3999, ...
  */
 
 export interface PendingNotification {
