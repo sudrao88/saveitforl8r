@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v114",
-  "buildNumber": 114,
-  "buildDate": "2026-05-28T11:50:56.497Z",
+  "version": "saveitforl8r-v115",
+  "buildNumber": 115,
+  "buildDate": "2026-05-28T13:00:00.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Sync: one-time snapshot migration to recover from pre-v113 stale entries. Users upgrading from older builds no longer re-download every Drive file on launch — the snapshot is rebuilt once from Drive's current state without downloading content, and the background-sync queue now keeps the snapshot in sync after retries."
+  "changelog": "Fix calendar events and to-dos disappearing after wipe-and-fresh-sync. The orphan-reconciliation pass in useCalendarEvents/useTodoItems was tombstoning items mid-sync (and pushing those tombstones back to Drive) because the parallelized sharded sync downloads events/todos before the bulkier memory files. Reconciliation now waits for sync to drain so a not-yet-arrived memory isn't mistaken for a deleted one."
 }

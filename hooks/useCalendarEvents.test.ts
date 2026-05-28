@@ -112,4 +112,65 @@ describe('useCalendarEvents orphan reconciliation', () => {
     expect(storageService.softDeleteCalendarEventsByMemoryId).not.toHaveBeenCalled();
     expect(onTombstones).not.toHaveBeenCalled();
   });
+
+  // Regression: after a wipe-and-fresh-sync the calendar-event shard finishes
+  // downloading before the bulkier memory files. eventsList briefly contains
+  // events whose memoryId hasn't landed in `memories` yet. The reconciliation
+  // effect must wait for sync to drain — otherwise every restored event is
+  // tombstoned mid-sync and the tombstone is pushed back to Drive, wiping
+  // calendar events on every device.
+  it('does not tombstone events with not-yet-synced memoryIds while syncInProgress=true', async () => {
+    const events = [makeEvent('e1', 'note-not-yet-synced')];
+    (storageService.getCalendarEvents as any).mockResolvedValue(events);
+    const tombstone = { ...events[0], isDeleted: true, updatedAt: Date.now() };
+    (storageService.softDeleteCalendarEventsByMemoryId as any).mockResolvedValue([tombstone]);
+
+    const onTombstones = vi.fn();
+    const { rerender } = renderHook(
+      ({ memories, syncInProgress }) =>
+        useCalendarEvents({ memories, memoriesLoaded: true, syncInProgress, onTombstones }),
+      { initialProps: { memories: [] as Memory[], syncInProgress: true } }
+    );
+
+    await waitFor(() => {
+      expect(storageService.getCalendarEvents).toHaveBeenCalled();
+    });
+    await new Promise(r => setTimeout(r, 20));
+    // Mid-sync: events visible in IDB, parent memory not yet — must not tombstone.
+    expect(storageService.softDeleteCalendarEventsByMemoryId).not.toHaveBeenCalled();
+    expect(onTombstones).not.toHaveBeenCalled();
+
+    // Sync completes; parent memory is now in the active set. Still no tombstones.
+    rerender({ memories: [makeMemory('note-not-yet-synced')], syncInProgress: false });
+    await new Promise(r => setTimeout(r, 20));
+    expect(storageService.softDeleteCalendarEventsByMemoryId).not.toHaveBeenCalled();
+    expect(onTombstones).not.toHaveBeenCalled();
+  });
+
+  // Once a sync finishes, a truly-orphaned event (memory really is gone) must
+  // still be reconciled — the syncInProgress gate is a deferral, not a bypass.
+  it('reconciles real orphans once syncInProgress transitions to false', async () => {
+    const events = [makeEvent('e-orphan', 'deleted-note')];
+    (storageService.getCalendarEvents as any).mockResolvedValue(events);
+    const tombstone = { ...events[0], isDeleted: true, updatedAt: Date.now() };
+    (storageService.softDeleteCalendarEventsByMemoryId as any).mockResolvedValue([tombstone]);
+
+    const onTombstones = vi.fn();
+    const { rerender } = renderHook(
+      ({ syncInProgress }) =>
+        useCalendarEvents({ memories: [], memoriesLoaded: true, syncInProgress, onTombstones }),
+      { initialProps: { syncInProgress: true } }
+    );
+
+    await waitFor(() => {
+      expect(storageService.getCalendarEvents).toHaveBeenCalled();
+    });
+    expect(storageService.softDeleteCalendarEventsByMemoryId).not.toHaveBeenCalled();
+
+    rerender({ syncInProgress: false });
+    await waitFor(() => {
+      expect(storageService.softDeleteCalendarEventsByMemoryId).toHaveBeenCalledWith('deleted-note');
+      expect(onTombstones).toHaveBeenCalledWith([tombstone]);
+    });
+  });
 });

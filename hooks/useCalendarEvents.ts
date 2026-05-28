@@ -23,6 +23,14 @@ export interface UseCalendarEventsOptions {
   memories: Memory[];
   /** True once `memories` reflects IndexedDB. Reconciliation is gated on this to avoid tombstoning everything on first render. */
   memoriesLoaded: boolean;
+  /**
+   * True while a Drive sync is downloading. Reconciliation must wait for it
+   * to finish — fresh syncs land event-*.json files in IDB before the bulkier
+   * memory files, so a mid-sync orphan pass would tombstone every just-arrived
+   * event whose parent memory hasn't downloaded yet (and then push those
+   * tombstones back to Drive, deleting them on every device).
+   */
+  syncInProgress?: boolean;
   /** Optional callback invoked with healed-orphan tombstones so they can be synced to Drive. */
   onTombstones?: (tombstones: CalendarEvent[]) => void;
 }
@@ -42,7 +50,7 @@ export interface UseCalendarEventsReturn {
   checkAndExpandHorizon: () => Promise<CalendarEvent[]>;
 }
 
-export const useCalendarEvents = ({ memories, memoriesLoaded, onTombstones }: UseCalendarEventsOptions): UseCalendarEventsReturn => {
+export const useCalendarEvents = ({ memories, memoriesLoaded, syncInProgress = false, onTombstones }: UseCalendarEventsOptions): UseCalendarEventsReturn => {
   const [eventsList, setEventsList] = useState<CalendarEvent[]>([]);
   const loaded = useRef(false);
   // Guard against concurrent processDetectedEvents calls for the same memory.
@@ -162,8 +170,10 @@ export const useCalendarEvents = ({ memories, memoriesLoaded, onTombstones }: Us
 
   // Self-heal: tombstone any events whose source memory no longer exists, so they
   // disappear from the UI and the deletion propagates to other devices via sync.
+  // Skipped while a sync is in progress — see `syncInProgress` docstring above.
   useEffect(() => {
     if (!memoriesLoaded || !loaded.current) return;
+    if (syncInProgress) return;
 
     const orphanMemoryIds = new Set<string>();
     for (const event of eventsList) {
@@ -199,7 +209,7 @@ export const useCalendarEvents = ({ memories, memoriesLoaded, onTombstones }: Us
     })();
 
     return () => { cancelled = true; };
-  }, [eventsList, activeMemoryIds, memoriesLoaded]);
+  }, [eventsList, activeMemoryIds, memoriesLoaded, syncInProgress]);
 
   // Sort by startDate ascending. Drops deleted events and any whose source memory
   // is missing — defensive guard for the brief window between an orphan being

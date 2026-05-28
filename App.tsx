@@ -142,6 +142,7 @@ const AppContent: React.FC = () => {
   } = useCalendarEvents({
     memories,
     memoriesLoaded: !isLoading,
+    syncInProgress: isSyncingDownload,
     onTombstones: (tombstones) => {
       syncCalendarEvents(tombstones).catch(err => console.error('[Calendar] Failed to sync orphan tombstones:', err));
     },
@@ -159,6 +160,7 @@ const AppContent: React.FC = () => {
   } = useTodoItems({
     memories,
     memoriesLoaded: !isLoading,
+    syncInProgress: isSyncingDownload,
     onTombstones: (tombstones) => {
       syncTodoItems(tombstones).catch(err => console.error('[Todo] Failed to sync orphan tombstones:', err));
     },
