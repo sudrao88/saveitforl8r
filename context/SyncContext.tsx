@@ -793,6 +793,17 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const handled = new Set<string>();
 
+    // [Sync:Diag] Temporary instrumentation to confirm which scenario causes
+    // unexpected re-downloads on launch. Remove once root cause is verified.
+    let diagMatchedAndSkipped = 0;
+    let diagMatchedNoLocal = 0;
+    let diagMismatchModifiedTime = 0;
+    let diagNotInSnapshot = 0;
+    const diagFellThroughIds: string[] = [];
+    const diagRecordFallthrough = (noteId: string, tag: string) => {
+        if (diagFellThroughIds.length < 50) diagFellThroughIds.push(`${noteId} [${tag}]`);
+    };
+
     for (const [noteId, remoteFile] of remoteMap.entries()) {
         if (previousSnapshot[noteId] && previousSnapshot[noteId] === remoteFile.modifiedTime) {
             // Snapshot says we already synced this version — but only trust
@@ -820,7 +831,18 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 })() :
                 noteId.startsWith('moment-') ? localMomentMap.has(noteId) :
                 localMap.has(noteId);
-            if (hasLocal) continue;
+            if (hasLocal) {
+                diagMatchedAndSkipped++;
+                continue;
+            }
+            diagMatchedNoLocal++;
+            diagRecordFallthrough(noteId, 'no-local');
+        } else if (previousSnapshot[noteId]) {
+            diagMismatchModifiedTime++;
+            diagRecordFallthrough(noteId, `mt:${previousSnapshot[noteId]}→${remoteFile.modifiedTime}`);
+        } else {
+            diagNotInSnapshot++;
+            diagRecordFallthrough(noteId, 'not-in-snapshot');
         }
 
         handled.add(noteId);
@@ -1031,6 +1053,21 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             handled.add(noteId);
         }
     }
+
+    console.log('[Sync:Diag]', {
+        snapshotSize: Object.keys(previousSnapshot).length,
+        remoteFileCount: remoteMap.size,
+        matchedAndSkipped: diagMatchedAndSkipped,
+        matchedNoLocal: diagMatchedNoLocal,
+        mismatchModifiedTime: diagMismatchModifiedTime,
+        notInSnapshot: diagNotInSnapshot,
+        toDownload: plan.toDownload.length,
+        toUpload: plan.toUpload.length,
+        toDeleteRemote: plan.toDeleteRemote.length,
+        toDeleteLocal: plan.toDeleteLocal.length,
+        toHardDeleteLocal: plan.toHardDeleteLocal.length,
+        fellThroughIds: diagFellThroughIds,
+    });
 
     const totalSyncItems = plan.toDownload.length + plan.toUpload.length + plan.toDeleteRemote.length;
     if (totalSyncItems > 0) {
