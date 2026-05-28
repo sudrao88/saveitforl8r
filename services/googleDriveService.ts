@@ -127,11 +127,17 @@ export const uploadFile = async (filename: string, content: any, existingFileId?
     JSON.stringify(content) +
     closeDelim;
 
-  let url = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
+  // `fields` is required: by default Drive v3 returns only id/name/mimeType
+  // on files.create and files.update. Without modifiedTime in the response,
+  // every caller that updates the snapshot from `uploaded.modifiedTime`
+  // (syncFileInternal, performMomentSync, performCalendarEventsSync,
+  // performTodoItemsSync, executeSyncPlan's batch path) silently no-ops,
+  // leaving the snapshot stale and triggering a re-download next launch.
+  let url = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,modifiedTime';
   let method = 'POST';
 
   if (existingFileId) {
-    url = `https://www.googleapis.com/upload/drive/v3/files/${existingFileId}?uploadType=multipart`;
+    url = `https://www.googleapis.com/upload/drive/v3/files/${existingFileId}?uploadType=multipart&fields=id,name,modifiedTime`;
     method = 'PATCH';
   }
 

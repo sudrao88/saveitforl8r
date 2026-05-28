@@ -789,17 +789,6 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const handled = new Set<string>();
 
-    // [Sync:Diag] Temporary instrumentation to confirm which scenario causes
-    // unexpected re-downloads on launch. Remove once root cause is verified.
-    let diagMatchedAndSkipped = 0;
-    let diagMatchedNoLocal = 0;
-    let diagMismatchModifiedTime = 0;
-    let diagNotInSnapshot = 0;
-    const diagFellThroughIds: string[] = [];
-    const diagRecordFallthrough = (noteId: string, tag: string) => {
-        if (diagFellThroughIds.length < 50) diagFellThroughIds.push(`${noteId} [${tag}]`);
-    };
-
     for (const [noteId, remoteFile] of remoteMap.entries()) {
         if (previousSnapshot[noteId] && previousSnapshot[noteId] === remoteFile.modifiedTime) {
             // Snapshot says we already synced this version — but only trust
@@ -827,18 +816,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 })() :
                 noteId.startsWith('moment-') ? localMomentMap.has(noteId) :
                 localMap.has(noteId);
-            if (hasLocal) {
-                diagMatchedAndSkipped++;
-                continue;
-            }
-            diagMatchedNoLocal++;
-            diagRecordFallthrough(noteId, 'no-local');
-        } else if (previousSnapshot[noteId]) {
-            diagMismatchModifiedTime++;
-            diagRecordFallthrough(noteId, `mt:${previousSnapshot[noteId]}→${remoteFile.modifiedTime}`);
-        } else {
-            diagNotInSnapshot++;
-            diagRecordFallthrough(noteId, 'not-in-snapshot');
+            if (hasLocal) continue;
         }
 
         handled.add(noteId);
@@ -1050,21 +1028,6 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
     }
 
-    console.log('[Sync:Diag]', {
-        snapshotSize: Object.keys(previousSnapshot).length,
-        remoteFileCount: remoteMap.size,
-        matchedAndSkipped: diagMatchedAndSkipped,
-        matchedNoLocal: diagMatchedNoLocal,
-        mismatchModifiedTime: diagMismatchModifiedTime,
-        notInSnapshot: diagNotInSnapshot,
-        toDownload: plan.toDownload.length,
-        toUpload: plan.toUpload.length,
-        toDeleteRemote: plan.toDeleteRemote.length,
-        toDeleteLocal: plan.toDeleteLocal.length,
-        toHardDeleteLocal: plan.toHardDeleteLocal.length,
-        fellThroughIds: diagFellThroughIds,
-    });
-
     const totalSyncItems = plan.toDownload.length + plan.toUpload.length + plan.toDeleteRemote.length;
     if (totalSyncItems > 0) {
         await startForegroundSync(totalSyncItems);
@@ -1082,14 +1045,15 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     });
 
     // Build the next snapshot in-memory from data we already have, avoiding a
-    // second listAllFiles round-trip. Start from the pre-sync remote index
-    // (which also pulls in any "phantom orphans" — files on Drive missing
-    // from previousSnapshot — so they self-heal and don't fall through again
-    // next launch), remove anything just deleted from Drive, and overwrite
-    // with the new modifiedTime values returned by uploadMultipleFiles.
+    // second listAllFiles round-trip. Start from `remoteMap` (which dedupes
+    // multiple Drive files sharing the same name to the same canonical entry
+    // the planner used) — this also pulls in any "phantom orphans" (files on
+    // Drive missing from previousSnapshot) so they self-heal and don't fall
+    // through again next launch. Then remove anything just deleted, and
+    // overwrite with the modifiedTime values returned by uploadMultipleFiles.
     // Failed items are dropped so they retry on the next sync.
     const nextSnapshot: Record<string, string> = Object.fromEntries(
-        remoteFiles.map(f => [f.name.replace('.json', ''), f.modifiedTime])
+        Array.from(remoteMap.entries()).map(([noteId, f]) => [noteId, f.modifiedTime])
     );
     for (const item of plan.toDeleteRemote) {
         delete nextSnapshot[item.noteId];
@@ -1101,9 +1065,6 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     for (const id of errorSet) delete nextSnapshot[id];
 
     await storage.set(SNAPSHOT_KEY, JSON.stringify(nextSnapshot));
-    if (errors.length === 0) {
-        await storage.set(LAST_SYNC_KEY, Date.now().toString());
-    }
 
     // Wrap reconciliation in try/catch so it can't prevent snapshot save.
     // Runs unconditionally — even on a no-op delta, a note's matchedMomentIds
@@ -1111,17 +1072,19 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
         const reconciledMoments = await reconcileAllNoteToMomentMatches();
         if (reconciledMoments.length > 0) {
-            // Reuse the pre-sync remoteFiles index to resolve existingFileId
-            // in memory — no per-moment Drive lookups, no second listAllFiles.
-            const remoteFileByName = new Map(remoteFiles.map(f => [f.name, f]));
+            // Reuse remoteMap (deduped) to resolve existingFileId in memory —
+            // no per-moment Drive lookups, no second listAllFiles.
             const reconciledUploadItems = reconciledMoments.map((m) => {
                 const filename = `moment-${m.id}.json`;
-                const remoteFile = remoteFileByName.get(filename);
+                const remoteFile = remoteMap.get(`moment-${m.id}`);
                 return { filename, content: m as Moment, existingFileId: remoteFile?.id };
             });
             const { failures, succeeded } = await uploadMultipleFiles(reconciledUploadItems);
             if (failures.length > 0) {
                 console.warn(`[Sync] ${failures.length} reconciled moment upload(s) failed:`, failures);
+                // Hold lastSyncTime back so the failed reconciliation uploads
+                // are eligible (updatedAt > lastSyncTime) on the next sync.
+                errors.push(...failures.map(f => f.replace('.json', '')));
             }
             // Patch in-place with the modifiedTimes Drive returned so the next
             // launch's snapshot check matches and skips re-download.
@@ -1136,7 +1099,11 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         console.error('[Sync] Reconciliation failed:', e);
     }
 
-    if (errors.length > 0) {
+    // Advance lastSyncTime only after reconciliation so any failures it
+    // reported also hold the timestamp back.
+    if (errors.length === 0) {
+        await storage.set(LAST_SYNC_KEY, Date.now().toString());
+    } else {
         console.error(`[Sync] ${errors.length} item(s) failed:`, errors);
         throw new Error(`Failed to sync ${errors.length} items`);
     }
