@@ -324,28 +324,36 @@ export const downloadFilesStreaming = async (
 
 export const uploadMultipleFiles = async (
     items: Array<{ filename: string; content: any; existingFileId?: string }>
-): Promise<{ failures: string[] }> => {
+): Promise<{ failures: string[]; succeeded: Array<{ filename: string; modifiedTime: string }> }> => {
     const failures: string[] = [];
-    if (items.length === 0) return { failures };
+    const succeeded: Array<{ filename: string; modifiedTime: string }> = [];
+    if (items.length === 0) return { failures, succeeded };
 
     for (let i = 0; i < items.length; i += BATCH_CONCURRENCY) {
         const batch = items.slice(i, i + BATCH_CONCURRENCY);
         const results = await Promise.all(
             batch.map(async (item) => {
                 try {
-                    await uploadFile(item.filename, item.content, item.existingFileId);
-                    return { filename: item.filename, ok: true as const };
+                    const uploaded = await uploadFile(item.filename, item.content, item.existingFileId);
+                    return { filename: item.filename, ok: true as const, modifiedTime: uploaded?.modifiedTime as string | undefined };
                 } catch (e) {
                     console.error(`[Drive] Upload failed for ${item.filename}:`, e);
-                    return { filename: item.filename, ok: false as const };
+                    return { filename: item.filename, ok: false as const, modifiedTime: undefined };
                 }
             })
         );
         for (const r of results) {
-            if (!r.ok) failures.push(r.filename);
+            if (!r.ok) {
+                failures.push(r.filename);
+            } else if (r.modifiedTime) {
+                succeeded.push({ filename: r.filename, modifiedTime: r.modifiedTime });
+            }
+            // r.ok but no modifiedTime: upload succeeded but Drive didn't return
+            // a usable timestamp — caller will rebuild snapshot for this entry
+            // from a fresh listAllFiles next sync. Don't fail the item.
         }
     }
-    return { failures };
+    return { failures, succeeded };
 };
 
 export const initializeGoogleAuth = (cb?: () => void) => { if(cb) cb(); };

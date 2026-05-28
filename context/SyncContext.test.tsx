@@ -52,7 +52,7 @@ vi.mock('../services/googleDriveService', () => ({
   downloadMultipleFiles: vi.fn().mockResolvedValue({ contents: new Map(), failures: [] }),
   downloadFilesStreaming: vi.fn().mockImplementation(async (_fileIds: string[], _onFile: any) => ({ failures: [] })),
   uploadFile: vi.fn().mockResolvedValue({ id: 'file-1' }),
-  uploadMultipleFiles: vi.fn().mockResolvedValue({ failures: [] }),
+  uploadMultipleFiles: vi.fn().mockResolvedValue({ failures: [], succeeded: [] }),
   findFileByName: vi.fn().mockResolvedValue(null),
   findAllFilesByName: vi.fn().mockResolvedValue([]),
   cleanupFilesByName: vi.fn().mockResolvedValue(undefined),
@@ -373,6 +373,29 @@ describe('SyncContext', () => {
       expect(driveService.downloadFilesStreaming).toHaveBeenCalledWith([], expect.any(Function));
       // Should NOT upload since local timestamp (1000) < lastSyncTime (5000)
       expect(driveService.uploadMultipleFiles).toHaveBeenCalledWith([]);
+    });
+
+    it('should call listAllFiles only once when sync is a no-op', async () => {
+      // Snapshot fully matches remote and local — nothing to download, upload, or delete.
+      const snapshot = { 'mem-1': '2024-01-01T00:00:00Z' };
+      mockStorageValues['gdrive_remote_snapshot'] = JSON.stringify(snapshot);
+      mockStorageValues['gdrive_last_sync_time'] = '5000';
+
+      const localMem = { id: 'mem-1', content: 'Unchanged', timestamp: 1000, tags: [] };
+      (storageService.getMemories as any).mockResolvedValue([localMem]);
+      (driveService.listAllFiles as any).mockResolvedValue([
+        { id: 'drive-file-1', name: 'mem-1.json', modifiedTime: '2024-01-01T00:00:00Z' },
+      ]);
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      await act(async () => {
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
+      });
+
+      expect(driveService.listAllFiles).toHaveBeenCalledTimes(1);
     });
 
     it('should delete local note when remote was deleted by another device', async () => {
