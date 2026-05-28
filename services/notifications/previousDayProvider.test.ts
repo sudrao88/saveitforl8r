@@ -97,7 +97,7 @@ describe('previousDayProvider', () => {
 
     const notifications = await previousDayProvider.getNotifications();
     expect(notifications).toHaveLength(1);
-    expect(notifications[0].id).toBe(2000); // dayOffset 0 (fires tonight)
+    expect(notifications[0].id).toBe(2022); // ID keyed by target date (3/22)
     expect(notifications[0].body).toBe('You have an upcoming event tomorrow');
     expect(notifications[0].title).toBe('Heads up for tomorrow');
     expect(notifications[0].extra?.route).toBe('calendar');
@@ -155,7 +155,7 @@ describe('previousDayProvider', () => {
 
     const notifications = await previousDayProvider.getNotifications();
     expect(notifications).toHaveLength(1);
-    expect(notifications[0].id).toBe(2001); // dayOffset 1 (fires tomorrow night for day-after's event)
+    expect(notifications[0].id).toBe(2023); // ID keyed by target date (3/23)
   });
 
   it('respects the configured time', async () => {
@@ -193,8 +193,8 @@ describe('previousDayProvider', () => {
     // First fires tonight (3/21) for tomorrow (3/22), second fires 3/24 night for 3/25
     expect(notifications[0].scheduledAt.getDate()).toBe(21);
     expect(notifications[1].scheduledAt.getDate()).toBe(24);
-    expect(notifications[0].id).toBe(2000);
-    expect(notifications[1].id).toBe(2003);
+    expect(notifications[0].id).toBe(2022); // target 3/22
+    expect(notifications[1].id).toBe(2025); // target 3/25
   });
 
   it('skips cancelled events', async () => {

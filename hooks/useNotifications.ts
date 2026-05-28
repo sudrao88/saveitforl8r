@@ -215,15 +215,14 @@ export const useNotifications = (
   const setPreviousDayEnabledHandler = useCallback(async (enabled: boolean) => {
     setPreviousDayEnabled(enabled);
     await setPreviousDayEnabledPref(enabled);
-    // Reschedule so the provider picks up the new state immediately.
-    await cancelAllNotifications();
+    // The diff-based scheduler will cancel previous-day notifications when the
+    // provider returns an empty list (disabled) and add them back when enabled.
     await synchronizeNotifications();
   }, []);
 
   const setPreviousDayTimeHandler = useCallback(async (time: string) => {
     setPreviousDayTime(time);
     await setPreviousDayTimePref(time);
-    await cancelAllNotifications();
     await synchronizeNotifications();
   }, []);
 

@@ -122,8 +122,11 @@ export const previousDayProvider: NotificationProvider = {
       const body = buildPreviousDayBody(dayEvents.length, dayTodos.length);
       const route = getRoute(dayEvents.length > 0, dayTodos.length > 0);
 
+      // Key the ID by the day of the announced (target) date so it stays stable
+      // across days. Within a 7-day window all day-of-month values are unique,
+      // so this keeps the diff scheduler from rescheduling every day.
       notifications.push({
-        id: ID_RANGE_START + dayOffset,
+        id: ID_RANGE_START + targetDate.getDate(),
         title: 'Heads up for tomorrow',
         body,
         scheduledAt,
