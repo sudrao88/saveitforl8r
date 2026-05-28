@@ -36,6 +36,41 @@ const makeMoment = (id: string, noteIds: string[]): Moment => ({
   updatedAt: Date.now(),
 });
 
+/**
+ * Hook saveMoment up to a Map and back through getMoment so the
+ * persistResult re-read inside loadSynthesis sees the noteIds that the
+ * caller (addNoteToMoment / removeNoteFromMoments) just wrote. Without this,
+ * the default mock returns the original moments and persistResult silently
+ * reverts the noteIds.
+ */
+const wireMomentStorage = (initial: Moment[]) => {
+  const store = new Map<string, Moment>(initial.map(m => [m.id, m]));
+  (storageService.getMoments as any).mockImplementation(async () =>
+    Array.from(store.values())
+  );
+  (storageService.getMoment as any).mockImplementation(async (id: string) =>
+    store.get(id) ?? null
+  );
+  (storageService.saveMoment as any).mockImplementation(async (m: Moment) => {
+    store.set(m.id, m);
+  });
+  return store;
+};
+
+/**
+ * Make the background loadSynthesis triggered by addNoteToMoment /
+ * removeNoteFromMoments harmless: submitResynthesis resolves, but
+ * pollSynthesisResult hangs forever so the test observes the
+ * immediately-post-removal state without persistResult / catch-block
+ * side effects.
+ */
+const stubBackgroundResynthesis = () => {
+  (geminiService.submitResynthesis as any).mockResolvedValue({ momentId: 'noop' });
+  (geminiService.pollSynthesisResult as any).mockImplementation(
+    () => new Promise(() => {})
+  );
+};
+
 describe('useMoments', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -70,12 +105,12 @@ describe('useMoments', () => {
 
   describe('removeNoteFromMoments', () => {
     it('should remove a note ID from all moments that reference it', async () => {
-      const moments = [
+      wireMomentStorage([
         makeMoment('m1', ['note-1', 'note-2', 'note-3']),
         makeMoment('m2', ['note-2', 'note-4']),
         makeMoment('m3', ['note-5']),
-      ];
-      (storageService.getMoments as any).mockResolvedValue(moments);
+      ]);
+      stubBackgroundResynthesis();
 
       const memories: Memory[] = [
         makeMemory('note-1'),
@@ -113,8 +148,16 @@ describe('useMoments', () => {
       const m3 = result.current.moments.find(m => m.id === 'm3');
       expect(m3?.noteIds).toEqual(['note-5']);
 
-      // saveMoment should have been called for m1 and m2 (the affected moments)
-      expect(storageService.saveMoment).toHaveBeenCalledTimes(2);
+      // The deletion path must persist m1 and m2 with their reduced noteIds.
+      // (Background re-synthesis kicked off by removeNoteFromMoments may
+      // issue additional saveMoment calls — covered by a separate test.)
+      const saveCalls = (storageService.saveMoment as any).mock.calls.map((c: any[]) => c[0]);
+      const m1Save = saveCalls.find((m: Moment) => m.id === 'm1' && m.noteIds.length === 2);
+      const m2Save = saveCalls.find((m: Moment) => m.id === 'm2' && m.noteIds.length === 1);
+      const m3Save = saveCalls.find((m: Moment) => m.id === 'm3');
+      expect(m1Save?.noteIds).toEqual(['note-1', 'note-3']);
+      expect(m2Save?.noteIds).toEqual(['note-4']);
+      expect(m3Save).toBeUndefined();
     });
 
     it('should not modify moments that do not reference the deleted note', async () => {
@@ -143,10 +186,10 @@ describe('useMoments', () => {
 
     it('should update the updatedAt timestamp on affected moments', async () => {
       const oldTime = Date.now() - 10000;
-      const moments = [
+      wireMomentStorage([
         { ...makeMoment('m1', ['note-1', 'note-2']), updatedAt: oldTime },
-      ];
-      (storageService.getMoments as any).mockResolvedValue(moments);
+      ]);
+      stubBackgroundResynthesis();
 
       const memories = [makeMemory('note-1'), makeMemory('note-2')];
 
@@ -165,10 +208,13 @@ describe('useMoments', () => {
     });
 
     it('should clear inputHash to invalidate synthesis cache for affected moments', async () => {
-      const moments = [
+      wireMomentStorage([
         { ...makeMoment('m1', ['note-1', 'note-2']), inputHash: 'old-hash' },
-      ];
-      (storageService.getMoments as any).mockResolvedValue(moments);
+      ]);
+      // Hang the background re-synthesis triggered by removeNoteFromMoments
+      // so the immediately-post-removal state is observable without
+      // persistResult writing a fresh inputHash.
+      stubBackgroundResynthesis();
 
       const memories = [makeMemory('note-1'), makeMemory('note-2')];
 
@@ -185,8 +231,8 @@ describe('useMoments', () => {
         await result.current.removeNoteFromMoments('note-1');
       });
 
-      // After removal, inputHash should be cleared so loadSynthesis
-      // triggers re-synthesis and MomentBubble shows stale indicator
+      // After removal, inputHash should be cleared so MomentBubble shows
+      // the stale indicator until the background re-synthesis completes.
       const m1 = result.current.moments.find(m => m.id === 'm1');
       expect(m1?.inputHash).toBeUndefined();
     });
@@ -215,11 +261,11 @@ describe('useMoments', () => {
     });
 
     it('should soft-delete a moment when its last source note is removed', async () => {
-      const moments = [
+      wireMomentStorage([
         makeMoment('m1', ['note-1']),
         makeMoment('m2', ['note-1', 'note-2']),
-      ];
-      (storageService.getMoments as any).mockResolvedValue(moments);
+      ]);
+      stubBackgroundResynthesis();
 
       const memories = [makeMemory('note-1'), makeMemory('note-2')];
       const { result } = renderHook(() => useMoments(memories));
@@ -270,10 +316,10 @@ describe('useMoments', () => {
     });
 
     it('should clear in-memory synthesis cache for affected moments', async () => {
-      const moments = [
+      wireMomentStorage([
         { ...makeMoment('m1', ['note-1', 'note-2']), inputHash: 'old-hash' },
-      ];
-      (storageService.getMoments as any).mockResolvedValue(moments);
+      ]);
+      stubBackgroundResynthesis();
 
       const memories = [makeMemory('note-1'), makeMemory('note-2')];
 
@@ -349,11 +395,11 @@ describe('useMoments', () => {
     it('should delete persisted synthesis cache for affected moments', async () => {
       (storageService.deleteMomentSynthesis as any).mockResolvedValue(undefined);
 
-      const moments = [
+      wireMomentStorage([
         { ...makeMoment('m1', ['note-1', 'note-2']), inputHash: 'old-hash' },
         makeMoment('m2', ['note-1', 'note-3']),
-      ];
-      (storageService.getMoments as any).mockResolvedValue(moments);
+      ]);
+      stubBackgroundResynthesis();
 
       const memories = [makeMemory('note-1'), makeMemory('note-2'), makeMemory('note-3')];
 
@@ -372,6 +418,100 @@ describe('useMoments', () => {
       // deleteMomentSynthesis should have been called for both affected moments
       expect(storageService.deleteMomentSynthesis).toHaveBeenCalledWith('m1');
       expect(storageService.deleteMomentSynthesis).toHaveBeenCalledWith('m2');
+    });
+
+    it('triggers a background submitResynthesis for each surviving affected moment', async () => {
+      wireMomentStorage([
+        makeMoment('m1', ['note-1', 'note-2']),
+        makeMoment('m2', ['note-2', 'note-3']),
+        makeMoment('m3', ['note-4']), // unaffected — should not be resynthesized
+      ]);
+      const memories = [
+        makeMemory('note-1'),
+        makeMemory('note-2'),
+        makeMemory('note-3'),
+        makeMemory('note-4'),
+      ];
+
+      (geminiService.fetchPendingSynthesisResults as any).mockResolvedValue({});
+      (geminiService.submitResynthesis as any).mockResolvedValue({ momentId: 'noop' });
+      (geminiService.pollSynthesisResult as any).mockImplementation(
+        () => new Promise(() => {})
+      );
+
+      const { result } = renderHook(() => useMoments(memories));
+      await waitFor(() => expect(result.current.moments).toHaveLength(3));
+
+      await act(async () => {
+        await result.current.removeNoteFromMoments('note-2');
+      });
+
+      // m1 and m2 each lost note-2 but still have a remaining note, so each
+      // should kick off a background re-synthesis. m3 was unaffected.
+      await waitFor(() => {
+        expect(geminiService.submitResynthesis).toHaveBeenCalledTimes(2);
+      });
+      const submittedMomentIds = (geminiService.submitResynthesis as any).mock.calls.map(
+        (c: any[]) => c[0]?.id
+      );
+      expect(submittedMomentIds).toContain('m1');
+      expect(submittedMomentIds).toContain('m2');
+      expect(submittedMomentIds).not.toContain('m3');
+    });
+
+    it('does not trigger background re-synthesis for a moment that became orphan', async () => {
+      // m1 has a single source note — removing it should soft-delete m1
+      // rather than re-synthesize an empty moment.
+      wireMomentStorage([makeMoment('m1', ['note-1'])]);
+      const memories = [makeMemory('note-1')];
+
+      (geminiService.fetchPendingSynthesisResults as any).mockResolvedValue({});
+      (geminiService.submitResynthesis as any).mockResolvedValue({ momentId: 'm1' });
+      (geminiService.pollSynthesisResult as any).mockImplementation(
+        () => new Promise(() => {})
+      );
+
+      const { result } = renderHook(() => useMoments(memories));
+      await waitFor(() => expect(result.current.moments).toHaveLength(1));
+
+      await act(async () => {
+        await result.current.removeNoteFromMoments('note-1');
+      });
+
+      // Give the background promise (if any) a chance to run.
+      await act(async () => {
+        await new Promise(r => setTimeout(r, 0));
+      });
+
+      expect(geminiService.submitResynthesis).not.toHaveBeenCalled();
+      expect(geminiService.fetchPendingSynthesisResults).not.toHaveBeenCalled();
+    });
+
+    it('does not trigger background re-synthesis for a pending moment', async () => {
+      wireMomentStorage([
+        { ...makeMoment('m1', ['note-1', 'note-2']), isPending: true },
+      ]);
+      const memories = [makeMemory('note-1'), makeMemory('note-2')];
+
+      (geminiService.fetchPendingSynthesisResults as any).mockResolvedValue({});
+      (geminiService.submitResynthesis as any).mockResolvedValue({ momentId: 'm1' });
+      (geminiService.pollSynthesisResult as any).mockImplementation(
+        () => new Promise(() => {})
+      );
+
+      const { result } = renderHook(() => useMoments(memories));
+      await waitFor(() => expect(result.current.moments).toHaveLength(1));
+
+      await act(async () => {
+        await result.current.removeNoteFromMoments('note-1');
+      });
+
+      await act(async () => {
+        await new Promise(r => setTimeout(r, 0));
+      });
+
+      expect(geminiService.submitResynthesis).not.toHaveBeenCalled();
+      expect(geminiService.fetchPendingSynthesisResults).not.toHaveBeenCalled();
     });
   });
 
@@ -603,26 +743,6 @@ describe('useMoments', () => {
   });
 
   describe('addNoteToMoment background re-synthesis', () => {
-    /**
-     * Hook saveMoment up to a Map and back through getMoment so the
-     * persistResult re-read inside loadSynthesis sees the noteIds that
-     * addNoteToMoment just wrote. Without this, the default mock returns the
-     * original moments and persistResult silently reverts the noteIds.
-     */
-    const wireMomentStorage = (initial: Moment[]) => {
-      const store = new Map<string, Moment>(initial.map(m => [m.id, m]));
-      (storageService.getMoments as any).mockImplementation(async () =>
-        Array.from(store.values())
-      );
-      (storageService.getMoment as any).mockImplementation(async (id: string) =>
-        store.get(id) ?? null
-      );
-      (storageService.saveMoment as any).mockImplementation(async (m: Moment) => {
-        store.set(m.id, m);
-      });
-      return store;
-    };
-
     it('triggers a background submitResynthesis after a note matches', async () => {
       wireMomentStorage([makeMoment('m1', ['note-1'])]);
       const memories = [makeMemory('note-1'), makeMemory('note-2')];
