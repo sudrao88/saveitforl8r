@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v111",
-  "buildNumber": 111,
+  "version": "saveitforl8r-v112",
+  "buildNumber": 112,
   "buildDate": "2026-05-28T00:00:00.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Notifications: get a heads-up the day before upcoming events and tasks, with separate Settings controls for the toggle and time."
+  "changelog": "Sync: parallelize the Drive file-list step on launch so the \"does this need to download?\" check completes in roughly one round trip instead of one per page."
 }
