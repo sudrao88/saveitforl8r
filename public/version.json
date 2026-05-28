@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v110",
-  "buildNumber": 110,
+  "version": "saveitforl8r-v111",
+  "buildNumber": 111,
   "buildDate": "2026-05-28T00:00:00.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Moments: re-synthesize automatically when a note that matched a moment is deleted, so the synthesis is refreshed without waiting for the user to reopen the moment sheet."
+  "changelog": "Notifications: get a heads-up the day before upcoming events and tasks, with separate Settings controls for the toggle and time."
 }
