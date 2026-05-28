@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v115",
-  "buildNumber": 115,
-  "buildDate": "2026-05-28T13:00:00.000Z",
+  "version": "saveitforl8r-v116",
+  "buildNumber": 116,
+  "buildDate": "2026-05-28T16:28:50.627Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Fix calendar events and to-dos disappearing after wipe-and-fresh-sync. The orphan-reconciliation pass in useCalendarEvents/useTodoItems was tombstoning items mid-sync (and pushing those tombstones back to Drive) because the parallelized sharded sync downloads events/todos before the bulkier memory files. Reconciliation now waits for sync to drain so a not-yet-arrived memory isn't mistaken for a deleted one."
+  "changelog": "Sync: clean up orphan tombstones on Drive. Older builds soft-deleted notes by uploading isDeleted:true to Drive without ever removing the file, so every launch kept re-downloading the same dead tombstones. The sync now schedules a Drive deletion whenever a remote tombstone is processed (whether or not a local copy exists), so accumulated tombstones drain over the next sync or two and stop firing alt=media requests."
 }

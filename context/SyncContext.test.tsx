@@ -477,6 +477,39 @@ describe('SyncContext', () => {
       // Should hard-delete the local tombstone
       expect(storageService.deleteMemory).toHaveBeenCalledWith('del-1');
     });
+
+    it('should clean up remote tombstones that have no local copy', async () => {
+      // Accumulated remote tombstones from a pre-cleanup build (or another
+      // device's soft-delete that this device never had locally) used to
+      // re-download every launch — snapshot matches modifiedTime, hasLocal
+      // is false, falls through to download, processing yields no save, and
+      // next launch repeats. Verify we now delete the orphan tombstone.
+      const tombstoneContent = { id: 'orphan-1', content: '', timestamp: 1000, tags: [], isDeleted: true };
+      mockStorageValues['gdrive_remote_snapshot'] = JSON.stringify({
+        'orphan-1': '2024-01-01T00:00:00Z',
+      });
+      (storageService.getMemories as any).mockResolvedValue([]);
+      (driveService.listAllFiles as any).mockResolvedValue([
+        { id: 'drive-orphan-1', name: 'orphan-1.json', modifiedTime: '2024-06-01T00:00:00Z' },
+      ]);
+      mockDownloads(new Map([['drive-orphan-1', tombstoneContent]]));
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      await act(async () => {
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
+      });
+
+      // Remote tombstone gets deleted from Drive
+      expect(driveService.deleteFileById).toHaveBeenCalledWith('drive-orphan-1');
+      // Snapshot no longer has the entry, so the next launch wouldn't see it
+      const updated = JSON.parse(mockStorageValues['gdrive_remote_snapshot']!);
+      expect(updated['orphan-1']).toBeUndefined();
+      // No spurious deleteMemory call for a memory that wasn't there locally
+      expect(storageService.deleteMemory).not.toHaveBeenCalled();
+    });
   });
 
   describe('single file sync', () => {
