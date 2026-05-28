@@ -36,8 +36,12 @@ interface SettingsModalProps {
   notificationsEnabled?: boolean;
   notificationPermission?: 'granted' | 'denied' | 'prompt';
   notificationTime?: string;
+  previousDayNotificationEnabled?: boolean;
+  previousDayNotificationTime?: string;
   onNotificationsEnabledChange?: (enabled: boolean) => Promise<void>;
   onNotificationTimeChange?: (time: string) => Promise<void>;
+  onPreviousDayNotificationEnabledChange?: (enabled: boolean) => Promise<void>;
+  onPreviousDayNotificationTimeChange?: (time: string) => Promise<void>;
   onRequestNotificationPermission?: () => Promise<void>;
   onOpenNotificationSettings?: () => void;
 }
@@ -155,6 +159,8 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
     onUpdateReport,
     notificationsSupported, notificationsEnabled, notificationPermission,
     notificationTime, onNotificationsEnabledChange, onNotificationTimeChange,
+    previousDayNotificationEnabled, previousDayNotificationTime,
+    onPreviousDayNotificationEnabledChange, onPreviousDayNotificationTimeChange,
     onRequestNotificationPermission,
     onOpenNotificationSettings,
   } = props;
@@ -331,6 +337,28 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
                     type="time"
                     value={notificationTime || '07:00'}
                     onChange={(e) => onNotificationTimeChange?.(e.target.value)}
+                    className="bg-(--color-surface-raised) border border-(--color-border-default) rounded-(--radius-lg) px-3 py-1.5 text-sm text-(--color-text-primary) focus:outline-none focus:border-(--color-accent) transition-colors"
+                  />
+                </SettingsRow>
+              )}
+              {notificationsEnabled && notificationPermission === 'granted' && (
+                <SettingsRow>
+                  <SettingsInfo label="Previous-Day Heads-Up" description="Get notified the day before about upcoming events and tasks." />
+                  <button
+                    onClick={() => onPreviousDayNotificationEnabledChange?.(!previousDayNotificationEnabled)}
+                    className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${previousDayNotificationEnabled ? 'bg-(--color-accent)' : 'bg-(--color-border-default)'}`}
+                  >
+                    <span className={`inline-block h-5 w-5 rounded-full bg-(--color-text-primary) shadow-sm transition-transform ${previousDayNotificationEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                </SettingsRow>
+              )}
+              {notificationsEnabled && notificationPermission === 'granted' && previousDayNotificationEnabled && (
+                <SettingsRow>
+                  <SettingsInfo label="Previous-Day Time" description="When to receive your heads-up the day before." />
+                  <input
+                    type="time"
+                    value={previousDayNotificationTime || '18:00'}
+                    onChange={(e) => onPreviousDayNotificationTimeChange?.(e.target.value)}
                     className="bg-(--color-surface-raised) border border-(--color-border-default) rounded-(--radius-lg) px-3 py-1.5 text-sm text-(--color-text-primary) focus:outline-none focus:border-(--color-accent) transition-colors"
                   />
                 </SettingsRow>
