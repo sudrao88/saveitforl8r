@@ -43,6 +43,14 @@ const SyncContext = createContext<SyncContextType | undefined>(undefined);
 
 const SNAPSHOT_KEY = 'gdrive_remote_snapshot';
 const LAST_SYNC_KEY = 'gdrive_last_sync_time';
+// One-time marker: pre-v113 builds shipped uploadFile without
+// `fields=modifiedTime`, so every single-file/moment/event/todo upload silently
+// left the snapshot stale. The old code self-healed via a second listAllFiles
+// at the end of every sync; v113 removed that, which means the inherited stale
+// snapshot keeps re-downloading forever. This marker triggers a one-shot
+// rebuild of the snapshot from Drive's current state — without re-downloading
+// content, since the local copies were kept in sync all along.
+const SNAPSHOT_MIGRATION_KEY = 'gdrive_snapshot_migration_v113';
 const SYNC_DEBOUNCE_MS = 2000;
 const PERIODIC_SYNC_INTERVAL_MS = 5 * 60 * 1000;      // 5 minutes (foreground)
 const BACKGROUND_SYNC_INTERVAL_MS = 15 * 60 * 1000;   // 15 minutes (backgrounded tab)
@@ -1144,6 +1152,37 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                     console.warn("[Sync] Snapshot corrupted, starting fresh");
                 }
 
+                // One-time migration: rewrite the snapshot from current Drive
+                // truth without downloading content. This drops stale entries
+                // left by pre-v113 single-file syncs (where uploadFile didn't
+                // return modifiedTime, so the snapshot was never updated and
+                // every launch re-downloaded the file). Local copies are kept
+                // in sync via syncFile/syncMoment, so trusting them is safe;
+                // doDeltaSync's hasLocal fallthrough still catches anything
+                // that's genuinely missing locally and re-downloads it.
+                if (!(await storage.get(SNAPSHOT_MIGRATION_KEY))) {
+                    if (Object.keys(previousSnapshot).length === 0) {
+                        // Fresh user with no snapshot: nothing to migrate.
+                        await storage.set(SNAPSHOT_MIGRATION_KEY, 'true');
+                    } else {
+                        try {
+                            const remoteFiles = await listAllFiles();
+                            const rebuilt = Object.fromEntries(
+                                remoteFiles.map(f => [f.name.replace('.json', ''), f.modifiedTime])
+                            );
+                            await storage.set(SNAPSHOT_KEY, JSON.stringify(rebuilt));
+                            await storage.set(SNAPSHOT_MIGRATION_KEY, 'true');
+                            previousSnapshot = rebuilt;
+                            console.log('[Sync] One-time snapshot migration complete:', Object.keys(rebuilt).length, 'entries');
+                        } catch (e) {
+                            // Don't set the marker — retry on the next sync.
+                            // Falls through to a normal sync using the stale
+                            // snapshot for this launch only.
+                            console.warn('[Sync] Snapshot migration failed; will retry on next sync:', e);
+                        }
+                    }
+                }
+
                 if (forceFullSync && Object.keys(previousSnapshot).length > 0) {
                     // Rebuild snapshot from local data: only keep entries for items
                     // that exist locally. Items missing locally (e.g. a note that
@@ -1467,7 +1506,14 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                         await bgSyncRemove(op.id!);
                         continue;
                     }
-                    await uploadFile(filename as string, content, existingFileId as string | undefined);
+                    const uploaded = await uploadFile(filename as string, content, existingFileId as string | undefined);
+                    if (uploaded?.modifiedTime) {
+                        const noteId = (filename as string).replace('.json', '');
+                        const snapshotJSON = await storage.get(SNAPSHOT_KEY);
+                        const snapshot = snapshotJSON ? JSON.parse(snapshotJSON) : {};
+                        snapshot[noteId] = uploaded.modifiedTime;
+                        await storage.set(SNAPSHOT_KEY, JSON.stringify(snapshot));
+                    }
                     await bgSyncRemove(op.id!);
                 } catch (e) {
                     console.warn(`[Sync] BG queue retry failed for ${op.payload?.noteId}:`, e);

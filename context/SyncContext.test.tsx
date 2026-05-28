@@ -110,6 +110,10 @@ describe('SyncContext', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] });
     // Clear mock storage values
     Object.keys(mockStorageValues).forEach(key => delete mockStorageValues[key]);
+    // Suppress the one-time snapshot migration in most tests — it adds an
+    // extra listAllFiles call. Tests that exercise the migration explicitly
+    // can delete this key.
+    mockStorageValues['gdrive_snapshot_migration_v113'] = 'true';
 
     // cleanupFilesByName is a thin wrapper over findAllFilesByName +
     // deleteFileById in the real module. Wire the default mock the same way
@@ -396,6 +400,38 @@ describe('SyncContext', () => {
       });
 
       expect(driveService.listAllFiles).toHaveBeenCalledTimes(1);
+    });
+
+    it('one-time v113 migration rebuilds snapshot from Drive without downloading content', async () => {
+      // Pre-v113 stale snapshot — the modifiedTime for mem-1 was never
+      // updated after a single-file edit, so it disagrees with Drive.
+      delete mockStorageValues['gdrive_snapshot_migration_v113'];
+      mockStorageValues['gdrive_remote_snapshot'] = JSON.stringify({
+        'mem-1': '2024-01-01T00:00:00Z', // stale
+      });
+      mockStorageValues['gdrive_last_sync_time'] = '5000';
+
+      const localMem = { id: 'mem-1', content: 'kept current locally', timestamp: 1000, tags: [] };
+      (storageService.getMemories as any).mockResolvedValue([localMem]);
+      (driveService.listAllFiles as any).mockResolvedValue([
+        { id: 'drive-file-1', name: 'mem-1.json', modifiedTime: '2024-06-01T00:00:00Z' }, // current
+      ]);
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      await act(async () => {
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
+      });
+
+      // Migration ran: snapshot now reflects the current Drive modifiedTime.
+      const updated = JSON.parse(mockStorageValues['gdrive_remote_snapshot']!);
+      expect(updated['mem-1']).toBe('2024-06-01T00:00:00Z');
+      // Marker is set so subsequent launches skip the migration.
+      expect(mockStorageValues['gdrive_snapshot_migration_v113']).toBe('true');
+      // No content downloaded — local copy is trusted.
+      expect(driveService.downloadFilesStreaming).toHaveBeenCalledWith([], expect.any(Function));
     });
 
     it('should delete local note when remote was deleted by another device', async () => {
