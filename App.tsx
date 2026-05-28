@@ -176,9 +176,13 @@ const AppContent: React.FC = () => {
     permissionStatus: notificationPermission,
     isEnabled: notificationsEnabled,
     notificationTime,
+    previousDayEnabled: previousDayNotifEnabled,
+    previousDayTime: previousDayNotifTime,
     requestPermission: requestNotificationPermission,
     setEnabled: setNotificationsEnabled,
     setNotificationTime: setNotifTime,
+    setPreviousDayEnabled: setPreviousDayNotifEnabled,
+    setPreviousDayTime: setPreviousDayNotifTime,
     isSupported: notificationsSupported,
     pendingRoute: notificationPendingRoute,
     clearPendingRoute: clearNotificationRoute,
@@ -1130,8 +1134,12 @@ const AppContent: React.FC = () => {
               notificationsEnabled={notificationsEnabled}
               notificationPermission={notificationPermission}
               notificationTime={notificationTime}
+              previousDayNotificationEnabled={previousDayNotifEnabled}
+              previousDayNotificationTime={previousDayNotifTime}
               onNotificationsEnabledChange={setNotificationsEnabled}
               onNotificationTimeChange={setNotifTime}
+              onPreviousDayNotificationEnabledChange={setPreviousDayNotifEnabled}
+              onPreviousDayNotificationTimeChange={setPreviousDayNotifTime}
               onRequestNotificationPermission={requestNotificationPermission}
               onOpenNotificationSettings={openNotificationSettings}
           />

@@ -19,6 +19,14 @@ import {
   getTodosForDate,
   buildBody,
 } from './notifications/morningBriefingProvider';
+import {
+  previousDayProvider,
+  buildPreviousDayBody,
+  isPreviousDayNotificationEnabled,
+  setPreviousDayNotificationEnabled as setPreviousDayEnabledPref,
+  getPreviousDayNotificationTime,
+  setPreviousDayNotificationTime as setPreviousDayTimePref,
+} from './notifications/previousDayProvider';
 import type {
   NotificationProvider,
   PendingNotification,
@@ -28,13 +36,14 @@ import type {
 const PREF_SCHEDULED_IDS = 'notification_scheduled_ids';
 const PREF_NOTIFICATION_ENABLED = 'notification_enabled';
 const PREF_WEB_LAST_SHOWN_DATE = 'notification_web_last_shown';
+const PREF_WEB_LAST_SHOWN_PREVIOUS_DAY = 'notification_web_last_shown_previous_day';
 
 // Action type ID for notifications — registering a category with no custom actions
 // makes iOS open the app directly on tap instead of showing an intermediate "Open" CTA.
 const ACTION_TYPE_OPEN = 'OPEN_APP';
 
 // Provider registry — add new providers here (OTA-updatable)
-const providers: NotificationProvider[] = [morningBriefingProvider];
+const providers: NotificationProvider[] = [morningBriefingProvider, previousDayProvider];
 
 // ─── Permission helpers ─────────────────────────────────────────────
 
@@ -136,6 +145,21 @@ export const getNotificationTime = async (): Promise<string> => {
 
 export const setNotificationTime = async (time: string): Promise<void> => {
   await storage.set('notification_time', time);
+};
+
+// ─── Previous-day settings (re-exported for hook consumers) ────────
+
+export {
+  isPreviousDayNotificationEnabled,
+  getPreviousDayNotificationTime,
+};
+
+export const setPreviousDayNotificationEnabled = async (enabled: boolean): Promise<void> => {
+  await setPreviousDayEnabledPref(enabled);
+};
+
+export const setPreviousDayNotificationTime = async (time: string): Promise<void> => {
+  await setPreviousDayTimePref(time);
 };
 
 // ─── Native scheduling ─────────────────────────────────────────────
@@ -272,41 +296,76 @@ const synchronizeNative = async (): Promise<void> => {
 const synchronizeWeb = async (): Promise<void> => {
   if (!('Notification' in window) || Notification.permission !== 'granted') return;
 
-  // On-open check: if it's past the configured notification time today
-  // and we haven't shown a notification yet today, show one now.
-  const lastShown = await storage.get(PREF_WEB_LAST_SHOWN_DATE);
   const now = new Date();
   const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
-  if (lastShown === todayKey) return; // Already shown today
-
-  const timeStr = (await storage.get('notification_time')) || '07:00';
-  const [hours, minutes] = timeStr.split(':').map(Number);
-  const notifTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours || 7, minutes || 0);
-
-  if (now.getTime() < notifTime.getTime()) return; // Not yet time
-
-  // Reuse morningBriefingProvider's filtering logic to build today's notification
   const { getCalendarEvents, getTodoItems } = await import('./storageService');
   const [events, items] = await Promise.all([getCalendarEvents(), getTodoItems()]);
 
-  const todayEvents = getEventsForDate(events, todayKey);
-  const todayTodos = getTodosForDate(items, todayKey);
+  // ─── Same-day morning briefing ──────────────────────────────────
+  const lastShown = await storage.get(PREF_WEB_LAST_SHOWN_DATE);
+  if (lastShown !== todayKey) {
+    const timeStr = (await storage.get('notification_time')) || '07:00';
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    const notifTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours || 7, minutes || 0);
 
-  if (todayEvents.length === 0 && todayTodos.length === 0) return;
+    if (now.getTime() >= notifTime.getTime()) {
+      const todayEvents = getEventsForDate(events, todayKey);
+      const todayTodos = getTodosForDate(items, todayKey);
 
-  const body = buildBody(todayEvents.length, todayTodos.length, 'today');
+      if (todayEvents.length > 0 || todayTodos.length > 0) {
+        const body = buildBody(todayEvents.length, todayTodos.length, 'today');
+        try {
+          new Notification("Good morning! Here's your day", {
+            body,
+            icon: '/icon.svg',
+            data: { route: todayEvents.length > 0 ? 'calendar' : 'todo' },
+          });
+          await storage.set(PREF_WEB_LAST_SHOWN_DATE, todayKey);
+        } catch (err) {
+          console.error('[Notifications] Web notification error:', err);
+        }
+      }
+    }
+  }
 
-  // Show web notification
+  // ─── Previous-day heads-up (for tomorrow) ───────────────────────
+  const previousDayEnabled = await isPreviousDayNotificationEnabled();
+  if (!previousDayEnabled) return;
+
+  const lastShownPrev = await storage.get(PREF_WEB_LAST_SHOWN_PREVIOUS_DAY);
+  if (lastShownPrev === todayKey) return;
+
+  const prevTimeStr = await getPreviousDayNotificationTime();
+  const [prevHours, prevMinutes] = prevTimeStr.split(':').map(Number);
+  const prevNotifTime = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+    Number.isFinite(prevHours) ? prevHours : 18,
+    Number.isFinite(prevMinutes) ? prevMinutes : 0,
+  );
+
+  if (now.getTime() < prevNotifTime.getTime()) return;
+
+  const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  const tomorrowKey = toLocalDateKey(tomorrow);
+  const tomorrowEvents = getEventsForDate(events, tomorrowKey);
+  const tomorrowTodos = getTodosForDate(items, tomorrowKey);
+
+  if (tomorrowEvents.length === 0 && tomorrowTodos.length === 0) return;
+
+  const prevBody = buildPreviousDayBody(tomorrowEvents.length, tomorrowTodos.length);
+
   try {
-    new Notification("Good morning! Here's your day", {
-      body,
+    new Notification('Heads up for tomorrow', {
+      body: prevBody,
       icon: '/icon.svg',
-      data: { route: todayEvents.length > 0 ? 'calendar' : 'todo' },
+      data: { route: tomorrowEvents.length > 0 ? 'calendar' : 'todo' },
     });
-    await storage.set(PREF_WEB_LAST_SHOWN_DATE, todayKey);
+    await storage.set(PREF_WEB_LAST_SHOWN_PREVIOUS_DAY, todayKey);
   } catch (err) {
-    console.error('[Notifications] Web notification error:', err);
+    console.error('[Notifications] Previous-day web notification error:', err);
   }
 };
 
