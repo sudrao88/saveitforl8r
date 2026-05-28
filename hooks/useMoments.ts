@@ -548,7 +548,12 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
   // (soft-deleted) and pending moments are skipped.
   const removeNoteFromMoments = useCallback(
     async (noteId: string): Promise<void> => {
-      const changedMoments: Moment[] = [];
+      // Collected from inside the setMomentsList updater. We reassign (not
+      // push) so the updater stays idempotent: React Strict Mode invokes
+      // state updaters twice in development to flag side effects, and a
+      // push-based collector would double every entry and fan out into
+      // duplicate persistence writes and background re-synthesis calls.
+      let changedMoments: Moment[] = [];
 
       // Use flushSync to ensure the functional updater runs immediately,
       // so changedMoments is populated before we proceed to persistence.
@@ -556,8 +561,12 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
       flushSync(() => {
         setMomentsList(prev => {
           const affected = prev.filter(m => !m.isDeleted && m.noteIds.includes(noteId));
-          if (affected.length === 0) return prev;
+          if (affected.length === 0) {
+            changedMoments = [];
+            return prev;
+          }
 
+          const collected: Moment[] = [];
           const updatedMoments = prev.map(m => {
             if (m.isDeleted || !m.noteIds.includes(noteId)) return m;
             const remainingNoteIds = m.noteIds.filter(id => id !== noteId);
@@ -572,10 +581,11 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
               updatedAt: Date.now(),
               ...(becameOrphan ? { isDeleted: true } : {}),
             };
-            changedMoments.push(updated);
+            collected.push(updated);
             return updated;
           });
 
+          changedMoments = collected;
           return updatedMoments;
         });
       });
