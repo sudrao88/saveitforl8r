@@ -897,6 +897,127 @@ describe('SyncContext', () => {
     });
   });
 
+  describe('post-sync reconciliation', () => {
+    // Helper duplicated locally so this describe block isn't tied to the
+    // moment delta sync block above it.
+    const makeMoment = (id: string, updatedAt: number, overrides?: any) => ({
+      id,
+      objective: 'Test',
+      title: 'Test Moment',
+      type: 'general',
+      noteIds: [],
+      createdAt: 1000,
+      updatedAt,
+      ...overrides,
+    });
+
+    it('resolves existingFileId for reconciled moments from the post-sync file index, not via per-moment findFileByName', async () => {
+      // Snapshot pre-sync agrees with remote — delta sync is a no-op, but the
+      // memory still carries matchedMomentIds that haven't been attached to
+      // the moment locally yet, so reconciliation must pick it up.
+      mockStorageValues['gdrive_remote_snapshot'] = JSON.stringify({
+        'mem-1': '2024-01-01T00:00:00Z',
+        'moment-mom-1': '2024-01-01T00:00:00Z',
+      });
+      mockStorageValues['gdrive_last_sync_time'] = '5000';
+
+      (storageService.getMemories as any).mockResolvedValue([
+        {
+          id: 'mem-1',
+          content: 'matched note',
+          timestamp: 1000,
+          tags: [],
+          enrichment: { matchedMomentIds: ['mom-1'] },
+        },
+      ]);
+      (storageService.getAllMomentsIncludingDeleted as any).mockResolvedValue([
+        makeMoment('mom-1', 1000), // noteIds: [] — missing the match
+      ]);
+      (driveService.listAllFiles as any).mockResolvedValue([
+        { id: 'drive-file-mem-1', name: 'mem-1.json', modifiedTime: '2024-01-01T00:00:00Z' },
+        { id: 'drive-file-mom-1', name: 'moment-mom-1.json', modifiedTime: '2024-01-01T00:00:00Z' },
+      ]);
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      await act(async () => {
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
+      });
+
+      // Reconciliation attached the note to the moment and saved it.
+      expect(storageService.saveMoment).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'mom-1', noteIds: ['mem-1'] })
+      );
+
+      // The reconciled upload must carry the existing Drive file id (so it
+      // PATCHes instead of creating a duplicate), sourced from the in-memory
+      // map built off listAllFiles.
+      expect(driveService.uploadMultipleFiles).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            filename: 'moment-mom-1.json',
+            existingFileId: 'drive-file-mom-1',
+          }),
+        ])
+      );
+
+      // The whole point of the change: no per-moment Drive round trip during
+      // reconciliation. findFileByName is used elsewhere in sync, so we
+      // assert specifically that it wasn't called for the moment filename.
+      const findCalls = (driveService.findFileByName as any).mock.calls.map(
+        (c: any[]) => c[0]
+      );
+      expect(findCalls).not.toContain('moment-mom-1.json');
+    });
+
+    it('leaves existingFileId undefined for a reconciled moment that has no remote file yet', async () => {
+      // New local moment that hasn't been uploaded yet — reconciliation
+      // should still upload it, but as a POST (no existingFileId). Mirrors
+      // the previous behavior where findFileByName returned null.
+      mockStorageValues['gdrive_remote_snapshot'] = JSON.stringify({
+        'mem-1': '2024-01-01T00:00:00Z',
+      });
+      mockStorageValues['gdrive_last_sync_time'] = '5000';
+
+      (storageService.getMemories as any).mockResolvedValue([
+        {
+          id: 'mem-1',
+          content: 'matched note',
+          timestamp: 1000,
+          tags: [],
+          enrichment: { matchedMomentIds: ['mom-new'] },
+        },
+      ]);
+      (storageService.getAllMomentsIncludingDeleted as any).mockResolvedValue([
+        makeMoment('mom-new', 1000),
+      ]);
+      // Remote has the memory file but not the moment file.
+      (driveService.listAllFiles as any).mockResolvedValue([
+        { id: 'drive-file-mem-1', name: 'mem-1.json', modifiedTime: '2024-01-01T00:00:00Z' },
+      ]);
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      await act(async () => {
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
+      });
+
+      const uploadCalls = (driveService.uploadMultipleFiles as any).mock.calls;
+      const reconciliationCall = uploadCalls.find((call: any[]) =>
+        call[0].some((item: any) => item.filename === 'moment-mom-new.json')
+      );
+      expect(reconciliationCall).toBeDefined();
+      const reconciledItem = reconciliationCall[0].find(
+        (item: any) => item.filename === 'moment-mom-new.json'
+      );
+      expect(reconciledItem.existingFileId).toBeUndefined();
+    });
+  });
+
   describe('periodic sync', () => {
     it('should trigger sync at 5-minute intervals when tab is visible', async () => {
       // Ensure tab is visible
