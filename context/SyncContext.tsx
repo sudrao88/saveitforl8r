@@ -55,7 +55,11 @@ interface ExecuteSyncCallbacks {
     onMemorySynced?: (memory: Memory) => void;
 }
 
-const executeSyncPlan = async (plan: SyncPlan, remoteMap: Map<string, DriveFile>, callbacks?: ExecuteSyncCallbacks): Promise<string[]> => {
+const executeSyncPlan = async (
+    plan: SyncPlan,
+    remoteMap: Map<string, DriveFile>,
+    callbacks?: ExecuteSyncCallbacks
+): Promise<{ errors: string[]; uploadSucceeded: Array<{ filename: string; modifiedTime: string }> }> => {
     const errors: string[] = [];
     const { onProgress, onMemorySynced } = callbacks || {};
 
@@ -364,7 +368,7 @@ const executeSyncPlan = async (plan: SyncPlan, remoteMap: Map<string, DriveFile>
         if (item) uploadItems.push(item);
     }
 
-    const { failures: upFailures } = await uploadMultipleFiles(uploadItems);
+    const { failures: upFailures, succeeded: upSucceeded } = await uploadMultipleFiles(uploadItems);
     // Report progress for each upload (successful or not)
     for (let i = 0; i < uploadItems.length; i++) onProgress?.();
     errors.push(...upFailures.map(f => f.replace('.json', '')));
@@ -423,7 +427,7 @@ const executeSyncPlan = async (plan: SyncPlan, remoteMap: Map<string, DriveFile>
         } catch (e) { errors.push(id); }
     }
 
-    return errors;
+    return { errors, uploadSucceeded: upSucceeded };
 };
 
 /**
@@ -719,14 +723,6 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       } catch (e) {
           console.error(`[Sync] Moment sync failed for ${moment.id}:`, e);
           throw e;
-      }
-  }, []);
-
-  const saveSnapshot = useCallback(async (remoteFiles: DriveFile[], updateLastSyncTime = true) => {
-      const snapshot = Object.fromEntries(remoteFiles.map(f => [f.name.replace('.json', ''), f.modifiedTime]));
-      await storage.set(SNAPSHOT_KEY, JSON.stringify(snapshot));
-      if (updateLastSyncTime) {
-          await storage.set(LAST_SYNC_KEY, Date.now().toString());
       }
   }, []);
 
@@ -1043,56 +1039,76 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         callbacks?.onProgress?.();
     } : callbacks?.onProgress;
 
-    const errors = await executeSyncPlan(plan, remoteMap, {
+    const { errors, uploadSucceeded } = await executeSyncPlan(plan, remoteMap, {
         onProgress: wrappedOnProgress,
         onMemorySynced: callbacks?.onMemorySynced,
     });
 
-    // Rebuild snapshot from Drive's actual state, but EXCLUDE items that failed
-    // to sync. This ensures failed downloads are retried on the next sync instead
-    // of being permanently skipped due to a matching modifiedTime in the snapshot.
-    const updatedRemoteFiles = await listAllFiles();
-    if (errors.length > 0) {
-        // Save snapshot excluding failed items so they're retried, but do NOT
-        // advance lastSyncTime — keeps it at the previous value so failed
-        // uploads remain eligible (timestamp > lastSyncTime) on the next delta sync.
-        const errorSet = new Set(errors);
-        const successfulFiles = updatedRemoteFiles.filter(
-            f => !errorSet.has(f.name.replace('.json', ''))
-        );
-        await saveSnapshot(successfulFiles, false);
-    } else {
-        await saveSnapshot(updatedRemoteFiles);
+    // Build the next snapshot in-memory from data we already have, avoiding a
+    // second listAllFiles round-trip. Start from `remoteMap` (which dedupes
+    // multiple Drive files sharing the same name to the same canonical entry
+    // the planner used) — this also pulls in any "phantom orphans" (files on
+    // Drive missing from previousSnapshot) so they self-heal and don't fall
+    // through again next launch. Then remove anything just deleted, and
+    // overwrite with the modifiedTime values returned by uploadMultipleFiles.
+    // Failed items are dropped so they retry on the next sync.
+    const nextSnapshot: Record<string, string> = Object.fromEntries(
+        Array.from(remoteMap.entries()).map(([noteId, f]) => [noteId, f.modifiedTime])
+    );
+    for (const item of plan.toDeleteRemote) {
+        delete nextSnapshot[item.noteId];
     }
+    for (const u of uploadSucceeded) {
+        nextSnapshot[u.filename.replace('.json', '')] = u.modifiedTime;
+    }
+    const errorSet = new Set(errors);
+    for (const id of errorSet) delete nextSnapshot[id];
 
-    // Wrap reconciliation in try/catch so it can't prevent snapshot save
+    await storage.set(SNAPSHOT_KEY, JSON.stringify(nextSnapshot));
+
+    // Wrap reconciliation in try/catch so it can't prevent snapshot save.
+    // Runs unconditionally — even on a no-op delta, a note's matchedMomentIds
+    // may not yet be attached to its moment locally, requiring an upload.
     try {
         const reconciledMoments = await reconcileAllNoteToMomentMatches();
         if (reconciledMoments.length > 0) {
-            // updatedRemoteFiles is the fresh post-sync index — reuse it to
-            // resolve existingFileId in memory instead of hitting Drive once
-            // per moment with findFileByName.
-            const remoteFileByName = new Map(updatedRemoteFiles.map(f => [f.name, f]));
+            // Reuse remoteMap (deduped) to resolve existingFileId in memory —
+            // no per-moment Drive lookups, no second listAllFiles.
             const reconciledUploadItems = reconciledMoments.map((m) => {
                 const filename = `moment-${m.id}.json`;
-                const remoteFile = remoteFileByName.get(filename);
+                const remoteFile = remoteMap.get(`moment-${m.id}`);
                 return { filename, content: m as Moment, existingFileId: remoteFile?.id };
             });
-            const { failures } = await uploadMultipleFiles(reconciledUploadItems);
+            const { failures, succeeded } = await uploadMultipleFiles(reconciledUploadItems);
             if (failures.length > 0) {
                 console.warn(`[Sync] ${failures.length} reconciled moment upload(s) failed:`, failures);
+                // Hold lastSyncTime back so the failed reconciliation uploads
+                // are eligible (updatedAt > lastSyncTime) on the next sync.
+                errors.push(...failures.map(f => f.replace('.json', '')));
+            }
+            // Patch in-place with the modifiedTimes Drive returned so the next
+            // launch's snapshot check matches and skips re-download.
+            if (succeeded.length > 0) {
+                for (const s of succeeded) {
+                    nextSnapshot[s.filename.replace('.json', '')] = s.modifiedTime;
+                }
+                await storage.set(SNAPSHOT_KEY, JSON.stringify(nextSnapshot));
             }
         }
     } catch (e) {
         console.error('[Sync] Reconciliation failed:', e);
     }
 
-    if (errors.length > 0) {
+    // Advance lastSyncTime only after reconciliation so any failures it
+    // reported also hold the timestamp back.
+    if (errors.length === 0) {
+        await storage.set(LAST_SYNC_KEY, Date.now().toString());
+    } else {
         console.error(`[Sync] ${errors.length} item(s) failed:`, errors);
         throw new Error(`Failed to sync ${errors.length} items`);
     }
 
-  }, [saveSnapshot]);
+  }, []);
 
   const performSync = useCallback(async (forceFullSync = false) => {
     // CRITICAL FIX: checkIsLinked is async, must await it!
