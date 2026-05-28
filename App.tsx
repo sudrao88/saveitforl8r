@@ -46,6 +46,7 @@ import { useDeletionCandidates } from './hooks/useDeletionCandidates';
 import { useNotifications } from './hooks/useNotifications';
 import useNativeOTA from './hooks/useNativeOTA';
 import { useWidgetDeepLink } from './hooks/useWidgetDeepLink';
+import { useDismissOrphanKeyboard } from './hooks/useDismissOrphanKeyboard';
 import { tryBackHandlers } from './hooks/useBackButton';
 import { SyncProvider } from './context/SyncContext';
 import { ThemeProvider } from './context/ThemeContext';
@@ -765,6 +766,9 @@ const AppContent: React.FC = () => {
     'Mod+f': () => setView(ViewMode.RECALL),
     'Mod+,': () => setIsSettingsOpen(true),
   });
+
+  // Dismiss any orphan soft keyboard left over from another app on resume
+  useDismissOrphanKeyboard();
 
   // Handle home screen widget deep links
   useWidgetDeepLink({
