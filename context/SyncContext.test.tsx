@@ -1018,6 +1018,106 @@ describe('SyncContext', () => {
     });
   });
 
+  describe('synthesis upload uses in-memory remote map', () => {
+    const makeMoment = (id: string, updatedAt: number, overrides?: any) => ({
+      id,
+      objective: 'Test',
+      title: 'Test Moment',
+      type: 'general',
+      noteIds: [],
+      createdAt: 1000,
+      updatedAt,
+      ...overrides,
+    });
+
+    it('resolves existingFileId for moment-synthesis files from listAllFiles, not via findFileByName', async () => {
+      // Local moment is newer than remote, so the upload phase queues both
+      // the moment and its synthesis. The synthesis's existingFileId should
+      // be looked up in the remoteMap built from listAllFiles — no
+      // per-synthesis Drive round trip.
+      const localMoment = makeMoment('mom-1', 3000);
+      const remoteMoment = makeMoment('mom-1', 1000);
+
+      (storageService.getMemories as any).mockResolvedValue([]);
+      (storageService.getAllMomentsIncludingDeleted as any).mockResolvedValue([localMoment]);
+      (driveService.listAllFiles as any).mockResolvedValue([
+        { id: 'drive-mom-1', name: 'moment-mom-1.json', modifiedTime: '2024-01-01T00:00:00Z' },
+        { id: 'drive-synth-1', name: 'moment-synthesis-mom-1.json', modifiedTime: '2024-01-01T00:00:00Z' },
+      ]);
+      mockDownloads(new Map([['drive-mom-1', remoteMoment]]));
+      (storageService.getMomentSynthesis as any).mockResolvedValue({
+        momentId: 'mom-1',
+        title: 'Synth',
+        content: 'whatever',
+        createdAt: 1000,
+      });
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      await act(async () => {
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
+      });
+
+      // Synthesis upload uses the existing Drive file id from the in-memory
+      // map (PATCH path, no duplicate created).
+      expect(driveService.uploadMultipleFiles).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            filename: 'moment-synthesis-mom-1.json',
+            existingFileId: 'drive-synth-1',
+          }),
+        ])
+      );
+
+      // No per-synthesis findFileByName round trip.
+      const findCalls = (driveService.findFileByName as any).mock.calls.map(
+        (c: any[]) => c[0]
+      );
+      expect(findCalls).not.toContain('moment-synthesis-mom-1.json');
+    });
+
+    it('leaves existingFileId undefined when the synthesis has no remote file yet', async () => {
+      // Brand-new local synthesis; remote has the moment file but no
+      // synthesis yet. Upload must POST (no existingFileId), mirroring the
+      // previous findFileByName-returns-null path.
+      const localMoment = makeMoment('mom-fresh', 3000);
+      const remoteMoment = makeMoment('mom-fresh', 1000);
+
+      (storageService.getMemories as any).mockResolvedValue([]);
+      (storageService.getAllMomentsIncludingDeleted as any).mockResolvedValue([localMoment]);
+      (driveService.listAllFiles as any).mockResolvedValue([
+        { id: 'drive-mom-fresh', name: 'moment-mom-fresh.json', modifiedTime: '2024-01-01T00:00:00Z' },
+      ]);
+      mockDownloads(new Map([['drive-mom-fresh', remoteMoment]]));
+      (storageService.getMomentSynthesis as any).mockResolvedValue({
+        momentId: 'mom-fresh',
+        title: 'Synth',
+        content: 'whatever',
+        createdAt: 1000,
+      });
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      await act(async () => {
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
+      });
+
+      const uploadCalls = (driveService.uploadMultipleFiles as any).mock.calls;
+      const synthCall = uploadCalls.find((call: any[]) =>
+        call[0].some((item: any) => item.filename === 'moment-synthesis-mom-fresh.json')
+      );
+      expect(synthCall).toBeDefined();
+      const synthItem = synthCall[0].find(
+        (item: any) => item.filename === 'moment-synthesis-mom-fresh.json'
+      );
+      expect(synthItem.existingFileId).toBeUndefined();
+    });
+  });
+
   describe('periodic sync', () => {
     it('should trigger sync at 5-minute intervals when tab is visible', async () => {
       // Ensure tab is visible
