@@ -1066,13 +1066,15 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
         const reconciledMoments = await reconcileAllNoteToMomentMatches();
         if (reconciledMoments.length > 0) {
-            const reconciledUploadItems = await Promise.all(
-                reconciledMoments.map(async (m) => {
-                    const filename = `moment-${m.id}.json`;
-                    const remoteFile = await findFileByName(filename);
-                    return { filename, content: m as Moment, existingFileId: remoteFile?.id };
-                })
-            );
+            // updatedRemoteFiles is the fresh post-sync index — reuse it to
+            // resolve existingFileId in memory instead of hitting Drive once
+            // per moment with findFileByName.
+            const remoteFileByName = new Map(updatedRemoteFiles.map(f => [f.name, f]));
+            const reconciledUploadItems = reconciledMoments.map((m) => {
+                const filename = `moment-${m.id}.json`;
+                const remoteFile = remoteFileByName.get(filename);
+                return { filename, content: m as Moment, existingFileId: remoteFile?.id };
+            });
             const { failures } = await uploadMultipleFiles(reconciledUploadItems);
             if (failures.length > 0) {
                 console.warn(`[Sync] ${failures.length} reconciled moment upload(s) failed:`, failures);
