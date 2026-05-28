@@ -152,24 +152,45 @@ export const uploadFile = async (filename: string, content: any, existingFileId?
   return await res.json();
 };
 
-export const listAllFiles = async (): Promise<DriveFile[]> => {
-    let allFiles: DriveFile[] = [];
+// Paginate a single `files.list` query (q is already URL-encoded) to completion.
+const listFilesByQuery = async (encodedQuery: string): Promise<DriveFile[]> => {
+    const files: DriveFile[] = [];
     let pageToken: string | undefined = undefined;
 
     do {
-        let url = `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&pageSize=1000&q=trashed=false&fields=nextPageToken,files(id, name, modifiedTime)`;
+        let url = `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&pageSize=1000&q=${encodedQuery}&fields=nextPageToken,files(id, name, modifiedTime)`;
         if (pageToken) url += `&pageToken=${pageToken}`;
 
         const res = await driveFetch(url);
         const data = await res.json();
 
-        if (data.files) {
-            allFiles = allFiles.concat(data.files);
-        }
+        if (data.files) files.push(...data.files);
         pageToken = data.nextPageToken;
     } while (pageToken);
 
-    return allFiles;
+    return files;
+};
+
+// Drive's `files.list` uses opaque pageTokens, so a single result set can't be
+// paginated in parallel. Instead, shard the *query* by filename prefix and run
+// the shards in parallel — each one paginates independently (usually in one
+// page), cutting the pre-download check from N sequential round trips down to
+// roughly one. Shards are mutually exclusive and exhaustive across the
+// filename namespaces used by the app (see SyncContext.tsx note-id handling),
+// so the merged result is identical to a single unfiltered list call.
+export const listAllFiles = async (): Promise<DriveFile[]> => {
+    const shardQueries = [
+        `trashed=false and name contains 'moment-'`,
+        `trashed=false and name contains 'event-'`,
+        `trashed=false and name contains 'todo-'`,
+        `trashed=false and not name contains 'moment-' and not name contains 'event-' and not name contains 'todo-'`,
+    ];
+
+    const shardResults = await Promise.all(
+        shardQueries.map(q => listFilesByQuery(encodeURIComponent(q)))
+    );
+
+    return shardResults.flat();
 };
 
 export const deleteFileById = async (fileId: string) => {
