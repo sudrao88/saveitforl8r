@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v112",
-  "buildNumber": 112,
-  "buildDate": "2026-05-28T00:00:00.000Z",
+  "version": "saveitforl8r-v113",
+  "buildNumber": 113,
+  "buildDate": "2026-05-28T09:50:06.287Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Sync: parallelize the Drive file-list step on launch so the \"does this need to download?\" check completes in roughly one round trip instead of one per page."
+  "changelog": "Sync: stop re-downloading every Drive file on app launch. The post-upload modifiedTime is now captured (Drive v3 didn't return it by default), the snapshot is rebuilt in-memory instead of via a second listAllFiles, and phantom-orphan files self-heal into the snapshot."
 }
