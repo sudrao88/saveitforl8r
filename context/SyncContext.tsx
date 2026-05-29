@@ -123,7 +123,11 @@ const executeSyncPlan = async (
                     if (item.localCalendarEvent) {
                         if (safeEvent.updatedAt > item.localCalendarEvent.updatedAt) {
                             if (safeEvent.isDeleted) {
-                                await withProgress(deleteCalendarEventHard(verifiedEventId));
+                                // Local delete is not wrapped in withProgress
+                                // because the toDeleteRemote loop fires
+                                // onProgress for this same logical item.
+                                await deleteCalendarEventHard(verifiedEventId);
+                                plan.toDeleteRemote.push({ noteId: item.noteId, fileId: item.fileId });
                             } else {
                                 await withProgress(saveCalendarEvent(safeEvent));
                             }
@@ -136,7 +140,10 @@ const executeSyncPlan = async (
                         }
                     } else {
                         if (safeEvent.isDeleted) {
-                            await withProgress(deleteCalendarEventHard(verifiedEventId));
+                            // Tombstone with no local consumer — clean it up
+                            // from Drive so it doesn't fall through every sync.
+                            await deleteCalendarEventHard(verifiedEventId);
+                            plan.toDeleteRemote.push({ noteId: item.noteId, fileId: item.fileId });
                         } else {
                             await withProgress(saveCalendarEvent(safeEvent));
                         }
@@ -152,7 +159,8 @@ const executeSyncPlan = async (
                     if (item.localTodoItem) {
                         if (safeTodo.updatedAt > item.localTodoItem.updatedAt) {
                             if (safeTodo.isDeleted) {
-                                await withProgress(deleteTodoItemHard(verifiedTodoId));
+                                await deleteTodoItemHard(verifiedTodoId);
+                                plan.toDeleteRemote.push({ noteId: item.noteId, fileId: item.fileId });
                             } else {
                                 await withProgress(updateTodoItem(safeTodo));
                             }
@@ -165,7 +173,8 @@ const executeSyncPlan = async (
                         }
                     } else {
                         if (safeTodo.isDeleted) {
-                            await withProgress(deleteTodoItemHard(verifiedTodoId));
+                            await deleteTodoItemHard(verifiedTodoId);
+                            plan.toDeleteRemote.push({ noteId: item.noteId, fileId: item.fileId });
                         } else {
                             await withProgress(updateTodoItem(safeTodo));
                         }
@@ -186,7 +195,12 @@ const executeSyncPlan = async (
                     const verifiedMomentId = item.noteId.replace('moment-', '');
                     const safeMoment: Moment = { ...momentContent, id: verifiedMomentId };
                     if (safeMoment.isDeleted) {
-                        await withProgress(deleteMomentHard(verifiedMomentId));
+                        // Local delete bypasses withProgress because the
+                        // toDeleteRemote loop fires onProgress for this same
+                        // logical item. Otherwise syncedCount overshoots
+                        // totalSyncItems.
+                        await deleteMomentHard(verifiedMomentId);
+                        plan.toDeleteRemote.push({ noteId: item.noteId, fileId: item.fileId });
                     } else if (item.localMoment) {
                         if (safeMoment.updatedAt > item.localMoment.updatedAt) {
                             await withProgress(saveMoment(safeMoment));
@@ -223,6 +237,18 @@ const executeSyncPlan = async (
                 // strict-equality checks (icon rendering, online auto-retry).
                 content = normalizeMemory(content);
 
+                // Remote tombstone with no local copy: there's nothing to delete
+                // locally and the tombstone has no consumer here. Pre-cleanup
+                // builds left these on Drive indefinitely (handleDelete in
+                // useMemories.ts uploaded the tombstone, but the next sync's
+                // listAllFiles kept seeing it). Schedule a Drive deletion so
+                // it stops falling through the snapshot/hasLocal check every
+                // launch and re-downloading.
+                if (content.isDeleted && !item.local) {
+                    plan.toDeleteRemote.push({ noteId: item.noteId, fileId: item.fileId });
+                    return;
+                }
+
                 const shouldSave = item.local
                     ? content.timestamp > item.local.timestamp
                     : !content.isDeleted;
@@ -237,8 +263,13 @@ const executeSyncPlan = async (
                     });
                 } else if (shouldSave) {
                     if (content.isDeleted) {
-                        await withProgress(deleteMemory(item.noteId));
+                        // Local delete bypasses withProgress because the
+                        // toDeleteRemote loop fires onProgress for this same
+                        // logical item. Otherwise syncedCount overshoots
+                        // totalSyncItems.
+                        await deleteMemory(item.noteId);
                         deletedNoteIds.add(item.noteId);
+                        plan.toDeleteRemote.push({ noteId: item.noteId, fileId: item.fileId });
                     } else {
                         // Save full memory to IDB
                         await withProgress(saveMemory(content));
