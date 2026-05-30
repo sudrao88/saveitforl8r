@@ -28,7 +28,7 @@ completed phases are skipped automatically.
 
 ### Environment
 - `CLAUDE_BIN` — claude binary path (default: `claude`).
-- `L8R_BUILD_MODEL` — model id (default: `claude-opus-4-7`).
+- `L8R_BUILD_MODEL` — model id (default: `claude-opus-4-8`).
 
 ## Phase IDs
 

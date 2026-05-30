@@ -17,7 +17,7 @@ touch "$STATE_FILE"
 
 cd "$REPO_ROOT"
 
-MODEL="${L8R_BUILD_MODEL:-claude-opus-4-7}"
+MODEL="${L8R_BUILD_MODEL:-claude-opus-4-8}"
 CLAUDE_BIN="${CLAUDE_BIN:-claude}"
 
 # phase-id : verification-kind
@@ -55,7 +55,7 @@ Flags:
 
 Env:
   CLAUDE_BIN          Path to claude (default: claude)
-  L8R_BUILD_MODEL     Model id      (default: claude-opus-4-7)
+  L8R_BUILD_MODEL     Model id      (default: claude-opus-4-8)
 
 See tooling/build-l8rgram/README.md for full docs.
 EOF
