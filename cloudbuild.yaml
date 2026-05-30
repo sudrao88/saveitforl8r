@@ -10,7 +10,7 @@ steps:
       - |
         npm ci
         echo "Running tests..."
-        npm run test -- --run
+        npm run test -w saveitforl8r -- --run
 
   # -------------------------------------------------------------------------
   # 1. Build Server Image
@@ -32,6 +32,12 @@ steps:
   # environment variables) are shell-expanded into the docker build-args.
   # Without a shell, $$VAR in args is just an escape to literal $VAR which
   # docker passes through unexpanded.
+  #
+  # M0 (l8rgram split): the saveitforl8r tree moved to apps/saveitforl8r/, so
+  # the Dockerfile reference now points there. M6 replaces this with a
+  # workspace-aware combined image (root Dockerfile.client building both apps);
+  # until then the build context stays the repo root so npm ci sees the root
+  # lockfile. See docs/l8rgram-setup-checklist.md.
   - name: 'gcr.io/cloud-builders/docker'
     id: 'build-client'
     secretEnv: ['VITE_GOOGLE_CLIENT_ID', 'VITE_GOOGLE_CLIENT_SECRET']
@@ -45,6 +51,7 @@ steps:
           --build-arg "VITE_PROXY_URL=${_SERVER_URL}" \
           --build-arg "VITE_APP_URL=${_APP_URL}" \
           -t "us-west1-docker.pkg.dev/$PROJECT_ID/saveitforl8r-repo/client:latest" \
+          -f apps/saveitforl8r/Dockerfile \
           .
 
   # -------------------------------------------------------------------------

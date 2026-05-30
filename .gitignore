@@ -127,9 +127,9 @@ dist-ssr
 .firebase
 
 # capacitor
-/dist
-/ios/App/App/public
-/android/app/src/main/assets/public
+/apps/saveitforl8r/dist
+/apps/saveitforl8r/ios/App/App/public
+/apps/saveitforl8r/android/app/src/main/assets/public
 
 # macOS
 .DS_Store
@@ -175,14 +175,14 @@ google-services.json
 GoogleService-Info.plist
 *.p12
 *.keystore
-/android/key.properties
-/android/app/key.properties
-/ios/App/App/GoogleService-Info.plist
+/apps/saveitforl8r/android/key.properties
+/apps/saveitforl8r/android/app/key.properties
+/apps/saveitforl8r/ios/App/App/GoogleService-Info.plist
 
 # Build artifacts
-/dist
-/ios/App/App/public
-/android/app/src/main/assets/public
+/apps/saveitforl8r/dist
+/apps/saveitforl8r/ios/App/App/public
+/apps/saveitforl8r/android/app/src/main/assets/public
 
 # macOS Finder duplicates
 **/* 2.xml
@@ -192,4 +192,4 @@ GoogleService-Info.plist
 node_modules_old/
 
 # Xcode shared workspace data
-ios/App/App.xcworkspace/xcshareddata/
+apps/saveitforl8r/ios/App/App.xcworkspace/xcshareddata/

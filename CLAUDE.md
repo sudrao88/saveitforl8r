@@ -19,15 +19,51 @@ SaveItForL8R is a **Progressive Web App (PWA)** — a "personal second brain" fo
 
 ## Commands
 
+This is an **npm-workspaces monorepo**. The root scripts delegate to the
+`saveitforl8r` workspace, so the familiar commands still work from the repo root:
+
 ```bash
-npm run dev       # Start dev server (port 9000)
-npm run build     # Production build → dist/
+npm install       # Install all workspaces (run once from the repo root)
+npm run dev       # Start dev server (port 9000) — delegates to -w saveitforl8r
+npm run build     # Production build → apps/saveitforl8r/dist/
 npm run preview   # Preview production build locally
 npm run test      # Run tests with Vitest
 ```
 
+You can also target a workspace explicitly (this is what the build orchestrator uses):
+
+```bash
+npm run dev   -w saveitforl8r
+npm run build -w saveitforl8r
+npm run test  -w saveitforl8r
+```
+
 ## Project Structure
-(omitted for brevity)
+
+Monorepo managed with npm workspaces (`"workspaces": ["apps/*", "packages/*", "server"]`):
+
+```
+/ (root)
+  package.json            # workspace root: shared dev tooling + delegating scripts
+  tsconfig.base.json      # shared compilerOptions (apps extend this)
+  cloudbuild.yaml         # CI/CD for Cloud Run
+  eslint-rules/           # shared dev-only custom lint rule (no-raw-tailwind-colors)
+  docs/                   # specs + checklists (l8rgram-spec.md, l8rgram-setup-checklist.md)
+  tooling/build-l8rgram/  # the l8rgram split build orchestrator (stays at root)
+  apps/
+    saveitforl8r/         # the existing app — entire former-root tree lives here now
+                          # (App.tsx, components/, context/, hooks/, services/, styles/,
+                          #  utils/, public/, android/, ios/, scripts/, vite.config.ts,
+                          #  tsconfig.json, Dockerfile, nginx.conf, capacitor.config.ts, …)
+    l8rgram/              # NEW native gallery app (added in M2b — not present yet)
+  packages/
+    shared/               # @l8r/shared — extracted auth/ai/crypto/design-system (added in M1)
+  server/                 # Express proxy (own package.json + Dockerfile, joins the workspace)
+```
+
+> M0 of the l8rgram split moved the single-app tree into `apps/saveitforl8r/`
+> with zero behavior change. `packages/shared` (M1) and `apps/l8rgram` (M2b)
+> are added by later phases — see `docs/l8rgram-spec.md`.
 
 ## Architecture
 (omitted for brevity)

@@ -1,7 +1,7 @@
 import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import reactHooks from 'eslint-plugin-react-hooks';
-import noRawTailwindColors from './eslint-rules/no-raw-tailwind-colors.js';
+import noRawTailwindColors from '../../eslint-rules/no-raw-tailwind-colors.js';
 
 export default tseslint.config(
   js.configs.recommended,
