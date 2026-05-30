@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-vi.mock('./platform', () => ({
+vi.mock('@l8r/shared/platform', () => ({
   isNative: vi.fn(),
 }));
 
@@ -16,7 +16,7 @@ import {
   updateForegroundSyncProgress,
   stopForegroundSync,
 } from './nativeBackgroundSync';
-import { isNative } from './platform';
+import { isNative } from '@l8r/shared/platform';
 import { Capacitor } from '@capacitor/core';
 
 const mockIsNative = vi.mocked(isNative);

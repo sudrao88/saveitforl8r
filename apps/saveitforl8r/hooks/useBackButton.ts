@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useRef } from 'react';
-import { isNative } from '../services/platform';
+import { isNative } from '@l8r/shared/platform';
 
 type BackButtonHandler = () => boolean;
 

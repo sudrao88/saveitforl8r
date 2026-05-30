@@ -15,7 +15,7 @@ import { useEffect } from 'react';
 import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 import { Keyboard } from '@capacitor/keyboard';
-import { isNative } from '../services/platform';
+import { isNative } from '@l8r/shared/platform';
 
 function isEditableElementFocused(): boolean {
   const el = document.activeElement as HTMLElement | null;

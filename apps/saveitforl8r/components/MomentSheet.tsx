@@ -27,7 +27,7 @@ import {
 } from '../types';
 import MemoryPreviewModal from './MemoryPreviewModal';
 import MomentNoteDeletionSheet from './MomentNoteDeletionSheet';
-import { overlay, btn, chip } from '../styles/design-system';
+import { overlay, btn, chip } from '@l8r/shared/design-system';
 
 // Shared loading indicator for pending creation and resynthesis states
 const SynthesisLoadingState: React.FC = () => (

@@ -1,5 +1,5 @@
 import { useEffect, useCallback, useRef } from 'react';
-import { isNative } from '../services/platform';
+import { isNative } from '@l8r/shared/platform';
 
 export type WidgetCaptureMode = 'camera' | 'document';
 

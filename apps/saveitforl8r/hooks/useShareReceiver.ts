@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Attachment } from '../types';
-import { isNative } from '../services/platform';
+import { isNative } from '@l8r/shared/platform';
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { MAX_FILE_SIZE_BYTES, compressImage } from '../utils/attachmentUtils';

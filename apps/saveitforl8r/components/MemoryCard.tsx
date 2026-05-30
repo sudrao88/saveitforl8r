@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { Trash2, Loader2, Clock, ExternalLink, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, WifiOff, CloudOff, FileText, Paperclip, MoreVertical, AlertTriangle, AlertCircle, LogIn, Maximize2, Eye, Pin, Pencil, Lightbulb, CircleCheck, UtensilsCrossed, ListOrdered, ThumbsUp, ThumbsDown, DollarSign, MapPin, CalendarDays, ClipboardList, MessageSquare, Users, Mic, Code, Heart, Scale, GraduationCap, Briefcase, Music, Film, BookOpenCheck, Bookmark, Phone, Mail, ScrollText, Tag, Clock3, Flame, Quote, Hourglass, Sparkles, Calculator } from 'lucide-react';
 import { Memory, Attachment, UploadProgress, isMemoryInFlight, isMemoryFailed } from '../types.ts';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
-import { btn, card, confirm, menu, overlay, text } from '../styles/design-system';
+import { btn, card, confirm, menu, overlay, text } from '@l8r/shared/design-system';
 import { downloadDataUri } from '../services/downloadService';
 import { ChecklistDisplay, parseChecklistFromHtml, serializeChecklistToHtml, cascadeToggle } from './ChecklistItems';
 import RecipeCalculatorDialog from './RecipeCalculatorDialog';

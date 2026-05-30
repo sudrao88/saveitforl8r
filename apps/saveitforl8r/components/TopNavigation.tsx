@@ -4,7 +4,7 @@ import { Logo } from './icons';
 import { ViewMode } from '../types';
 import { ModelStatus } from '../hooks/useAdaptiveSearch';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
-import { btn } from '../styles/design-system';
+import { btn } from '@l8r/shared/design-system';
 
 interface TopNavigationProps {
   setView: (view: ViewMode) => void;

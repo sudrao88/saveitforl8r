@@ -7,7 +7,7 @@ import { SyncProvider, useSync } from './SyncContext';
 const mockStorageValues: Record<string, string | null> = {};
 
 // Mock all dependencies
-vi.mock('../services/platform', () => ({
+vi.mock('@l8r/shared/platform', () => ({
   storage: {
     get: vi.fn((key: string) => Promise.resolve(mockStorageValues[key] || null)),
     set: vi.fn((key: string, value: string) => {
@@ -76,7 +76,7 @@ vi.mock('../hooks/useAuth', () => ({
 
 import * as storageService from '../services/storageService';
 import * as driveService from '../services/googleDriveService';
-import { storage } from '../services/platform';
+import { storage } from '@l8r/shared/platform';
 
 const wrapper = ({ children }: { children: React.ReactNode }) => (
   <SyncProvider>{children}</SyncProvider>

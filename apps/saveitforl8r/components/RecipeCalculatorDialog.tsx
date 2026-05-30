@@ -14,7 +14,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { Calculator, RotateCcw, X } from 'lucide-react';
-import { btn, chip, overlay, text, zIndex } from '../styles/design-system';
+import { btn, chip, overlay, text, zIndex } from '@l8r/shared/design-system';
 import { useAnimatedUnmount } from '../hooks/useAnimatedUnmount';
 import {
   formatQuantity,

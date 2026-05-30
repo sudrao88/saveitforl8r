@@ -5,7 +5,7 @@
  */
 
 import { Capacitor } from '@capacitor/core';
-import { isNative } from './platform';
+import { isNative } from '@l8r/shared/platform';
 
 /**
  * Initialize native background sync.

@@ -3,7 +3,7 @@ import { getMemories, saveMemory, deleteMemory, getMemory, updateMemoryTags } fr
 import { Memory } from '../types';
 
 // Mock Encryption Service
-vi.mock('./encryptionService', () => ({
+vi.mock('@l8r/shared/crypto', () => ({
   encryptData: vi.fn(async (data) => ({ cipherText: 'encrypted', iv: 'iv' })),
   decryptData: vi.fn(async (payload) => ({ content: 'decrypted content' })),
   decryptBatch: vi.fn(async (payloads) => payloads.map((p: any) => ({ id: p.id, data: { content: 'decrypted content' } }))),

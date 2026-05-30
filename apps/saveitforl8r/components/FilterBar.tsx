@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Filter, X, Tv, BookOpen, ShoppingBag, Music, Layers } from 'lucide-react';
-import { chip, layout, text } from '../styles/design-system';
+import { chip, layout, text } from '@l8r/shared/design-system';
 
 interface FilterBarProps {
   availableTypes: string[];

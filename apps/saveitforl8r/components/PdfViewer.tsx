@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import { ZoomIn, ZoomOut, Loader } from 'lucide-react';
-import { zIndex } from '../styles/design-system';
+import { zIndex } from '@l8r/shared/design-system';
 
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;

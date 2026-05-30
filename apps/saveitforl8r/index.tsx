@@ -4,6 +4,22 @@ import App from './App.tsx';
 import './index.css';
 
 import { SplashScreen } from '@capacitor/splash-screen';
+import { configureGoogleAuth } from '@l8r/shared/auth';
+
+// Configure shared Google OAuth with saveitforl8r's values (M1). The hosted
+// bouncer URL falls back to the known production URL because VITE_APP_URL is
+// absent after OTA updates (web builds don't include it). Namespacing token/IDB
+// storage under `saveitforl8r` isolates it from l8rgram on a shared origin and
+// triggers a one-time migration of the legacy unprefixed keys.
+configureGoogleAuth({
+  clientId: import.meta.env.VITE_GOOGLE_CLIENT_ID,
+  clientSecret: import.meta.env.VITE_GOOGLE_CLIENT_SECRET,
+  scopes: ['https://www.googleapis.com/auth/drive.appdata'],
+  hostedUrl: import.meta.env.VITE_APP_URL || 'https://saveitforl8r.com',
+  deepLinkScheme: 'com.saveitforl8r.app',
+  storageNamespace: 'saveitforl8r',
+  proxyUrl: import.meta.env.VITE_PROXY_URL,
+});
 
 // Signal to Android native code that the WebView has rendered content,
 // dismissing the native splash screen as early as possible. This runs

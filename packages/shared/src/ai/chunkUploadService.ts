@@ -8,7 +8,7 @@
  * result and returns the Gemini file URI.
  */
 
-import { getValidToken } from './googleAuth';
+import { getValidToken } from '../auth/googleAuth';
 
 const getProxyUrl = (): string => {
   const url = import.meta.env.VITE_PROXY_URL;

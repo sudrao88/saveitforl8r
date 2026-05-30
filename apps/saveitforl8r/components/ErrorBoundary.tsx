@@ -1,6 +1,6 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
-import { btn, overlay, text, zIndex } from '../styles/design-system';
+import { btn, overlay, text, zIndex } from '@l8r/shared/design-system';
 import { isChunkLoadError, clearServiceWorkerCaches } from '../utils/chunkErrorUtils';
 
 interface ErrorBoundaryProps {

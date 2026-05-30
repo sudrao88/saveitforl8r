@@ -7,12 +7,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Memory, Moment } from '../types';
 
-vi.mock('./proxyService', () => ({
+// proxyService + chunkUploadService both live behind the @l8r/shared/ai barrel
+// now, so their mocks are merged into a single factory.
+vi.mock('@l8r/shared/ai', () => ({
   postProxy: vi.fn(),
   getProxyUrl: vi.fn(() => 'https://proxy.example.com'),
+  uploadFileChunked: vi.fn(),
+  // Use the real threshold value so the branch boundary stays meaningful.
+  LARGE_PAYLOAD_THRESHOLD: 1_200_000,
 }));
 
-vi.mock('./googleAuth', () => ({
+vi.mock('@l8r/shared/auth', () => ({
   getValidToken: vi.fn(async () => 'fake-token'),
 }));
 
@@ -20,14 +25,8 @@ vi.mock('./backgroundSyncQueue', () => ({
   enqueue: vi.fn(),
 }));
 
-vi.mock('./chunkUploadService', () => ({
-  uploadFileChunked: vi.fn(),
-  // Use the real threshold value so the branch boundary stays meaningful.
-  LARGE_PAYLOAD_THRESHOLD: 1_200_000,
-}));
-
-import { postProxy } from './proxyService';
-import { uploadFileChunked } from './chunkUploadService';
+import { postProxy } from '@l8r/shared/ai';
+import { uploadFileChunked } from '@l8r/shared/ai';
 import { queryBrain, submitMomentCreation, submitResynthesis } from './geminiService';
 
 const mockPostProxy = postProxy as unknown as ReturnType<typeof vi.fn>;

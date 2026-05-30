@@ -11,7 +11,7 @@
 
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
-import { isNative, storage } from './platform';
+import { isNative, storage } from '@l8r/shared/platform';
 import {
   morningBriefingProvider,
   toLocalDateKey,

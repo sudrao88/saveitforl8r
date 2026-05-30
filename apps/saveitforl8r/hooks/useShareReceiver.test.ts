@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // --- Mocks ---
 
-vi.mock('../services/platform', () => ({
+vi.mock('@l8r/shared/platform', () => ({
   isNative: vi.fn(),
 }));
 
@@ -20,7 +20,7 @@ vi.mock('@capacitor/filesystem', () => ({
 }));
 
 import { useShareReceiver } from './useShareReceiver';
-import { isNative } from '../services/platform';
+import { isNative } from '@l8r/shared/platform';
 
 const mockIsNative = vi.mocked(isNative);
 

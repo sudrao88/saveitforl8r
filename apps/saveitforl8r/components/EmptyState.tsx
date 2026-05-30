@@ -1,5 +1,5 @@
 import React from 'react';
-import { btn, card, text } from '../styles/design-system';
+import { btn, card, text } from '@l8r/shared/design-system';
 
 interface EmptyStateProps {
   hasMemories: boolean;

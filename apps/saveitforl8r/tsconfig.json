@@ -1,5 +1,16 @@
 {
   "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@l8r/shared": ["../../packages/shared/src/index.ts"],
+      "@l8r/shared/auth": ["../../packages/shared/src/auth/index.ts"],
+      "@l8r/shared/ai": ["../../packages/shared/src/ai/index.ts"],
+      "@l8r/shared/crypto": ["../../packages/shared/src/crypto/index.ts"],
+      "@l8r/shared/platform": ["../../packages/shared/src/platform/index.ts"],
+      "@l8r/shared/design-system": ["../../packages/shared/src/design-system/design-system.ts"]
+    }
+  },
   "include": ["**/*.ts", "**/*.tsx", "**/*.d.ts"],
   "exclude": ["vite.config.ts"],
   "references": [{ "path": "./tsconfig.node.json" }]

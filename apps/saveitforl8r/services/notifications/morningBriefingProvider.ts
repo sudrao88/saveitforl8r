@@ -7,7 +7,7 @@
 
 import { CalendarEvent, TodoItem } from '../../types';
 import { getCalendarEvents, getTodoItems } from '../storageService';
-import { storage } from '../platform';
+import { storage } from '@l8r/shared/platform';
 import type { NotificationProvider, PendingNotification } from './types';
 
 const ID_RANGE_START = 1000;

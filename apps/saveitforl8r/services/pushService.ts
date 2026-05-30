@@ -5,8 +5,8 @@
  * require visible notifications for push events.
  */
 
-import { isNative } from './platform';
-import { postProxy } from './proxyService';
+import { isNative } from '@l8r/shared/platform';
+import { postProxy } from '@l8r/shared/ai';
 
 // Store the current token to avoid redundant registrations
 let registeredToken: string | null = null;

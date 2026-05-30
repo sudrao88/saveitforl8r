@@ -1,6 +1,6 @@
 import React from 'react';
 import { Bold, Italic, Underline, Strikethrough, Heading1, Heading2, List, ListOrdered, TextQuote, Code, Minus } from 'lucide-react';
-import { btn } from '../styles/design-system';
+import { btn } from '@l8r/shared/design-system';
 
 interface FormattingToolbarProps {
   activeFormats: string[];

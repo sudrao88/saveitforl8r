@@ -9,7 +9,7 @@
 import React, { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Moment } from '../types';
-import { text } from '../styles/design-system';
+import { text } from '@l8r/shared/design-system';
 
 interface MomentBubbleProps {
   moment: Moment;

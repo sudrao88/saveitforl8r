@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 import { CalendarEvent, Memory, Attachment } from '../types';
 import MemoryPreviewModal from './MemoryPreviewModal';
-import { overlay } from '../styles/design-system';
+import { overlay } from '@l8r/shared/design-system';
 
 interface CalendarAgendaViewProps {
   events: CalendarEvent[];

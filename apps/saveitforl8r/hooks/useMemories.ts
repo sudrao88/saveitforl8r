@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { getMemories, deleteMemory, saveMemory, getMemory } from '../services/storageService';
 import { submitEnrichment } from '../services/geminiService';
 import { Memory, Attachment, Moment, CalendarEvent, TodoItem, UploadProgress, isMemoryInFlight } from '../types';
-import { uploadFileChunked, LARGE_PAYLOAD_THRESHOLD } from '../services/chunkUploadService';
+import { uploadFileChunked, LARGE_PAYLOAD_THRESHOLD } from '@l8r/shared/ai';
 import { useSync } from './useSync';
 import { useAuth } from './useAuth';
 import { useEnrichmentPolling } from './useEnrichmentPolling';
@@ -224,7 +224,7 @@ export const useMemories = () => {
 
   // Threshold for chunked upload — base64 data longer than this is uploaded in chunks.
   // Shared with services/geminiService.ts (search/synthesis context fallback). See
-  // LARGE_PAYLOAD_THRESHOLD in services/chunkUploadService.ts.
+  // LARGE_PAYLOAD_THRESHOLD in @l8r/shared/ai (chunkUploadService).
   const CHUNKED_UPLOAD_THRESHOLD = LARGE_PAYLOAD_THRESHOLD;
 
   /**

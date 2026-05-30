@@ -8,7 +8,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Memory, Attachment } from '../types';
 import MemoryCard from './MemoryCard';
-import { overlay } from '../styles/design-system';
+import { overlay } from '@l8r/shared/design-system';
 
 interface MemoryPreviewModalProps {
   memory: Memory;

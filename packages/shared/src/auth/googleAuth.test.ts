@@ -1,16 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-// Set env vars BEFORE module loading using vi.hoisted
-vi.hoisted(() => {
-  process.env.VITE_GOOGLE_CLIENT_ID = 'test-client-id';
-  process.env.VITE_GOOGLE_CLIENT_SECRET = 'test-client-secret';
-});
-
 // Mock tokenService before importing googleAuth
 vi.mock('./tokenService', () => ({
   storeTokens: vi.fn().mockResolvedValue(undefined),
   getStoredToken: vi.fn(),
   clearTokens: vi.fn().mockResolvedValue(undefined),
+  setStorageNamespace: vi.fn(),
+  migrateLegacyTokenStorage: vi.fn().mockResolvedValue(undefined),
 }));
 
 // Mock pkce
@@ -19,8 +15,23 @@ vi.mock('./pkce', () => ({
   generateCodeChallenge: vi.fn().mockResolvedValue('mock_challenge_456'),
 }));
 
-import { handleAuthCallback, getAuthorizedFetch, getValidToken } from './googleAuth';
+import { configureGoogleAuth, handleAuthCallback, getAuthorizedFetch, getValidToken } from './googleAuth';
 import { storeTokens, getStoredToken, clearTokens } from './tokenService';
+
+// M1: OAuth config is now parametrized. Configure with saveitforl8r-like values
+// (including the `saveitforl8r` storage namespace) before each test so the
+// gdrive_linked / pkce_verifier keys are written under that namespace.
+const NS = 'saveitforl8r';
+const configure = () =>
+  configureGoogleAuth({
+    clientId: 'test-client-id',
+    clientSecret: 'test-client-secret',
+    scopes: ['https://www.googleapis.com/auth/drive.appdata'],
+    hostedUrl: 'https://saveitforl8r.com',
+    deepLinkScheme: 'com.saveitforl8r.app',
+    storageNamespace: NS,
+    proxyUrl: 'https://proxy.example.com',
+  });
 
 describe('googleAuth', () => {
   let originalFetch: typeof globalThis.fetch;
@@ -30,6 +41,7 @@ describe('googleAuth', () => {
     originalFetch = globalThis.fetch;
     localStorage.clear();
     sessionStorage.clear();
+    configure();
   });
 
   afterEach(() => {
@@ -57,7 +69,7 @@ describe('googleAuth', () => {
     });
 
     it('should exchange code for tokens on valid callback', async () => {
-      localStorage.setItem('pkce_verifier', 'mock_verifier');
+      localStorage.setItem('saveitforl8r:pkce_verifier', 'mock_verifier');
 
       Object.defineProperty(window, 'location', {
         value: {
@@ -87,11 +99,11 @@ describe('googleAuth', () => {
         expect.any(Number),
         'new_refresh_token'
       );
-      expect(localStorage.getItem('gdrive_linked')).toBe('true');
+      expect(localStorage.getItem('saveitforl8r:gdrive_linked')).toBe('true');
     });
 
     it('should throw on token exchange failure', async () => {
-      localStorage.setItem('pkce_verifier', 'mock_verifier');
+      localStorage.setItem('saveitforl8r:pkce_verifier', 'mock_verifier');
 
       Object.defineProperty(window, 'location', {
         value: {
@@ -182,7 +194,7 @@ describe('googleAuth', () => {
       ).rejects.toThrow('Token refresh failed');
 
       expect(clearTokens).toHaveBeenCalled();
-      expect(localStorage.getItem('gdrive_linked')).toBeNull();
+      expect(localStorage.getItem('saveitforl8r:gdrive_linked')).toBeNull();
     });
   });
 

@@ -1,0 +1,111 @@
+/* @l8r/shared design tokens (extracted from saveitforl8r index.css in M1).
+   Both apps `@import "@l8r/shared/tokens.css"` after `@import "tailwindcss"`.
+   App-specific overrides (e.g. l8rgram rebranding --color-accent) live in each
+   app's own index.css, layered after this import. */
+
+/* Light-mode variant: target descendants of <html data-theme="light">.
+   Mirrors Tailwind's built-in `dark:` variant pattern. Use sparingly —
+   semantic tokens in @theme handle most light/dark differences. Reserved
+   for enrichment/content-type accent colors that need a darker shade on
+   light backgrounds. */
+@custom-variant light (&:where([data-theme="light"], [data-theme="light"] *));
+
+@theme {
+  /* Surface colors (dark theme — default) */
+  --color-surface-base: #000000;
+  --color-surface-raised: #1f2937;
+  --color-surface-overlay: #030712;
+  --color-surface-hover-subtle: rgba(255, 255, 255, 0.05);
+  --color-surface-hover: rgba(255, 255, 255, 0.1);
+
+  /* Border colors */
+  --color-border-default: #374151;
+  --color-border-subtle: rgba(55, 65, 81, 0.3);
+
+  /* Text colors */
+  --color-text-primary: #f3f4f6;
+  --color-text-secondary: #9ca3af;
+  --color-text-tertiary: #6b7280;
+
+  /* Accent colors */
+  --color-accent: #2563eb;
+  --color-accent-hover: #3b82f6;
+  --color-accent-muted: rgba(37, 99, 235, 0.2);
+
+  /* Semantic colors */
+  --color-danger: #dc2626;
+  --color-danger-hover: #b91c1c;
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+
+  /* Scrollbar (theme-aware via overrides below) */
+  --color-scrollbar-track: #1f2937;
+  --color-scrollbar-thumb: #374151;
+  --color-scrollbar-thumb-hover: #4b5563;
+
+  /* Z-index layers */
+  --z-sticky: 10;
+  --z-dropdown: 30;
+  --z-overlay: 50;
+  --z-modal: 60;
+  --z-sheet: 70;
+  --z-nested-modal: 75;
+  --z-toast: 80;
+  --z-tooltip: 90;
+
+  /* Border radius */
+  --radius-xs: 0.125rem;
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-full: 9999px;
+
+  /* Transition durations */
+  --duration-fast: 150ms;
+  --duration-normal: 250ms;
+  --duration-slow: 400ms;
+  --duration-sheet: 600ms;
+  --duration-keyboard: 250ms;
+
+  /* Easing curves */
+  --ease-keyboard: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* Light theme — applied when [data-theme="light"] is set on <html>.
+   Override semantic tokens; component styles remain theme-agnostic. */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  /* Surface colors */
+  --color-surface-base: #ffffff;
+  --color-surface-raised: #f3f4f6;
+  --color-surface-overlay: #ffffff;
+  --color-surface-hover-subtle: rgba(0, 0, 0, 0.04);
+  --color-surface-hover: rgba(0, 0, 0, 0.08);
+
+  /* Border colors */
+  --color-border-default: #d1d5db;
+  --color-border-subtle: rgba(209, 213, 219, 0.6);
+
+  /* Text colors */
+  --color-text-primary: #111827;
+  --color-text-secondary: #4b5563;
+  --color-text-tertiary: #6b7280;
+
+  /* Accent colors — flip hover so darker = pressed on a light surface */
+  --color-accent: #2563eb;
+  --color-accent-hover: #1d4ed8;
+  --color-accent-muted: rgba(37, 99, 235, 0.12);
+
+  /* Semantic colors — slightly darker for AA contrast on light bg */
+  --color-danger: #dc2626;
+  --color-danger-hover: #b91c1c;
+  --color-success: #16a34a;
+  --color-warning: #d97706;
+
+  /* Scrollbar */
+  --color-scrollbar-track: #f3f4f6;
+  --color-scrollbar-thumb: #d1d5db;
+  --color-scrollbar-thumb-hover: #9ca3af;
+}

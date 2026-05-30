@@ -9,7 +9,7 @@ import React from 'react';
 import { Sparkles, ChevronRight, Calendar, CheckSquare, Trash2 } from 'lucide-react';
 import MomentBubble from './MomentBubble';
 import { Moment } from '../types';
-import { text, layout } from '../styles/design-system';
+import { text, layout } from '@l8r/shared/design-system';
 
 interface MomentsStripProps {
   moments: Moment[];

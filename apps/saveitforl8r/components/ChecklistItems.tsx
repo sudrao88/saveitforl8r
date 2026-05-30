@@ -1,6 +1,6 @@
 import React, { useRef, useCallback } from 'react';
 import { Plus, GripVertical } from 'lucide-react';
-import { checklist } from '../styles/design-system';
+import { checklist } from '@l8r/shared/design-system';
 
 export interface ChecklistItemData {
   id: string;

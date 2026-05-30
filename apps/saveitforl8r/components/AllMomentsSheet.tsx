@@ -2,7 +2,7 @@ import React from 'react';
 import { X } from 'lucide-react';
 import { Moment } from '../types';
 import { getMomentIcon } from './MomentBubble';
-import { overlay, card } from '../styles/design-system';
+import { overlay, card } from '@l8r/shared/design-system';
 
 interface AllMomentsSheetProps {
   moments: Moment[];

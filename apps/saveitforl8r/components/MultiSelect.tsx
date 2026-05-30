@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { ChevronDown, Check } from 'lucide-react';
-import { text, zIndex } from '../styles/design-system';
+import { text, zIndex } from '@l8r/shared/design-system';
 
 interface MultiSelectProps {
   label: string;

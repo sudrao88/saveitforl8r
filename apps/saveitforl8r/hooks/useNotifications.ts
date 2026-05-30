@@ -9,7 +9,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { App as CapacitorApp } from '@capacitor/app';
 import { LocalNotifications } from '@capacitor/local-notifications';
-import { isNative } from '../services/platform';
+import { isNative } from '@l8r/shared/platform';
 import { CalendarEvent, TodoItem } from '../types';
 import {
   synchronizeNotifications,

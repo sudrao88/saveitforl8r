@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { X, Download, ChevronLeft, ChevronRight, FileText, Share2 } from 'lucide-react';
 import { Attachment } from '../types';
-import { btn, overlay, zIndex } from '../styles/design-system';
+import { btn, overlay, zIndex } from '@l8r/shared/design-system';
 import { downloadDataUri } from '../services/downloadService';
 import ZoomableImage from './ZoomableImage';
 import PdfViewer from './PdfViewer';

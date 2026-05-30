@@ -17,7 +17,7 @@
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
-import { isNative } from './platform';
+import { isNative } from '@l8r/shared/platform';
 
 const isIOS = (): boolean =>
   /iPad|iPhone|iPod/.test(navigator.userAgent) ||

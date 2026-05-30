@@ -7,11 +7,11 @@ import {
   PREF_PREVIOUS_DAY_TIME,
 } from './previousDayProvider';
 import * as storageService from '../storageService';
-import * as platform from '../platform';
+import * as platform from '@l8r/shared/platform';
 import { CalendarEvent, TodoItem } from '../../types';
 
 vi.mock('../storageService');
-vi.mock('../platform');
+vi.mock('@l8r/shared/platform');
 
 const makeEvent = (overrides: Partial<CalendarEvent> = {}): CalendarEvent => ({
   id: 'evt-1',

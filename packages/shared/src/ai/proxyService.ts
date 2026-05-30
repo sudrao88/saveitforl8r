@@ -9,7 +9,7 @@
  * so the server can authenticate the caller and rate limit per account.
  */
 
-import { getValidToken } from './googleAuth';
+import { getValidToken } from '../auth/googleAuth';
 
 const getProxyUrl = (): string => {
   const url = import.meta.env.VITE_PROXY_URL;

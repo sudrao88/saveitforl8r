@@ -3,18 +3,17 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // Mock the auth boundary so we don't have to deal with tokens. Each
 // `driveFetch` call goes through `getAuthorizedFetch`, so this is the only
 // dependency the listAllFiles sharding logic needs.
-vi.mock('./googleAuth', () => ({
+// googleAuth + tokenService are both behind the @l8r/shared/auth barrel now,
+// so their mocks are merged into a single factory.
+vi.mock('@l8r/shared/auth', () => ({
   getAuthorizedFetch: vi.fn(),
   getValidToken: vi.fn(),
   initiateLogin: vi.fn(),
   handleAuthCallback: vi.fn(),
-}));
-
-vi.mock('./tokenService', () => ({
   clearTokens: vi.fn(),
 }));
 
-vi.mock('./platform', () => ({
+vi.mock('@l8r/shared/platform', () => ({
   storage: {
     get: vi.fn().mockResolvedValue(null),
     set: vi.fn().mockResolvedValue(undefined),
@@ -23,7 +22,7 @@ vi.mock('./platform', () => ({
 }));
 
 import { listAllFiles } from './googleDriveService';
-import { getAuthorizedFetch } from './googleAuth';
+import { getAuthorizedFetch } from '@l8r/shared/auth';
 
 const mockResponse = (body: any) =>
   ({ ok: true, json: async () => body, text: async () => JSON.stringify(body) } as Response);

@@ -5,7 +5,7 @@
  * All tokens reference CSS custom properties defined in index.css @theme.
  *
  * Usage:
- *   import { btn, card, overlay } from '../styles/design-system';
+ *   import { btn, card, overlay } from '@l8r/shared/design-system';
  *   <button className={`${btn.base} ${btn.primary}`}>Save</button>
  */
 

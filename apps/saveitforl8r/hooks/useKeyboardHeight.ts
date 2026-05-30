@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { isNative } from '../services/platform';
+import { isNative } from '@l8r/shared/platform';
 import { Keyboard } from '@capacitor/keyboard';
 import { Capacitor } from '@capacitor/core';
 

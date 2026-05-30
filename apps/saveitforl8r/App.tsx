@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, Suspense } from 'react';
 import { Bell, RefreshCw, X } from 'lucide-react';
 import { App as CapacitorApp, URLOpenListenerEvent } from '@capacitor/app';
-import { isNative } from './services/platform';
+import { isNative } from '@l8r/shared/platform';
 import MemoryCard from './components/MemoryCard';
 import TopNavigation from './components/TopNavigation';
 import FilterBar from './components/FilterBar';
@@ -14,7 +14,7 @@ import { Logo } from './components/icons';
 import QuickNoteBar, { QuickNoteBarHandle } from './components/QuickNoteBar';
 import GalleryViewer from './components/GalleryViewer';
 import { lazyWithRetry } from './utils/lazyWithRetry';
-import { btn, overlay } from './styles/design-system';
+import { btn, overlay } from '@l8r/shared/design-system';
 import AnimatedPresence from './components/AnimatedPresence';
 import { useFrozenValue } from './hooks/useAnimatedUnmount';
 
@@ -56,7 +56,7 @@ import { initGA, logPageView, logEvent } from './services/analytics';
 import { escapeHtml } from './utils/editorUtils';
 
 import { ANALYTICS_EVENTS } from './constants';
-import { handleDeepLink } from './services/googleAuth';
+import { handleDeepLink } from '@l8r/shared/auth';
 
 /** Must match --duration-sheet in index.css (used by overlay.sheetEnter / sheetExit). */
 const SHEET_DURATION = 600;

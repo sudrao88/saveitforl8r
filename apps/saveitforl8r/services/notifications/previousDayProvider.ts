@@ -10,7 +10,7 @@
  */
 
 import { getCalendarEvents, getTodoItems } from '../storageService';
-import { storage } from '../platform';
+import { storage } from '@l8r/shared/platform';
 import {
   toLocalDateKey,
   getEventsForDate,

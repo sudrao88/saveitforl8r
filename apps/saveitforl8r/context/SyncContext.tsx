@@ -16,7 +16,7 @@ import {
 } from '../services/googleDriveService';
 import { Memory, Attachment, Moment, MomentSynthesis, CalendarEvent, TodoItem } from '../types';
 import { useAuth } from '../hooks/useAuth';
-import { storage } from '../services/platform';
+import { storage } from '@l8r/shared/platform';
 import { enqueue as bgSyncEnqueue, peekAll as bgSyncPeekAll, remove as bgSyncRemove } from '../services/backgroundSyncQueue';
 import { startForegroundSync, updateForegroundSyncProgress, stopForegroundSync } from '../services/nativeBackgroundSync';
 

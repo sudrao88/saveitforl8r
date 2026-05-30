@@ -7,7 +7,7 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { X, Loader2, Sparkles } from 'lucide-react';
-import { btn, overlay } from '../styles/design-system';
+import { btn, overlay } from '@l8r/shared/design-system';
 import { useAnimatedUnmount } from '../hooks/useAnimatedUnmount';
 
 interface MomentCreationDialogProps {

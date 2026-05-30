@@ -1,6 +1,6 @@
 import React from 'react';
 import { X, Share, Download } from 'lucide-react';
-import { overlay } from '../styles/design-system';
+import { overlay } from '@l8r/shared/design-system';
 
 interface ShareOnboardingModalProps {
   onClose: () => void;

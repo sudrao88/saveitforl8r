@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { Memory, CalendarEvent, TodoItem, Attachment } from '../types';
 import MemoryCard from './MemoryCard';
-import { overlay, btn } from '../styles/design-system';
+import { overlay, btn } from '@l8r/shared/design-system';
 
 interface DeletionCandidatesSheetProps {
   candidates: Memory[];

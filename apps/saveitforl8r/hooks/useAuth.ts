@@ -9,8 +9,8 @@ import {
 } from '../services/googleDriveService';
 import { ANALYTICS_EVENTS } from '../constants';
 import { logEvent, setUserId, clearUserId } from '../services/analytics';
-import { isNative } from '../services/platform';
-import { getStoredToken } from '../services/tokenService';
+import { isNative } from '@l8r/shared/platform';
+import { getStoredToken } from '@l8r/shared/auth';
 import { sha256Hash } from '../utils/hash';
 
 export type AuthStatus = 'unlinked' | 'linked' | 'authenticating' | 'error';

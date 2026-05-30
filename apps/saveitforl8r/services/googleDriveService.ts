@@ -1,7 +1,7 @@
 // services/googleDriveService.ts
-import { getAuthorizedFetch, getValidToken, initiateLogin, handleAuthCallback } from './googleAuth';
-import { clearTokens } from './tokenService';
-import { storage } from './platform';
+import { getAuthorizedFetch, getValidToken, initiateLogin, handleAuthCallback } from '@l8r/shared/auth';
+import { clearTokens } from '@l8r/shared/auth';
+import { storage } from '@l8r/shared/platform';
 
 export interface DriveFile {
   id: string;

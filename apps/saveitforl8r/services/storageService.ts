@@ -1,8 +1,8 @@
 
 import { Memory, Moment, MomentSynthesis, CalendarEvent, TodoItem, isMemoryFailed } from '../types.ts';
-import { encryptData, decryptData, decryptBatch, EncryptedPayload } from './encryptionService';
+import { encryptData, decryptData, decryptBatch, EncryptedPayload } from '@l8r/shared/crypto';
 import { db } from './db';
-import { storage } from './platform';
+import { storage } from '@l8r/shared/platform';
 
 const DB_NAME = 'SaveItForL8rDB';
 const STORE_NAME = 'memories';

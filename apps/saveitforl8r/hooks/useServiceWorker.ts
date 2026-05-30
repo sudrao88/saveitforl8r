@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { isNative } from '../services/platform';
+import { isNative } from '@l8r/shared/platform';
 
 /**
  * Register Periodic Background Sync for installed PWA (Chrome only).

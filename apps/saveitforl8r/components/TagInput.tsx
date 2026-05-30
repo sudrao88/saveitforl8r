@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, Tag as TagIcon } from 'lucide-react';
-import { chip, text } from '../styles/design-system';
+import { chip, text } from '@l8r/shared/design-system';
 
 export const SUGGESTED_TAGS = ["Book", "Restaurant", "Place to Visit", "Movie", "Podcast", "Stuff"];
 

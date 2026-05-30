@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import { TodoItem, Memory, Attachment } from '../types';
 import MemoryPreviewModal from './MemoryPreviewModal';
-import { overlay } from '../styles/design-system';
+import { overlay } from '@l8r/shared/design-system';
 
 interface TodoListViewProps {
   items: TodoItem[];

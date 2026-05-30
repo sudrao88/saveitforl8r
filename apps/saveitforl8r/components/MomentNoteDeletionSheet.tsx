@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { Moment, Memory, Attachment } from '../types';
 import MemoryCard from './MemoryCard';
-import { overlay, btn } from '../styles/design-system';
+import { overlay, btn } from '@l8r/shared/design-system';
 
 interface MomentNoteDeletionSheetProps {
   moment: Moment;

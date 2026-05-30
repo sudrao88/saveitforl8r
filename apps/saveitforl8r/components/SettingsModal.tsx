@@ -11,7 +11,7 @@ import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { useAuth } from '../hooks/useAuth';
 import { ModelStatus, EmbeddingStats } from '../hooks/useAdaptiveSearch';
 import { factoryReset, forceReindexAll, ReconcileReport } from '../services/storageService';
-import { btn, overlay } from '../styles/design-system';
+import { btn, overlay } from '@l8r/shared/design-system';
 import { useTheme, ThemePreference } from '../context/ThemeContext';
 
 // Props interface remains the same as all functionality is preserved

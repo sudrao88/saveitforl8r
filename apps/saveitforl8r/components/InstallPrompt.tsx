@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Share, X } from 'lucide-react';
 import { Logo } from './icons';
-import { btn } from '../styles/design-system';
+import { btn } from '@l8r/shared/design-system';
 
 export const InstallPrompt = () => {
   const [showPrompt, setShowPrompt] = useState(() => {

@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 import { Camera, Image, FileText } from 'lucide-react';
-import { menu } from '../styles/design-system';
+import { menu } from '@l8r/shared/design-system';
 
 interface AttachmentMenuProps {
   open: boolean;

@@ -4,7 +4,7 @@ import { Send, Paperclip, Hash, Type, FileText, X, Loader2, ArrowLeft, CheckSqua
 import AttachmentMenu from './AttachmentMenu';
 import { marked } from 'marked';
 import { Attachment, Memory } from '../types';
-import { isNative } from '../services/platform';
+import { isNative } from '@l8r/shared/platform';
 import { Keyboard } from '@capacitor/keyboard';
 import { Geolocation } from '@capacitor/geolocation';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
@@ -13,7 +13,7 @@ import { escapeHtml, looksLikeMarkdown, parseChecklistMarkdown, sanitizePastedHt
 import { processFileInputs, MAX_FILE_SIZE_BYTES, MAX_ATTACHMENTS } from '../utils/attachmentUtils';
 import FormattingToolbar from './FormattingToolbar';
 import TagInput from './TagInput';
-import { btn, overlay } from '../styles/design-system';
+import { btn, overlay } from '@l8r/shared/design-system';
 import { ChecklistEditor, ChecklistItemData, serializeChecklistToHtml, parseChecklistFromHtml, cascadeToggle, applyIndent, applyOutdent, applyMove } from './ChecklistItems';
 import useBeforeInputMarkdown from '../hooks/useBeforeInputMarkdown';
 

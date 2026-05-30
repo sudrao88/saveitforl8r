@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('./platform', () => ({
+vi.mock('@l8r/shared/platform', () => ({
   isNative: vi.fn(),
 }));
 
-vi.mock('./proxyService', () => ({
+vi.mock('@l8r/shared/ai', () => ({
   postProxy: vi.fn(),
 }));
 
@@ -19,8 +19,8 @@ vi.mock('@capacitor/push-notifications', () => ({
 }));
 
 import { registerPushToken, unregisterPushToken } from './pushService';
-import { isNative } from './platform';
-import { postProxy } from './proxyService';
+import { isNative } from '@l8r/shared/platform';
+import { postProxy } from '@l8r/shared/ai';
 
 const mockIsNative = vi.mocked(isNative);
 const mockPostProxy = vi.mocked(postProxy);

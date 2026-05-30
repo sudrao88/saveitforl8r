@@ -1,6 +1,6 @@
 
 import { useState, useRef } from 'react';
-import { exportEncryptionKey, restoreEncryptionKey } from '../services/encryptionService';
+import { exportEncryptionKey, restoreEncryptionKey } from '@l8r/shared/crypto';
 import { downloadBlob } from '../services/downloadService';
 
 export const useEncryptionSettings = () => {

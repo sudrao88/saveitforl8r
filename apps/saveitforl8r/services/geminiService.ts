@@ -1,9 +1,9 @@
 
 import { EnrichmentData, Memory, Attachment, ChatMessage, Moment, SynthesisResponse, isMemoryInFlight, isMemoryFailed } from '../types.ts';
-import { postProxy, getProxyUrl } from './proxyService.ts';
-import { getValidToken } from './googleAuth.ts';
+import { postProxy, getProxyUrl } from '@l8r/shared/ai';
+import { getValidToken } from '@l8r/shared/auth';
 import { enqueue as bgSyncEnqueue } from './backgroundSyncQueue.ts';
-import { uploadFileChunked, LARGE_PAYLOAD_THRESHOLD } from './chunkUploadService.ts';
+import { uploadFileChunked, LARGE_PAYLOAD_THRESHOLD } from '@l8r/shared/ai';
 
 export interface QuerySource {
   id: string;
