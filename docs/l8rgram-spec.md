@@ -224,3 +224,47 @@ export function configureGoogleAuth(cfg: GoogleAuthConfig): void;
   large-image chunked-upload path.
 - **M6**: staging Cloud Run; load both PWAs; install both on one device -> independent auth/storage;
   native login bounce completes.
+
+## 7. Build script contract
+
+This plan is mechanized by an orchestrator at `tooling/build-l8rgram/run.sh`. It runs each
+milestone in a **fresh Claude Code context** (`claude --print --dangerously-skip-permissions`),
+runs per-phase verification, and commits on green. Halts on the first phase whose verification
+fails so the user can debug; re-running skips completed phases. See
+`tooling/build-l8rgram/README.md`.
+
+### Phase IDs (match `tooling/build-l8rgram/prompts/<id>.md`)
+
+| Phase id | Milestone | Verification |
+|---|---|---|
+| `m0-workspace-scaffold` | M0 | `npm install && npm run build/test -w saveitforl8r` |
+| `m1-extract-shared` | M1 | same as M0 + new migration unit tests |
+| `m2a-photo-library-spike` | M2 (research) | `docs/l8rgram-m2-spike.md` exists with required headings |
+| `m2b-l8rgram-skeleton` | M2 (impl) | `npm run build/test -w l8rgram` |
+| `m3-live-calendar` | M3 | l8rgram + `cd server && npm test` |
+| `m4-album-matching` | M4 | `npm run build/test -w l8rgram` |
+| `m5-gemini` | M5 | l8rgram + server |
+| `m6-build-deploy-native` | M6 | `npm run build/test -ws --if-present` + native dirs exist |
+
+### Workspace package names (set during M0/M1/M2b)
+- `saveitforl8r` (at `apps/saveitforl8r/`)
+- `l8rgram` (at `apps/l8rgram/`)
+- `@l8r/shared` (at `packages/shared/`)
+- `server` (unchanged at `server/`)
+
+### l8rgram environment (`apps/l8rgram/.env.l8rgram`, gitignored)
+M2b writes a `.env.l8rgram.example` with placeholders. Real values filled in before deploy.
+- `VITE_L8RGRAM_GOOGLE_CLIENT_ID`
+- `VITE_L8RGRAM_GOOGLE_CLIENT_SECRET`
+- `VITE_L8RGRAM_HOSTED_URL`
+- `VITE_PROXY_URL` (same proxy as saveitforl8r)
+
+### Server env additions (set on Cloud Run during M6)
+- `GOOGLE_ALLOWED_AUDIENCES` — comma-separated allowlist (back-compat: falls back to single `GOOGLE_CLIENT_ID` if unset)
+- `ALLOWED_ORIGINS` — append l8rgram's deployed origin
+
+### Manual post-script checklist
+`docs/l8rgram-setup-checklist.md` is created during M0 with: GCP OAuth client creation,
+`calendar.readonly` verification submission, `.env.l8rgram` fill-in, Cloud Run env updates,
+and `cap sync` on each native target. The orchestrator does not perform any of these
+(they require human action against external systems).
