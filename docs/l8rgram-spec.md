@@ -171,12 +171,23 @@ export function configureGoogleAuth(cfg: GoogleAuthConfig): void;
 
 - Per-app `vite.config.ts` + `index.html` + `index.tsx`; both keep `worker:{format:'es'}`, add
   `@l8r/shared` alias, extend Tailwind globs to `packages/shared/src`; per-app `VITE_*` defines.
-- **Docker**: workspace-aware client Dockerfiles (copy root lockfile + needed workspace
-  `package.json`s + `packages/shared` + the app, `npm ci` at root, `npm run build -w <app>`, serve
-  `apps/<app>/dist` via nginx). Server keeps its isolated Dockerfile.
-- **cloudbuild.yaml**: add build/push/deploy for `l8rgram-client` service (mirroring saveitforl8r,
-  l8rgram secrets/build-args). Server stays single; set `GOOGLE_ALLOWED_AUDIENCES` (both client ids)
-  and append l8rgram's origin to `ALLOWED_ORIGINS`. Test step: `npm ci` at root + `-ws --if-present`.
+- **Docker (one combined client image)**: a single root `Dockerfile.client` is workspace-aware
+  (copies root lockfile + all workspace `package.json`s + `packages/shared` + both apps), runs
+  `npm ci` at root, builds BOTH apps, then serves each `dist/` from a separate nginx root in the
+  same `nginx:alpine` runtime stage. Server keeps its isolated Dockerfile.
+- **nginx (host-based routing)**: root `nginx.conf` has two `server` blocks selecting by
+  `server_name` (saveitforl8r.com vs l8rgram.com), each with its own `root` and SPA fallback. One
+  Cloud Run service hosts both apps; the browser sees them as separate origins (independent SWs,
+  cookies, localStorage — M1's storage namespacing becomes belt-and-suspenders in prod, still
+  needed for shared-origin dev).
+- **cloudbuild.yaml**: UPDATE the existing `saveitforl8r-client` step to build the combined image
+  from `Dockerfile.client`. No separate `l8rgram-client` service; the existing service hosts both
+  apps via two custom-domain mappings created post-deploy. Server stays single; set
+  `GOOGLE_ALLOWED_AUDIENCES` (both client ids) and append l8rgram's origin to `ALLOWED_ORIGINS`.
+  Test step: `npm ci` at root + `npm test -ws --if-present`.
+- **Trade-off**: client deploys are coupled — a fix to either app rebuilds the combined image
+  and redeploys both. Acceptable given the cost savings (one warm Cloud Run instance baseline
+  instead of two) and the single-developer release cadence.
 - **Capacitor per app**: distinct `appId`/`appName`/deep-link scheme; move existing `android`/`ios`
   under `apps/saveitforl8r/`; `cap add` for l8rgram + the photo-library plugin (l8rgram deps only).
 - **PWA per app**: own `manifest.json` (distinct name/icons/`start_url`/scope) and `sw.js`; l8rgram

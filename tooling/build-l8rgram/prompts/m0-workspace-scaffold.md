@@ -112,9 +112,10 @@ Run after `tooling/build-l8rgram/run.sh` completes.
 - [ ] Set Cloud Run server env `GOOGLE_ALLOWED_AUDIENCES=<saveitforl8r-id>,<l8rgram-id>`.
 - [ ] Append l8rgram's deployed origin to the server's `ALLOWED_ORIGINS`.
 
-## Deployment
-- [ ] Verify `cloudbuild.yaml` has the `l8rgram-client` build/push/deploy steps (added in M6).
-- [ ] Create the `l8rgram-client` Cloud Run service (or let Cloud Build create it on first run).
+## Deployment (single combined Cloud Run service hosts both apps)
+- [ ] Verify `cloudbuild.yaml`'s `saveitforl8r-client` step builds the combined client image from the root `Dockerfile.client` (updated in M6).
+- [ ] Add a Cloud Run domain mapping for `l8rgram.com` to the existing `saveitforl8r-client` service: `gcloud beta run domain-mappings create --service=saveitforl8r-client --domain=l8rgram.com --region=<region>` (repeat for `www.l8rgram.com`).
+- [ ] Add the DNS records gcloud prints to your DNS provider (A/AAAA for apex, CNAME for www).
 - [ ] Run `npx cap sync` from `apps/l8rgram` on each native target.
 
 ## Validation
