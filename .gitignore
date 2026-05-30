@@ -183,3 +183,13 @@ GoogleService-Info.plist
 /dist
 /ios/App/App/public
 /android/app/src/main/assets/public
+
+# macOS Finder duplicates
+**/* 2.xml
+**/* 2.plist
+
+# Stale node_modules backup
+node_modules_old/
+
+# Xcode shared workspace data
+ios/App/App.xcworkspace/xcshareddata/
