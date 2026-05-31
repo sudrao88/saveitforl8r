@@ -147,12 +147,27 @@ const migrateLegacyKey = async (): Promise<JsonWebKey | null> => {
   }
 };
 
+// Dedupes concurrent first-time key initialization. Without this, two callers
+// racing before `cachedKey` is set (e.g. encrypting a batch of records via
+// Promise.all) would each generate and persist a *different* master key — the
+// loser's records then fail to decrypt and are silently dropped on read.
+let keyInitPromise: Promise<CryptoKey> | null = null;
+
 // Get or Create the Master Key.
 // The key is imported as non-extractable so it cannot be read by scripts at runtime.
 // The JWK is stored in IndexedDB for export/restore operations only.
 const getMasterKey = async (): Promise<CryptoKey> => {
   if (cachedKey) return cachedKey;
+  if (keyInitPromise) return keyInitPromise;
+  keyInitPromise = initMasterKey();
+  try {
+    return await keyInitPromise;
+  } finally {
+    keyInitPromise = null;
+  }
+};
 
+const initMasterKey = async (): Promise<CryptoKey> => {
   // Try IndexedDB first
   let jwk = await getKeyJWK();
 
@@ -328,4 +343,4 @@ export const restoreEncryptionKey = async (keyJSON: string): Promise<boolean> =>
 };
 
 // Clear the in-memory cached key (useful for testing)
-export const _clearCachedKey = () => { cachedKey = null; cachedJWK = null; };
+export const _clearCachedKey = () => { cachedKey = null; cachedJWK = null; keyInitPromise = null; };

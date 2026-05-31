@@ -23,6 +23,7 @@ import { createQueryRouter } from './routes/query.js';
 import { createMomentRouter } from './routes/moment.js';
 import { createPushRouter } from './routes/push.js';
 import { createUploadRouter } from './routes/upload.js';
+import { createCalendarRouter } from './routes/calendar.js';
 import { authenticateRequest } from './middleware/auth.js';
 import { validateSynthesizeInput, validateSynthesizeResultsInput } from './middleware/validation.js';
 import { sanitizeUserInput } from './lib/sanitize.js';
@@ -41,9 +42,12 @@ if (!GEMINI_API_KEY) {
   process.exit(1);
 }
 
+// Token audience validation accepts either a single GOOGLE_CLIENT_ID (back-compat)
+// or a comma-separated GOOGLE_ALLOWED_AUDIENCES allowlist (multi-app). At least
+// one must be set so authenticateRequest has a non-empty allowlist.
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID;
-if (!GOOGLE_CLIENT_ID) {
-  console.error('FATAL: GOOGLE_CLIENT_ID environment variable is required for token audience validation');
+if (!GOOGLE_CLIENT_ID && !process.env.GOOGLE_ALLOWED_AUDIENCES) {
+  console.error('FATAL: GOOGLE_CLIENT_ID or GOOGLE_ALLOWED_AUDIENCES is required for token audience validation');
   process.exit(1);
 }
 
@@ -154,6 +158,8 @@ app.use('/api/enrich', createEnrichRouter(sharedDeps));
 app.use('/api/query', createQueryRouter(sharedDeps));
 app.use('/api/push', createPushRouter({ db }));
 app.use('/api/upload', createUploadRouter({ ai, db }));
+// Live Google Calendar (l8rgram) — forwards to Google with the user's own token.
+app.use('/api/calendar', createCalendarRouter());
 
 // --- Moment schemas & routes ---
 

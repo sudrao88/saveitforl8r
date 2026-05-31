@@ -2,6 +2,7 @@ import { useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { btn, text } from '@l8r/shared/design-system';
 import { usePhotoLibrary } from '../hooks/usePhotoLibrary';
+import { useLiveCalendar } from '../hooks/useLiveCalendar';
 import { PhotoTile } from '../components/PhotoTile';
 
 interface Props {
@@ -13,6 +14,7 @@ const ROW_PX = 132;
 
 export const GalleryScreen = ({ onLogout }: Props) => {
   const { photos, status, progress, error, importLibrary, permission } = usePhotoLibrary();
+  const { events, isSyncing, error: calendarError, syncNow } = useLiveCalendar(photos);
   const parentRef = useRef<HTMLDivElement>(null);
 
   const rows = Math.ceil(photos.length / COLUMNS);
@@ -31,20 +33,42 @@ export const GalleryScreen = ({ onLogout }: Props) => {
         <h1 className={text.heading}>Gallery</h1>
         <div className="flex items-center gap-2">
           {photos.length > 0 && (
-            <button
-              type="button"
-              onClick={importLibrary}
-              disabled={busy}
-              className={`${btn.base} ${btn.secondarySm}`}
-            >
-              {status === 'importing' ? `Importing… ${progress.imported}` : 'Re-import'}
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={syncNow}
+                disabled={isSyncing}
+                className={`${btn.base} ${btn.secondarySm}`}
+              >
+                {isSyncing
+                  ? 'Syncing…'
+                  : events.length > 0
+                    ? `Calendar (${events.length})`
+                    : 'Sync calendar'}
+              </button>
+              <button
+                type="button"
+                onClick={importLibrary}
+                disabled={busy}
+                className={`${btn.base} ${btn.secondarySm}`}
+              >
+                {status === 'importing' ? `Importing… ${progress.imported}` : 'Re-import'}
+              </button>
+            </>
           )}
           <button type="button" onClick={onLogout} className={`${btn.base} ${btn.ghost}`}>
             Sign out
           </button>
         </div>
       </header>
+
+      {calendarError && (
+        <div className="px-4 py-2 bg-(--color-danger)/20 text-(--color-danger) text-xs">
+          {calendarError === 'reauth_required'
+            ? 'Calendar access expired. Sign out and back in to reconnect.'
+            : calendarError}
+        </div>
+      )}
 
       {permission?.limited && (
         <div className="px-4 py-2 bg-(--color-warning)/20 text-(--color-warning) text-xs">

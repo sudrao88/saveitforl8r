@@ -130,12 +130,27 @@ export const putAlbums = (albums: Album[]): Promise<void> => putEncrypted(ALBUMS
 export const getAlbums = (): Promise<Album[]> => getAllDecrypted<Album>(ALBUMS_STORE);
 export const getAlbumById = (id: string): Promise<Album | null> => getOneDecrypted<Album>(ALBUMS_STORE, id);
 
-// ─── Calendar cache (stub store — populated in M3) ──────────────────────────
+// ─── Calendar cache (M3 live-calendar sync) ─────────────────────────────────
 
 export const putCalendarEvents = (events: LiveCalendarEvent[]): Promise<void> =>
   putEncrypted(CALENDAR_CACHE_STORE, events);
 export const getCalendarEvents = (): Promise<LiveCalendarEvent[]> =>
   getAllDecrypted<LiveCalendarEvent>(CALENDAR_CACHE_STORE);
+
+// Timestamp of the last successful calendar sync. Kept in platform storage
+// (alongside the import cursor) so the 5-min re-sync throttle survives reloads.
+const CALENDAR_SYNCED_KEY = 'l8rgram:calendarLastSyncedAt';
+
+export const getCalendarLastSyncedAt = async (): Promise<number | null> => {
+  const raw = await storage.get(CALENDAR_SYNCED_KEY);
+  if (raw == null) return null;
+  const n = parseInt(raw, 10);
+  return Number.isNaN(n) ? null : n;
+};
+
+export const setCalendarLastSyncedAt = async (value: number): Promise<void> => {
+  await storage.set(CALENDAR_SYNCED_KEY, String(value));
+};
 
 // Test/maintenance helper — drop the cached singleton so a fresh DB handle is
 // opened next call (used by unit tests after deleting the database).

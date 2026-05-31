@@ -241,6 +241,50 @@ export const validateSynthesizeResultsInput = (req, res, next) => {
   next();
 };
 
+/** RFC3339 timestamp, e.g. 2024-01-01T00:00:00Z or 2024-01-01T00:00:00.000+05:30 */
+const RFC3339_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
+
+/** One year in ms (366 days to allow leap years at the boundary). */
+const MAX_CALENDAR_SPAN_MS = 366 * 24 * 60 * 60 * 1000;
+
+/**
+ * Validates GET /api/calendar/events query params:
+ *   - timeMin, timeMax: required RFC3339 timestamps; timeMax must be after
+ *     timeMin and the span must not exceed one year.
+ *   - pageToken: optional opaque continuation string.
+ */
+export const validateCalendarQuery = (req, res, next) => {
+  const { timeMin, timeMax, pageToken } = req.query;
+
+  if (!timeMin || !timeMax) {
+    return res.status(400).json({ error: 'timeMin and timeMax are required' });
+  }
+  if (typeof timeMin !== 'string' || !RFC3339_RE.test(timeMin) ||
+      typeof timeMax !== 'string' || !RFC3339_RE.test(timeMax)) {
+    return res.status(400).json({ error: 'timeMin and timeMax must be RFC3339 timestamps' });
+  }
+
+  const min = Date.parse(timeMin);
+  const max = Date.parse(timeMax);
+  if (Number.isNaN(min) || Number.isNaN(max)) {
+    return res.status(400).json({ error: 'timeMin and timeMax must be valid timestamps' });
+  }
+  if (max <= min) {
+    return res.status(400).json({ error: 'timeMax must be after timeMin' });
+  }
+  if (max - min > MAX_CALENDAR_SPAN_MS) {
+    return res.status(400).json({ error: 'time span must not exceed 1 year' });
+  }
+
+  if (pageToken !== undefined) {
+    if (typeof pageToken !== 'string' || pageToken.length > 4096) {
+      return res.status(400).json({ error: 'pageToken must be a string (max 4096 chars)' });
+    }
+  }
+
+  next();
+};
+
 export const validateUploadInit = (req, res, next) => {
   const { fileName, fileSize, mimeType, totalChunks, memoryId } = req.body;
 
