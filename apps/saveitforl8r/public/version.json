@@ -1,7 +1,7 @@
 {
   "version": "saveitforl8r-v116",
   "buildNumber": 116,
-  "buildDate": "2026-05-30T02:59:27.262Z",
+  "buildDate": "2026-05-30T05:32:02.108Z",
   "minNativeVersion": "1.0.0",
   "changelog": "Sync: clean up orphan tombstones on Drive. Older builds soft-deleted notes by uploading isDeleted:true to Drive without ever removing the file, so every launch kept re-downloading the same dead tombstones. The sync now schedules a Drive deletion whenever a remote tombstone is processed (whether or not a local copy exists), so accumulated tombstones drain over the next sync or two and stop firing alt=media requests."
 }
