@@ -85,27 +85,30 @@ mark_done()  { printf -- '- %s\n' "$1" >> "$STATE_FILE"; }
 
 verify_phase() {
   local kind="$1"
+  # `-- --run` forwards `--run` to vitest so it runs once and exits even when
+  # stdin is a TTY (default `vitest` enters watch mode and would hang the
+  # orchestrator waiting for `q`).
   case "$kind" in
     saveitforl8r)
       npm install --silent && \
       npm run build -w saveitforl8r && \
-      npm test -w saveitforl8r --silent
+      npm test -w saveitforl8r --silent -- --run
       ;;
     l8rgram)
       npm install --silent && \
-      npm run build -w saveitforl8r && npm test -w saveitforl8r --silent && \
-      npm run build -w l8rgram && npm test -w l8rgram --silent --if-present
+      npm run build -w saveitforl8r && npm test -w saveitforl8r --silent -- --run && \
+      npm run build -w l8rgram && npm test -w l8rgram --silent --if-present -- --run
       ;;
     l8rgram-server)
       npm install --silent && \
-      npm run build -w saveitforl8r && npm test -w saveitforl8r --silent && \
-      npm run build -w l8rgram && npm test -w l8rgram --silent --if-present && \
-      (cd server && npm test --silent --if-present)
+      npm run build -w saveitforl8r && npm test -w saveitforl8r --silent -- --run && \
+      npm run build -w l8rgram && npm test -w l8rgram --silent --if-present -- --run && \
+      (cd server && npm test --silent --if-present -- --run)
       ;;
     all)
       npm install --silent && \
       npm run build -ws --if-present && \
-      npm test -ws --if-present && \
+      npm test -ws --if-present -- --run && \
       test -d apps/l8rgram/ios && test -d apps/l8rgram/android
       ;;
     spike)
