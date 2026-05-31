@@ -178,6 +178,7 @@ GoogleService-Info.plist
 /apps/saveitforl8r/android/key.properties
 /apps/saveitforl8r/android/app/key.properties
 /apps/saveitforl8r/ios/App/App/GoogleService-Info.plist
+/apps/l8rgram/.env.l8rgram
 
 # Build artifacts
 /apps/saveitforl8r/dist
