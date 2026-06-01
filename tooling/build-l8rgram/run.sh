@@ -87,7 +87,10 @@ verify_phase() {
   local kind="$1"
   # `-- --run` forwards `--run` to vitest so it runs once and exits even when
   # stdin is a TTY (default `vitest` enters watch mode and would hang the
-  # orchestrator waiting for `q`).
+  # orchestrator waiting for `q`). The server uses `node --test` (not vitest);
+  # there `--run` is a node flag that REQUIRES an argument, so passing it
+  # makes the server step fail with "node: --run requires an argument".
+  # Therefore: --run goes to app workspaces only; server is invoked bare.
   case "$kind" in
     saveitforl8r)
       npm install --silent && \
@@ -103,12 +106,15 @@ verify_phase() {
       npm install --silent && \
       npm run build -w saveitforl8r && npm test -w saveitforl8r --silent -- --run && \
       npm run build -w l8rgram && npm test -w l8rgram --silent --if-present -- --run && \
-      (cd server && npm test --silent --if-present -- --run)
+      (cd server && npm test --silent --if-present)
       ;;
     all)
+      # `all` (M6) must NOT use `-ws --if-present -- --run` because that
+      # forwards --run to the server too. Run each workspace explicitly.
       npm install --silent && \
-      npm run build -ws --if-present && \
-      npm test -ws --if-present -- --run && \
+      npm run build -w saveitforl8r && npm test -w saveitforl8r --silent -- --run && \
+      npm run build -w l8rgram && npm test -w l8rgram --silent -- --run && \
+      (cd server && npm test --silent --if-present) && \
       test -d apps/l8rgram/ios && test -d apps/l8rgram/android
       ;;
     spike)
