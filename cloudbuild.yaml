@@ -9,8 +9,12 @@ steps:
       - '-c'
       - |
         npm ci
-        echo "Running tests..."
-        npm run test -w saveitforl8r -- --run
+        echo "Running tests across all workspaces..."
+        # CI=true makes vitest (saveitforl8r + l8rgram) run once instead of
+        # entering watch mode; server's `node --test` ignores it. We cannot use
+        # `-- --run` here because that flag would also be forwarded to the
+        # server's node --test and break it.
+        CI=true npm test -ws --if-present
 
   # -------------------------------------------------------------------------
   # 1. Build Server Image
@@ -26,18 +30,25 @@ steps:
       - 'server/'
 
   # -------------------------------------------------------------------------
-  # 2. Build Client Image
+  # 2. Build Combined Client Image (saveitforl8r + l8rgram)
   # -------------------------------------------------------------------------
   # NOTE: Must use entrypoint bash so that secretEnv values (available as
   # environment variables) are shell-expanded into the docker build-args.
   # Without a shell, $$VAR in args is just an escape to literal $VAR which
   # docker passes through unexpanded.
   #
-  # M0 (l8rgram split): the saveitforl8r tree moved to apps/saveitforl8r/, so
-  # the Dockerfile reference now points there. M6 replaces this with a
-  # workspace-aware combined image (root Dockerfile.client building both apps);
-  # until then the build context stays the repo root so npm ci sees the root
-  # lockfile. See docs/l8rgram-setup-checklist.md.
+  # M6 (l8rgram split): this now builds the workspace-aware combined image from
+  # the root Dockerfile.client, which builds BOTH apps and serves each from its
+  # own nginx root (host-routed by server_name). There is deliberately NO
+  # separate `l8rgram-client` Cloud Run service — the existing
+  # `saveitforl8r-client` service hosts both apps (one warm-instance baseline;
+  # renaming would force a domain-mapping migration). The build context is the
+  # repo root so `npm ci` sees the root lockfile + every workspace manifest.
+  #
+  # l8rgram's client id/secret/hosted-url come from build substitutions (empty
+  # by default — the app simply warns that sign-in is unconfigured until real
+  # values are supplied via trigger substitutions; see
+  # docs/l8rgram-setup-checklist.md).
   - name: 'gcr.io/cloud-builders/docker'
     id: 'build-client'
     secretEnv: ['VITE_GOOGLE_CLIENT_ID', 'VITE_GOOGLE_CLIENT_SECRET']
@@ -50,8 +61,11 @@ steps:
           --build-arg "VITE_GOOGLE_CLIENT_SECRET=$$VITE_GOOGLE_CLIENT_SECRET" \
           --build-arg "VITE_PROXY_URL=${_SERVER_URL}" \
           --build-arg "VITE_APP_URL=${_APP_URL}" \
+          --build-arg "VITE_L8RGRAM_GOOGLE_CLIENT_ID=${_L8RGRAM_GOOGLE_CLIENT_ID}" \
+          --build-arg "VITE_L8RGRAM_GOOGLE_CLIENT_SECRET=${_L8RGRAM_GOOGLE_CLIENT_SECRET}" \
+          --build-arg "VITE_L8RGRAM_HOSTED_URL=${_L8RGRAM_APP_URL}" \
           -t "us-west1-docker.pkg.dev/$PROJECT_ID/saveitforl8r-repo/client:latest" \
-          -f apps/saveitforl8r/Dockerfile \
+          -f Dockerfile.client \
           .
 
   # -------------------------------------------------------------------------
@@ -218,6 +232,12 @@ options:
 substitutions:
   _SERVER_URL: "https://api.saveitforl8r.com"
   _APP_URL: "https://saveitforl8r.com"
+  # l8rgram is served by the SAME combined client image / Cloud Run service.
+  # Supply real values via trigger substitutions before going live; empty
+  # defaults keep the build green (l8rgram just warns sign-in is unconfigured).
+  _L8RGRAM_APP_URL: "https://l8rgram.com"
+  _L8RGRAM_GOOGLE_CLIENT_ID: ""
+  _L8RGRAM_GOOGLE_CLIENT_SECRET: ""
 
 availableSecrets:
   secretManager:

@@ -1,0 +1,35 @@
+# Build context is the repo root (see Dockerfile.client). Keep the context lean
+# and never ship local secrets or build outputs into the image.
+
+# Dependencies (re-installed via `npm ci` inside the builder stage)
+**/node_modules
+node_modules_old
+
+# Build outputs
+**/dist
+**/dist-ssr
+**/.vite-inspect
+
+# Orchestrator scratch
+tooling/build-l8rgram/logs
+tooling/build-l8rgram/state
+
+# Local env / secrets (keep *.example so checked-in templates still ship)
+**/.env
+**/.env.*
+!**/.env*.example
+
+# Native projects — not part of the web client image
+**/android
+**/ios
+
+# VCS / tooling / docs
+.git
+.github
+.husky
+.idea
+.vscode
+.idx
+**/.DS_Store
+coverage
+*.log

@@ -126,10 +126,19 @@ dist-ssr
 .vite-inspect
 .firebase
 
-# capacitor
+# capacitor — saveitforl8r
 /apps/saveitforl8r/dist
 /apps/saveitforl8r/ios/App/App/public
 /apps/saveitforl8r/android/app/src/main/assets/public
+
+# capacitor — l8rgram (M6 native projects + build artifacts)
+/apps/l8rgram/dist
+/apps/l8rgram/ios/App/App/public
+/apps/l8rgram/ios/App/Pods
+/apps/l8rgram/android/.gradle
+/apps/l8rgram/android/build
+/apps/l8rgram/android/app/build
+/apps/l8rgram/android/app/src/main/assets/public
 
 # macOS
 .DS_Store

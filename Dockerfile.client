@@ -1,0 +1,74 @@
+# Combined client image (M6 — l8rgram split).
+#
+# A SINGLE Cloud Run service (`saveitforl8r-client`) hosts BOTH front-ends:
+# saveitforl8r and l8rgram. This Dockerfile is workspace-aware — it builds the
+# two Vite apps from the monorepo root and serves each dist/ from its own nginx
+# root, host-routed by server_name (see the root nginx.conf). One warm instance
+# baseline instead of two.
+#
+# Build context is the REPO ROOT (so npm ci sees the root lockfile + every
+# workspace package.json). See cloudbuild.yaml `build-client` step.
+
+# -------------------------------------------------------------------------
+# Stage 1: Build both apps
+# -------------------------------------------------------------------------
+FROM node:20-alpine AS build
+WORKDIR /repo
+
+# --- saveitforl8r build-time config (Vite injects at build) ---
+ARG VITE_GOOGLE_CLIENT_ID
+ARG VITE_GOOGLE_CLIENT_SECRET
+ARG VITE_PROXY_URL
+ARG VITE_APP_URL
+ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
+ENV VITE_GOOGLE_CLIENT_SECRET=$VITE_GOOGLE_CLIENT_SECRET
+ENV VITE_PROXY_URL=$VITE_PROXY_URL
+ENV VITE_APP_URL=$VITE_APP_URL
+
+# --- l8rgram build-time config (Vite's loadEnv picks these up from the env) ---
+ARG VITE_L8RGRAM_GOOGLE_CLIENT_ID
+ARG VITE_L8RGRAM_GOOGLE_CLIENT_SECRET
+ARG VITE_L8RGRAM_HOSTED_URL
+ENV VITE_L8RGRAM_GOOGLE_CLIENT_ID=$VITE_L8RGRAM_GOOGLE_CLIENT_ID
+ENV VITE_L8RGRAM_GOOGLE_CLIENT_SECRET=$VITE_L8RGRAM_GOOGLE_CLIENT_SECRET
+ENV VITE_L8RGRAM_HOSTED_URL=$VITE_L8RGRAM_HOSTED_URL
+
+# Install with the root lockfile first (better layer caching). Copy the root
+# manifest + lockfile and every workspace's package.json before the sources so
+# `npm ci` only re-runs when a manifest changes.
+COPY package.json package-lock.json ./
+COPY packages/shared/package.json packages/shared/
+COPY apps/saveitforl8r/package.json apps/saveitforl8r/
+COPY apps/l8rgram/package.json apps/l8rgram/
+COPY server/package.json server/
+RUN npm ci
+
+# Bring in the sources needed to build the two clients (the server workspace is
+# built by its own Dockerfile, so it is intentionally excluded here).
+COPY tsconfig.base.json ./
+COPY eslint-rules ./eslint-rules
+COPY packages/shared ./packages/shared
+COPY apps/saveitforl8r ./apps/saveitforl8r
+COPY apps/l8rgram ./apps/l8rgram
+
+RUN npm run build -w saveitforl8r && npm run build -w l8rgram
+
+# -------------------------------------------------------------------------
+# Stage 2: Serve both apps from one nginx
+# -------------------------------------------------------------------------
+FROM nginx:alpine
+# Add .mjs MIME type to nginx's default mime.types so ES module files (e.g. the
+# crypto worker) are served with a JavaScript MIME type instead of
+# application/octet-stream. Idempotent; injects into the existing types {} block
+# rather than overriding it.
+RUN sed -i -E '/(application|text)\/javascript/ { /mjs/! s/;/ mjs;/; }' \
+    /etc/nginx/mime.types
+
+# Each app gets its own document root; nginx picks between them by server_name.
+COPY --from=build /repo/apps/saveitforl8r/dist /usr/share/nginx/html/saveitforl8r
+COPY --from=build /repo/apps/l8rgram/dist /usr/share/nginx/html/l8rgram
+
+# Combined host-routed config (replaces the per-app nginx.conf removed in M6).
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 8080
+CMD ["nginx", "-g", "daemon off;"]
