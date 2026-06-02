@@ -130,6 +130,18 @@ export const putAlbums = (albums: Album[]): Promise<void> => putEncrypted(ALBUMS
 export const getAlbums = (): Promise<Album[]> => getAllDecrypted<Album>(ALBUMS_STORE);
 export const getAlbumById = (id: string): Promise<Album | null> => getOneDecrypted<Album>(ALBUMS_STORE, id);
 
+// Replace the persisted album set wholesale. Used by useAlbumMatching: the
+// matcher is a pure function of (photos, events), so the simplest way to keep
+// the store idempotent — including dropping albums for events that vanished
+// from the user's calendar — is to clear and re-put on every run.
+export const replaceAlbums = async (albums: Album[]): Promise<void> => {
+  const db = await getDB();
+  const tx = db.transaction(ALBUMS_STORE, 'readwrite');
+  await tx.store.clear();
+  await tx.done;
+  await putAlbums(albums);
+};
+
 // ─── Calendar cache (M3 live-calendar sync) ─────────────────────────────────
 
 export const putCalendarEvents = (events: LiveCalendarEvent[]): Promise<void> =>

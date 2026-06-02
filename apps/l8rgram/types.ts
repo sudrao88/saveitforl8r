@@ -20,19 +20,20 @@ export interface Photo {
 }
 
 // Albums are built deterministically in M4 by matching photo capture times to
-// calendar event windows. Empty store until then.
-export type AlbumSource = 'calendar' | 'manual' | 'auto';
+// calendar event windows. Photos with no matching event fall into per-day
+// `untitled` buckets so every photo is reachable from the Albums tab.
+export type AlbumSource = 'event' | 'untitled';
 
 export interface Album {
-  id: string;
+  id: string;                // `event:${eventId}` or `untitled:${YYYY-MM-DD}` (idempotency key)
   title: string;
   source: AlbumSource;
-  eventId?: string;          // calendar event id when source === 'calendar' (idempotency key)
-  start: number;             // epoch ms
-  end: number;               // epoch ms
+  eventId?: string;          // present when source === 'event'
+  start: number;             // epoch ms (event window start, or local startOfDay for untitled)
+  end: number;               // epoch ms (event window end,   or local endOfDay   for untitled)
   location?: string;
   description?: string;
-  coverPhotoId?: string;
+  coverPhotoId: string;      // first photo by capturedAt; never empty (album exists ⇒ ≥1 photo)
   photoIds: string[];
 }
 

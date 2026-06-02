@@ -75,10 +75,11 @@ describe('L8rgramDB storageService', () => {
     const a: Album = {
       id: 'a1',
       title: 'Brunch',
-      source: 'calendar',
+      source: 'event',
       eventId: 'evt-1',
       start: 1,
       end: 2,
+      coverPhotoId: 'p1',
       photoIds: ['p1'],
     };
     await putAlbums([a]);

@@ -1,20 +1,41 @@
 import { useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { btn, text } from '@l8r/shared/design-system';
-import { usePhotoLibrary } from '../hooks/usePhotoLibrary';
-import { useLiveCalendar } from '../hooks/useLiveCalendar';
 import { PhotoTile } from '../components/PhotoTile';
+import type { Photo } from '../types';
+import type { ImportProgress, ImportStatus } from '../hooks/usePhotoLibrary';
+import type { PermissionResult } from '../services/photoLibrary';
 
 interface Props {
+  photos: Photo[];
+  status: ImportStatus;
+  progress: ImportProgress;
+  importError: string | null;
+  permission: PermissionResult | null;
+  importLibrary: () => void;
+  calendarEventCount: number;
+  isSyncingCalendar: boolean;
+  calendarError: string | null;
+  syncCalendar: () => void;
   onLogout: () => void;
 }
 
 const COLUMNS = 3;
 const ROW_PX = 132;
 
-export const GalleryScreen = ({ onLogout }: Props) => {
-  const { photos, status, progress, error, importLibrary, permission } = usePhotoLibrary();
-  const { events, isSyncing, error: calendarError, syncNow } = useLiveCalendar(photos);
+export const GalleryScreen = ({
+  photos,
+  status,
+  progress,
+  importError,
+  permission,
+  importLibrary,
+  calendarEventCount,
+  isSyncingCalendar,
+  calendarError,
+  syncCalendar,
+  onLogout,
+}: Props) => {
   const parentRef = useRef<HTMLDivElement>(null);
 
   const rows = Math.ceil(photos.length / COLUMNS);
@@ -28,7 +49,7 @@ export const GalleryScreen = ({ onLogout }: Props) => {
   const busy = status === 'importing' || status === 'requesting';
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-full">
       <header className="flex items-center justify-between px-4 py-3 border-b border-(--color-border-subtle) bg-(--color-surface-base) z-(--z-sticky)">
         <h1 className={text.heading}>Gallery</h1>
         <div className="flex items-center gap-2">
@@ -36,14 +57,14 @@ export const GalleryScreen = ({ onLogout }: Props) => {
             <>
               <button
                 type="button"
-                onClick={syncNow}
-                disabled={isSyncing}
+                onClick={syncCalendar}
+                disabled={isSyncingCalendar}
                 className={`${btn.base} ${btn.secondarySm}`}
               >
-                {isSyncing
+                {isSyncingCalendar
                   ? 'Syncing…'
-                  : events.length > 0
-                    ? `Calendar (${events.length})`
+                  : calendarEventCount > 0
+                    ? `Calendar (${calendarEventCount})`
                     : 'Sync calendar'}
               </button>
               <button
@@ -76,9 +97,9 @@ export const GalleryScreen = ({ onLogout }: Props) => {
         </div>
       )}
 
-      {error && (
+      {importError && (
         <div className="px-4 py-2 bg-(--color-danger)/20 text-(--color-danger) text-xs">
-          {error}
+          {importError}
         </div>
       )}
 
