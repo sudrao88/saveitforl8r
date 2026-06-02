@@ -24,6 +24,8 @@ import { createMomentRouter } from './routes/moment.js';
 import { createPushRouter } from './routes/push.js';
 import { createUploadRouter } from './routes/upload.js';
 import { createCalendarRouter } from './routes/calendar.js';
+import { createEnrichPhotoRouter } from './routes/enrichPhoto.js';
+import { createQueryGalleryRouter } from './routes/queryGallery.js';
 import { authenticateRequest } from './middleware/auth.js';
 import { validateSynthesizeInput, validateSynthesizeResultsInput } from './middleware/validation.js';
 import { sanitizeUserInput } from './lib/sanitize.js';
@@ -64,6 +66,13 @@ const ENRICHMENT_FAILED_TTL_MS = 24 * 60 * 60 * 1000; // 1 day for failures
 const MOMENT_COLLECTION = 'moment-results';
 const MOMENT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const MOMENT_FAILED_TTL_MS = 24 * 60 * 60 * 1000;
+
+// l8rgram photo enrichment + gallery search (M5).
+const PHOTO_ENRICHMENT_COLLECTION = 'photo-enrichment-results';
+const PHOTO_ENRICHMENT_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const PHOTO_ENRICHMENT_FAILED_TTL_MS = 24 * 60 * 60 * 1000; // 1 day for failures
+const GALLERY_QUERY_COLLECTION = 'gallery-query-results';
+const GALLERY_QUERY_TTL_MS = 24 * 60 * 60 * 1000; // 1 day — search results are ephemeral
 
 let db;
 try {
@@ -160,6 +169,16 @@ app.use('/api/push', createPushRouter({ db }));
 app.use('/api/upload', createUploadRouter({ ai, db }));
 // Live Google Calendar (l8rgram) — forwards to Google with the user's own token.
 app.use('/api/calendar', createCalendarRouter());
+// l8rgram Gemini endpoints — per-photo caption/tags + NL gallery search.
+app.use('/api/enrich-photo', createEnrichPhotoRouter({
+  ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GEMINI_TIMEOUT_MS,
+  PHOTO_ENRICHMENT_COLLECTION, PHOTO_ENRICHMENT_TTL_MS, PHOTO_ENRICHMENT_FAILED_TTL_MS,
+  aiLimiter,
+}));
+app.use('/api/query-gallery', createQueryGalleryRouter({
+  ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GEMINI_TIMEOUT_MS,
+  GALLERY_QUERY_COLLECTION, GALLERY_QUERY_TTL_MS,
+}));
 
 // --- Moment schemas & routes ---
 

@@ -3,13 +3,15 @@ import { useAuth } from './hooks/useAuth';
 import { usePhotoLibrary } from './hooks/usePhotoLibrary';
 import { useLiveCalendar } from './hooks/useLiveCalendar';
 import { useAlbumMatching } from './hooks/useAlbumMatching';
+import { usePhotoEnrichment } from './hooks/usePhotoEnrichment';
 import { LoginScreen } from './screens/LoginScreen';
 import { GalleryScreen } from './screens/GalleryScreen';
 import { AlbumsScreen } from './screens/AlbumsScreen';
 import { AlbumDetailScreen } from './screens/AlbumDetailScreen';
+import { SearchScreen } from './screens/SearchScreen';
 import type { Photo } from './types';
 
-type Tab = 'gallery' | 'albums';
+type Tab = 'gallery' | 'albums' | 'search';
 
 // Bottom-nav item — kept inline (one-off, only two entries). Composes
 // design-system tokens via class strings; no raw Tailwind colors.
@@ -54,16 +56,30 @@ const Authed = ({ onLogout }: { onLogout: () => void }) => {
     photos: matchedPhotos,
   } = useAlbumMatching(photos, events);
 
+  // Background per-photo caption/tags. `enrichedById` carries the freshest
+  // result so the UI shows captions/tags immediately, regardless of when the
+  // encrypted store write lands.
+  const { enrichedById } = usePhotoEnrichment(matchedPhotos.length > 0 ? matchedPhotos : photos);
+
   const [tab, setTab] = useState<Tab>('gallery');
   const [openAlbumId, setOpenAlbumId] = useState<string | null>(null);
 
-  // Patched photos (with up-to-date albumIds) keyed for O(1) album lookups.
-  // Falls back to the import-pipeline copy on the first render before the
-  // matcher has produced patched results.
-  const photosById = useMemo(() => {
+  // The list everything renders from: album-matched photos (with up-to-date
+  // albumIds) merged with any enrichment patches produced this session.
+  const displayPhotos = useMemo(() => {
     const source = matchedPhotos.length > 0 ? matchedPhotos : photos;
-    return new Map<string, Photo>(source.map((p) => [p.id, p]));
-  }, [matchedPhotos, photos]);
+    if (enrichedById.size === 0) return source;
+    return source.map((p) => {
+      const patch = enrichedById.get(p.id);
+      return patch ? { ...p, ...patch } : p;
+    });
+  }, [matchedPhotos, photos, enrichedById]);
+
+  // Keyed for O(1) album lookups.
+  const photosById = useMemo(
+    () => new Map<string, Photo>(displayPhotos.map((p) => [p.id, p])),
+    [displayPhotos],
+  );
 
   const openAlbum = openAlbumId ? albums.find((a) => a.id === openAlbumId) ?? null : null;
 
@@ -78,7 +94,7 @@ const Authed = ({ onLogout }: { onLogout: () => void }) => {
           />
         ) : tab === 'gallery' ? (
           <GalleryScreen
-            photos={matchedPhotos.length > 0 ? matchedPhotos : photos}
+            photos={displayPhotos}
             status={status}
             progress={progress}
             importError={importError}
@@ -90,12 +106,14 @@ const Authed = ({ onLogout }: { onLogout: () => void }) => {
             syncCalendar={syncCalendar}
             onLogout={onLogout}
           />
-        ) : (
+        ) : tab === 'albums' ? (
           <AlbumsScreen
             albums={albums}
             photosById={photosById}
             onOpen={setOpenAlbumId}
           />
+        ) : (
+          <SearchScreen photos={displayPhotos} albums={albums} />
         )}
       </main>
 
@@ -119,6 +137,14 @@ const Authed = ({ onLogout }: { onLogout: () => void }) => {
             className={`${NAV_BTN_BASE} ${tab === 'albums' ? NAV_BTN_ACTIVE : NAV_BTN_INACTIVE}`}
           >
             Albums
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab('search')}
+            aria-pressed={tab === 'search'}
+            className={`${NAV_BTN_BASE} ${tab === 'search' ? NAV_BTN_ACTIVE : NAV_BTN_INACTIVE}`}
+          >
+            Search
           </button>
         </nav>
       )}

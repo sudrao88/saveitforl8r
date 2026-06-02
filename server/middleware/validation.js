@@ -15,6 +15,14 @@ export const ALLOWED_MIME_TYPES = [
 /** Must match MAX_ATTACHMENTS in utils/attachmentUtils.ts. */
 export const MAX_ATTACHMENTS = 20;
 
+/** l8rgram enriches photos only — restrict to the image subset. */
+export const ALLOWED_IMAGE_MIME_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+];
+
 export const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Gemini File API URIs follow this pattern. */
@@ -178,6 +186,111 @@ export const validateResultsInput = (req, res, next) => {
   for (const id of memoryIds) {
     if (typeof id !== 'string' || !UUID_REGEX.test(id)) {
       return res.status(400).json({ error: `Invalid memoryId: ${id}` });
+    }
+  }
+
+  next();
+};
+
+// ─── l8rgram: photo enrichment + gallery search ─────────────────────────────
+
+/** Max photo contexts the client may send in one gallery search request. */
+const MAX_PHOTO_CONTEXTS = 1000;
+
+/**
+ * Validates POST /api/enrich-photo: a single image (inline base64 or a
+ * pre-uploaded Gemini fileUri) plus a client-generated jobId used to key the
+ * durable result. Mirrors the attachment caps in validateEnrichInput but is
+ * restricted to image MIME types.
+ */
+export const validateEnrichPhoto = (req, res, next) => {
+  const { jobId, image } = req.body;
+
+  if (typeof jobId !== 'string' || !UUID_REGEX.test(jobId)) {
+    return res.status(400).json({ error: 'jobId must be a valid UUID' });
+  }
+
+  if (!image || typeof image !== 'object' || Array.isArray(image)) {
+    return res.status(400).json({ error: 'image is required and must be an object' });
+  }
+  if (!image.mimeType || !ALLOWED_IMAGE_MIME_TYPES.includes(image.mimeType)) {
+    return res.status(400).json({
+      error: `Unsupported image type. Allowed: ${ALLOWED_IMAGE_MIME_TYPES.join(', ')}`,
+    });
+  }
+  if (!image.data && !image.fileUri) {
+    return res.status(400).json({ error: 'image must have either data or fileUri' });
+  }
+  if (image.data !== undefined) {
+    if (typeof image.data !== 'string') {
+      return res.status(400).json({ error: 'image.data must be a string' });
+    }
+    if (image.data.length > 70_000_000) {
+      return res.status(400).json({ error: 'image data too large (max ~52MB base64)' });
+    }
+  }
+  if (image.fileUri !== undefined) {
+    if (typeof image.fileUri !== 'string' || !GEMINI_FILE_URI_RE.test(image.fileUri)) {
+      return res.status(400).json({ error: 'image.fileUri must be a valid Gemini File API URI' });
+    }
+  }
+
+  next();
+};
+
+/** Validates POST /api/enrich-photo/results: an array of client jobIds. */
+export const validatePhotoResultsInput = (req, res, next) => {
+  const { jobIds } = req.body;
+
+  if (!jobIds || !Array.isArray(jobIds)) {
+    return res.status(400).json({ error: 'jobIds must be an array' });
+  }
+  if (jobIds.length === 0) {
+    return res.status(400).json({ error: 'jobIds must not be empty' });
+  }
+  if (jobIds.length > 50) {
+    return res.status(400).json({ error: 'Maximum 50 jobIds allowed' });
+  }
+  for (const id of jobIds) {
+    if (typeof id !== 'string' || !UUID_REGEX.test(id)) {
+      return res.status(400).json({ error: `Invalid jobId: ${id}` });
+    }
+  }
+
+  next();
+};
+
+/**
+ * Validates POST /api/query-gallery: a natural-language query plus a compact
+ * per-photo context array the model searches over. Each context is small
+ * (id + caption + tags + capturedAt + albumTitles) so the array cap is higher
+ * than the memory-recall query's.
+ */
+export const validateQueryGallery = (req, res, next) => {
+  const { query, photoContexts } = req.body;
+
+  if (!query || typeof query !== 'string') {
+    return res.status(400).json({ error: 'query is required and must be a string' });
+  }
+  if (query.length > 2_000) {
+    return res.status(400).json({ error: 'query too long (max 2000 chars)' });
+  }
+
+  if (!photoContexts || !Array.isArray(photoContexts)) {
+    return res.status(400).json({ error: 'photoContexts must be an array' });
+  }
+  if (photoContexts.length > MAX_PHOTO_CONTEXTS) {
+    return res.status(400).json({ error: `Too many photoContexts (max ${MAX_PHOTO_CONTEXTS})` });
+  }
+  for (const ctx of photoContexts) {
+    if (!ctx || typeof ctx !== 'object' || typeof ctx.id !== 'string') {
+      return res.status(400).json({ error: 'Each photoContext must have a string id' });
+    }
+    if (ctx.tags !== undefined && !Array.isArray(ctx.tags)) {
+      return res.status(400).json({ error: 'photoContext.tags must be an array' });
+    }
+    if (ctx.albumTitles !== undefined && !Array.isArray(ctx.albumTitles)) {
+      return res.status(400).json({ error: 'photoContext.albumTitles must be an array' });
     }
   }
 
