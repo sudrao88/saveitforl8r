@@ -400,14 +400,16 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
   
   const documents = memory.attachments?.filter(a => a.type === 'file') || [];
 
-  // Calendar events and to-do items created from this note
+  // Calendar events and to-do items created from this note. Without the
+  // open handler the links would render as dead buttons, so treat the
+  // lists as empty and skip the icons/sections entirely.
   const linkedEvents = useMemo(
-    () => (calendarEvents && calendarEvents.length > 0 ? pickEventRepresentatives(calendarEvents) : []),
-    [calendarEvents]
+    () => (onOpenCalendarEvent && calendarEvents && calendarEvents.length > 0 ? pickEventRepresentatives(calendarEvents) : []),
+    [calendarEvents, onOpenCalendarEvent]
   );
   const linkedTodos = useMemo(
-    () => (todoItems ?? []).filter(item => !item.isDismissed),
-    [todoItems]
+    () => (onOpenTodoItem ? (todoItems ?? []).filter(item => !item.isDismissed) : []),
+    [todoItems, onOpenTodoItem]
   );
 
 
