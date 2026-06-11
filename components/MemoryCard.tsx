@@ -249,6 +249,11 @@ const pickEventRepresentatives = (events: CalendarEvent[]): CalendarEvent[] => {
   return [...singles, ...representatives].sort((a, b) => a.startDate.localeCompare(b.startDate));
 };
 
+// Enrichment sections rendered with a calendar glyph (per SECTION_CONFIG_MAP):
+// event.date, health.followUp, financial.dueDate, legal.deadlines. The linked
+// calendar events fold into these sections instead of adding a second icon.
+const DATE_LIKE_SECTION_KEYS = new Set(['date', 'followUp', 'dueDate', 'deadlines']);
+
 const formatLinkDate = (iso: string): string => {
   // Date-only strings parse as UTC midnight; anchor to local midnight instead
   const date = new Date(iso.includes('T') ? iso : iso + 'T00:00:00');
@@ -675,6 +680,15 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                 const hasAnyCTA = aiText || typeSections.length > 0 || targetUri || linkedEvents.length > 0 || linkedTodos.length > 0;
                 if (!hasAnyCTA) return null;
 
+                // Date-like and Action Items enrichment sections use the same
+                // calendar/check glyphs as the linked-item toggles. To avoid two
+                // identical icons, fold the links into the existing section's
+                // expansion instead of adding a separate icon.
+                const dateSectionKey = typeSections.find((s) => DATE_LIKE_SECTION_KEYS.has(s.key))?.key;
+                const hasActionSection = typeSections.some((s) => s.key === 'actionItems');
+                const linkedEventsKey = dateSectionKey ?? 'linked-events';
+                const linkedTodosKey = hasActionSection ? 'actionItems' : 'linked-todos';
+
                 return (
                     <div className="space-y-2 mt-auto">
                         <div className="flex items-center gap-1 flex-wrap">
@@ -698,7 +712,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                                     <span className="[&>svg]:w-4 [&>svg]:h-4">{section.icon}</span>
                                 </button>
                             ))}
-                            {linkedEvents.length > 0 && (
+                            {linkedEvents.length > 0 && !dateSectionKey && (
                                 <button
                                     onClick={(e) => { e.stopPropagation(); setExpandedSection(expandedSection === 'linked-events' ? null : 'linked-events'); }}
                                     title="In Calendar"
@@ -708,7 +722,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                                     <CalendarDays size={16} className="text-(--color-accent)" />
                                 </button>
                             )}
-                            {linkedTodos.length > 0 && (
+                            {linkedTodos.length > 0 && !hasActionSection && (
                                 <button
                                     onClick={(e) => { e.stopPropagation(); setExpandedSection(expandedSection === 'linked-todos' ? null : 'linked-todos'); }}
                                     title="In To-Do List"
@@ -776,8 +790,9 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                             );
                         })}
 
-                        {/* Expandable: calendar events created from this note */}
-                        {expandedSection === 'linked-events' && linkedEvents.length > 0 && (
+                        {/* Expandable: calendar events created from this note.
+                            Shown under the Date section when one exists. */}
+                        {expandedSection === linkedEventsKey && linkedEvents.length > 0 && (
                             <div className="pt-1 space-y-1 animate-in fade-in slide-in-from-top-1 duration-(--duration-fast)">
                                 <span className={`flex items-center gap-1.5 ${text.label}`}>
                                     <CalendarDays size={12} className="text-(--color-accent)" />
@@ -799,8 +814,9 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                             </div>
                         )}
 
-                        {/* Expandable: to-do items created from this note */}
-                        {expandedSection === 'linked-todos' && linkedTodos.length > 0 && (
+                        {/* Expandable: to-do items created from this note.
+                            Shown under the Action Items section when one exists. */}
+                        {expandedSection === linkedTodosKey && linkedTodos.length > 0 && (
                             <div className="pt-1 space-y-1 animate-in fade-in slide-in-from-top-1 duration-(--duration-fast)">
                                 <span className={`flex items-center gap-1.5 ${text.label}`}>
                                     <CircleCheck size={12} className="text-(--color-success)" />
