@@ -227,7 +227,10 @@ interface MemoryCardProps {
 // Recurring events expand into many occurrences sharing a recurringGroupId —
 // collapse each series to a single link (next upcoming occurrence, else the last).
 const pickEventRepresentatives = (events: CalendarEvent[]): CalendarEvent[] => {
-  const today = new Date().toISOString().split('T')[0];
+  // Event startDates are local ISO strings, so compare against the local date
+  // (toISOString would give the UTC date, off by one near midnight)
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   const singles: CalendarEvent[] = [];
   const series = new Map<string, CalendarEvent[]>();
   for (const event of events) {
@@ -789,14 +792,18 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                             key={item.id}
                             onClick={(e) => { e.stopPropagation(); onOpenTodoItem?.(item.id); }}
                             title="View in to-do list"
-                            className="flex items-center gap-1.5 max-w-full text-sm text-(--color-accent) hover:text-(--color-accent-hover) transition-colors duration-(--duration-fast)"
+                            className={`flex items-center gap-1.5 max-w-full text-sm transition-colors duration-(--duration-fast) ${
+                                item.isCompleted
+                                    ? 'text-(--color-text-secondary) hover:text-(--color-text-primary)'
+                                    : 'text-(--color-accent) hover:text-(--color-accent-hover)'
+                            }`}
                         >
                             {item.isCompleted ? (
                                 <CheckSquare size={14} className="shrink-0 text-(--color-success)" />
                             ) : (
                                 <Square size={14} className="shrink-0 text-(--color-text-tertiary)" />
                             )}
-                            <span className={`truncate ${item.isCompleted ? 'line-through opacity-70' : ''}`}>{item.title}</span>
+                            <span className={`truncate ${item.isCompleted ? 'line-through' : ''}`}>{item.title}</span>
                             {item.deadline && (
                                 <span className="text-xs text-(--color-text-tertiary) shrink-0">{formatLinkDate(item.deadline)}</span>
                             )}
