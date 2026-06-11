@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v116",
-  "buildNumber": 116,
-  "buildDate": "2026-05-28T16:28:50.627Z",
+  "version": "saveitforl8r-v117",
+  "buildNumber": 117,
+  "buildDate": "2026-06-11T10:58:27.847Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Sync: clean up orphan tombstones on Drive. Older builds soft-deleted notes by uploading isDeleted:true to Drive without ever removing the file, so every launch kept re-downloading the same dead tombstones. The sync now schedules a Drive deletion whenever a remote tombstone is processed (whether or not a local copy exists), so accumulated tombstones drain over the next sync or two and stop firing alt=media requests."
+  "changelog": "Notes now link to the calendar events and to-do items they created. New 'In Calendar' and 'In To-Do List' sections on notes open the matching view, scroll to the item, and highlight it. Recurring events show a single link to the next upcoming occurrence."
 }
