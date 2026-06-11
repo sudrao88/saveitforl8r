@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v118",
-  "buildNumber": 118,
-  "buildDate": "2026-06-11T15:24:14.727Z",
+  "version": "saveitforl8r-v119",
+  "buildNumber": 119,
+  "buildDate": "2026-06-11T16:04:14.936Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Notes' calendar and to-do links are now tucked behind icons. Tap the calendar or check icon on a note to reveal its 'In Calendar' / 'In To-Do List' links instead of seeing them on every card."
+  "changelog": "No more duplicate icons on notes: when a note has a Date or Action Items section, its 'In Calendar' / 'In To-Do List' links now appear inside that section instead of behind a second identical icon."
 }
