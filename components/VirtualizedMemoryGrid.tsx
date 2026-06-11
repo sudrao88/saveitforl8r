@@ -1,6 +1,6 @@
 import React from 'react';
 import MemoryCard from './MemoryCard';
-import { Memory, Attachment, UploadProgress } from '../types';
+import { Memory, Attachment, UploadProgress, CalendarEvent, TodoItem } from '../types';
 
 interface VirtualizedMemoryGridProps {
   memories: Memory[];
@@ -17,6 +17,10 @@ interface VirtualizedMemoryGridProps {
   onSyncRetry?: (id: string) => void;
   uploadProgressMap?: Map<string, UploadProgress>;
   highlightedMemoryId?: string | null;
+  eventsByMemory?: Map<string, CalendarEvent[]>;
+  todosByMemory?: Map<string, TodoItem[]>;
+  onOpenCalendarEvent?: (eventId: string) => void;
+  onOpenTodoItem?: (itemId: string) => void;
 }
 
 const VirtualizedMemoryGrid: React.FC<VirtualizedMemoryGridProps> = ({
@@ -34,6 +38,10 @@ const VirtualizedMemoryGrid: React.FC<VirtualizedMemoryGridProps> = ({
   onSyncRetry,
   uploadProgressMap,
   highlightedMemoryId,
+  eventsByMemory,
+  todosByMemory,
+  onOpenCalendarEvent,
+  onOpenTodoItem,
 }) => {
   return (
     <div
@@ -65,6 +73,10 @@ const VirtualizedMemoryGrid: React.FC<VirtualizedMemoryGridProps> = ({
             syncStatus={syncStatusMap?.get(mem.id)}
             onSyncRetry={onSyncRetry}
             uploadProgress={uploadProgressMap?.get(mem.id)}
+            calendarEvents={eventsByMemory?.get(mem.id)}
+            todoItems={todosByMemory?.get(mem.id)}
+            onOpenCalendarEvent={onOpenCalendarEvent}
+            onOpenTodoItem={onOpenTodoItem}
           />
         </div>
         );
