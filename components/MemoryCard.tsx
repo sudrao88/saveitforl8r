@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
-import { Trash2, Loader2, Clock, ExternalLink, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, WifiOff, CloudOff, FileText, Paperclip, MoreVertical, AlertTriangle, AlertCircle, LogIn, Maximize2, Eye, Pin, Pencil, Lightbulb, CircleCheck, UtensilsCrossed, ListOrdered, ThumbsUp, ThumbsDown, DollarSign, MapPin, CalendarDays, ClipboardList, MessageSquare, Users, Mic, Code, Heart, Scale, GraduationCap, Briefcase, Music, Film, BookOpenCheck, Bookmark, Phone, Mail, ScrollText, Tag, Clock3, Flame, Quote, Hourglass, Sparkles, Calculator } from 'lucide-react';
-import { Memory, Attachment, UploadProgress, isMemoryInFlight, isMemoryFailed } from '../types.ts';
+import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
+import { Trash2, Loader2, Clock, ExternalLink, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, WifiOff, CloudOff, FileText, Paperclip, MoreVertical, AlertTriangle, AlertCircle, LogIn, Maximize2, Eye, Pin, Pencil, Lightbulb, CircleCheck, UtensilsCrossed, ListOrdered, ThumbsUp, ThumbsDown, DollarSign, MapPin, CalendarDays, ClipboardList, MessageSquare, Users, Mic, Code, Heart, Scale, GraduationCap, Briefcase, Music, Film, BookOpenCheck, Bookmark, Phone, Mail, ScrollText, Tag, Clock3, Flame, Quote, Hourglass, Sparkles, Calculator, CheckSquare, Square } from 'lucide-react';
+import { Memory, Attachment, UploadProgress, CalendarEvent, TodoItem, isMemoryInFlight, isMemoryFailed } from '../types.ts';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { btn, card, confirm, menu, overlay, text } from '../styles/design-system';
 import { downloadDataUri } from '../services/downloadService';
@@ -214,7 +214,44 @@ interface MemoryCardProps {
   uploadProgress?: UploadProgress;
   /** Index in the feed grid for staggered entrance animation */
   index?: number;
+  /** Calendar events created from this note (for "In Calendar" links) */
+  calendarEvents?: CalendarEvent[];
+  /** To-do items created from this note (for "In To-Do List" links) */
+  todoItems?: TodoItem[];
+  /** Opens the calendar agenda scrolled to the given event */
+  onOpenCalendarEvent?: (eventId: string) => void;
+  /** Opens the to-do list scrolled to the given item */
+  onOpenTodoItem?: (itemId: string) => void;
 }
+
+// Recurring events expand into many occurrences sharing a recurringGroupId —
+// collapse each series to a single link (next upcoming occurrence, else the last).
+const pickEventRepresentatives = (events: CalendarEvent[]): CalendarEvent[] => {
+  const today = new Date().toISOString().split('T')[0];
+  const singles: CalendarEvent[] = [];
+  const series = new Map<string, CalendarEvent[]>();
+  for (const event of events) {
+    if (event.recurringGroupId) {
+      const group = series.get(event.recurringGroupId);
+      if (group) group.push(event);
+      else series.set(event.recurringGroupId, [event]);
+    } else {
+      singles.push(event);
+    }
+  }
+  const representatives = [...series.values()].map(occurrences => {
+    const sorted = [...occurrences].sort((a, b) => a.startDate.localeCompare(b.startDate));
+    return sorted.find(o => o.startDate.split('T')[0] >= today) ?? sorted[sorted.length - 1];
+  });
+  return [...singles, ...representatives].sort((a, b) => a.startDate.localeCompare(b.startDate));
+};
+
+const formatLinkDate = (iso: string): string => {
+  // Date-only strings parse as UTC midnight; anchor to local midnight instead
+  const date = new Date(iso.includes('T') ? iso : iso + 'T00:00:00');
+  if (isNaN(date.getTime())) return '';
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+};
 
 
 // Convert plain-text URLs into clickable <a> tags, skipping URLs already inside anchors.
@@ -236,7 +273,7 @@ const linkifyHtml = (html: string): string => {
     }).join('');
 };
 
-const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUpdate, onExpand, onViewAttachment, onTogglePin, onEdit, isDialog, isAuthenticated = true, onSignIn, syncStatus, onSyncRetry, uploadProgress, index }) => {
+const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUpdate, onExpand, onViewAttachment, onTogglePin, onEdit, isDialog, isAuthenticated = true, onSignIn, syncStatus, onSyncRetry, uploadProgress, index, calendarEvents, todoItems, onOpenCalendarEvent, onOpenTodoItem }) => {
   const [isConfirming, setIsConfirming] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -359,7 +396,18 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
     : (hasLegacyImage ? [{ id: 'legacy', data: memory.image!, name: 'Image', type: 'image', mimeType: 'image/jpeg' } as Attachment] : []);
   
   const documents = memory.attachments?.filter(a => a.type === 'file') || [];
-  
+
+  // Calendar events and to-do items created from this note
+  const linkedEvents = useMemo(
+    () => (calendarEvents && calendarEvents.length > 0 ? pickEventRepresentatives(calendarEvents) : []),
+    [calendarEvents]
+  );
+  const linkedTodos = useMemo(
+    () => (todoItems ?? []).filter(item => !item.isDismissed),
+    [todoItems]
+  );
+
+
   // Robust AI text extraction
   let aiText = entity?.description || enrichment?.summary;
   if (typeof aiText === 'string' && aiText.startsWith('{')) {
@@ -705,6 +753,57 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                     </div>
                 );
             })()}
+
+            {/* Calendar events created from this note */}
+            {linkedEvents.length > 0 && (
+                <div className="pt-1 space-y-1">
+                    <span className={`flex items-center gap-1.5 ${text.label}`}>
+                        <CalendarDays size={12} className="text-(--color-accent)" />
+                        In Calendar
+                    </span>
+                    {linkedEvents.map((event) => (
+                        <button
+                            key={event.id}
+                            onClick={(e) => { e.stopPropagation(); onOpenCalendarEvent?.(event.id); }}
+                            title="View in calendar"
+                            className="flex items-center gap-1.5 max-w-full text-sm text-(--color-accent) hover:text-(--color-accent-hover) transition-colors duration-(--duration-fast)"
+                        >
+                            <span className="truncate">{event.title}</span>
+                            <span className="text-xs text-(--color-text-tertiary) shrink-0">
+                                {formatLinkDate(event.startDate)}{event.recurringGroupId ? ' · repeats' : ''}
+                            </span>
+                        </button>
+                    ))}
+                </div>
+            )}
+
+            {/* To-do items created from this note */}
+            {linkedTodos.length > 0 && (
+                <div className="pt-1 space-y-1">
+                    <span className={`flex items-center gap-1.5 ${text.label}`}>
+                        <CircleCheck size={12} className="text-(--color-success)" />
+                        In To-Do List
+                    </span>
+                    {linkedTodos.map((item) => (
+                        <button
+                            key={item.id}
+                            onClick={(e) => { e.stopPropagation(); onOpenTodoItem?.(item.id); }}
+                            title="View in to-do list"
+                            className="flex items-center gap-1.5 max-w-full text-sm text-(--color-accent) hover:text-(--color-accent-hover) transition-colors duration-(--duration-fast)"
+                        >
+                            {item.isCompleted ? (
+                                <CheckSquare size={14} className="shrink-0 text-(--color-success)" />
+                            ) : (
+                                <Square size={14} className="shrink-0 text-(--color-text-tertiary)" />
+                            )}
+                            <span className={`truncate ${item.isCompleted ? 'line-through opacity-70' : ''}`}>{item.title}</span>
+                            {item.deadline && (
+                                <span className="text-xs text-(--color-text-tertiary) shrink-0">{formatLinkDate(item.deadline)}</span>
+                            )}
+                        </button>
+                    ))}
+                </div>
+            )}
 
             {/* Documents */}
             {documents.length > 0 && !memory._attachmentsDeferred && (

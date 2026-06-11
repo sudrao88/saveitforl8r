@@ -7,7 +7,7 @@
  * Tapping an event card navigates to the source memory.
  */
 
-import React, { useMemo, useCallback, useState } from 'react';
+import React, { useMemo, useCallback, useState, useEffect, useRef } from 'react';
 import { useBackButton } from '../hooks/useBackButton';
 import {
   X,
@@ -19,7 +19,7 @@ import {
   CalendarDays,
   Repeat,
 } from 'lucide-react';
-import { CalendarEvent, Memory, Attachment } from '../types';
+import { CalendarEvent, TodoItem, Memory, Attachment } from '../types';
 import MemoryPreviewModal from './MemoryPreviewModal';
 import { overlay } from '../styles/design-system';
 
@@ -31,6 +31,16 @@ interface CalendarAgendaViewProps {
   onDelete?: (id: string) => void;
   onEdit?: (memory: Memory) => void;
   onTogglePin?: (id: string, isPinned: boolean) => void;
+  /** When set, scroll to this event and flash a highlight ring */
+  highlightEventId?: string | null;
+  /** Called once the highlight has been shown, so the owner can clear it */
+  onHighlightHandled?: () => void;
+  /** To-do items grouped by source memory (for links in the preview modal) */
+  todosByMemory?: Map<string, TodoItem[]>;
+  /** Opens the calendar scrolled to the given event (from preview modal links) */
+  onOpenEvent?: (eventId: string) => void;
+  /** Opens the to-do list scrolled to the given item (from preview modal links) */
+  onOpenTodoItem?: (itemId: string) => void;
 }
 
 // Group events by individual date (Google Calendar agenda-style)
@@ -144,21 +154,23 @@ const EventCard: React.FC<{
   event: CalendarEvent;
   memory?: Memory;
   isPast: boolean;
+  isHighlighted?: boolean;
   onViewMemory: (memory: Memory) => void;
-}> = ({ event, memory, isPast, onViewMemory }) => {
+}> = ({ event, memory, isPast, isHighlighted, onViewMemory }) => {
   const time = formatTime(event.startDate);
   const endTime = event.endDate ? formatTime(event.endDate) : null;
   const detailTextClass = isPast ? 'text-(--color-text-tertiary)' : 'text-(--color-text-secondary)';
 
   return (
     <div
+      data-event-id={event.id}
       className={`rounded-(--radius-xl) border p-4 transition-all duration-(--duration-fast) ${
         isPast
           ? 'border-(--color-border-subtle) bg-(--color-surface-overlay)/30'
           : event.status === 'cancelled'
             ? 'border-(--color-danger)/30 bg-(--color-danger)/20'
             : 'border-(--color-border-subtle) bg-(--color-surface-raised)/30 hover:bg-(--color-surface-raised)/50'
-      }`}
+      } ${isHighlighted ? 'ring-2 ring-(--color-accent)' : ''}`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
@@ -255,8 +267,15 @@ const CalendarAgendaView: React.FC<CalendarAgendaViewProps> = ({
   onDelete,
   onEdit,
   onTogglePin,
+  highlightEventId,
+  onHighlightHandled,
+  todosByMemory,
+  onOpenEvent,
+  onOpenTodoItem,
 }) => {
   const [previewMemoryId, setPreviewMemoryId] = useState<string | null>(null);
+  const [activeHighlightId, setActiveHighlightId] = useState<string | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const memoryMap = useMemo(
     () => new Map(memories.map(m => [m.id, m])),
@@ -266,6 +285,38 @@ const CalendarAgendaView: React.FC<CalendarAgendaViewProps> = ({
   const dateGroups = useMemo(() => groupEventsByDate(events), [events]);
 
   const previewMemory = previewMemoryId ? memoryMap.get(previewMemoryId) ?? null : null;
+
+  const previewEvents = useMemo(
+    () => (previewMemoryId ? events.filter(e => e.memoryId === previewMemoryId) : []),
+    [events, previewMemoryId]
+  );
+  const previewTodos = previewMemoryId ? todosByMemory?.get(previewMemoryId) : undefined;
+
+  // Scroll to and briefly highlight the requested event (e.g. from a note's
+  // "In Calendar" link), closing any open preview so the scroll is visible.
+  useEffect(() => {
+    if (!highlightEventId) return;
+    setPreviewMemoryId(null);
+    setActiveHighlightId(highlightEventId);
+    let innerRaf = 0;
+    const raf = requestAnimationFrame(() => {
+      // Second frame so the preview-close re-render has committed
+      innerRaf = requestAnimationFrame(() => {
+        const el = scrollContainerRef.current?.querySelector(`[data-event-id="${highlightEventId}"]`);
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+    });
+    const timer = setTimeout(() => {
+      setActiveHighlightId(null);
+      onHighlightHandled?.();
+    }, 2000);
+    return () => {
+      cancelAnimationFrame(raf);
+      cancelAnimationFrame(innerRaf);
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [highlightEventId]);
 
   // Dismiss preview modal on Android back button
   useBackButton(() => setPreviewMemoryId(null), previewMemoryId !== null);
@@ -299,7 +350,7 @@ const CalendarAgendaView: React.FC<CalendarAgendaViewProps> = ({
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto">
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
         {events.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full px-8 text-center">
             <Calendar size={48} className="text-(--color-text-tertiary) mb-4" />
@@ -356,6 +407,7 @@ const CalendarAgendaView: React.FC<CalendarAgendaViewProps> = ({
                           event={event}
                           memory={memoryMap.get(event.memoryId)}
                           isPast={group.isPast}
+                          isHighlighted={activeHighlightId === event.id}
                           onViewMemory={handleViewMemory}
                         />
                       ))}
@@ -377,6 +429,10 @@ const CalendarAgendaView: React.FC<CalendarAgendaViewProps> = ({
           onDelete={onDelete}
           onEdit={onEdit}
           onTogglePin={onTogglePin}
+          calendarEvents={previewEvents}
+          todoItems={previewTodos}
+          onOpenCalendarEvent={onOpenEvent}
+          onOpenTodoItem={onOpenTodoItem}
         />
       )}
     </div>

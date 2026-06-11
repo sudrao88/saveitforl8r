@@ -6,7 +6,7 @@
  * Users can tap to toggle completion, dismiss unwanted items, or restore dismissed ones.
  */
 
-import React, { useMemo, useCallback, useState } from 'react';
+import React, { useMemo, useCallback, useState, useEffect, useRef } from 'react';
 import { useBackButton } from '../hooks/useBackButton';
 import {
   X,
@@ -20,7 +20,7 @@ import {
   ChevronRight,
   RotateCcw,
 } from 'lucide-react';
-import { TodoItem, Memory, Attachment } from '../types';
+import { TodoItem, CalendarEvent, Memory, Attachment } from '../types';
 import MemoryPreviewModal from './MemoryPreviewModal';
 import { overlay } from '../styles/design-system';
 
@@ -36,6 +36,16 @@ interface TodoListViewProps {
   onDelete?: (id: string) => void;
   onEdit?: (memory: Memory) => void;
   onTogglePin?: (id: string, isPinned: boolean) => void;
+  /** When set, scroll to this item and flash a highlight ring */
+  highlightItemId?: string | null;
+  /** Called once the highlight has been shown, so the owner can clear it */
+  onHighlightHandled?: () => void;
+  /** Calendar events grouped by source memory (for links in the preview modal) */
+  eventsByMemory?: Map<string, CalendarEvent[]>;
+  /** Opens the calendar scrolled to the given event (from preview modal links) */
+  onOpenEvent?: (eventId: string) => void;
+  /** Opens the to-do list scrolled to the given item (from preview modal links) */
+  onOpenTodoItem?: (itemId: string) => void;
 }
 
 interface TodoGroup {
@@ -144,17 +154,19 @@ const deadlineColor = (deadline: string): string => {
 const TodoItemCard: React.FC<{
   item: TodoItem;
   memory?: Memory;
+  isHighlighted?: boolean;
   onToggle: (itemId: string) => void;
   onDismiss: (itemId: string) => void;
   onViewMemory: (memory: Memory) => void;
-}> = ({ item, memory, onToggle, onDismiss, onViewMemory }) => {
+}> = ({ item, memory, isHighlighted, onToggle, onDismiss, onViewMemory }) => {
   return (
     <div
+      data-todo-id={item.id}
       className={`rounded-(--radius-xl) border p-4 transition-all duration-(--duration-fast) ${
         item.isCompleted
           ? 'border-(--color-border-subtle) bg-(--color-surface-raised)/30 opacity-60'
           : 'border-(--color-border-subtle) bg-(--color-surface-raised)/30 hover:bg-(--color-surface-raised)/50'
-      }`}
+      } ${isHighlighted ? 'ring-2 ring-(--color-accent)' : ''}`}
     >
       <div className="flex items-start gap-3">
         {/* Checkbox */}
@@ -233,10 +245,14 @@ const TodoItemCard: React.FC<{
 
 const DismissedItemCard: React.FC<{
   item: TodoItem;
+  isHighlighted?: boolean;
   onRestore: (itemId: string) => void;
-}> = ({ item, onRestore }) => {
+}> = ({ item, isHighlighted, onRestore }) => {
   return (
-    <div className="rounded-(--radius-xl) border border-(--color-border-subtle) bg-(--color-surface-raised)/20 p-4 opacity-50">
+    <div
+      data-todo-id={item.id}
+      className={`rounded-(--radius-xl) border border-(--color-border-subtle) bg-(--color-surface-raised)/20 p-4 opacity-50 ${isHighlighted ? 'ring-2 ring-(--color-accent)' : ''}`}
+    >
       <div className="flex items-start gap-3">
         <div className="flex-1 min-w-0">
           <h3 className="font-semibold text-base text-(--color-text-secondary) line-through">
@@ -276,9 +292,16 @@ const TodoListView: React.FC<TodoListViewProps> = ({
   onDelete,
   onEdit,
   onTogglePin,
+  highlightItemId,
+  onHighlightHandled,
+  eventsByMemory,
+  onOpenEvent,
+  onOpenTodoItem,
 }) => {
   const [previewMemoryId, setPreviewMemoryId] = useState<string | null>(null);
   const [dismissedExpanded, setDismissedExpanded] = useState(false);
+  const [activeHighlightId, setActiveHighlightId] = useState<string | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const memoryMap = useMemo(
     () => new Map(memories.map(m => [m.id, m])),
@@ -291,6 +314,41 @@ const TodoListView: React.FC<TodoListViewProps> = ({
   );
 
   const previewMemory = previewMemoryId ? memoryMap.get(previewMemoryId) ?? null : null;
+
+  const previewTodos = useMemo(
+    () => (previewMemoryId ? items.filter(i => i.memoryId === previewMemoryId) : []),
+    [items, previewMemoryId]
+  );
+  const previewEvents = previewMemoryId ? eventsByMemory?.get(previewMemoryId) : undefined;
+
+  // Scroll to and briefly highlight the requested item (e.g. from a note's
+  // "In To-Do List" link), closing any open preview so the scroll is visible.
+  useEffect(() => {
+    if (!highlightItemId) return;
+    setPreviewMemoryId(null);
+    // Dismissed items live in a collapsed section — expand it first
+    const target = items.find(i => i.id === highlightItemId);
+    if (target?.isDismissed) setDismissedExpanded(true);
+    setActiveHighlightId(highlightItemId);
+    let innerRaf = 0;
+    const raf = requestAnimationFrame(() => {
+      // Second frame so the preview-close/expand re-render has committed
+      innerRaf = requestAnimationFrame(() => {
+        const el = scrollContainerRef.current?.querySelector(`[data-todo-id="${highlightItemId}"]`);
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+    });
+    const timer = setTimeout(() => {
+      setActiveHighlightId(null);
+      onHighlightHandled?.();
+    }, 2000);
+    return () => {
+      cancelAnimationFrame(raf);
+      cancelAnimationFrame(innerRaf);
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [highlightItemId]);
 
   // Dismiss preview modal on Android back button
   useBackButton(() => setPreviewMemoryId(null), previewMemoryId !== null);
@@ -324,7 +382,7 @@ const TodoListView: React.FC<TodoListViewProps> = ({
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto">
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
         {items.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full px-8 text-center">
             <CheckSquare size={48} className="text-(--color-text-tertiary) mb-4" />
@@ -354,6 +412,7 @@ const TodoListView: React.FC<TodoListViewProps> = ({
                       key={item.id}
                       item={item}
                       memory={memoryMap.get(item.memoryId)}
+                      isHighlighted={activeHighlightId === item.id}
                       onToggle={onToggleComplete}
                       onDismiss={onDismiss}
                       onViewMemory={handleViewMemory}
@@ -380,6 +439,7 @@ const TodoListView: React.FC<TodoListViewProps> = ({
                       <DismissedItemCard
                         key={item.id}
                         item={item}
+                        isHighlighted={activeHighlightId === item.id}
                         onRestore={onRestore}
                       />
                     ))}
@@ -400,6 +460,10 @@ const TodoListView: React.FC<TodoListViewProps> = ({
           onDelete={onDelete}
           onEdit={onEdit}
           onTogglePin={onTogglePin}
+          calendarEvents={previewEvents}
+          todoItems={previewTodos}
+          onOpenCalendarEvent={onOpenEvent}
+          onOpenTodoItem={onOpenTodoItem}
         />
       )}
     </div>

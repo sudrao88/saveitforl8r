@@ -6,7 +6,7 @@
  */
 
 import React, { useEffect, useRef } from 'react';
-import { Memory, Attachment } from '../types';
+import { Memory, Attachment, CalendarEvent, TodoItem } from '../types';
 import MemoryCard from './MemoryCard';
 import { overlay } from '../styles/design-system';
 
@@ -17,6 +17,10 @@ interface MemoryPreviewModalProps {
   onDelete?: (id: string) => void;
   onEdit?: (memory: Memory) => void;
   onTogglePin?: (id: string, isPinned: boolean) => void;
+  calendarEvents?: CalendarEvent[];
+  todoItems?: TodoItem[];
+  onOpenCalendarEvent?: (eventId: string) => void;
+  onOpenTodoItem?: (itemId: string) => void;
 }
 
 const MemoryPreviewModal: React.FC<MemoryPreviewModalProps> = ({
@@ -26,6 +30,10 @@ const MemoryPreviewModal: React.FC<MemoryPreviewModalProps> = ({
   onDelete,
   onEdit,
   onTogglePin,
+  calendarEvents,
+  todoItems,
+  onOpenCalendarEvent,
+  onOpenTodoItem,
 }) => {
   const onCloseRef = useRef(onClose);
   useEffect(() => { onCloseRef.current = onClose; });
@@ -55,6 +63,10 @@ const MemoryPreviewModal: React.FC<MemoryPreviewModalProps> = ({
             onDelete={onDelete}
             onEdit={onEdit}
             onTogglePin={onTogglePin}
+            calendarEvents={calendarEvents}
+            todoItems={todoItems}
+            onOpenCalendarEvent={onOpenCalendarEvent}
+            onOpenTodoItem={onOpenTodoItem}
           />
         </div>
         <button

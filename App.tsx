@@ -51,7 +51,7 @@ import { tryBackHandlers } from './hooks/useBackButton';
 import { SyncProvider } from './context/SyncContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { reconcileEmbeddings, ReconcileReport, getMemories as getStoredMemories } from './services/storageService';
-import { ViewMode, Memory, Attachment, Moment, QuickNoteState, CalendarEvent, isMemoryInFlight, isMemoryFailed } from './types';
+import { ViewMode, Memory, Attachment, Moment, QuickNoteState, CalendarEvent, TodoItem, isMemoryInFlight, isMemoryFailed } from './types';
 import { initGA, logPageView, logEvent } from './services/analytics';
 import { escapeHtml } from './utils/editorUtils';
 
@@ -169,6 +169,48 @@ const AppContent: React.FC = () => {
   const [showCalendarAgenda, setShowCalendarAgenda] = useState(false);
   const [showTodoList, setShowTodoList] = useState(false);
   const [showDeletionCandidates, setShowDeletionCandidates] = useState(false);
+
+  // Deep-link targets for "In Calendar" / "In To-Do List" links on notes —
+  // the open sheet scrolls to and briefly highlights the matching card.
+  const [highlightEventId, setHighlightEventId] = useState<string | null>(null);
+  const [highlightTodoId, setHighlightTodoId] = useState<string | null>(null);
+
+  // Group events/todos by source note so each card can link to what it created
+  const eventsByMemory = useMemo(() => {
+    const map = new Map<string, CalendarEvent[]>();
+    for (const event of calendarEvents) {
+      const list = map.get(event.memoryId);
+      if (list) list.push(event);
+      else map.set(event.memoryId, [event]);
+    }
+    return map;
+  }, [calendarEvents]);
+
+  const todosByMemory = useMemo(() => {
+    const map = new Map<string, TodoItem[]>();
+    for (const item of todoItems) {
+      if (item.isDismissed) continue;
+      const list = map.get(item.memoryId);
+      if (list) list.push(item);
+      else map.set(item.memoryId, [item]);
+    }
+    return map;
+  }, [todoItems]);
+
+  const handleOpenCalendarEvent = useCallback((eventId: string) => {
+    setShowTodoList(false);
+    setHighlightEventId(eventId);
+    setShowCalendarAgenda(true);
+  }, []);
+
+  const handleOpenTodoItem = useCallback((itemId: string) => {
+    setShowCalendarAgenda(false);
+    setHighlightTodoId(itemId);
+    setShowTodoList(true);
+  }, []);
+
+  const handleEventHighlightHandled = useCallback(() => setHighlightEventId(null), []);
+  const handleTodoHighlightHandled = useCallback(() => setHighlightTodoId(null), []);
 
   const deletionCandidates = useDeletionCandidates(memories, calendarEvents, todoItems);
   const [notifBannerDismissed, setNotifBannerDismissed] = useState(false);
@@ -1027,6 +1069,10 @@ const AppContent: React.FC = () => {
               onSyncRetry={retrySyncFile}
               uploadProgressMap={uploadProgressMap}
               highlightedMemoryId={newMemoryId}
+              eventsByMemory={eventsByMemory}
+              todosByMemory={todosByMemory}
+              onOpenCalendarEvent={handleOpenCalendarEvent}
+              onOpenTodoItem={handleOpenTodoItem}
             />
           )}
         </main>
@@ -1102,6 +1148,10 @@ const AppContent: React.FC = () => {
                     syncStatus={syncStatusMap.get(frozenExpandedMemory.id)}
                     onSyncRetry={retrySyncFile}
                     uploadProgress={uploadProgressMap.get(frozenExpandedMemory.id)}
+                    calendarEvents={eventsByMemory.get(frozenExpandedMemory.id)}
+                    todoItems={todosByMemory.get(frozenExpandedMemory.id)}
+                    onOpenCalendarEvent={handleOpenCalendarEvent}
+                    onOpenTodoItem={handleOpenTodoItem}
                 />
              </div>
           </div>
@@ -1209,11 +1259,16 @@ const AppContent: React.FC = () => {
           <CalendarAgendaView
             events={calendarEvents}
             memories={memories}
-            onClose={() => setShowCalendarAgenda(false)}
+            onClose={() => { setShowCalendarAgenda(false); setHighlightEventId(null); }}
             onViewAttachment={handleViewAttachment}
             onDelete={handleDeleteMemory}
             onEdit={handleEditMemory}
             onTogglePin={handleTogglePin}
+            highlightEventId={highlightEventId}
+            onHighlightHandled={handleEventHighlightHandled}
+            todosByMemory={todosByMemory}
+            onOpenEvent={handleOpenCalendarEvent}
+            onOpenTodoItem={handleOpenTodoItem}
           />
         </Suspense>
       </AnimatedPresence>
@@ -1230,7 +1285,7 @@ const AppContent: React.FC = () => {
             items={todoItems}
             memories={memories}
             pendingCount={todoPendingCount}
-            onClose={() => setShowTodoList(false)}
+            onClose={() => { setShowTodoList(false); setHighlightTodoId(null); }}
             onToggleComplete={async (itemId) => {
               const updated = await toggleTodoComplete(itemId);
               if (updated) {
@@ -1265,6 +1320,11 @@ const AppContent: React.FC = () => {
             onDelete={handleDeleteMemory}
             onEdit={handleEditMemory}
             onTogglePin={handleTogglePin}
+            highlightItemId={highlightTodoId}
+            onHighlightHandled={handleTodoHighlightHandled}
+            eventsByMemory={eventsByMemory}
+            onOpenEvent={handleOpenCalendarEvent}
+            onOpenTodoItem={handleOpenTodoItem}
           />
         </Suspense>
       </AnimatedPresence>
