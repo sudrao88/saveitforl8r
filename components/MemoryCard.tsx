@@ -670,7 +670,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
             {/* Enrichment Icon Row + Expandable Sections */}
             {(() => {
                 const typeSections = enrichment ? getContentTypeSections(enrichment.contentType, enrichment as EnrichmentFields) : [];
-                const hasAnyCTA = aiText || typeSections.length > 0 || targetUri;
+                const hasAnyCTA = aiText || typeSections.length > 0 || targetUri || linkedEvents.length > 0 || linkedTodos.length > 0;
                 if (!hasAnyCTA) return null;
 
                 return (
@@ -696,6 +696,26 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                                     <span className="[&>svg]:w-4 [&>svg]:h-4">{section.icon}</span>
                                 </button>
                             ))}
+                            {linkedEvents.length > 0 && (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); setExpandedSection(expandedSection === 'linked-events' ? null : 'linked-events'); }}
+                                    title="In Calendar"
+                                    aria-label="Show linked calendar events"
+                                    className={`p-2 rounded-(--radius-lg) transition-colors ${expandedSection === 'linked-events' ? 'bg-(--color-surface-raised)/60 text-(--color-text-primary)' : 'text-(--color-text-tertiary) hover:text-(--color-text-secondary) hover:bg-(--color-surface-hover-subtle)'}`}
+                                >
+                                    <CalendarDays size={16} className="text-(--color-accent)" />
+                                </button>
+                            )}
+                            {linkedTodos.length > 0 && (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); setExpandedSection(expandedSection === 'linked-todos' ? null : 'linked-todos'); }}
+                                    title="In To-Do List"
+                                    aria-label="Show linked to-do items"
+                                    className={`p-2 rounded-(--radius-lg) transition-colors ${expandedSection === 'linked-todos' ? 'bg-(--color-surface-raised)/60 text-(--color-text-primary)' : 'text-(--color-text-tertiary) hover:text-(--color-text-secondary) hover:bg-(--color-surface-hover-subtle)'}`}
+                                >
+                                    <CircleCheck size={16} className="text-(--color-success)" />
+                                </button>
+                            )}
                             {enrichment?.contentType === 'recipe' && Array.isArray(enrichment.ingredients) && enrichment.ingredients.length > 0 && (
                                 <button
                                     onClick={(e) => { e.stopPropagation(); setShowCalculator(true); }}
@@ -753,64 +773,64 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                                 </div>
                             );
                         })}
+
+                        {/* Expandable: calendar events created from this note */}
+                        {expandedSection === 'linked-events' && linkedEvents.length > 0 && (
+                            <div className="pt-1 space-y-1 animate-in fade-in slide-in-from-top-1 duration-(--duration-fast)">
+                                <span className={`flex items-center gap-1.5 ${text.label}`}>
+                                    <CalendarDays size={12} className="text-(--color-accent)" />
+                                    In Calendar
+                                </span>
+                                {linkedEvents.map((event) => (
+                                    <button
+                                        key={event.id}
+                                        onClick={(e) => { e.stopPropagation(); onOpenCalendarEvent?.(event.id); }}
+                                        title="View in calendar"
+                                        className="flex items-center gap-1.5 max-w-full text-sm text-(--color-accent) hover:text-(--color-accent-hover) transition-colors duration-(--duration-fast)"
+                                    >
+                                        <span className="truncate">{event.title}</span>
+                                        <span className="text-xs text-(--color-text-tertiary) shrink-0">
+                                            {formatLinkDate(event.startDate)}{event.recurringGroupId ? ' · repeats' : ''}
+                                        </span>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Expandable: to-do items created from this note */}
+                        {expandedSection === 'linked-todos' && linkedTodos.length > 0 && (
+                            <div className="pt-1 space-y-1 animate-in fade-in slide-in-from-top-1 duration-(--duration-fast)">
+                                <span className={`flex items-center gap-1.5 ${text.label}`}>
+                                    <CircleCheck size={12} className="text-(--color-success)" />
+                                    In To-Do List
+                                </span>
+                                {linkedTodos.map((item) => (
+                                    <button
+                                        key={item.id}
+                                        onClick={(e) => { e.stopPropagation(); onOpenTodoItem?.(item.id); }}
+                                        title="View in to-do list"
+                                        className={`flex items-center gap-1.5 max-w-full text-sm transition-colors duration-(--duration-fast) ${
+                                            item.isCompleted
+                                                ? 'text-(--color-text-secondary) hover:text-(--color-text-primary)'
+                                                : 'text-(--color-accent) hover:text-(--color-accent-hover)'
+                                        }`}
+                                    >
+                                        {item.isCompleted ? (
+                                            <CheckSquare size={14} className="shrink-0 text-(--color-success)" />
+                                        ) : (
+                                            <Square size={14} className="shrink-0 text-(--color-text-tertiary)" />
+                                        )}
+                                        <span className={`truncate ${item.isCompleted ? 'line-through' : ''}`}>{item.title}</span>
+                                        {item.deadline && (
+                                            <span className="text-xs text-(--color-text-tertiary) shrink-0">{formatLinkDate(item.deadline)}</span>
+                                        )}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 );
             })()}
-
-            {/* Calendar events created from this note */}
-            {linkedEvents.length > 0 && (
-                <div className="pt-1 space-y-1">
-                    <span className={`flex items-center gap-1.5 ${text.label}`}>
-                        <CalendarDays size={12} className="text-(--color-accent)" />
-                        In Calendar
-                    </span>
-                    {linkedEvents.map((event) => (
-                        <button
-                            key={event.id}
-                            onClick={(e) => { e.stopPropagation(); onOpenCalendarEvent?.(event.id); }}
-                            title="View in calendar"
-                            className="flex items-center gap-1.5 max-w-full text-sm text-(--color-accent) hover:text-(--color-accent-hover) transition-colors duration-(--duration-fast)"
-                        >
-                            <span className="truncate">{event.title}</span>
-                            <span className="text-xs text-(--color-text-tertiary) shrink-0">
-                                {formatLinkDate(event.startDate)}{event.recurringGroupId ? ' · repeats' : ''}
-                            </span>
-                        </button>
-                    ))}
-                </div>
-            )}
-
-            {/* To-do items created from this note */}
-            {linkedTodos.length > 0 && (
-                <div className="pt-1 space-y-1">
-                    <span className={`flex items-center gap-1.5 ${text.label}`}>
-                        <CircleCheck size={12} className="text-(--color-success)" />
-                        In To-Do List
-                    </span>
-                    {linkedTodos.map((item) => (
-                        <button
-                            key={item.id}
-                            onClick={(e) => { e.stopPropagation(); onOpenTodoItem?.(item.id); }}
-                            title="View in to-do list"
-                            className={`flex items-center gap-1.5 max-w-full text-sm transition-colors duration-(--duration-fast) ${
-                                item.isCompleted
-                                    ? 'text-(--color-text-secondary) hover:text-(--color-text-primary)'
-                                    : 'text-(--color-accent) hover:text-(--color-accent-hover)'
-                            }`}
-                        >
-                            {item.isCompleted ? (
-                                <CheckSquare size={14} className="shrink-0 text-(--color-success)" />
-                            ) : (
-                                <Square size={14} className="shrink-0 text-(--color-text-tertiary)" />
-                            )}
-                            <span className={`truncate ${item.isCompleted ? 'line-through' : ''}`}>{item.title}</span>
-                            {item.deadline && (
-                                <span className="text-xs text-(--color-text-tertiary) shrink-0">{formatLinkDate(item.deadline)}</span>
-                            )}
-                        </button>
-                    ))}
-                </div>
-            )}
 
             {/* Documents */}
             {documents.length > 0 && !memory._attachmentsDeferred && (
