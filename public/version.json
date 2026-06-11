@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v117",
-  "buildNumber": 117,
-  "buildDate": "2026-06-11T10:58:27.847Z",
+  "version": "saveitforl8r-v118",
+  "buildNumber": 118,
+  "buildDate": "2026-06-11T15:24:14.727Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Notes now link to the calendar events and to-do items they created. New 'In Calendar' and 'In To-Do List' sections on notes open the matching view, scroll to the item, and highlight it. Recurring events show a single link to the next upcoming occurrence."
+  "changelog": "Notes' calendar and to-do links are now tucked behind icons. Tap the calendar or check icon on a note to reveal its 'In Calendar' / 'In To-Do List' links instead of seeing them on every card."
 }
