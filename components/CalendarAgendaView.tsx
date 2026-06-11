@@ -3,6 +3,8 @@
  *
  * Full-screen agenda view showing calendar events extracted from notes.
  * Events are grouped by individual date with month separators (Google Calendar agenda-style).
+ * Multi-day events appear on every day they span, titled "(Day n/N)", with the
+ * start time on the first day and "Until <time>" on the last.
  * Today and Tomorrow get special labels; all other dates show weekday + date.
  * Tapping an event card navigates to the source memory.
  */
@@ -21,6 +23,7 @@ import {
 } from 'lucide-react';
 import { CalendarEvent, TodoItem, Memory, Attachment } from '../types';
 import MemoryPreviewModal from './MemoryPreviewModal';
+import { expandEventDays, MultiDayInfo } from '../utils/calendarUtils';
 import { overlay } from '../styles/design-system';
 
 interface CalendarAgendaViewProps {
@@ -43,22 +46,25 @@ interface CalendarAgendaViewProps {
   onOpenTodoItem?: (itemId: string) => void;
 }
 
+// One event card within a day group; multi-day events produce an item
+// on every day they span, tagged with their position in the span.
+interface AgendaItem {
+  event: CalendarEvent;
+  sortKey: string;
+  multiDay?: MultiDayInfo;
+}
+
 // Group events by individual date (Google Calendar agenda-style)
 interface DateGroup {
   dateKey: string;
   label: string;
   sublabel?: string;
-  events: CalendarEvent[];
+  items: AgendaItem[];
   isPast: boolean;
   isToday: boolean;
   month: string;
   monthLabel: string;
 }
-
-const getDateOnly = (isoString: string): string => {
-  // Handle both date-only "2026-06-15" and datetime "2026-06-15T16:00:00"
-  return isoString.split('T')[0];
-};
 
 const formatTime = (isoString: string): string | null => {
   if (!isoString.includes('T')) return null;
@@ -82,12 +88,13 @@ const groupEventsByDate = (events: CalendarEvent[]): DateGroup[] => {
   tomorrow.setDate(now.getDate() + 1);
   const tomorrowStr = tomorrow.toISOString().split('T')[0];
 
-  // Group events by date
-  const dateMap = new Map<string, CalendarEvent[]>();
+  // Group events by date, expanding multi-day events onto every day they span
+  const dateMap = new Map<string, AgendaItem[]>();
   for (const event of events) {
-    const dateStr = getDateOnly(event.startDate);
-    if (!dateMap.has(dateStr)) dateMap.set(dateStr, []);
-    dateMap.get(dateStr)!.push(event);
+    for (const occ of expandEventDays(event)) {
+      if (!dateMap.has(occ.dateKey)) dateMap.set(occ.dateKey, []);
+      dateMap.get(occ.dateKey)!.push({ event, sortKey: occ.sortKey, multiDay: occ.multiDay });
+    }
   }
 
   // Sort dates chronologically, then reorder so past dates come after today+future
@@ -126,16 +133,17 @@ const groupEventsByDate = (events: CalendarEvent[]): DateGroup[] => {
       year: 'numeric',
     });
 
-    // Sort events within each day by time
-    const dayEvents = dateMap
+    // Sort events within each day by time (multi-day continuations sort
+    // first alongside all-day events — their sort key has no time portion)
+    const dayItems = dateMap
       .get(dateKey)!
-      .sort((a, b) => a.startDate.localeCompare(b.startDate));
+      .sort((a, b) => a.sortKey.localeCompare(b.sortKey));
 
     return {
       dateKey,
       label,
       sublabel,
-      events: dayEvents,
+      items: dayItems,
       isPast,
       isToday,
       month,
@@ -155,11 +163,26 @@ const EventCard: React.FC<{
   memory?: Memory;
   isPast: boolean;
   isHighlighted?: boolean;
+  multiDay?: MultiDayInfo;
   onViewMemory: (memory: Memory) => void;
-}> = ({ event, memory, isPast, isHighlighted, onViewMemory }) => {
+}> = ({ event, memory, isPast, isHighlighted, multiDay, onViewMemory }) => {
   const time = formatTime(event.startDate);
   const endTime = event.endDate ? formatTime(event.endDate) : null;
   const detailTextClass = isPast ? 'text-(--color-text-tertiary)' : 'text-(--color-text-secondary)';
+
+  // Multi-day timed events show the start time on day 1, "Until <end>" on
+  // the last day, and no time on middle days (Google Calendar style).
+  const isFirstDay = !multiDay || multiDay.dayIndex === 1;
+  let timeLabel: string | null = null;
+  if (!event.allDay) {
+    if (!multiDay) {
+      timeLabel = time ? `${time}${endTime ? ` – ${endTime}` : ''}` : null;
+    } else if (multiDay.dayIndex === 1) {
+      timeLabel = time;
+    } else if (multiDay.dayIndex === multiDay.totalDays && endTime) {
+      timeLabel = `Until ${endTime}`;
+    }
+  }
 
   return (
     <div
@@ -185,16 +208,14 @@ const EventCard: React.FC<{
             }`}
           >
             {event.title}
+            {multiDay && ` (Day ${multiDay.dayIndex}/${multiDay.totalDays})`}
           </h3>
 
           {/* Time */}
-          {!event.allDay && time && (
+          {timeLabel && (
             <div className={`flex items-center gap-1.5 mt-1.5 text-sm ${detailTextClass}`}>
               <Clock size={14} className="shrink-0" />
-              <span>
-                {time}
-                {endTime && ` – ${endTime}`}
-              </span>
+              <span>{timeLabel}</span>
             </div>
           )}
           {event.allDay && (
@@ -205,7 +226,7 @@ const EventCard: React.FC<{
           )}
 
           {/* Location */}
-          {event.location && (
+          {isFirstDay && event.location && (
             <div className={`flex items-center gap-1.5 mt-1 text-sm ${detailTextClass}`}>
               <MapPin size={14} className="shrink-0" />
               <span className="truncate">{event.location}</span>
@@ -213,7 +234,7 @@ const EventCard: React.FC<{
           )}
 
           {/* People */}
-          {event.people && event.people.length > 0 && (
+          {isFirstDay && event.people && event.people.length > 0 && (
             <div className={`flex items-center gap-1.5 mt-1 text-sm ${detailTextClass}`}>
               <Users size={14} className="shrink-0" />
               <span className="truncate">{event.people.join(', ')}</span>
@@ -240,8 +261,8 @@ const EventCard: React.FC<{
         </div>
       </div>
 
-      {/* Description */}
-      {event.description && (
+      {/* Description (first day only for multi-day spans) */}
+      {isFirstDay && event.description && (
         <p className="mt-2 text-xs text-(--color-text-tertiary) line-clamp-2">{event.description}</p>
       )}
 
@@ -401,13 +422,14 @@ const CalendarAgendaView: React.FC<CalendarAgendaViewProps> = ({
                       )}
                     </div>
                     <div className="space-y-3">
-                      {group.events.map((event) => (
+                      {group.items.map(({ event, multiDay }) => (
                         <EventCard
                           key={event.id}
                           event={event}
                           memory={memoryMap.get(event.memoryId)}
                           isPast={group.isPast}
                           isHighlighted={activeHighlightId === event.id}
+                          multiDay={multiDay}
                           onViewMemory={handleViewMemory}
                         />
                       ))}

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { expandRecurringEvent, expandHorizon } from './calendarUtils';
+import { expandRecurringEvent, expandHorizon, expandEventDays } from './calendarUtils';
 import { CalendarEvent, DetectedEvent } from '../types';
 
 const makeDetected = (overrides: Partial<DetectedEvent> = {}): DetectedEvent => ({
@@ -256,5 +256,75 @@ describe('expandHorizon', () => {
       }),
     ];
     expect(expandHorizon(existing)).toEqual([]);
+  });
+});
+
+describe('expandEventDays', () => {
+  it('returns a single occurrence for an event without an endDate', () => {
+    expect(expandEventDays({ startDate: '2026-06-12T22:00:00' })).toEqual([
+      { dateKey: '2026-06-12', sortKey: '2026-06-12T22:00:00' },
+    ]);
+  });
+
+  it('returns a single occurrence when the endDate is on the same day', () => {
+    expect(
+      expandEventDays({ startDate: '2026-06-12T09:00:00', endDate: '2026-06-12T17:00:00' }),
+    ).toEqual([{ dateKey: '2026-06-12', sortKey: '2026-06-12T09:00:00' }]);
+  });
+
+  it('expands a multi-day event onto every day it spans', () => {
+    const occurrences = expandEventDays({
+      startDate: '2026-06-12T22:00:00',
+      endDate: '2026-06-15T23:00:00',
+    });
+    expect(occurrences).toHaveLength(4);
+    expect(occurrences.map(o => o.dateKey)).toEqual([
+      '2026-06-12',
+      '2026-06-13',
+      '2026-06-14',
+      '2026-06-15',
+    ]);
+    expect(occurrences.map(o => o.multiDay)).toEqual([
+      { dayIndex: 1, totalDays: 4 },
+      { dayIndex: 2, totalDays: 4 },
+      { dayIndex: 3, totalDays: 4 },
+      { dayIndex: 4, totalDays: 4 },
+    ]);
+  });
+
+  it('keeps the start time in the first day sort key and uses date-only keys after', () => {
+    const occurrences = expandEventDays({
+      startDate: '2026-06-12T22:00:00',
+      endDate: '2026-06-13T23:00:00',
+    });
+    expect(occurrences[0].sortKey).toBe('2026-06-12T22:00:00');
+    expect(occurrences[1].sortKey).toBe('2026-06-13');
+  });
+
+  it('expands all-day multi-day events spanning a month boundary', () => {
+    const occurrences = expandEventDays({
+      startDate: '2026-06-29',
+      endDate: '2026-07-02',
+    });
+    expect(occurrences.map(o => o.dateKey)).toEqual([
+      '2026-06-29',
+      '2026-06-30',
+      '2026-07-01',
+      '2026-07-02',
+    ]);
+  });
+
+  it('ignores an endDate earlier than the startDate', () => {
+    expect(
+      expandEventDays({ startDate: '2026-06-12T10:00:00', endDate: '2026-06-10T10:00:00' }),
+    ).toEqual([{ dateKey: '2026-06-12', sortKey: '2026-06-12T10:00:00' }]);
+  });
+
+  it('caps pathological spans at 60 days', () => {
+    const occurrences = expandEventDays({
+      startDate: '2026-06-12',
+      endDate: '2030-01-01',
+    });
+    expect(occurrences).toHaveLength(60);
   });
 });
