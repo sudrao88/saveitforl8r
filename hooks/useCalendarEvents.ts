@@ -251,11 +251,17 @@ export const useCalendarEvents = ({ memories, memoriesLoaded, syncInProgress = f
     );
     if (candidates.length === 0) return;
 
+    // Mark candidates synchronously, before the first await: if the effect
+    // re-runs while the loop below is suspended, the new run must not pick
+    // up the same memories and start a concurrent recovery loop.
+    for (const memory of candidates) {
+      recoveryAttemptedIds.current.add(memory.id);
+    }
+
     let cancelled = false;
     (async () => {
       const recovered: CalendarEvent[] = [];
       for (const memory of candidates) {
-        recoveryAttemptedIds.current.add(memory.id);
         try {
           // Verify against IDB, not just eventsList state: rows that synced
           // down but haven't reached state yet, or tombstones from a

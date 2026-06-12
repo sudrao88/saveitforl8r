@@ -530,13 +530,25 @@ const AppContent: React.FC = () => {
     };
   }, [setOnSyncProgress, refreshMoments, refreshEvents, refreshTodoItems]);
 
-  // If Drive isn't linked there is no initial sync to wait for — local IDB is
-  // the only source of truth, so orphan reconciliation can start immediately.
+  // Re-derive the reconciliation gate on every auth transition. Linked (or
+  // just-linked mid-session): hold reconciliation until the next download
+  // sync completes — a gate value from a previously-unlinked state must not
+  // carry over, or the pre-sync orphan pass could run on a local DB that
+  // Drive is about to overwrite. Unlinked: local IDB is the only source of
+  // truth, so reconciliation can start once the linkage check confirms it.
   useEffect(() => {
+    if (authStatus === 'linked') {
+      setInitialSyncComplete(false);
+      return;
+    }
+    // Guards against a stale check resolving after authStatus flipped to
+    // 'linked' and reopening the gate we just closed.
+    let stale = false;
     checkDriveLinked()
-      .then(linked => { if (!linked) setInitialSyncComplete(true); })
-      .catch(() => setInitialSyncComplete(true));
-  }, []);
+      .then(linked => { if (!stale && !linked) setInitialSyncComplete(true); })
+      .catch(() => { if (!stale) setInitialSyncComplete(true); });
+    return () => { stale = true; };
+  }, [authStatus]);
 
   // Safety-net refresh after sync completes for moments/events/todos.
   // Memories are already up-to-date via incremental upsert.
