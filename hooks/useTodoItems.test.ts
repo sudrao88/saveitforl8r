@@ -187,4 +187,64 @@ describe('useTodoItems orphan reconciliation', () => {
       expect(onTombstones).toHaveBeenCalledWith([tombstone]);
     });
   });
+
+  // Regression: on a cold start after an Android process kill, IndexedDB can
+  // be missing recently-written memories that still exist on Drive, while
+  // their extracted todo items survived locally. Until the first sync of the
+  // session restores the memory, a missing parent must NOT be treated as
+  // deleted — tombstoning would push the tombstones to Drive and delete the
+  // items on every device.
+  it('does not tombstone orphans before the initial sync completes', async () => {
+    const items = [makeTodo('t1', 'note-lost-from-idb')];
+    (storageService.getTodoItems as any).mockResolvedValue(items);
+    (storageService.softDeleteTodoItemsByMemoryId as any).mockResolvedValue([
+      { ...items[0], isDeleted: true, updatedAt: Date.now() },
+    ]);
+
+    const onTombstones = vi.fn();
+    const { rerender } = renderHook(
+      ({ memories, initialSyncComplete }) =>
+        useTodoItems({ memories, memoriesLoaded: true, initialSyncComplete, onTombstones }),
+      { initialProps: { memories: [] as Memory[], initialSyncComplete: false } }
+    );
+
+    await waitFor(() => {
+      expect(storageService.getTodoItems).toHaveBeenCalled();
+    });
+    await new Promise(r => setTimeout(r, 20));
+    // Pre-sync: parent memory missing locally — must not tombstone.
+    expect(storageService.softDeleteTodoItemsByMemoryId).not.toHaveBeenCalled();
+    expect(onTombstones).not.toHaveBeenCalled();
+
+    // Initial sync restores the memory from Drive. Still no tombstones.
+    rerender({ memories: [makeMemory('note-lost-from-idb')], initialSyncComplete: true });
+    await new Promise(r => setTimeout(r, 20));
+    expect(storageService.softDeleteTodoItemsByMemoryId).not.toHaveBeenCalled();
+    expect(onTombstones).not.toHaveBeenCalled();
+  });
+
+  it('reconciles real orphans once initialSyncComplete turns true', async () => {
+    const items = [makeTodo('t-orphan', 'deleted-note')];
+    (storageService.getTodoItems as any).mockResolvedValue(items);
+    const tombstone = { ...items[0], isDeleted: true, updatedAt: Date.now() };
+    (storageService.softDeleteTodoItemsByMemoryId as any).mockResolvedValue([tombstone]);
+
+    const onTombstones = vi.fn();
+    const { rerender } = renderHook(
+      ({ initialSyncComplete }) =>
+        useTodoItems({ memories: [], memoriesLoaded: true, initialSyncComplete, onTombstones }),
+      { initialProps: { initialSyncComplete: false } }
+    );
+
+    await waitFor(() => {
+      expect(storageService.getTodoItems).toHaveBeenCalled();
+    });
+    expect(storageService.softDeleteTodoItemsByMemoryId).not.toHaveBeenCalled();
+
+    rerender({ initialSyncComplete: true });
+    await waitFor(() => {
+      expect(storageService.softDeleteTodoItemsByMemoryId).toHaveBeenCalledWith('deleted-note');
+      expect(onTombstones).toHaveBeenCalledWith([tombstone]);
+    });
+  });
 });

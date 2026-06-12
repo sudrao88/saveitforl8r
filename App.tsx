@@ -57,6 +57,7 @@ import { escapeHtml } from './utils/editorUtils';
 
 import { ANALYTICS_EVENTS } from './constants';
 import { handleDeepLink } from './services/googleAuth';
+import { isLinked as checkDriveLinked } from './services/googleDriveService';
 
 /** Must match --duration-sheet in index.css (used by overlay.sheetEnter / sheetExit). */
 const SHEET_DURATION = 600;
@@ -76,6 +77,11 @@ const AppContent: React.FC = () => {
   const [showCreateMoment, setShowCreateMoment] = useState(false);
   const [quickNoteExpandState, setQuickNoteExpandState] = useState<QuickNoteState | null>(null);
   const [newMemoryId, setNewMemoryId] = useState<string | null>(null);
+  // False until local IDB has been reconciled with Drive this session (first
+  // download sync completed cleanly, or the device isn't linked to Drive).
+  // Gates orphan reconciliation and event recovery in useCalendarEvents /
+  // useTodoItems — see the initialSyncComplete docstrings in those hooks.
+  const [initialSyncComplete, setInitialSyncComplete] = useState(false);
   const scrolledMemoryIdRef = useRef<string | null>(null);
   const quickNoteBarRef = useRef<QuickNoteBarHandle>(null);
 
@@ -143,8 +149,12 @@ const AppContent: React.FC = () => {
     memories,
     memoriesLoaded: !isLoading,
     syncInProgress: isSyncingDownload,
+    initialSyncComplete,
     onTombstones: (tombstones) => {
       syncCalendarEvents(tombstones).catch(err => console.error('[Calendar] Failed to sync orphan tombstones:', err));
+    },
+    onRecovered: (recovered) => {
+      syncCalendarEvents(recovered).catch(err => console.error('[Calendar] Failed to sync recovered events:', err));
     },
   });
 
@@ -161,6 +171,7 @@ const AppContent: React.FC = () => {
     memories,
     memoriesLoaded: !isLoading,
     syncInProgress: isSyncingDownload,
+    initialSyncComplete,
     onTombstones: (tombstones) => {
       syncTodoItems(tombstones).catch(err => console.error('[Todo] Failed to sync orphan tombstones:', err));
     },
@@ -519,6 +530,26 @@ const AppContent: React.FC = () => {
     };
   }, [setOnSyncProgress, refreshMoments, refreshEvents, refreshTodoItems]);
 
+  // Re-derive the reconciliation gate on every auth transition. Linked (or
+  // just-linked mid-session): hold reconciliation until the next download
+  // sync completes — a gate value from a previously-unlinked state must not
+  // carry over, or the pre-sync orphan pass could run on a local DB that
+  // Drive is about to overwrite. Unlinked: local IDB is the only source of
+  // truth, so reconciliation can start once the linkage check confirms it.
+  useEffect(() => {
+    if (authStatus === 'linked') {
+      setInitialSyncComplete(false);
+      return;
+    }
+    // Guards against a stale check resolving after authStatus flipped to
+    // 'linked' and reopening the gate we just closed.
+    let stale = false;
+    checkDriveLinked()
+      .then(linked => { if (!stale && !linked) setInitialSyncComplete(true); })
+      .catch(() => { if (!stale) setInitialSyncComplete(true); });
+    return () => { stale = true; };
+  }, [authStatus]);
+
   // Safety-net refresh after sync completes for moments/events/todos.
   // Memories are already up-to-date via incremental upsert.
   const wasSyncingDownload = useRef(false);
@@ -527,9 +558,13 @@ const AppContent: React.FC = () => {
       refreshMoments();
       refreshEvents();
       refreshTodoItems();
+      // A download sync that finished cleanly means local IDB now reflects
+      // Drive — only then is it safe to treat a missing parent memory as
+      // really deleted (see initialSyncComplete in useCalendarEvents).
+      if (!syncError) setInitialSyncComplete(true);
     }
     wasSyncingDownload.current = isSyncingDownload;
-  }, [isSyncingDownload, refreshMoments, refreshEvents, refreshTodoItems]);
+  }, [isSyncingDownload, syncError, refreshMoments, refreshEvents, refreshTodoItems]);
 
   // NATIVE DEEP LINK HANDLING (Google Auth)
   // Uses a ref for recheckAuth so the listener doesn't need to be re-added on every render.
