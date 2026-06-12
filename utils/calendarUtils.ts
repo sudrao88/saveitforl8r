@@ -153,6 +153,61 @@ export const expandRecurringEvent = (
   return events;
 };
 
+/** Position of one day within a multi-day event span. */
+export interface MultiDayInfo {
+  dayIndex: number; // 1-based position within the span
+  totalDays: number;
+}
+
+/** One agenda-day occurrence of an event (multi-day events yield several). */
+export interface EventDayOccurrence {
+  dateKey: string; // "2026-06-12"
+  sortKey: string; // ISO string used to order events within a day
+  multiDay?: MultiDayInfo;
+}
+
+// Guard against pathological endDates producing thousands of agenda rows.
+// Rendering stops after this many days, but multiDay.totalDays still
+// reports the real span so capped days don't read as the final day.
+const MAX_SPAN_DAYS = 60;
+
+/**
+ * Expand an event into one occurrence per calendar day it spans
+ * (Google Calendar schedule-view style). Single-day events yield one
+ * occurrence keyed by their start date. Multi-day events yield one per
+ * day; continuation days get a date-only sort key so they order with
+ * all-day events at the top of each day.
+ */
+export const expandEventDays = (
+  event: Pick<CalendarEvent, 'startDate' | 'endDate'>,
+): EventDayOccurrence[] => {
+  const startKey = event.startDate.split('T')[0];
+  const single: EventDayOccurrence[] = [{ dateKey: startKey, sortKey: event.startDate }];
+
+  const endKey = event.endDate ? event.endDate.split('T')[0] : startKey;
+  if (endKey <= startKey) return single;
+
+  const start = new Date(startKey + 'T00:00:00');
+  const end = new Date(endKey + 'T00:00:00');
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) return single;
+
+  const totalDays = Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1;
+  const renderedDays = Math.min(totalDays, MAX_SPAN_DAYS);
+
+  const occurrences: EventDayOccurrence[] = [];
+  const cursor = new Date(start);
+  for (let dayIndex = 1; dayIndex <= renderedDays; dayIndex++) {
+    const dateKey = toDateString(cursor);
+    occurrences.push({
+      dateKey,
+      sortKey: dayIndex === 1 ? event.startDate : dateKey,
+      multiDay: { dayIndex, totalDays },
+    });
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return occurrences;
+};
+
 /**
  * Extend the horizon for recurring event series that are nearing their end.
  *
