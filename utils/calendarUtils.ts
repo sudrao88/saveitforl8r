@@ -166,7 +166,9 @@ export interface EventDayOccurrence {
   multiDay?: MultiDayInfo;
 }
 
-// Guard against pathological endDates producing thousands of agenda rows
+// Guard against pathological endDates producing thousands of agenda rows.
+// Rendering stops after this many days, but multiDay.totalDays still
+// reports the real span so capped days don't read as the final day.
 const MAX_SPAN_DAYS = 60;
 
 /**
@@ -189,14 +191,12 @@ export const expandEventDays = (
   const end = new Date(endKey + 'T00:00:00');
   if (isNaN(start.getTime()) || isNaN(end.getTime())) return single;
 
-  const totalDays = Math.min(
-    Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1,
-    MAX_SPAN_DAYS,
-  );
+  const totalDays = Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1;
+  const renderedDays = Math.min(totalDays, MAX_SPAN_DAYS);
 
   const occurrences: EventDayOccurrence[] = [];
   const cursor = new Date(start);
-  for (let dayIndex = 1; dayIndex <= totalDays; dayIndex++) {
+  for (let dayIndex = 1; dayIndex <= renderedDays; dayIndex++) {
     const dateKey = toDateString(cursor);
     occurrences.push({
       dateKey,

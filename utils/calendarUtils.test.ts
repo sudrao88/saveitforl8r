@@ -320,11 +320,16 @@ describe('expandEventDays', () => {
     ).toEqual([{ dateKey: '2026-06-12', sortKey: '2026-06-12T10:00:00' }]);
   });
 
-  it('caps pathological spans at 60 days', () => {
+  it('caps rendered days at 60 while reporting the real span in totalDays', () => {
+    // 2026-01-01 → 2026-04-10 spans 100 days inclusive
     const occurrences = expandEventDays({
-      startDate: '2026-06-12',
-      endDate: '2030-01-01',
+      startDate: '2026-01-01',
+      endDate: '2026-04-10',
     });
     expect(occurrences).toHaveLength(60);
+    const last = occurrences[occurrences.length - 1];
+    expect(last.multiDay).toEqual({ dayIndex: 60, totalDays: 100 });
+    // No rendered day is the final day, so "Until <time>" never shows
+    expect(occurrences.some(o => o.multiDay!.dayIndex === o.multiDay!.totalDays)).toBe(false);
   });
 });
