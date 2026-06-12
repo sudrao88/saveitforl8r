@@ -247,6 +247,39 @@ export const isMemoryFailed = (m: Pick<Memory, 'enrichmentStatus' | 'processingE
   m.enrichmentStatus === 'failed_submit' || m.enrichmentStatus === 'failed_server'
   || (m.enrichmentStatus === undefined && m.processingError === true);
 
+// --- Related Memories ---
+
+export type EmbeddingModelId = 'embeddinggemma-300m' | 'bge-small-en-v1.5';
+
+/**
+ * Quality ranking for embedding models. A RelatedMemoriesRecord computed by a
+ * higher-priority model is never overwritten by a lower-priority one,
+ * regardless of updatedAt — native EmbeddingGemma results beat web bge-small
+ * results. Unknown model ids rank 0 (lose to everything known).
+ */
+export const MODEL_PRIORITY: Record<string, number> = {
+  'embeddinggemma-300m': 2,
+  'bge-small-en-v1.5': 1,
+};
+
+export interface RelatedMemoryEntry {
+  id: string;       // Related memory id
+  score: number;    // Cosine similarity — only comparable within the same modelId
+}
+
+/**
+ * Per-memory derived artifact: top-k similar memories. Synced to Drive as
+ * related-{memoryId}.json so all devices display identical results.
+ */
+export interface RelatedMemoriesRecord {
+  memoryId: string;
+  related: RelatedMemoryEntry[];
+  modelId: EmbeddingModelId | string;
+  computedAt: number;
+  updatedAt: number;
+  isDeleted?: boolean;  // Tombstone, cascades from memory deletion
+}
+
 export interface UploadProgress {
   status: 'uploading' | 'processing' | 'completed' | 'failed';
   bytesUploaded: number;

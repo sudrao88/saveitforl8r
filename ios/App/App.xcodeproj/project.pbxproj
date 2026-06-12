@@ -22,6 +22,9 @@
 		AA110001AA110001AA110001 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA110002AA110002AA110002 /* ShareViewController.swift */; };
 		AA110003AA110003AA110003 /* ShareExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = AA110004AA110004AA110004 /* ShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		BB220001BB220001BB220001 /* OTADownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB220002BB220002BB220002 /* OTADownloadManager.swift */; };
+		CC330001CC330001CC330001 /* TextEmbedderPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC330002CC330002CC330002 /* TextEmbedderPlugin.swift */; };
+		CC330003CC330003CC330003 /* EmbeddingModelDownloader.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC330004CC330004CC330004 /* EmbeddingModelDownloader.swift */; };
+		CC330005CC330005CC330005 /* BridgeViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC330006CC330006CC330006 /* BridgeViewController.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -78,6 +81,9 @@
 		AA110009AA110009AA110009 /* ShareExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ShareExtension.entitlements; sourceTree = "<group>"; };
 		AA11000AAA11000AAA11000A /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
 		BB220002BB220002BB220002 /* OTADownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OTADownloadManager.swift; sourceTree = "<group>"; };
+		CC330002CC330002CC330002 /* TextEmbedderPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextEmbedderPlugin.swift; sourceTree = "<group>"; };
+		CC330004CC330004CC330004 /* EmbeddingModelDownloader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbeddingModelDownloader.swift; sourceTree = "<group>"; };
+		CC330006CC330006CC330006 /* BridgeViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeViewController.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -162,6 +168,9 @@
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
 				504EC3071FED79650016851F /* AppDelegate.swift */,
 				BB220002BB220002BB220002 /* OTADownloadManager.swift */,
+				CC330002CC330002CC330002 /* TextEmbedderPlugin.swift */,
+				CC330004CC330004CC330004 /* EmbeddingModelDownloader.swift */,
+				CC330006CC330006CC330006 /* BridgeViewController.swift */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
 				504EC30E1FED79650016851F /* Assets.xcassets */,
 				504EC3101FED79650016851F /* LaunchScreen.storyboard */,
@@ -357,6 +366,9 @@
 			files = (
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
 				BB220001BB220001BB220001 /* OTADownloadManager.swift in Sources */,
+				CC330001CC330001CC330001 /* TextEmbedderPlugin.swift in Sources */,
+				CC330003CC330003CC330003 /* EmbeddingModelDownloader.swift in Sources */,
+				CC330005CC330005CC330005 /* BridgeViewController.swift in Sources */,
 				40F9BEC22F79801D000E92D7 /* BackgroundSyncTask.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

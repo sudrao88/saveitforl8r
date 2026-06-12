@@ -10,6 +10,7 @@ import { useSync } from '../hooks/useSync';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { useAuth } from '../hooks/useAuth';
 import { ModelStatus, EmbeddingStats } from '../hooks/useAdaptiveSearch';
+import { useEmbeddingModelManager } from '../hooks/useEmbeddingModelManager';
 import { factoryReset, forceReindexAll, ReconcileReport } from '../services/storageService';
 import { btn, overlay } from '../styles/design-system';
 import { useTheme, ThemePreference } from '../context/ThemeContext';
@@ -44,6 +45,8 @@ interface SettingsModalProps {
   onPreviousDayNotificationTimeChange?: (time: string) => Promise<void>;
   onRequestNotificationPermission?: () => Promise<void>;
   onOpenNotificationSettings?: () => void;
+  /** Recreates the embedding worker after the native model is downloaded/deleted */
+  onEmbeddingModelChanged?: () => void;
 }
 
 // Helper components for the new UI structure
@@ -163,6 +166,7 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
     onPreviousDayNotificationEnabledChange, onPreviousDayNotificationTimeChange,
     onRequestNotificationPermission,
     onOpenNotificationSettings,
+    onEmbeddingModelChanged,
   } = props;
   
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
@@ -178,6 +182,7 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
   const { authStatus, login, unlink } = useAuth();
   const { fileInputRef, handleExport, handleImportClick, handleImportFile } = useExportImport(onImportSuccess || (() => {}));
   const { handleDownloadKey, handleRestoreClick, handleRestoreFile, fileInputRef: keyInputRef } = useEncryptionSettings();
+  const embeddingModel = useEmbeddingModelManager(onEmbeddingModelChanged);
 
   const handleLinkDrive = () => { login(); };
   const handleSyncNow = async () => {
@@ -317,6 +322,64 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
                     <button onClick={retryFailedEmbeddings} className={`${btn.base} ${btn.dangerSm} w-full mt-2 bg-(--color-danger)/30 hover:bg-(--color-danger)/40 text-(--color-danger)`}>Retry {statsFailed} Failed Items</button>
                 )}
             </ExpandableSection>
+            {embeddingModel.status !== 'unavailable' && (
+              <>
+                <SettingsRow>
+                  <SettingsInfo
+                    label="Enhanced On-Device Model"
+                    description="EmbeddingGemma (~200 MB) improves Related Memories and offline search quality. Wi-Fi recommended; downloading triggers a full re-index."
+                  />
+                  <div className="flex items-center gap-2 shrink-0">
+                    {embeddingModel.status === 'checking' && (
+                      <Loader2 size={16} className="animate-spin text-(--color-text-tertiary)" />
+                    )}
+                    {embeddingModel.status === 'not_downloaded' && (
+                      <button onClick={embeddingModel.download} className={`${btn.base} ${btn.primarySm} gap-1.5`}>
+                        <Download size={14} /> Download
+                      </button>
+                    )}
+                    {embeddingModel.status === 'downloading' && (
+                      <button onClick={embeddingModel.cancel} className={`${btn.base} ${btn.secondarySm} gap-1.5`}>
+                        <X size={14} /> Cancel
+                      </button>
+                    )}
+                    {embeddingModel.status === 'ready' && (
+                      <>
+                        <span className="flex items-center gap-1.5 text-xs text-(--color-success) bg-(--color-success)/30 px-2 py-1 rounded-(--radius-md)">
+                          <CheckCircle2 size={14} /> Active
+                        </span>
+                        <button onClick={embeddingModel.remove} className={`${btn.base} ${btn.dangerSm} gap-1.5`}>
+                          <Trash2 size={14} /> Delete
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </SettingsRow>
+                {embeddingModel.status === 'downloading' && (
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-xs text-(--color-text-secondary)">
+                      <span>Downloading model...</span>
+                      <span>
+                        {embeddingModel.progress && embeddingModel.progress.totalBytes > 0
+                          ? `${Math.round((embeddingModel.progress.bytesDownloaded / embeddingModel.progress.totalBytes) * 100)}%`
+                          : '...'}
+                      </span>
+                    </div>
+                    <div className="h-1 w-full bg-(--color-surface-raised) rounded-full">
+                      <div
+                        className="h-full bg-(--color-accent) rounded-full transition-all duration-(--duration-fast)"
+                        style={{ width: embeddingModel.progress && embeddingModel.progress.totalBytes > 0
+                          ? `${(embeddingModel.progress.bytesDownloaded / embeddingModel.progress.totalBytes) * 100}%`
+                          : '0%' }}
+                      />
+                    </div>
+                  </div>
+                )}
+                {embeddingModel.error && (
+                  <p className="text-xs text-(--color-danger) bg-(--color-danger)/20 p-2 rounded-(--radius-md)">{embeddingModel.error}</p>
+                )}
+              </>
+            )}
           </SettingsCard>
 
           {notificationsSupported && (

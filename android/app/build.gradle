@@ -70,6 +70,11 @@ dependencies {
     // WorkManager for periodic background sync (12-hour interval)
     implementation "androidx.work:work-runtime:2.9.0"
 
+    // MediaPipe / Google AI Edge text embedder for on-device EmbeddingGemma
+    // (TextEmbedderPlugin). Verify this artifact version supports the
+    // EmbeddingGemma .task bundle before release.
+    implementation "com.google.mediapipe:tasks-text:0.10.21"
+
     // Fix for Duplicate class kotlin.collections.jdk8.CollectionsJDK8Kt
     constraints {
         implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22") {

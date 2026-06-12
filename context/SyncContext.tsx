@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, ReactNode, useRef, useEffect } from 'react';
-import { getMemories, getMemory, saveMemory, deleteMemory, reconcileEmbeddings, getAllMomentsIncludingDeleted, saveMoment, deleteMomentHard, getMomentSynthesis, saveMomentSynthesis, deleteMomentSynthesis, getAllCalendarEventsIncludingDeleted, saveCalendarEvent, deleteCalendarEventHard, getAllTodoItemsIncludingDeleted, updateTodoItem, deleteTodoItemHard, normalizeMemory } from '../services/storageService';
+import { getMemories, getMemory, saveMemory, deleteMemory, reconcileEmbeddings, getAllMomentsIncludingDeleted, saveMoment, deleteMomentHard, getMomentSynthesis, saveMomentSynthesis, deleteMomentSynthesis, getAllCalendarEventsIncludingDeleted, saveCalendarEvent, deleteCalendarEventHard, getAllTodoItemsIncludingDeleted, updateTodoItem, deleteTodoItemHard, getAllRelatedMemoriesIncludingDeleted, saveRelatedMemoriesRecord, deleteRelatedMemoriesHard, normalizeMemory } from '../services/storageService';
+import { resolveRelatedConflict, RELATED_MEMORIES_UPDATED_EVENT, RELATED_MEMORIES_NEED_SYNC_EVENT } from '../services/relatedMemories';
 
 import {
     listAllFiles,
@@ -14,7 +15,7 @@ import {
     deleteRemoteNote,
     type DriveFile,
 } from '../services/googleDriveService';
-import { Memory, Attachment, Moment, MomentSynthesis, CalendarEvent, TodoItem } from '../types';
+import { Memory, Attachment, Moment, MomentSynthesis, CalendarEvent, TodoItem, RelatedMemoriesRecord } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { storage } from '../services/platform';
 import { enqueue as bgSyncEnqueue, peekAll as bgSyncPeekAll, remove as bgSyncRemove } from '../services/backgroundSyncQueue';
@@ -31,6 +32,7 @@ interface SyncContextType {
   syncMoment: (moment: Moment) => Promise<void>;
   syncCalendarEvents: (events: CalendarEvent[]) => Promise<void>;
   syncTodoItems: (items: TodoItem[]) => Promise<void>;
+  syncRelatedMemories: (records: RelatedMemoriesRecord[]) => Promise<void>;
   retrySyncFile: (memoryId: string) => Promise<void>;
   getSyncStatusMap: () => Map<string, SyncStatus>;
   syncStatusVersion: number;
@@ -90,6 +92,10 @@ const executeSyncPlan = async (
 
     // Memories whose attachments were deferred — full versions emitted after download phase
     const deferredAttachmentMemories: Memory[] = [];
+
+    // Whether any related-memories record changed locally during this sync,
+    // so the UI can be refreshed once after the download phase.
+    let relatedRecordsChanged = false;
 
     // Stream-download and process each file immediately as it arrives,
     // rather than buffering all downloads in memory first. This lets
@@ -178,6 +184,37 @@ const executeSyncPlan = async (
                         } else {
                             await withProgress(updateTodoItem(safeTodo));
                         }
+                    }
+                    return;
+                }
+
+                // Handle related-memories files. Conflict resolution differs
+                // from the timestamp-based entities: a record computed by a
+                // higher-priority embedding model (native EmbeddingGemma) wins
+                // over a lower-priority one (web bge-small) regardless of
+                // updatedAt, so web fallback results never clobber native ones.
+                if (item.noteId.startsWith('related-')) {
+                    const relatedContent = content as unknown as RelatedMemoriesRecord;
+                    const verifiedMemoryId = item.noteId.replace('related-', '');
+                    const safeRelated: RelatedMemoriesRecord = { ...relatedContent, memoryId: verifiedMemoryId };
+                    const localRelated = item.localRelated;
+
+                    if (resolveRelatedConflict(localRelated, safeRelated) === 'takeRemote') {
+                        if (safeRelated.isDeleted) {
+                            await deleteRelatedMemoriesHard(verifiedMemoryId);
+                            plan.toDeleteRemote.push({ noteId: item.noteId, fileId: item.fileId });
+                        } else {
+                            await withProgress(saveRelatedMemoriesRecord(safeRelated));
+                            relatedRecordsChanged = true;
+                        }
+                    } else if (localRelated && !localRelated.isDeleted &&
+                               (localRelated.updatedAt !== safeRelated.updatedAt || localRelated.modelId !== safeRelated.modelId)) {
+                        // Local strictly wins (higher model priority or newer) — push it up
+                        plan.toUpload.push({
+                            noteId: item.noteId,
+                            memory: localRelated,
+                            remoteFileId: item.fileId
+                        });
                     }
                     return;
                 }
@@ -315,6 +352,11 @@ const executeSyncPlan = async (
         }
     }
 
+    // Refresh related-memories UI once after the download phase
+    if (relatedRecordsChanged && typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent(RELATED_MEMORIES_UPDATED_EVENT));
+    }
+
     // Emit full memories (with attachments) for deferred items now that
     // the download phase is complete. Batched to avoid per-card re-renders.
     if (onMemorySynced && deferredAttachmentMemories.length > 0) {
@@ -376,7 +418,7 @@ const executeSyncPlan = async (
     }
 
     // Build upload list, including synthesis files for any moments being uploaded
-    const uploadItems: Array<{ filename: string; content: Memory | Moment | MomentSynthesis | CalendarEvent | TodoItem; existingFileId?: string }> = plan.toUpload.map(u => ({
+    const uploadItems: Array<{ filename: string; content: Memory | Moment | MomentSynthesis | CalendarEvent | TodoItem | RelatedMemoriesRecord; existingFileId?: string }> = plan.toUpload.map(u => ({
         filename: `${u.noteId}.json`,
         content: u.memory,
         existingFileId: u.remoteFileId
@@ -452,6 +494,8 @@ const executeSyncPlan = async (
         try {
             if (id.startsWith('todo-')) {
                 await deleteTodoItemHard(id.replace('todo-', ''));
+            } else if (id.startsWith('related-')) {
+                await deleteRelatedMemoriesHard(id.replace('related-', ''));
             } else if (id.startsWith('event-')) {
                 await deleteCalendarEventHard(id.replace('event-', ''));
             } else if (id.startsWith('moment-synthesis-')) {
@@ -596,11 +640,12 @@ interface DownloadItem {
     localMoment?: Moment;
     localCalendarEvent?: CalendarEvent;
     localTodoItem?: TodoItem;
+    localRelated?: RelatedMemoriesRecord;
 }
 
 interface UploadItem {
     noteId: string;
-    memory: Memory | Moment | CalendarEvent | TodoItem;
+    memory: Memory | Moment | CalendarEvent | TodoItem | RelatedMemoriesRecord;
     remoteFileId?: string;
 }
 
@@ -781,6 +826,10 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const localTodoItems = await getAllTodoItemsIncludingDeleted();
     const localTodoMap = new Map(localTodoItems.map(t => [`todo-${t.id}`, t]));
 
+    // Load local related-memories records for sync
+    const localRelatedRecords = await getAllRelatedMemoriesIncludingDeleted();
+    const localRelatedMap = new Map(localRelatedRecords.map(r => [`related-${r.memoryId}`, r]));
+
     const remoteFiles = await listAllFiles();
     // Build remoteMap (first occurrence per name) and duplicatesByName (extras).
     // Drive permits multiple files with the same name; concurrent uploads from
@@ -848,6 +897,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             const hasLocal =
                 noteId.startsWith('event-') ? localEventMap.has(noteId) :
                 noteId.startsWith('todo-') ? localTodoMap.has(noteId) :
+                noteId.startsWith('related-') ? localRelatedMap.has(noteId) :
                 noteId.startsWith('moment-synthesis-') ? (() => {
                     const parentKey = `moment-${noteId.replace('moment-synthesis-', '')}`;
                     const parent = localMomentMap.get(parentKey);
@@ -880,6 +930,23 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 plan.toHardDeleteLocal.push(noteId);
             } else {
                 plan.toDownload.push({ noteId, fileId: remoteFile.id, localTodoItem: localTodo });
+            }
+            continue;
+        }
+
+        // Handle related-memories files
+        if (noteId.startsWith('related-')) {
+            const localRelated = localRelatedMap.get(noteId);
+            const memoryId = noteId.replace('related-', '');
+            const parentLocal = localMap.get(memoryId);
+            // A related artifact whose parent memory is gone everywhere is an
+            // orphan — clean it up instead of downloading it.
+            const parentAlive = remoteMap.has(memoryId) || (parentLocal !== undefined && !parentLocal.isDeleted);
+            if (localRelated?.isDeleted || !parentAlive) {
+                pushDeleteRemote(noteId, remoteFile.id);
+                plan.toHardDeleteLocal.push(noteId);
+            } else {
+                plan.toDownload.push({ noteId, fileId: remoteFile.id, localRelated });
             }
             continue;
         }
@@ -946,6 +1013,16 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 plan.toHardDeleteLocal.push(noteId);
             } else if (localTodo) {
                 plan.toDeleteLocal.push(noteId);
+            }
+            continue;
+        }
+
+        // Handle related-memories files that were removed from remote
+        if (noteId.startsWith('related-')) {
+            // Remote artifact deleted (parent memory removed on another
+            // device) — clean up the local record
+            if (localRelatedMap.has(noteId)) {
+                plan.toHardDeleteLocal.push(noteId);
             }
             continue;
         }
@@ -1049,6 +1126,41 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             const remote = remoteMap.get(key);
             plan.toUpload.push({ noteId: key, memory: item, remoteFileId: remote?.id });
             handled.add(key);
+        }
+    }
+
+    // Upload local related-memories records that haven't been synced yet
+    for (const record of localRelatedRecords) {
+        const key = `related-${record.memoryId}`;
+        if (handled.has(key)) continue;
+
+        if (record.isDeleted) {
+            const remote = remoteMap.get(key);
+            if (remote) {
+                pushDeleteRemote(key, remote.id);
+            }
+            plan.toHardDeleteLocal.push(key);
+            handled.add(key);
+        } else if (record.updatedAt > lastSyncTime || !previousSnapshot[key]) {
+            const remote = remoteMap.get(key);
+            plan.toUpload.push({ noteId: key, memory: record, remoteFileId: remote?.id });
+            handled.add(key);
+        }
+    }
+
+    // Clean up orphaned related-memories files — artifact exists on remote
+    // but its parent memory is gone everywhere
+    for (const [noteId, remoteFile] of remoteMap.entries()) {
+        if (!noteId.startsWith('related-')) continue;
+        if (handled.has(noteId)) continue;
+        const memoryId = noteId.replace('related-', '');
+        const parentLocal = localMap.get(memoryId);
+        const hasMemoryRemote = remoteMap.has(memoryId);
+        const hasMemoryLocal = parentLocal !== undefined && !parentLocal.isDeleted;
+        if (!hasMemoryRemote && !hasMemoryLocal) {
+            pushDeleteRemote(noteId, remoteFile.id);
+            plan.toHardDeleteLocal.push(noteId);
+            handled.add(noteId);
         }
     }
 
@@ -1238,7 +1350,11 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                             // Keep synthesis entries if the parent moment exists locally —
                             // avoids N+1 individual synthesis lookups at scale.
                             (noteId.startsWith('moment-synthesis-') &&
-                                localIds.has(`moment-${noteId.replace('moment-synthesis-', '')}`))
+                                localIds.has(`moment-${noteId.replace('moment-synthesis-', '')}`)) ||
+                            // Keep related-memories entries if the parent memory exists
+                            // locally (same pattern as synthesis files).
+                            (noteId.startsWith('related-') &&
+                                localIds.has(noteId.replace('related-', '')))
                         )
                     );
                 }
@@ -1401,6 +1517,42 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
   }, [getAccessToken]);
 
+  const performRelatedMemoriesSync = useCallback(async (records: RelatedMemoriesRecord[]) => {
+      const linked = await checkIsLinked();
+      if (!linked || records.length === 0) return;
+
+      try {
+          await getAccessToken();
+
+          const snapshotJSON = await storage.get(SNAPSHOT_KEY);
+          const snapshot = snapshotJSON ? JSON.parse(snapshotJSON) : {};
+
+          const results = await Promise.all(
+              records.map(async (record) => {
+                  try {
+                      const filename = `related-${record.memoryId}.json`;
+                      const remoteFile = await findFileByName(filename);
+                      const uploaded = await uploadFile(filename, record, remoteFile?.id);
+                      return { memoryId: record.memoryId, modifiedTime: uploaded?.modifiedTime };
+                  } catch (e) {
+                      console.error(`[Sync] Related memories sync failed for ${record.memoryId}:`, e);
+                      return { memoryId: record.memoryId, modifiedTime: undefined };
+                  }
+              })
+          );
+
+          for (const result of results) {
+              if (result.modifiedTime) {
+                  snapshot[`related-${result.memoryId}`] = result.modifiedTime;
+              }
+          }
+
+          await storage.set(SNAPSHOT_KEY, JSON.stringify(snapshot));
+      } catch (e: any) {
+          console.error(`[Sync] Related memories sync failed:`, e);
+      }
+  }, [getAccessToken]);
+
   const performSingleSync = useCallback(async (memory: Memory) => {
       const linked = await checkIsLinked();
       if (isSyncingRef.current || !linked) return;
@@ -1416,11 +1568,16 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               // exist when concurrent uploads race a deletion. See the
               // performMomentSync comment for the full rationale.
               await cleanupFilesByName(`${memory.id}.json`);
+              // Cascade: the derived related-memories artifact dies with the note
+              await cleanupFilesByName(`related-${memory.id}.json`).catch(e =>
+                  console.warn(`[Sync] Failed to clean up related file for ${memory.id}:`, e));
               await deleteMemory(memory.id);
+              await deleteRelatedMemoriesHard(memory.id).catch(() => {});
               const snapshotJSON = await storage.get(SNAPSHOT_KEY);
               if (snapshotJSON) {
                   const snapshot = JSON.parse(snapshotJSON);
                   delete snapshot[memory.id];
+                  delete snapshot[`related-${memory.id}`];
                   await storage.set(SNAPSHOT_KEY, JSON.stringify(snapshot));
               }
               // Clear sync status for deleted notes
@@ -1570,6 +1727,38 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
   }, [authStatus, getAccessToken]);
 
+  // Upload freshly computed related-memories records. The embedding worker
+  // (via useAdaptiveSearch) dispatches RELATED_MEMORIES_NEED_SYNC_EVENT after
+  // persisting changed lists; batch them briefly so a backfill that touches
+  // many lists results in one upload pass instead of one per record.
+  const pendingRelatedSyncRef = useRef<Map<string, RelatedMemoriesRecord>>(new Map());
+  const relatedSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (authStatus !== 'linked') return;
+
+    const handleNeedSync = (event: Event) => {
+        const records = (event as CustomEvent).detail?.records as RelatedMemoriesRecord[] | undefined;
+        if (!records?.length) return;
+        for (const record of records) {
+            pendingRelatedSyncRef.current.set(record.memoryId, record);
+        }
+        if (relatedSyncTimerRef.current) clearTimeout(relatedSyncTimerRef.current);
+        relatedSyncTimerRef.current = setTimeout(() => {
+            const batch = Array.from(pendingRelatedSyncRef.current.values());
+            pendingRelatedSyncRef.current.clear();
+            performRelatedMemoriesSync(batch).catch(e =>
+                console.warn('[Sync] Related memories upload failed (will retry on next delta sync):', e));
+        }, 3000);
+    };
+
+    window.addEventListener(RELATED_MEMORIES_NEED_SYNC_EVENT, handleNeedSync);
+    return () => {
+        window.removeEventListener(RELATED_MEMORIES_NEED_SYNC_EVENT, handleNeedSync);
+        if (relatedSyncTimerRef.current) clearTimeout(relatedSyncTimerRef.current);
+    };
+  }, [authStatus, performRelatedMemoriesSync]);
+
   useEffect(() => {
     return () => {
         if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
@@ -1590,6 +1779,7 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         syncMoment: performMomentSync,
         syncCalendarEvents: performCalendarEventsSync,
         syncTodoItems: performTodoItemsSync,
+        syncRelatedMemories: performRelatedMemoriesSync,
         retrySyncFile,
         getSyncStatusMap,
         syncStatusVersion,

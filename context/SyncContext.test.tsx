@@ -44,6 +44,9 @@ vi.mock('../services/storageService', () => ({
   getAllTodoItemsIncludingDeleted: vi.fn().mockResolvedValue([]),
   updateTodoItem: vi.fn().mockResolvedValue(undefined),
   deleteTodoItemHard: vi.fn().mockResolvedValue(undefined),
+  getAllRelatedMemoriesIncludingDeleted: vi.fn().mockResolvedValue([]),
+  saveRelatedMemoriesRecord: vi.fn().mockResolvedValue(true),
+  deleteRelatedMemoriesHard: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../services/googleDriveService', () => ({
@@ -986,6 +989,150 @@ describe('SyncContext', () => {
       expect(driveService.downloadFilesStreaming).toHaveBeenCalledWith([], expect.any(Function));
       // Should NOT upload since moment updatedAt (1000) < lastSyncTime (5000)
       expect(driveService.uploadMultipleFiles).toHaveBeenCalledWith([]);
+    });
+  });
+
+  describe('related memories delta sync', () => {
+    const baseRecord = {
+      memoryId: 'note-1',
+      related: [{ id: 'note-2', score: 0.8 }],
+      modelId: 'bge-small-en-v1.5',
+      computedAt: 1000,
+      updatedAt: 1000,
+    };
+
+    it('uploads local-only related records as related-{id}.json', async () => {
+      // Earlier describe blocks leave resolved values on these mocks
+      // (clearAllMocks resets calls, not implementations) — reset them so
+      // the upload list contains only the related record.
+      (storageService.getMemories as any).mockResolvedValue([]);
+      (storageService.getAllMomentsIncludingDeleted as any).mockResolvedValue([]);
+      (storageService.getAllCalendarEventsIncludingDeleted as any).mockResolvedValue([]);
+      (storageService.getAllTodoItemsIncludingDeleted as any).mockResolvedValue([]);
+      (storageService.getAllRelatedMemoriesIncludingDeleted as any).mockResolvedValue([baseRecord]);
+      (driveService.listAllFiles as any).mockResolvedValue([]);
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      await act(async () => {
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
+      });
+
+      expect(driveService.uploadMultipleFiles).toHaveBeenCalledWith([
+        expect.objectContaining({
+          filename: 'related-note-1.json',
+          content: expect.objectContaining({ memoryId: 'note-1' }),
+        }),
+      ]);
+    });
+
+    it('saves a downloaded record when remote has higher model priority', async () => {
+      const localBge = { ...baseRecord, updatedAt: 9999 };
+      const remoteGemma = { ...baseRecord, modelId: 'embeddinggemma-300m', updatedAt: 1 };
+
+      (storageService.getAllRelatedMemoriesIncludingDeleted as any).mockResolvedValue([localBge]);
+      (driveService.listAllFiles as any).mockResolvedValue([
+        { id: 'drive-rel-1', name: 'related-note-1.json', modifiedTime: '2024-01-01T00:00:00Z' },
+        { id: 'drive-note-1', name: 'note-1.json', modifiedTime: '2024-01-01T00:00:00Z' },
+      ]);
+      mockDownloads(new Map<string, any>([
+        ['drive-rel-1', remoteGemma],
+        ['drive-note-1', { id: 'note-1', content: 'x', timestamp: 1, tags: [] }],
+      ]));
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      await act(async () => {
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
+      });
+
+      expect(storageService.saveRelatedMemoriesRecord).toHaveBeenCalledWith(
+        expect.objectContaining({ memoryId: 'note-1', modelId: 'embeddinggemma-300m' })
+      );
+    });
+
+    it('re-uploads the local record when it has higher model priority than remote', async () => {
+      const localGemma = { ...baseRecord, modelId: 'embeddinggemma-300m', updatedAt: 1 };
+      const remoteBge = { ...baseRecord, updatedAt: 9999 };
+
+      (storageService.getAllRelatedMemoriesIncludingDeleted as any).mockResolvedValue([localGemma]);
+      (driveService.listAllFiles as any).mockResolvedValue([
+        { id: 'drive-rel-1', name: 'related-note-1.json', modifiedTime: '2024-01-01T00:00:00Z' },
+        { id: 'drive-note-1', name: 'note-1.json', modifiedTime: '2024-01-01T00:00:00Z' },
+      ]);
+      mockDownloads(new Map<string, any>([
+        ['drive-rel-1', remoteBge],
+        ['drive-note-1', { id: 'note-1', content: 'x', timestamp: 1, tags: [] }],
+      ]));
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      await act(async () => {
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
+      });
+
+      // Lower-priority remote must not be written locally
+      expect(storageService.saveRelatedMemoriesRecord).not.toHaveBeenCalled();
+      // Local gemma record wins and gets pushed up
+      expect(driveService.uploadMultipleFiles).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            filename: 'related-note-1.json',
+            content: expect.objectContaining({ modelId: 'embeddinggemma-300m' }),
+          }),
+        ])
+      );
+    });
+
+    it('hard-deletes locally and cleans up remote on remote tombstone', async () => {
+      const remoteTombstone = { ...baseRecord, related: [], isDeleted: true, updatedAt: 9999 };
+
+      (storageService.getAllRelatedMemoriesIncludingDeleted as any).mockResolvedValue([baseRecord]);
+      (driveService.listAllFiles as any).mockResolvedValue([
+        { id: 'drive-rel-1', name: 'related-note-1.json', modifiedTime: '2024-01-01T00:00:00Z' },
+        { id: 'drive-note-1', name: 'note-1.json', modifiedTime: '2024-01-01T00:00:00Z' },
+      ]);
+      mockDownloads(new Map<string, any>([
+        ['drive-rel-1', remoteTombstone],
+        ['drive-note-1', { id: 'note-1', content: 'x', timestamp: 1, tags: [] }],
+      ]));
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      await act(async () => {
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
+      });
+
+      expect(storageService.deleteRelatedMemoriesHard).toHaveBeenCalledWith('note-1');
+      expect(driveService.deleteFileById).toHaveBeenCalledWith('drive-rel-1');
+    });
+
+    it('cleans up orphaned related files whose parent memory is gone', async () => {
+      (storageService.getAllRelatedMemoriesIncludingDeleted as any).mockResolvedValue([]);
+      (storageService.getMemories as any).mockResolvedValue([]);
+      // related file exists on Drive but its parent note does not (anywhere)
+      (driveService.listAllFiles as any).mockResolvedValue([
+        { id: 'drive-rel-orphan', name: 'related-ghost.json', modifiedTime: '2024-01-01T00:00:00Z' },
+      ]);
+
+      const { result } = renderHook(() => useSync(), { wrapper });
+
+      await act(async () => {
+        const syncPromise = result.current.sync();
+        await vi.advanceTimersByTimeAsync(2500);
+        await syncPromise;
+      });
+
+      expect(driveService.deleteFileById).toHaveBeenCalledWith('drive-rel-orphan');
+      expect(storageService.deleteRelatedMemoriesHard).toHaveBeenCalledWith('ghost');
     });
   });
 

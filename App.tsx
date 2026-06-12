@@ -42,6 +42,7 @@ import { useHotkeys } from './hooks/useHotkeys';
 import { useMoments } from './hooks/useMoments';
 import { useCalendarEvents } from './hooks/useCalendarEvents';
 import { useTodoItems } from './hooks/useTodoItems';
+import { useRelatedMemories } from './hooks/useRelatedMemories';
 import { useDeletionCandidates } from './hooks/useDeletionCandidates';
 import { useNotifications } from './hooks/useNotifications';
 import useNativeOTA from './hooks/useNativeOTA';
@@ -99,7 +100,7 @@ const AppContent: React.FC = () => {
   const { sync, isSyncing, isSyncingDownload, syncError, getSyncStatusMap, syncStatusVersion, retrySyncFile, setOnSyncProgress, setOnMemorySynced, syncMoment, syncCalendarEvents, syncTodoItems } = useSync();
   const { authStatus, login, unlink, recheckAuth } = useAuth();
 
-  const { modelStatus, downloadProgress, retryDownload, search, embeddingStats, retryFailedEmbeddings, deleteNoteFromIndex, lastError, closeWorkerDB } = useAdaptiveSearch();
+  const { modelStatus, downloadProgress, retryDownload, search, embeddingStats, retryFailedEmbeddings, deleteNoteFromIndex, lastError, closeWorkerDB, activeModel, reinitializeWorker } = useAdaptiveSearch();
 
   const {
     memories,
@@ -207,6 +208,14 @@ const AppContent: React.FC = () => {
     }
     return map;
   }, [todoItems]);
+
+  // Similar-notes lists (computed from embeddings, synced via Drive)
+  const { relatedByMemory } = useRelatedMemories(memories);
+
+  const handleOpenRelatedMemory = useCallback((memoryId: string) => {
+    const target = memories.find(m => m.id === memoryId && !m.isDeleted);
+    if (target) setExpandedMemory(target);
+  }, [memories]);
 
   const handleOpenCalendarEvent = useCallback((eventId: string) => {
     setShowTodoList(false);
@@ -1108,6 +1117,8 @@ const AppContent: React.FC = () => {
               todosByMemory={todosByMemory}
               onOpenCalendarEvent={handleOpenCalendarEvent}
               onOpenTodoItem={handleOpenTodoItem}
+              relatedByMemory={relatedByMemory}
+              onOpenRelatedMemory={handleOpenRelatedMemory}
             />
           )}
         </main>
@@ -1187,6 +1198,8 @@ const AppContent: React.FC = () => {
                     todoItems={todosByMemory.get(frozenExpandedMemory.id)}
                     onOpenCalendarEvent={handleOpenCalendarEvent}
                     onOpenTodoItem={handleOpenTodoItem}
+                    relatedMemories={relatedByMemory.get(frozenExpandedMemory.id)}
+                    onOpenRelatedMemory={handleOpenRelatedMemory}
                 />
              </div>
           </div>
@@ -1229,6 +1242,7 @@ const AppContent: React.FC = () => {
               onPreviousDayNotificationTimeChange={setPreviousDayNotifTime}
               onRequestNotificationPermission={requestNotificationPermission}
               onOpenNotificationSettings={openNotificationSettings}
+              onEmbeddingModelChanged={reinitializeWorker}
           />
         </Suspense>
       </AnimatedPresence>

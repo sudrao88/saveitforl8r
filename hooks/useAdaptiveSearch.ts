@@ -1,7 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { queryBrain } from '../services/geminiService';
-import { Memory, ChatMessage } from '../types';
+import { Memory, ChatMessage, RelatedMemoriesRecord } from '../types';
 import { v4 as uuidv4 } from 'uuid';
+import TextEmbedder, { isNativeEmbedderReady } from '../services/textEmbedderPlugin';
+import { WEB_EMBEDDING_MODEL, NATIVE_EMBEDDING_MODEL, EmbeddingModelInfo } from '../services/embeddingModels';
+import { persistComputedRelatedMemories } from '../services/storageService';
+import { RELATED_MEMORIES_UPDATED_EVENT, RELATED_MEMORIES_NEED_SYNC_EVENT } from '../services/relatedMemories';
 
 export interface SearchResultItem {
   id: string;
@@ -31,54 +35,116 @@ export const useAdaptiveSearch = () => {
   const [lastError, setLastError] = useState<string | null>(null);
   const [isModelCached, setIsModelCached] = useState<boolean | null>(null);
 
+  const [activeModel, setActiveModel] = useState<EmbeddingModelInfo | null>(null);
+
   const workerRef = useRef<Worker | null>(null);
   const searchResolvers = useRef<Map<string, (results: any) => void>>(new Map());
   const searchTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
+  // Resolve a search query and clean up its timeout timer
+  const resolveSearch = (queryId: string, results: any) => {
+      const resolve = searchResolvers.current.get(queryId);
+      if (resolve) {
+          resolve(results);
+          searchResolvers.current.delete(queryId);
+      }
+      const timer = searchTimers.current.get(queryId);
+      if (timer) {
+          clearTimeout(timer);
+          searchTimers.current.delete(queryId);
+      }
+  };
+
+  // Service a native embed RPC from the worker (Capacitor plugins are only
+  // callable from the main JS context).
+  const handleEmbedRequest = async (worker: Worker, requestId: string, texts: string[]) => {
+    try {
+      const { vectors } = await TextEmbedder.embed({ texts });
+      worker.postMessage({ type: 'EMBED_RESPONSE', payload: { requestId, vectors } });
+    } catch (e: any) {
+      worker.postMessage({ type: 'EMBED_RESPONSE', payload: { requestId, error: e?.message || 'Native embed failed' } });
+    }
+  };
+
+  // Persist worker-computed related lists; notify UI and sync layer about
+  // the ones that actually changed.
+  const handleRelatedComputed = async (records: RelatedMemoriesRecord[]) => {
+    try {
+      const written = await persistComputedRelatedMemories(records);
+      if (written.length > 0) {
+        window.dispatchEvent(new CustomEvent(RELATED_MEMORIES_UPDATED_EVENT));
+        window.dispatchEvent(new CustomEvent(RELATED_MEMORIES_NEED_SYNC_EVENT, { detail: { records: written } }));
+      }
+    } catch (e) {
+      console.error('[Related] Failed to persist computed records', e);
+    }
+  };
+
+  const createWorker = useCallback(() => {
+    const worker = new Worker(new URL('../services/embedding.worker.ts', import.meta.url), {
+      type: 'module'
+    });
+
+    // Handle Worker Errors (e.g. initialization failure, OOM)
+    worker.onerror = (err) => {
+        console.error("Worker Error:", err);
+        setModelStatus('error');
+        setLastError(err.message || "Unknown Worker Error");
+    };
+
+    worker.onmessage = (e) => {
+      const { type, payload, queryId, error } = e.data;
+
+      if (type === 'MODEL_STATUS') {
+        setModelStatus(payload);
+        if (payload === 'error' && error) {
+            setLastError(error.message || String(error));
+        }
+      } else if (type === 'MODEL_DOWNLOAD_PROGRESS') {
+        setDownloadProgress(payload);
+      } else if (type === 'STATS_UPDATE') {
+        setEmbeddingStats(payload);
+      } else if (type === 'SEARCH_RESULTS') {
+        resolveSearch(queryId, payload);
+      } else if (type === 'SEARCH_ERROR') {
+        resolveSearch(queryId, []);
+        console.error("Worker Search Error:", error);
+      } else if (type === 'MODEL_CACHE_STATUS') {
+        setIsModelCached(payload.isCached);
+      } else if (type === 'EMBED_REQUEST') {
+        handleEmbedRequest(worker, payload.requestId, payload.texts);
+      } else if (type === 'RELATED_COMPUTED') {
+        handleRelatedComputed(payload.records);
+      }
+    };
+
+    // Configure the worker for the platform model. The worker queue stays
+    // gated until INIT_CONFIG arrives, so this async hop is safe.
+    (async () => {
+      const useNativeModel = await isNativeEmbedderReady();
+      const model = useNativeModel ? NATIVE_EMBEDDING_MODEL : WEB_EMBEDDING_MODEL;
+      setActiveModel(model);
+      worker.postMessage({
+        type: 'INIT_CONFIG',
+        payload: { modelId: model.modelId, dim: model.dim, isNative: useNativeModel }
+      });
+      // Send initial online status to worker
+      worker.postMessage({ type: 'SET_ONLINE_STATUS', payload: { isOnline: navigator.onLine } });
+      // Check if model is cached (useful for offline status display)
+      worker.postMessage({ type: 'CHECK_MODEL_CACHE' });
+      // Check model status on init
+      worker.postMessage({ type: 'CHECK_MODEL_STATUS' });
+      // Start processing queue
+      worker.postMessage({ type: 'START_PROCESSING' });
+    })();
+
+    return worker;
+  }, []);
+
   // Initialize Worker
   useEffect(() => {
     if (!workerRef.current) {
-      workerRef.current = new Worker(new URL('../services/embedding.worker.ts', import.meta.url), {
-        type: 'module'
-      });
-
-      // Handle Worker Errors (e.g. initialization failure, OOM)
-      workerRef.current.onerror = (err) => {
-          console.error("Worker Error:", err);
-          setModelStatus('error');
-          setLastError(err.message || "Unknown Worker Error");
-      };
-
-      workerRef.current.onmessage = (e) => {
-        const { type, payload, queryId, error } = e.data;
-
-        if (type === 'MODEL_STATUS') {
-          setModelStatus(payload);
-          if (payload === 'error' && error) {
-              setLastError(error.message || String(error));
-          }
-        } else if (type === 'MODEL_DOWNLOAD_PROGRESS') {
-          setDownloadProgress(payload);
-        } else if (type === 'STATS_UPDATE') {
-          setEmbeddingStats(payload);
-        } else if (type === 'SEARCH_RESULTS') {
-          resolveSearch(queryId, payload);
-        } else if (type === 'SEARCH_ERROR') {
-          resolveSearch(queryId, []);
-          console.error("Worker Search Error:", error);
-        } else if (type === 'MODEL_CACHE_STATUS') {
-          setIsModelCached(payload.isCached);
-        }
-      };
-
-      // Send initial online status to worker
-      workerRef.current.postMessage({ type: 'SET_ONLINE_STATUS', payload: { isOnline: navigator.onLine } });
-      // Check if model is cached (useful for offline status display)
-      workerRef.current.postMessage({ type: 'CHECK_MODEL_CACHE' });
-      // Check model status on init
-      workerRef.current.postMessage({ type: 'CHECK_MODEL_STATUS' });
-      // Start processing queue
-      workerRef.current.postMessage({ type: 'START_PROCESSING' });
+      workerRef.current = createWorker();
     }
 
     const updateOnlineStatus = () => {
@@ -109,20 +175,6 @@ export const useAdaptiveSearch = () => {
       workerRef.current = null;
     };
   }, []);
-
-  // Resolve a search query and clean up its timeout timer
-  const resolveSearch = (queryId: string, results: any) => {
-      const resolve = searchResolvers.current.get(queryId);
-      if (resolve) {
-          resolve(results);
-          searchResolvers.current.delete(queryId);
-      }
-      const timer = searchTimers.current.get(queryId);
-      if (timer) {
-          clearTimeout(timer);
-          searchTimers.current.delete(queryId);
-      }
-  };
 
   const search = useCallback(async (query: string, memories: Memory[] = [], history: ChatMessage[] = []): Promise<{ mode: string; result: any; error?: any }> => {
     if (!query.trim()) {
@@ -211,6 +263,20 @@ export const useAdaptiveSearch = () => {
        workerRef.current?.postMessage({ type: 'CHECK_MODEL_CACHE' });
   };
 
+  // Recompute all related-memories lists on the next idle queue cycle
+  const recomputeRelated = () => {
+       workerRef.current?.postMessage({ type: 'RECOMPUTE_RELATED' });
+  };
+
+  // Tear down and recreate the worker so it re-detects the platform model.
+  // Used after the native EmbeddingGemma model is downloaded or deleted.
+  const reinitializeWorker = useCallback(() => {
+       workerRef.current?.terminate();
+       setModelStatus('idle');
+       setLastError(null);
+       workerRef.current = createWorker();
+  }, [createWorker]);
+
   return {
     search,
     isOnline,
@@ -225,6 +291,9 @@ export const useAdaptiveSearch = () => {
     closeWorkerDB,
     lastError,
     isModelCached,
-    checkModelCache
+    checkModelCache,
+    activeModel,
+    recomputeRelated,
+    reinitializeWorker
   };
 };
