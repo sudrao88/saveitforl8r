@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v119",
-  "buildNumber": 119,
-  "buildDate": "2026-06-11T16:04:14.936Z",
+  "version": "saveitforl8r-v120",
+  "buildNumber": 120,
+  "buildDate": "2026-06-12T00:29:43.544Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "No more duplicate icons on notes: when a note has a Date or Action Items section, its 'In Calendar' / 'In To-Do List' links now appear inside that section instead of behind a second identical icon."
+  "changelog": "Multi-day events now show on every day they span in the calendar, Google Calendar style: '(Day n/N)' in the title, start time on the first day, and 'Until' time on the last."
 }
