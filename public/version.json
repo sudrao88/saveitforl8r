@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v120",
-  "buildNumber": 120,
-  "buildDate": "2026-06-12T00:29:43.544Z",
+  "version": "saveitforl8r-v121",
+  "buildNumber": 121,
+  "buildDate": "2026-06-12T02:25:00.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Multi-day events now show on every day they span in the calendar, Google Calendar style: '(Day n/N)' in the title, start time on the first day, and 'Until' time on the last."
+  "changelog": "Fixed calendar events and to-dos disappearing after the app was killed and relaunched: orphan cleanup now waits for the first Drive sync, and events lost this way are automatically restored from the note's enrichment data."
 }
