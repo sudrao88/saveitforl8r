@@ -2,7 +2,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useCalendarEvents } from './useCalendarEvents';
 import * as storageService from '../services/storageService';
-import { CalendarEvent, Memory } from '../types';
+import { CalendarEvent, DetectedEvent, Memory } from '../types';
 
 vi.mock('../services/storageService');
 
@@ -11,6 +11,19 @@ const makeMemory = (id: string): Memory => ({
   content: 'test',
   timestamp: Date.now(),
   tags: [],
+});
+
+const makeDetectedEvent = (overrides: Partial<DetectedEvent> = {}): DetectedEvent => ({
+  title: 'Dance class',
+  startDate: '2026-07-01T17:00:00',
+  allDay: false,
+  status: 'confirmed',
+  ...overrides,
+});
+
+const makeEnrichedMemory = (id: string, detectedEvents: DetectedEvent[]): Memory => ({
+  ...makeMemory(id),
+  enrichment: { detectedEvents } as Memory['enrichment'],
 });
 
 const makeEvent = (id: string, memoryId: string, overrides: Partial<CalendarEvent> = {}): CalendarEvent => ({
@@ -29,8 +42,10 @@ describe('useCalendarEvents orphan reconciliation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     (storageService.getCalendarEvents as any).mockResolvedValue([]);
+    (storageService.getCalendarEventsByMemoryId as any).mockResolvedValue([]);
     (storageService.saveCalendarEvents as any).mockResolvedValue(undefined);
     (storageService.softDeleteCalendarEventsByMemoryId as any).mockResolvedValue([]);
+    (storageService.replaceCalendarEventsForMemory as any).mockResolvedValue([]);
   });
 
   it('returns events whose source memory still exists', async () => {
@@ -171,6 +186,158 @@ describe('useCalendarEvents orphan reconciliation', () => {
     await waitFor(() => {
       expect(storageService.softDeleteCalendarEventsByMemoryId).toHaveBeenCalledWith('deleted-note');
       expect(onTombstones).toHaveBeenCalledWith([tombstone]);
+    });
+  });
+
+  // Regression: on a cold start after an Android process kill, IndexedDB can
+  // be missing recently-written memories that still exist on Drive, while
+  // their extracted calendar events survived locally. Until the first sync of
+  // the session restores the memory, a missing parent must NOT be treated as
+  // deleted — tombstoning would push the tombstones to Drive and delete the
+  // events on every device.
+  it('does not tombstone orphans before the initial sync completes', async () => {
+    const events = [makeEvent('e1', 'note-lost-from-idb')];
+    (storageService.getCalendarEvents as any).mockResolvedValue(events);
+    (storageService.softDeleteCalendarEventsByMemoryId as any).mockResolvedValue([
+      { ...events[0], isDeleted: true, updatedAt: Date.now() },
+    ]);
+
+    const onTombstones = vi.fn();
+    const { rerender } = renderHook(
+      ({ memories, initialSyncComplete }) =>
+        useCalendarEvents({ memories, memoriesLoaded: true, initialSyncComplete, onTombstones }),
+      { initialProps: { memories: [] as Memory[], initialSyncComplete: false } }
+    );
+
+    await waitFor(() => {
+      expect(storageService.getCalendarEvents).toHaveBeenCalled();
+    });
+    await new Promise(r => setTimeout(r, 20));
+    // Pre-sync: parent memory missing locally — must not tombstone.
+    expect(storageService.softDeleteCalendarEventsByMemoryId).not.toHaveBeenCalled();
+    expect(onTombstones).not.toHaveBeenCalled();
+
+    // Initial sync restores the memory from Drive. Still no tombstones.
+    rerender({ memories: [makeMemory('note-lost-from-idb')], initialSyncComplete: true });
+    await new Promise(r => setTimeout(r, 20));
+    expect(storageService.softDeleteCalendarEventsByMemoryId).not.toHaveBeenCalled();
+    expect(onTombstones).not.toHaveBeenCalled();
+  });
+
+  it('reconciles real orphans once initialSyncComplete turns true', async () => {
+    const events = [makeEvent('e-orphan', 'deleted-note')];
+    (storageService.getCalendarEvents as any).mockResolvedValue(events);
+    const tombstone = { ...events[0], isDeleted: true, updatedAt: Date.now() };
+    (storageService.softDeleteCalendarEventsByMemoryId as any).mockResolvedValue([tombstone]);
+
+    const onTombstones = vi.fn();
+    const { rerender } = renderHook(
+      ({ initialSyncComplete }) =>
+        useCalendarEvents({ memories: [], memoriesLoaded: true, initialSyncComplete, onTombstones }),
+      { initialProps: { initialSyncComplete: false } }
+    );
+
+    await waitFor(() => {
+      expect(storageService.getCalendarEvents).toHaveBeenCalled();
+    });
+    expect(storageService.softDeleteCalendarEventsByMemoryId).not.toHaveBeenCalled();
+
+    rerender({ initialSyncComplete: true });
+    await waitFor(() => {
+      expect(storageService.softDeleteCalendarEventsByMemoryId).toHaveBeenCalledWith('deleted-note');
+      expect(onTombstones).toHaveBeenCalledWith([tombstone]);
+    });
+  });
+});
+
+describe('useCalendarEvents lost-event recovery', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (storageService.getCalendarEvents as any).mockResolvedValue([]);
+    (storageService.getCalendarEventsByMemoryId as any).mockResolvedValue([]);
+    (storageService.saveCalendarEvents as any).mockResolvedValue(undefined);
+    (storageService.softDeleteCalendarEventsByMemoryId as any).mockResolvedValue([]);
+    (storageService.replaceCalendarEventsForMemory as any).mockResolvedValue([]);
+  });
+
+  it('recreates events from enrichment when none exist in IDB', async () => {
+    const memory = makeEnrichedMemory('note-1', [makeDetectedEvent()]);
+
+    const onRecovered = vi.fn();
+    renderHook(() =>
+      useCalendarEvents({ memories: [memory], memoriesLoaded: true, initialSyncComplete: true, onRecovered })
+    );
+
+    await waitFor(() => {
+      expect(storageService.replaceCalendarEventsForMemory).toHaveBeenCalledTimes(1);
+    });
+    const [memoryId, created] = (storageService.replaceCalendarEventsForMemory as any).mock.calls[0];
+    expect(memoryId).toBe('note-1');
+    expect(created).toHaveLength(1);
+    expect(created[0]).toMatchObject({ memoryId: 'note-1', title: 'Dance class' });
+
+    await waitFor(() => {
+      expect(onRecovered).toHaveBeenCalledWith(created);
+    });
+  });
+
+  it('expands recurring detected events when recovering', async () => {
+    const memory = makeEnrichedMemory('note-recurring', [
+      makeDetectedEvent({ isRecurring: true, recurrenceFrequency: 'weekly' }),
+    ]);
+
+    renderHook(() =>
+      useCalendarEvents({ memories: [memory], memoriesLoaded: true, initialSyncComplete: true })
+    );
+
+    await waitFor(() => {
+      expect(storageService.replaceCalendarEventsForMemory).toHaveBeenCalledTimes(1);
+    });
+    const [, created] = (storageService.replaceCalendarEventsForMemory as any).mock.calls[0];
+    expect(created.length).toBeGreaterThan(1);
+    expect(created.every((e: CalendarEvent) => e.memoryId === 'note-recurring')).toBe(true);
+  });
+
+  it('does not recreate when IDB still has rows for the memory', async () => {
+    const memory = makeEnrichedMemory('note-1', [makeDetectedEvent()]);
+    // Rows exist in IDB (e.g. tombstones, or events not yet loaded into state).
+    (storageService.getCalendarEventsByMemoryId as any).mockResolvedValue([
+      { ...makeEvent('e1', 'note-1'), isDeleted: true },
+    ]);
+
+    const onRecovered = vi.fn();
+    renderHook(() =>
+      useCalendarEvents({ memories: [memory], memoriesLoaded: true, initialSyncComplete: true, onRecovered })
+    );
+
+    await waitFor(() => {
+      expect(storageService.getCalendarEventsByMemoryId).toHaveBeenCalledWith('note-1');
+    });
+    await new Promise(r => setTimeout(r, 20));
+    expect(storageService.replaceCalendarEventsForMemory).not.toHaveBeenCalled();
+    expect(onRecovered).not.toHaveBeenCalled();
+  });
+
+  it('does not recover before the initial sync completes', async () => {
+    const memory = makeEnrichedMemory('note-1', [makeDetectedEvent()]);
+
+    const { rerender } = renderHook(
+      ({ initialSyncComplete }) =>
+        useCalendarEvents({ memories: [memory], memoriesLoaded: true, initialSyncComplete }),
+      { initialProps: { initialSyncComplete: false } }
+    );
+
+    await waitFor(() => {
+      expect(storageService.getCalendarEvents).toHaveBeenCalled();
+    });
+    await new Promise(r => setTimeout(r, 20));
+    // Events may simply not have downloaded yet — recreating now would
+    // duplicate them under fresh IDs once the download lands.
+    expect(storageService.replaceCalendarEventsForMemory).not.toHaveBeenCalled();
+
+    rerender({ initialSyncComplete: true });
+    await waitFor(() => {
+      expect(storageService.replaceCalendarEventsForMemory).toHaveBeenCalledTimes(1);
     });
   });
 });

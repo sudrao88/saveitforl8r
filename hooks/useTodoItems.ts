@@ -37,6 +37,18 @@ export interface UseTodoItemsOptions {
    * tombstones back to Drive, deleting them on every device).
    */
   syncInProgress?: boolean;
+  /**
+   * True once local IndexedDB has been reconciled with Drive this session —
+   * the first download sync completed cleanly, or the device isn't linked to
+   * Drive at all. Orphan reconciliation must wait for it: on a cold start the
+   * local copy of a parent memory may simply be missing (Android can kill the
+   * process before the WebView flushes IndexedDB, even though the memory
+   * still exists on Drive), so a missing memory does not prove deletion until
+   * the first sync has had a chance to restore it. Tombstoning in that window
+   * pushes the tombstones to Drive and permanently deletes the items on every
+   * device.
+   */
+  initialSyncComplete?: boolean;
   /** Optional callback invoked with healed-orphan tombstones so they can be synced to Drive. */
   onTombstones?: (tombstones: TodoItem[]) => void;
 }
@@ -60,7 +72,7 @@ export interface UseTodoItemsReturn {
   pendingCount: number;
 }
 
-export const useTodoItems = ({ memories, memoriesLoaded, syncInProgress = false, onTombstones }: UseTodoItemsOptions): UseTodoItemsReturn => {
+export const useTodoItems = ({ memories, memoriesLoaded, syncInProgress = false, initialSyncComplete = true, onTombstones }: UseTodoItemsOptions): UseTodoItemsReturn => {
   const [itemsList, setItemsList] = useState<TodoItem[]>([]);
   const loaded = useRef(false);
   const processingMemoryIds = useRef(new Set<string>());
@@ -233,10 +245,11 @@ export const useTodoItems = ({ memories, memoriesLoaded, syncInProgress = false,
 
   // Self-heal: tombstone any items whose source memory no longer exists, so they
   // disappear from the UI and the deletion propagates to other devices via sync.
-  // Skipped while a sync is in progress — see `syncInProgress` docstring above.
+  // Skipped while a sync is in progress and until the first sync of the session
+  // has completed — see the `syncInProgress` and `initialSyncComplete` docstrings.
   useEffect(() => {
     if (!memoriesLoaded || !loaded.current) return;
-    if (syncInProgress) return;
+    if (syncInProgress || !initialSyncComplete) return;
 
     const orphanMemoryIds = new Set<string>();
     for (const item of itemsList) {
@@ -272,7 +285,7 @@ export const useTodoItems = ({ memories, memoriesLoaded, syncInProgress = false,
     })();
 
     return () => { cancelled = true; };
-  }, [itemsList, activeMemoryIds, memoriesLoaded, syncInProgress]);
+  }, [itemsList, activeMemoryIds, memoriesLoaded, syncInProgress, initialSyncComplete]);
 
   // Sort: active first (by deadline asc, no-deadline last), then completed, then dismissed.
   // Also drops any item whose source memory is missing — defensive guard for the brief

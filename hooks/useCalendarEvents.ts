@@ -12,6 +12,7 @@ import { logEvent } from '../services/analytics';
 import { ANALYTICS_EVENTS } from '../constants';
 import {
   getCalendarEvents,
+  getCalendarEventsByMemoryId,
   saveCalendarEvents,
   softDeleteCalendarEventsByMemoryId,
   replaceCalendarEventsForMemory,
@@ -31,8 +32,22 @@ export interface UseCalendarEventsOptions {
    * tombstones back to Drive, deleting them on every device).
    */
   syncInProgress?: boolean;
+  /**
+   * True once local IndexedDB has been reconciled with Drive this session —
+   * the first download sync completed cleanly, or the device isn't linked to
+   * Drive at all. Orphan reconciliation and event recovery must wait for it:
+   * on a cold start the local copy of a parent memory may simply be missing
+   * (Android can kill the process before the WebView flushes IndexedDB, even
+   * though the memory still exists on Drive), so a missing memory does not
+   * prove deletion until the first sync has had a chance to restore it.
+   * Tombstoning in that window pushes the tombstones to Drive and permanently
+   * deletes the events on every device.
+   */
+  initialSyncComplete?: boolean;
   /** Optional callback invoked with healed-orphan tombstones so they can be synced to Drive. */
   onTombstones?: (tombstones: CalendarEvent[]) => void;
+  /** Optional callback invoked with events recreated from enrichment data (lost-write recovery) so they can be synced to Drive. */
+  onRecovered?: (events: CalendarEvent[]) => void;
 }
 
 export interface UseCalendarEventsReturn {
@@ -50,7 +65,7 @@ export interface UseCalendarEventsReturn {
   checkAndExpandHorizon: () => Promise<CalendarEvent[]>;
 }
 
-export const useCalendarEvents = ({ memories, memoriesLoaded, syncInProgress = false, onTombstones }: UseCalendarEventsOptions): UseCalendarEventsReturn => {
+export const useCalendarEvents = ({ memories, memoriesLoaded, syncInProgress = false, initialSyncComplete = true, onTombstones, onRecovered }: UseCalendarEventsOptions): UseCalendarEventsReturn => {
   const [eventsList, setEventsList] = useState<CalendarEvent[]>([]);
   const loaded = useRef(false);
   // Guard against concurrent processDetectedEvents calls for the same memory.
@@ -60,6 +75,8 @@ export const useCalendarEvents = ({ memories, memoriesLoaded, syncInProgress = f
   const reconcilingMemoryIds = useRef(new Set<string>());
   const onTombstonesRef = useRef(onTombstones);
   useEffect(() => { onTombstonesRef.current = onTombstones; }, [onTombstones]);
+  const onRecoveredRef = useRef(onRecovered);
+  useEffect(() => { onRecoveredRef.current = onRecovered; }, [onRecovered]);
 
   const activeMemoryIds = useMemo(() => new Set(memories.map(m => m.id)), [memories]);
 
@@ -170,10 +187,11 @@ export const useCalendarEvents = ({ memories, memoriesLoaded, syncInProgress = f
 
   // Self-heal: tombstone any events whose source memory no longer exists, so they
   // disappear from the UI and the deletion propagates to other devices via sync.
-  // Skipped while a sync is in progress — see `syncInProgress` docstring above.
+  // Skipped while a sync is in progress and until the first sync of the session
+  // has completed — see the `syncInProgress` and `initialSyncComplete` docstrings.
   useEffect(() => {
     if (!memoriesLoaded || !loaded.current) return;
-    if (syncInProgress) return;
+    if (syncInProgress || !initialSyncComplete) return;
 
     const orphanMemoryIds = new Set<string>();
     for (const event of eventsList) {
@@ -209,7 +227,54 @@ export const useCalendarEvents = ({ memories, memoriesLoaded, syncInProgress = f
     })();
 
     return () => { cancelled = true; };
-  }, [eventsList, activeMemoryIds, memoriesLoaded, syncInProgress]);
+  }, [eventsList, activeMemoryIds, memoriesLoaded, syncInProgress, initialSyncComplete]);
+
+  // Self-heal, inverse direction: recreate events for active memories whose
+  // enrichment detected events but which have no event rows at all in IDB —
+  // not even tombstones. This recovers from lost IndexedDB writes (e.g. an
+  // Android process kill right after enrichment): the enriched note survives
+  // on Drive and is re-downloaded, but the extracted events never reached
+  // Drive, so nothing else can bring them back. Gated like orphan
+  // reconciliation: only after the first sync has completed, so any events
+  // that DO exist remotely have already been downloaded — recreating before
+  // that would duplicate them under fresh IDs.
+  const recoveryAttemptedIds = useRef(new Set<string>());
+  useEffect(() => {
+    if (!memoriesLoaded || !loaded.current) return;
+    if (syncInProgress || !initialSyncComplete) return;
+
+    const memoryIdsWithEvents = new Set(eventsList.map(e => e.memoryId));
+    const candidates = memories.filter(m =>
+      (m.enrichment?.detectedEvents?.length ?? 0) > 0 &&
+      !memoryIdsWithEvents.has(m.id) &&
+      !recoveryAttemptedIds.current.has(m.id)
+    );
+    if (candidates.length === 0) return;
+
+    let cancelled = false;
+    (async () => {
+      const recovered: CalendarEvent[] = [];
+      for (const memory of candidates) {
+        recoveryAttemptedIds.current.add(memory.id);
+        try {
+          // Verify against IDB, not just eventsList state: rows that synced
+          // down but haven't reached state yet, or tombstones from a
+          // deliberate removal, must not be recreated.
+          const existing = await getCalendarEventsByMemoryId(memory.id);
+          if (existing.length > 0) continue;
+          const created = await processDetectedEvents(memory);
+          recovered.push(...created);
+        } catch (err) {
+          console.error(`[Calendar] Failed to recover events for memory ${memory.id}:`, err);
+        }
+      }
+      if (cancelled || recovered.length === 0) return;
+      console.log(`[Calendar] Recovered ${recovered.length} lost event(s) from enrichment data`);
+      onRecoveredRef.current?.(recovered);
+    })();
+
+    return () => { cancelled = true; };
+  }, [memories, eventsList, memoriesLoaded, syncInProgress, initialSyncComplete, processDetectedEvents]);
 
   // Sort by startDate ascending. Drops deleted events and any whose source memory
   // is missing — defensive guard for the brief window between an orphan being
