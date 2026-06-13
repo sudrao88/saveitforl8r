@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v124",
-  "buildNumber": 124,
-  "buildDate": "2026-06-13T05:47:14.676Z",
+  "version": "saveitforl8r-v125",
+  "buildNumber": 125,
+  "buildDate": "2026-06-13T07:03:56.575Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Related notes are smarter and more relevant. We upgraded to a more capable, multimodal embedding model, so photos are matched on what they actually show — not just their description — and tightened how closely notes must relate before they're linked, cutting down on off-topic suggestions."
+  "changelog": "Related notes now show why they're related: each suggestion lists the tags it shares with the current note (or 'Similar content' when the match is based on meaning rather than tags), so the connections are easier to trust at a glance."
 }
