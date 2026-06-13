@@ -3,7 +3,7 @@ import { Trash2, Loader2, Clock, ExternalLink, Star, ShoppingBag, Tv, BookOpen, 
 import { Memory, Attachment, UploadProgress, CalendarEvent, TodoItem, isMemoryInFlight, isMemoryFailed } from '../types.ts';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import type { RelatedMemoryDisplayItem } from '../hooks/useRelatedMemories';
-import { btn, card, confirm, menu, overlay, text } from '../styles/design-system';
+import { btn, card, chip, confirm, menu, overlay, text } from '../styles/design-system';
 import { downloadDataUri } from '../services/downloadService';
 import { ChecklistDisplay, parseChecklistFromHtml, serializeChecklistToHtml, cascadeToggle } from './ChecklistItems';
 import RecipeCalculatorDialog from './RecipeCalculatorDialog';
@@ -874,14 +874,26 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                                     Related
                                 </span>
                                 {relatedItems.map((item) => (
-                                    <button
-                                        key={item.id}
-                                        onClick={(e) => { e.stopPropagation(); onOpenRelatedMemory?.(item.id); }}
-                                        title="View related memory"
-                                        className="flex items-center gap-1.5 max-w-full text-sm text-(--color-accent) hover:text-(--color-accent-hover) transition-colors duration-(--duration-fast)"
-                                    >
-                                        <span className="truncate">{item.title}</span>
-                                    </button>
+                                    <div key={item.id} className="space-y-0.5">
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); onOpenRelatedMemory?.(item.id); }}
+                                            title="View related memory"
+                                            className="flex items-center gap-1.5 max-w-full text-sm text-(--color-accent) hover:text-(--color-accent-hover) transition-colors duration-(--duration-fast)"
+                                        >
+                                            <span className="truncate">{item.title}</span>
+                                        </button>
+                                        {/* Why related: tags both notes share, or a fallback when the
+                                            match is purely semantic. */}
+                                        {item.sharedTags && item.sharedTags.length > 0 ? (
+                                            <div className="flex flex-wrap items-center gap-1 pl-0.5">
+                                                {item.sharedTags.map((tag) => (
+                                                    <span key={tag} className={chip.tag}>#{tag}</span>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <span className={`${text.caption} pl-0.5`}>Similar content</span>
+                                        )}
+                                    </div>
                                 ))}
                             </div>
                         )}

@@ -5,7 +5,45 @@ import { K_DISPLAY, MemoryVector } from '../services/relatedMemories';
 export interface RelatedMemoryDisplayItem {
   id: string;
   title: string;
+  // Tags shared with the source note — the human-readable "why" behind an
+  // (otherwise opaque) embedding-driven match. Empty when the notes overlap
+  // semantically but share no tags.
+  sharedTags: string[];
 }
+
+// How many shared tags to surface per related row before truncating.
+const MAX_SHARED_TAGS = 6;
+
+// Effective tag set for explaining a match: the user's finalized tags plus the
+// AI's suggested tags. Both feed the embedding, so either is a fair signal.
+const tagsOf = (m: Memory): string[] => {
+  const out: string[] = [];
+  if (Array.isArray(m.tags)) out.push(...m.tags);
+  const suggested = m.enrichment?.suggestedTags;
+  if (Array.isArray(suggested)) out.push(...suggested);
+  // Defend against non-string entries from legacy/synced data before any
+  // string ops downstream (.trim()/.toLowerCase()).
+  return out.filter((t): t is string => typeof t === 'string');
+};
+
+// Tags common to both notes (case-insensitive), keeping the source note's
+// original casing for display and de-duplicating across its tags + suggestions.
+const sharedTagsBetween = (source: Memory, target: Memory): string[] => {
+  const targetSet = new Set(
+    tagsOf(target).map(t => t.trim().toLowerCase()).filter(Boolean),
+  );
+  if (targetSet.size === 0) return [];
+  const seen = new Set<string>();
+  const shared: string[] = [];
+  for (const raw of tagsOf(source)) {
+    const norm = raw.trim().toLowerCase();
+    if (!norm || seen.has(norm) || !targetSet.has(norm)) continue;
+    seen.add(norm);
+    shared.push(raw.trim());
+    if (shared.length >= MAX_SHARED_TAGS) break;
+  }
+  return shared;
+};
 
 // Best human-readable label for a related-memory row: AI entity title, then
 // summary, then the note content itself.
@@ -91,12 +129,13 @@ export const useRelatedMemories = (memories: Memory[]) => {
     const liveById = new Map(memories.filter(m => !m.isDeleted).map(m => [m.id, m]));
     const result = new Map<string, RelatedMemoryDisplayItem[]>();
     for (const memoryId of Object.keys(relatedIdMap)) {
-      if (!liveById.has(memoryId)) continue;
+      const source = liveById.get(memoryId);
+      if (!source) continue;
       const items: RelatedMemoryDisplayItem[] = [];
       for (const id of relatedIdMap[memoryId]) {
         const target = liveById.get(id);
         if (!target) continue; // deleted — drop silently
-        items.push({ id, title: titleForMemory(target) });
+        items.push({ id, title: titleForMemory(target), sharedTags: sharedTagsBetween(source, target) });
         if (items.length >= K_DISPLAY) break;
       }
       if (items.length > 0) result.set(memoryId, items);
