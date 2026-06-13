@@ -51,6 +51,11 @@ export interface EnrichmentData {
   temporalContext?: TemporalContext;
   matchedMomentIds?: string[];     // Moment IDs this note is relevant to (set by enrichment)
 
+  // Similarity embedding (server-generated, powers client-side Related
+  // Memories). Unit-normalized vector; synced with the memory, matched locally.
+  embedding?: number[];
+  embeddingModel?: string;
+
   // Smart enrichment fields (populated based on content classification)
   keyPoints?: string[];
   actionItems?: string[];
@@ -249,35 +254,12 @@ export const isMemoryFailed = (m: Pick<Memory, 'enrichmentStatus' | 'processingE
 
 // --- Related Memories ---
 
-export type EmbeddingModelId = 'embeddinggemma-300m' | 'bge-small-en-v1.5';
-
-/**
- * Quality ranking for embedding models. A RelatedMemoriesRecord computed by a
- * higher-priority model is never overwritten by a lower-priority one,
- * regardless of updatedAt — native EmbeddingGemma results beat web bge-small
- * results. Unknown model ids rank 0 (lose to everything known).
- */
-export const MODEL_PRIORITY: Record<string, number> = {
-  'embeddinggemma-300m': 2,
-  'bge-small-en-v1.5': 1,
-};
+/** Server-side embedding model used for similarity (client matches locally). */
+export const EMBEDDING_MODEL_ID = 'gemini-embedding-001';
 
 export interface RelatedMemoryEntry {
   id: string;       // Related memory id
-  score: number;    // Cosine similarity — only comparable within the same modelId
-}
-
-/**
- * Per-memory derived artifact: top-k similar memories. Synced to Drive as
- * related-{memoryId}.json so all devices display identical results.
- */
-export interface RelatedMemoriesRecord {
-  memoryId: string;
-  related: RelatedMemoryEntry[];
-  modelId: EmbeddingModelId | string;
-  computedAt: number;
-  updatedAt: number;
-  isDeleted?: boolean;  // Tombstone, cascades from memory deletion
+  score: number;    // Cosine similarity (vectors are unit-normalized)
 }
 
 export interface UploadProgress {

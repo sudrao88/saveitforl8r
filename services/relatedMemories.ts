@@ -1,59 +1,39 @@
-import { MODEL_PRIORITY, RelatedMemoriesRecord, RelatedMemoryEntry } from '../types';
+import { RelatedMemoryEntry } from '../types';
 
 /**
- * Pure similarity math + conflict rules for the Related Memories feature.
- * Kept dependency-free (no Dexie/worker imports) so it is shared between the
- * embedding worker, storage layer, sync layer, and unit tests.
+ * Pure similarity math + the incremental matcher core for Related Memories.
+ *
+ * Embeddings are produced server-side (a powerful model) and synced with each
+ * memory. All matching happens locally: every device holds the same vectors
+ * and runs this same deterministic top-k, so related lists are identical
+ * everywhere with nothing extra to sync.
+ *
+ * Dependency-free (no Dexie/DOM/worker imports) so it runs in the matcher
+ * worker and in unit tests unchanged.
  */
 
-// How many entries are stored/synced per memory vs displayed on the card.
+// How many entries are kept per memory vs displayed on the card.
 export const K_STORE = 8;
 export const K_DISPLAY = 5;
 // Entries below this cosine similarity are noise, not "related".
 export const MIN_SIMILARITY = 0.5;
-
-/** Fired whenever locally persisted related-memories lists change (worker compute or sync download). */
-export const RELATED_MEMORIES_UPDATED_EVENT = 'related-memories-updated';
-/** Fired with freshly written records ({ detail: { records } }) that still need uploading to Drive. */
-export const RELATED_MEMORIES_NEED_SYNC_EVENT = 'related-memories-need-sync';
-
-export const dot = (a: number[], b: number[]): number => {
-  let sum = 0;
-  const len = Math.min(a.length, b.length);
-  for (let i = 0; i < len; i++) sum += a[i] * b[i];
-  return sum;
-};
-
-export const normalize = (v: number[]): number[] => {
-  const norm = Math.sqrt(dot(v, v));
-  if (norm === 0) return v.slice();
-  return v.map(x => x / norm);
-};
-
-/**
- * Memory-level vector = L2-normalized mean of its chunk vectors.
- * Chunk vectors are already normalized, so the centroid is a standard
- * cheap document embedding and keeps sim(a,b) symmetric.
- */
-export const meanVector = (chunks: number[][]): number[] => {
-  if (chunks.length === 0) return [];
-  const dim = chunks[0].length;
-  const mean = new Array<number>(dim).fill(0);
-  for (const chunk of chunks) {
-    for (let i = 0; i < dim; i++) mean[i] += chunk[i];
-  }
-  for (let i = 0; i < dim; i++) mean[i] /= chunks.length;
-  return normalize(mean);
-};
 
 export interface MemoryVector {
   id: string;
   vector: number[];
 }
 
+/** Cosine similarity for unit-normalized vectors (server normalizes them). */
+export const dot = (a: number[], b: number[]): number => {
+  if (a.length !== b.length) return 0;
+  let sum = 0;
+  for (let i = 0; i < a.length; i++) sum += a[i] * b[i];
+  return sum;
+};
+
 /**
- * Brute-force top-k similar memories for a target. Excludes the target itself
- * and anything under MIN_SIMILARITY. Vectors must all come from the same model.
+ * Brute-force top-k most-similar memories for a target, excluding itself and
+ * anything below the threshold. O(N) per call.
  */
 export const topKRelated = (
   targetId: string,
@@ -69,13 +49,14 @@ export const topKRelated = (
     const score = dot(target, v.vector);
     if (score >= minScore) scored.push({ id: v.id, score });
   }
-  scored.sort((a, b) => b.score - a.score);
+  scored.sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : 1));
   return scored.slice(0, k);
 };
 
 /**
- * Incremental update: insert a new candidate into an existing top-k list if it
- * qualifies. Returns the (possibly unchanged) list and whether it changed.
+ * Insert a candidate into an existing top-k list if it qualifies (used to
+ * propagate a newly-added memory into other memories' lists without a full
+ * recompute). Returns the possibly-updated list and whether it changed.
  */
 export const insertIfBetter = (
   list: RelatedMemoryEntry[],
@@ -85,37 +66,106 @@ export const insertIfBetter = (
 ): { list: RelatedMemoryEntry[]; changed: boolean } => {
   if (entry.score < minScore) return { list, changed: false };
   const withoutEntry = list.filter(e => e.id !== entry.id);
-  const existing = list.find(e => e.id === entry.id);
-  if (existing && existing.score === entry.score && withoutEntry.length === list.length - 1) {
+  const existed = withoutEntry.length !== list.length;
+  if (!existed && withoutEntry.length >= k && withoutEntry[withoutEntry.length - 1].score >= entry.score) {
     return { list, changed: false };
   }
-  if (!existing && withoutEntry.length >= k && withoutEntry[withoutEntry.length - 1].score >= entry.score) {
-    return { list, changed: false };
-  }
-  const next = [...withoutEntry, entry].sort((a, b) => b.score - a.score).slice(0, k);
+  const next = [...withoutEntry, entry]
+    .sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : 1))
+    .slice(0, k);
   const changed = next.length !== list.length || next.some((e, i) => e.id !== list[i].id || e.score !== list[i].score);
-  return { list: next, changed };
+  return { list: changed ? next : list, changed };
 };
-
-const priorityOf = (modelId: string | undefined): number => MODEL_PRIORITY[modelId ?? ''] ?? 0;
 
 /**
- * Conflict rule applied identically at local write time and sync merge time:
- * 1. Tombstone always wins (reflects memory deletion, not model quality).
- * 2. Higher MODEL_PRIORITY wins regardless of updatedAt.
- * 3. Same priority: newer updatedAt wins (ties keep local to avoid churn).
+ * Maintains per-memory top-k related lists incrementally as vectors are added,
+ * changed, or removed. Steady-state updates are O(changes x N); the first bulk
+ * load is O(N^2), done once off the main thread in the matcher worker.
  */
-export const resolveRelatedConflict = (
-  local: RelatedMemoriesRecord | null | undefined,
-  remote: RelatedMemoriesRecord,
-): 'keepLocal' | 'takeRemote' => {
-  if (!local) return 'takeRemote';
-  if (local.isDeleted && !remote.isDeleted) return 'keepLocal';
-  if (remote.isDeleted && !local.isDeleted) return 'takeRemote';
-  const localPriority = priorityOf(local.modelId);
-  const remotePriority = priorityOf(remote.modelId);
-  if (localPriority !== remotePriority) {
-    return remotePriority > localPriority ? 'takeRemote' : 'keepLocal';
+export class RelatedMatcher {
+  private vectors = new Map<string, number[]>();
+  private lists = new Map<string, RelatedMemoryEntry[]>();
+
+  constructor(
+    private k: number = K_STORE,
+    private minScore: number = MIN_SIMILARITY,
+  ) {}
+
+  reset(): void {
+    this.vectors.clear();
+    this.lists.clear();
   }
-  return remote.updatedAt > local.updatedAt ? 'takeRemote' : 'keepLocal';
-};
+
+  /** Apply a batch of vector additions/changes and removals. */
+  update(added: MemoryVector[], removed: string[]): void {
+    // An id in `added` that already has a vector is a change, not a new note.
+    const stripIds = new Set<string>(removed);
+    for (const a of added) {
+      if (this.vectors.has(a.id)) stripIds.add(a.id);
+    }
+
+    // Apply removals.
+    for (const id of removed) {
+      this.vectors.delete(id);
+      this.lists.delete(id);
+    }
+
+    // Drop stripped ids (removed + changed) from every list. A list that loses
+    // an entry needs a full recompute to backfill the freed slot.
+    const affected = new Set<string>();
+    if (stripIds.size > 0) {
+      for (const [sid, list] of this.lists) {
+        const filtered = list.filter(e => !stripIds.has(e.id));
+        if (filtered.length !== list.length) {
+          this.lists.set(sid, filtered);
+          affected.add(sid);
+        }
+      }
+    }
+
+    // Apply added/changed vectors; each needs its own list computed.
+    for (const a of added) {
+      this.vectors.set(a.id, a.vector);
+      affected.add(a.id);
+    }
+
+    const all = this.toArray();
+
+    // Full recompute for affected source notes.
+    for (const sid of affected) {
+      const v = this.vectors.get(sid);
+      if (!v) continue;
+      this.lists.set(sid, topKRelated(sid, v, all, this.k, this.minScore));
+    }
+
+    // Propagate each added/changed note into the lists of notes that were NOT
+    // already fully recomputed above.
+    for (const a of added) {
+      const av = this.vectors.get(a.id);
+      if (!av) continue;
+      for (const [sid, list] of this.lists) {
+        if (sid === a.id || affected.has(sid)) continue;
+        const sv = this.vectors.get(sid);
+        if (!sv || sv.length !== av.length) continue;
+        const score = dot(av, sv);
+        const { list: nextList, changed } = insertIfBetter(list, { id: a.id, score }, this.k, this.minScore);
+        if (changed) this.lists.set(sid, nextList);
+      }
+    }
+  }
+
+  /** Current related lists as id-only arrays (scores aren't needed by the UI). */
+  getMap(): Record<string, string[]> {
+    const out: Record<string, string[]> = {};
+    for (const [id, list] of this.lists) {
+      if (list.length > 0) out[id] = list.map(e => e.id);
+    }
+    return out;
+  }
+
+  private toArray(): MemoryVector[] {
+    const arr: MemoryVector[] = [];
+    for (const [id, vector] of this.vectors) arr.push({ id, vector });
+    return arr;
+  }
+}

@@ -56,9 +56,6 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
             SplashScreen splashScreen = SplashScreen.installSplashScreen(this);
             splashScreen.setKeepOnScreenCondition(() -> !webViewReady);
 
-            // Custom plugins must be registered before the bridge initializes
-            registerPlugin(TextEmbedderPlugin.class);
-
             super.onCreate(savedInstanceState);
 
             // Initialize Share Handler

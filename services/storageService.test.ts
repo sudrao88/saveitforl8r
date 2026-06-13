@@ -208,17 +208,6 @@ describe('storageService', () => {
             return tx;
         });
 
-          // deleteMemory cascades to the relatedMemories store via
-          // tombstoneRelatedMemories, which reads the record first — service
-          // the get request with "no record found".
-          mockRequest.result = undefined;
-          mockStore.get.mockImplementation(() => {
-              setTimeout(() => {
-                  if (mockRequest.onsuccess) mockRequest.onsuccess();
-              }, 0);
-              return mockRequest;
-          });
-
           await deleteMemory(id);
           expect(mockStore.delete).toHaveBeenCalledWith(id);
       });

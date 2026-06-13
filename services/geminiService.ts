@@ -37,6 +37,44 @@ interface SubmitEnrichmentResponse {
   status: string;
 }
 
+interface EmbedResponse {
+  embeddings: number[][];
+  model: string;
+}
+
+/**
+ * Compose the text embedded for a memory's similarity vector. Mirrors the
+ * server's buildEmbeddingText (server/lib/embedding.js) so backfilled vectors
+ * land in the same space as enrich-time ones.
+ */
+export const buildEmbeddingText = (memory: Memory): string => {
+  const e = memory.enrichment;
+  const parts: string[] = [];
+  if (memory.content) parts.push(`CONTENT: ${memory.content}`);
+  if (e?.summary) parts.push(`SUMMARY: ${e.summary}`);
+  if (e?.visualDescription) parts.push(`VISUAL: ${e.visualDescription}`);
+  if (e?.suggestedTags?.length) parts.push(`TAGS: ${e.suggestedTags.join(', ')}`);
+  const entity = e?.entityContext;
+  if (entity) {
+    if (entity.type) parts.push(`TYPE: ${entity.type}`);
+    if (entity.title) parts.push(`ENTITY: ${entity.title}`);
+    if (entity.subtitle) parts.push(`SUBTITLE: ${entity.subtitle}`);
+    if (entity.description) parts.push(`DESCRIPTION: ${entity.description}`);
+  }
+  return parts.join('\n').trim();
+};
+
+/**
+ * Request similarity embeddings for a batch of texts (max 50) from the proxy.
+ * Returns vectors in input order. Used to backfill notes enriched before
+ * embeddings existed; newly enriched notes get their vector inline.
+ */
+export const embedTexts = async (texts: string[]): Promise<number[][]> => {
+  if (texts.length === 0) return [];
+  const result = await postProxy<EmbedResponse>('/api/embed', { texts });
+  return result.embeddings;
+};
+
 /**
  * Submits memory content to the server proxy for AI enrichment.
  * The server validates the request, persists a "processing" status,
@@ -577,16 +615,25 @@ export const queryBrain = async (
     const lightMemories: LightMemory[] = memories
       .filter(m => !isMemoryInFlight(m) && !isMemoryFailed(m))
       .slice(0, MAX_QUERY_MEMORIES)
-      .map(m => ({
-        id: m.id,
-        timestamp: m.timestamp,
-        content: m.content,
-        tags: m.tags,
-        enrichment: m.enrichment,
-        attachments: (m.attachments || []).map(a => ({ name: a.name })),
-        isPending: m.isPending,
-        processingError: m.processingError,
-      }));
+      .map(m => {
+        // Drop the similarity embedding from the query payload — it's large
+        // (~7 KB/memory) and the query endpoint doesn't use it.
+        let enrichment: EnrichmentData | undefined;
+        if (m.enrichment) {
+          const { embedding, embeddingModel, ...rest } = m.enrichment;
+          enrichment = rest as EnrichmentData;
+        }
+        return {
+          id: m.id,
+          timestamp: m.timestamp,
+          content: m.content,
+          tags: m.tags,
+          enrichment,
+          attachments: (m.attachments || []).map(a => ({ name: a.name })),
+          isPending: m.isPending,
+          processingError: m.processingError,
+        };
+      });
 
     const inlinePayload: QueryPayload = {
       query,

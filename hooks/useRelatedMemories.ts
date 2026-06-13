@@ -1,7 +1,6 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Memory } from '../types';
-import { getAllRelatedMemoriesIncludingDeleted } from '../services/storageService';
-import { K_DISPLAY, RELATED_MEMORIES_UPDATED_EVENT } from '../services/relatedMemories';
+import { K_DISPLAY, MemoryVector } from '../services/relatedMemories';
 
 export interface RelatedMemoryDisplayItem {
   id: string;
@@ -18,60 +17,84 @@ const titleForMemory = (memory: Memory): string => {
   return memory.content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 };
 
+const hasEmbedding = (m: Memory): boolean =>
+  !m.isDeleted && Array.isArray(m.enrichment?.embedding) && m.enrichment!.embedding!.length > 0;
+
 /**
- * Resolves persisted related-memories records against the live memory list,
- * producing a per-memory display map for MemoryCard. Records are synced from
- * Drive (native devices are the source of truth) or computed locally by the
- * embedding worker; either path dispatches RELATED_MEMORIES_UPDATED_EVENT.
+ * Computes per-memory "related notes" from the embeddings the server generated
+ * and synced with each memory. Matching runs in a dedicated worker (pure cosine
+ * math, no ML model); the worker is fed vector deltas whenever the embedding set
+ * changes, and returns the full related-id map which we resolve against the
+ * live memory list for display.
  */
 export const useRelatedMemories = (memories: Memory[]) => {
-  const [recordMap, setRecordMap] = useState<Map<string, string[]>>(new Map());
+  const [relatedIdMap, setRelatedIdMap] = useState<Record<string, string[]>>({});
+  const workerRef = useRef<Worker | null>(null);
+  // Last embedding array reference sent per memory id — lets us send only deltas
+  // (a re-enriched note gets a new array reference, so it's detected as changed).
+  const sentRef = useRef<Map<string, number[]>>(new Map());
 
+  // Create the matcher worker once.
   useEffect(() => {
-    let cancelled = false;
-
-    const load = async () => {
-      try {
-        const records = await getAllRelatedMemoriesIncludingDeleted();
-        if (cancelled) return;
-        const map = new Map<string, string[]>();
-        for (const record of records) {
-          if (record.isDeleted || record.related.length === 0) continue;
-          map.set(record.memoryId, record.related.map(e => e.id));
-        }
-        setRecordMap(map);
-      } catch (e) {
-        console.error('[Related] Failed to load related memories:', e);
+    const worker = new Worker(new URL('../services/relatedMatcher.worker.ts', import.meta.url), {
+      type: 'module',
+    });
+    worker.onmessage = (e: MessageEvent) => {
+      if (e.data?.type === 'RELATED_MAP') {
+        setRelatedIdMap(e.data.payload.map || {});
       }
     };
-
-    load();
-    const handleUpdate = () => { load(); };
-    window.addEventListener(RELATED_MEMORIES_UPDATED_EVENT, handleUpdate);
+    workerRef.current = worker;
     return () => {
-      cancelled = true;
-      window.removeEventListener(RELATED_MEMORIES_UPDATED_EVENT, handleUpdate);
+      worker.terminate();
+      workerRef.current = null;
+      sentRef.current.clear();
     };
   }, []);
 
+  // Feed vector deltas to the worker whenever the embedding set changes.
+  useEffect(() => {
+    const worker = workerRef.current;
+    if (!worker) return;
+
+    const current = new Map<string, number[]>();
+    for (const m of memories) {
+      if (hasEmbedding(m)) current.set(m.id, m.enrichment!.embedding!);
+    }
+
+    const sent = sentRef.current;
+    const added: MemoryVector[] = [];
+    const removed: string[] = [];
+
+    for (const [id, vector] of current) {
+      if (sent.get(id) !== vector) added.push({ id, vector }); // new or changed reference
+    }
+    for (const id of sent.keys()) {
+      if (!current.has(id)) removed.push(id);
+    }
+
+    if (added.length === 0 && removed.length === 0) return;
+
+    sentRef.current = current;
+    worker.postMessage({ type: 'UPDATE_VECTORS', payload: { added, removed } });
+  }, [memories]);
+
   const relatedByMemory = useMemo(() => {
-    const liveById = new Map(
-      memories.filter(m => !m.isDeleted).map(m => [m.id, m])
-    );
+    const liveById = new Map(memories.filter(m => !m.isDeleted).map(m => [m.id, m]));
     const result = new Map<string, RelatedMemoryDisplayItem[]>();
-    for (const [memoryId, relatedIds] of recordMap) {
+    for (const memoryId of Object.keys(relatedIdMap)) {
       if (!liveById.has(memoryId)) continue;
       const items: RelatedMemoryDisplayItem[] = [];
-      for (const id of relatedIds) {
+      for (const id of relatedIdMap[memoryId]) {
         const target = liveById.get(id);
-        if (!target) continue; // deleted or not yet synced — drop silently
+        if (!target) continue; // deleted — drop silently
         items.push({ id, title: titleForMemory(target) });
         if (items.length >= K_DISPLAY) break;
       }
       if (items.length > 0) result.set(memoryId, items);
     }
     return result;
-  }, [recordMap, memories]);
+  }, [relatedIdMap, memories]);
 
   return { relatedByMemory };
 };

@@ -20,6 +20,7 @@ import { GoogleGenAI, Type } from '@google/genai';
 import { Firestore } from '@google-cloud/firestore';
 import { createEnrichRouter } from './routes/enrich.js';
 import { createQueryRouter } from './routes/query.js';
+import { createEmbedRouter } from './routes/embed.js';
 import { createMomentRouter } from './routes/moment.js';
 import { createPushRouter } from './routes/push.js';
 import { createUploadRouter } from './routes/upload.js';
@@ -152,6 +153,7 @@ const sharedDeps = { ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GEMINI_TIMEOUT_MS,
 
 app.use('/api/enrich', createEnrichRouter(sharedDeps));
 app.use('/api/query', createQueryRouter(sharedDeps));
+app.use('/api/embed', createEmbedRouter(sharedDeps));
 app.use('/api/push', createPushRouter({ db }));
 app.use('/api/upload', createUploadRouter({ ai, db }));
 

@@ -1,9 +1,8 @@
 
-import { Memory, Moment, MomentSynthesis, CalendarEvent, TodoItem, RelatedMemoriesRecord, isMemoryFailed } from '../types.ts';
+import { Memory, Moment, MomentSynthesis, CalendarEvent, TodoItem, isMemoryFailed } from '../types.ts';
 import { encryptData, decryptData, decryptBatch, EncryptedPayload } from './encryptionService';
 import { db } from './db';
 import { storage } from './platform';
-import { resolveRelatedConflict } from './relatedMemories';
 
 const DB_NAME = 'SaveItForL8rDB';
 const STORE_NAME = 'memories';
@@ -11,8 +10,7 @@ const MOMENTS_STORE = 'moments';
 const MOMENT_SYNTHESIS_STORE = 'momentSyntheses';
 const CALENDAR_EVENTS_STORE = 'calendarEvents';
 const TODO_ITEMS_STORE = 'todoItems';
-const RELATED_MEMORIES_STORE = 'relatedMemories';
-const DB_VERSION = 6;
+const DB_VERSION = 5;
 
 export interface ReconcileReport {
     total: number;
@@ -66,10 +64,6 @@ const openDB = (): Promise<IDBDatabase> => {
       if (!dbInstance.objectStoreNames.contains(TODO_ITEMS_STORE)) {
         const todoStore = dbInstance.createObjectStore(TODO_ITEMS_STORE, { keyPath: 'id' });
         todoStore.createIndex('memoryId', 'memoryId', { unique: false });
-      }
-      // v6: Related memories (per-memory top-k similarity lists, synced to Drive)
-      if (!dbInstance.objectStoreNames.contains(RELATED_MEMORIES_STORE)) {
-        dbInstance.createObjectStore(RELATED_MEMORIES_STORE, { keyPath: 'memoryId' });
       }
     };
 
@@ -309,12 +303,8 @@ export const saveMemory = async (memory: Memory): Promise<void> => {
 export const deleteMemory = async (id: string): Promise<void> => {
   try {
       await db.vectors.where('originalId').equals(id).delete();
-      await db.memoryVectors.delete(id);
       await db.processingQueue.where('noteId').equals(id).delete();
   } catch (e) { console.error("Failed to delete from RAG DB", e); }
-
-  await tombstoneRelatedMemories(id).catch(e =>
-      console.warn(`[Storage] Failed to tombstone related memories for ${id}:`, e));
 
   const dbInstance = await openDB();
   return new Promise((resolve, reject) => {
@@ -379,136 +369,11 @@ export const forceReindexAll = async (): Promise<ReconcileReport> => {
     try {
         console.log("[RAG] Force Reindexing All...");
         await db.vectors.clear();
-        await db.memoryVectors.clear();
         await db.processingQueue.clear();
         return await reconcileEmbeddings();
     } catch (e: any) {
         return { total: 0, enriched: 0, toQueue: 0, alreadyIndexed: 0, pendingInQueue: 0, error: e.message, timestamp: Date.now() };
     }
-};
-
-// --- RelatedMemories CRUD ---
-
-export const getAllRelatedMemoriesIncludingDeleted = async (): Promise<RelatedMemoriesRecord[]> => {
-  try {
-    const dbInstance = await openDB();
-    return new Promise((resolve, reject) => {
-      const tx = dbInstance.transaction(RELATED_MEMORIES_STORE, 'readonly');
-      const store = tx.objectStore(RELATED_MEMORIES_STORE);
-      const request = store.getAll();
-      request.onsuccess = () => resolve(request.result as RelatedMemoriesRecord[]);
-      request.onerror = () => reject(request.error);
-    });
-  } catch (error) {
-    console.error("Failed to get related memories:", error);
-    return [];
-  }
-};
-
-export const getRelatedMemoriesRecord = async (memoryId: string): Promise<RelatedMemoriesRecord | null> => {
-  try {
-    const dbInstance = await openDB();
-    return new Promise((resolve, reject) => {
-      const tx = dbInstance.transaction(RELATED_MEMORIES_STORE, 'readonly');
-      const store = tx.objectStore(RELATED_MEMORIES_STORE);
-      const request = store.get(memoryId);
-      request.onsuccess = () => resolve((request.result as RelatedMemoriesRecord | undefined) ?? null);
-      request.onerror = () => reject(request.error);
-    });
-  } catch (error) {
-    console.error('Failed to get related memories record:', error);
-    return null;
-  }
-};
-
-/**
- * Save a related-memories record, enforcing the model-priority conflict rule
- * against any existing local record. Returns true if the record was written,
- * false if the existing record won (e.g. native gemma result vs web fallback).
- */
-export const saveRelatedMemoriesRecord = async (record: RelatedMemoriesRecord): Promise<boolean> => {
-  const existing = await getRelatedMemoriesRecord(record.memoryId);
-  if (existing && resolveRelatedConflict(existing, record) === 'keepLocal') {
-    return false;
-  }
-  const dbInstance = await openDB();
-  await new Promise<void>((resolve, reject) => {
-    const tx = dbInstance.transaction(RELATED_MEMORIES_STORE, 'readwrite');
-    const store = tx.objectStore(RELATED_MEMORIES_STORE);
-    store.put(record);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-  return true;
-};
-
-/**
- * Batch save with per-record priority checks. Returns the records that were
- * actually written (callers sync only those to Drive).
- */
-export const saveRelatedMemoriesBatch = async (records: RelatedMemoriesRecord[]): Promise<RelatedMemoriesRecord[]> => {
-  const written: RelatedMemoriesRecord[] = [];
-  for (const record of records) {
-    if (await saveRelatedMemoriesRecord(record)) written.push(record);
-  }
-  return written;
-};
-
-const relatedListsEqual = (a: RelatedMemoriesRecord, b: RelatedMemoriesRecord): boolean =>
-  a.modelId === b.modelId &&
-  !a.isDeleted === !b.isDeleted &&
-  a.related.length === b.related.length &&
-  a.related.every((e, i) => e.id === b.related[i].id && e.score === b.related[i].score);
-
-/**
- * Persist worker-computed related lists. Skips records whose list didn't
- * actually change (avoids bumping updatedAt and re-uploading to Drive on
- * every full recompute) and never creates a record for an empty list.
- * Returns the records that were written and therefore need syncing.
- */
-export const persistComputedRelatedMemories = async (records: RelatedMemoriesRecord[]): Promise<RelatedMemoriesRecord[]> => {
-  const written: RelatedMemoriesRecord[] = [];
-  for (const record of records) {
-    const existing = await getRelatedMemoriesRecord(record.memoryId);
-    if (!existing && record.related.length === 0) continue;
-    if (existing && relatedListsEqual(existing, record)) continue;
-    if (existing && resolveRelatedConflict(existing, record) === 'keepLocal') continue;
-    const dbInstance = await openDB();
-    await new Promise<void>((resolve, reject) => {
-      const tx = dbInstance.transaction(RELATED_MEMORIES_STORE, 'readwrite');
-      tx.objectStore(RELATED_MEMORIES_STORE).put(record);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-    });
-    written.push(record);
-  }
-  return written;
-};
-
-export const tombstoneRelatedMemories = async (memoryId: string): Promise<RelatedMemoriesRecord | null> => {
-  const existing = await getRelatedMemoriesRecord(memoryId);
-  if (!existing || existing.isDeleted) return existing;
-  const tombstone: RelatedMemoriesRecord = { ...existing, related: [], isDeleted: true, updatedAt: Date.now() };
-  const dbInstance = await openDB();
-  await new Promise<void>((resolve, reject) => {
-    const tx = dbInstance.transaction(RELATED_MEMORIES_STORE, 'readwrite');
-    const store = tx.objectStore(RELATED_MEMORIES_STORE);
-    store.put(tombstone);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-  return tombstone;
-};
-
-export const deleteRelatedMemoriesHard = async (memoryId: string): Promise<void> => {
-  const dbInstance = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = dbInstance.transaction(RELATED_MEMORIES_STORE, 'readwrite');
-    const store = tx.objectStore(RELATED_MEMORIES_STORE);
-    store.delete(memoryId);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
 };
 
 // --- Moments CRUD ---
@@ -964,8 +829,8 @@ export const factoryReset = async () => {
         }
 
         const dbsToReset = [
-            { name: 'SaveItForL8rDB', stores: ['memories', 'moments', 'momentSyntheses', 'calendarEvents', 'todoItems', 'relatedMemories'] },
-            { name: 'SaveItForL8rRAG', stores: ['vectors', 'memoryVectors', 'processingQueue'] },
+            { name: 'SaveItForL8rDB', stores: ['memories', 'moments', 'momentSyntheses', 'calendarEvents', 'todoItems'] },
+            { name: 'SaveItForL8rRAG', stores: ['vectors', 'processingQueue'] },
             { name: 'auth_db', stores: ['tokens'] },
             { name: 'saveitforl8r-share', stores: ['shares'] }
         ];

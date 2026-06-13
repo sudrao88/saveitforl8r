@@ -43,6 +43,7 @@ import { useMoments } from './hooks/useMoments';
 import { useCalendarEvents } from './hooks/useCalendarEvents';
 import { useTodoItems } from './hooks/useTodoItems';
 import { useRelatedMemories } from './hooks/useRelatedMemories';
+import { useRelatedEmbeddingBackfill } from './hooks/useRelatedEmbeddingBackfill';
 import { useDeletionCandidates } from './hooks/useDeletionCandidates';
 import { useNotifications } from './hooks/useNotifications';
 import useNativeOTA from './hooks/useNativeOTA';
@@ -97,10 +98,10 @@ const AppContent: React.FC = () => {
 
   const { shareData, clearShareData } = useShareReceiver();
   
-  const { sync, isSyncing, isSyncingDownload, syncError, getSyncStatusMap, syncStatusVersion, retrySyncFile, setOnSyncProgress, setOnMemorySynced, syncMoment, syncCalendarEvents, syncTodoItems } = useSync();
+  const { sync, isSyncing, isSyncingDownload, syncError, getSyncStatusMap, syncStatusVersion, retrySyncFile, syncFile, setOnSyncProgress, setOnMemorySynced, syncMoment, syncCalendarEvents, syncTodoItems } = useSync();
   const { authStatus, login, unlink, recheckAuth } = useAuth();
 
-  const { modelStatus, downloadProgress, retryDownload, search, embeddingStats, retryFailedEmbeddings, deleteNoteFromIndex, lastError, closeWorkerDB, activeModel, reinitializeWorker } = useAdaptiveSearch();
+  const { modelStatus, downloadProgress, retryDownload, search, embeddingStats, retryFailedEmbeddings, deleteNoteFromIndex, lastError, closeWorkerDB, isOnline } = useAdaptiveSearch();
 
   const {
     memories,
@@ -209,8 +210,17 @@ const AppContent: React.FC = () => {
     return map;
   }, [todoItems]);
 
-  // Similar-notes lists (computed from embeddings, synced via Drive)
+  // Similar-notes lists, matched locally from server-generated embeddings that
+  // sync with each memory.
   const { relatedByMemory } = useRelatedMemories(memories);
+
+  // Backfill embeddings for notes enriched before the feature existed.
+  useRelatedEmbeddingBackfill({
+    memories,
+    enabled: authStatus === 'linked' && isOnline && initialSyncComplete,
+    syncMemory: syncFile,
+    onRefresh: refreshMemories,
+  });
 
   const handleOpenRelatedMemory = useCallback((memoryId: string) => {
     const target = memories.find(m => m.id === memoryId && !m.isDeleted);
@@ -1242,7 +1252,6 @@ const AppContent: React.FC = () => {
               onPreviousDayNotificationTimeChange={setPreviousDayNotifTime}
               onRequestNotificationPermission={requestNotificationPermission}
               onOpenNotificationSettings={openNotificationSettings}
-              onEmbeddingModelChanged={reinitializeWorker}
           />
         </Suspense>
       </AnimatedPresence>
