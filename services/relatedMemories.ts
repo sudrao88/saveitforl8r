@@ -67,8 +67,15 @@ export const insertIfBetter = (
   if (entry.score < minScore) return { list, changed: false };
   const withoutEntry = list.filter(e => e.id !== entry.id);
   const existed = withoutEntry.length !== list.length;
-  if (!existed && withoutEntry.length >= k && withoutEntry[withoutEntry.length - 1].score >= entry.score) {
-    return { list, changed: false };
+  // Reject only if the new entry can't beat the current worst under the SAME
+  // comparator topKRelated uses (score desc, then id asc). Using a plain
+  // score >= here would drop an equal-score entry that should win the id
+  // tiebreak, making incremental updates diverge from a bulk recompute.
+  if (!existed && withoutEntry.length >= k) {
+    const last = withoutEntry[withoutEntry.length - 1];
+    if (last.score > entry.score || (last.score === entry.score && last.id < entry.id)) {
+      return { list, changed: false };
+    }
   }
   const next = [...withoutEntry, entry]
     .sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : 1))

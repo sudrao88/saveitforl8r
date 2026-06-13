@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { Memory, isMemoryInFlight, isMemoryFailed } from '../types';
 import { embedTexts, buildEmbeddingText } from '../services/geminiService';
 import { getMemory, saveMemory } from '../services/storageService';
@@ -30,15 +30,16 @@ const needsEmbedding = (m: Memory): boolean =>
  * best-effort — stops on error and resumes on the next trigger.
  */
 export const useRelatedEmbeddingBackfill = ({ memories, enabled, syncMemory, onRefresh }: BackfillOptions) => {
-  const runningRef = useRef(false);
-
   useEffect(() => {
-    if (!enabled || runningRef.current) return;
+    if (!enabled) return;
 
     const candidateIds = memories.filter(needsEmbedding).map(m => m.id);
     if (candidateIds.length === 0) return;
 
-    runningRef.current = true;
+    // Per-run cancellation only. React guarantees the previous effect's cleanup
+    // runs before the next effect, so there's no true concurrency; a guarding
+    // ref would survive React 18 StrictMode's synchronous remount and
+    // permanently stall the backfill.
     let cancelled = false;
 
     const run = async () => {
@@ -82,7 +83,6 @@ export const useRelatedEmbeddingBackfill = ({ memories, enabled, syncMemory, onR
       } catch (e) {
         console.warn('[Backfill] embedding backfill failed (will retry):', e);
       } finally {
-        runningRef.current = false;
         if (didWork && !cancelled) onRefresh();
       }
     };

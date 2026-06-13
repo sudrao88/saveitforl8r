@@ -27,6 +27,8 @@ export const createEmbedRouter = ({ ai, GEMINI_TIMEOUT_MS = 60_000 }) => {
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
+    // Stop wasting Gemini quota if the client navigates away / closes the app.
+    req.on('close', () => controller.abort());
 
     try {
       const embeddings = await embedTexts(ai, texts, { signal: controller.signal });

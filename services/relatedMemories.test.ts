@@ -90,6 +90,50 @@ describe('insertIfBetter', () => {
     const { changed } = insertIfBetter(full, { id: 'new', score: 0.5 });
     expect(changed).toBe(false);
   });
+
+  it('evicts an equal-scored worst entry when the candidate wins the id tiebreak', () => {
+    // Full list whose worst entry ties the candidate's score. The candidate's
+    // id sorts before the worst entry's id, so it must replace it (matching
+    // topKRelated's score-then-id ordering).
+    const full = [
+      { id: 'a', score: 0.9 },
+      { id: 'm', score: 0.5 },
+      { id: 'z', score: 0.5 },
+    ];
+    const { list, changed } = insertIfBetter(full, { id: 'b', score: 0.5 }, 3);
+    expect(changed).toBe(true);
+    expect(list.map(e => e.id)).toEqual(['a', 'b', 'm']);
+  });
+
+  it('rejects an equal-scored candidate that loses the id tiebreak', () => {
+    const full = [
+      { id: 'a', score: 0.9 },
+      { id: 'b', score: 0.5 },
+      { id: 'm', score: 0.5 },
+    ];
+    const { changed } = insertIfBetter(full, { id: 'z', score: 0.5 }, 3);
+    expect(changed).toBe(false);
+  });
+});
+
+describe('RelatedMatcher determinism on exact ties', () => {
+  it('matches bulk and incremental output when duplicate embeddings tie', () => {
+    // Several notes share the same embedding (exact-tie scores), exceeding
+    // K_STORE so the id tiebreak decides who makes each list.
+    const same = [1, 0];
+    const vecs = Array.from({ length: K_STORE + 4 }, (_, i) => ({
+      id: `dup-${String(i).padStart(2, '0')}`,
+      vector: same,
+    }));
+
+    const bulk = new RelatedMatcher();
+    bulk.update(vecs, []);
+
+    const incremental = new RelatedMatcher();
+    for (const v of vecs) incremental.update([v], []);
+
+    expect(incremental.getMap()).toEqual(bulk.getMap());
+  });
 });
 
 describe('RelatedMatcher', () => {
