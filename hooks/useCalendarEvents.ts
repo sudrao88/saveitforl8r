@@ -62,7 +62,7 @@ export interface UseCalendarEventsReturn {
    * Edit a single event. For an occurrence of a recurring series this changes
    * only that occurrence — it is marked as modified so the rest of the series
    * (including future horizon expansion) is unaffected. Returns the updated
-   * event for syncing, or null if the event wasn't found.
+   * event for syncing, or null if the event wasn't found or nothing changed.
    */
   updateEvent: (eventId: string, changes: Partial<CalendarEvent>) => Promise<CalendarEvent | null>;
   /** Reload events from IndexedDB (e.g. after sync) */
@@ -187,6 +187,12 @@ export const useCalendarEvents = ({ memories, memoriesLoaded, syncInProgress = f
         console.error(`[Calendar] Cannot update unknown event ${eventId}`);
         return null;
       }
+
+      // Saving without actual changes must not mark the occurrence as edited
+      // or trigger a redundant write + sync.
+      const editableFields = ['title', 'description', 'startDate', 'endDate', 'allDay', 'location', 'people', 'status'] as const;
+      const hasChanges = editableFields.some(f => f in changes && existing[f] !== changes[f]);
+      if (!hasChanges) return null;
 
       const updated: CalendarEvent = {
         ...existing,

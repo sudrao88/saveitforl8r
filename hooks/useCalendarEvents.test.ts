@@ -362,6 +362,39 @@ describe('useCalendarEvents updateEvent', () => {
     expect(updated!.isModifiedOccurrence).toBeUndefined();
   });
 
+  it('does not persist or mark as modified when nothing actually changed', async () => {
+    const event = makeEvent('e1', 'note-1', {
+      title: 'Music class',
+      startDate: '2026-08-01T15:30:00',
+      allDay: false,
+      occurrenceDate: '2026-08-01',
+      recurringGroupId: 'group-1',
+      recurrenceRule: { frequency: 'weekly' },
+    });
+    (storageService.getCalendarEvents as any).mockResolvedValue([event]);
+
+    const { result } = renderHook(() =>
+      useCalendarEvents({ memories: [makeMemory('note-1')], memoriesLoaded: true })
+    );
+    await waitFor(() => expect(result.current.events).toHaveLength(1));
+
+    // Save with all fields identical to the current values
+    let updated: CalendarEvent | null = null;
+    await act(async () => {
+      updated = await result.current.updateEvent('e1', {
+        title: 'Music class',
+        startDate: '2026-08-01T15:30:00',
+        allDay: false,
+        location: undefined,
+        status: 'confirmed',
+      });
+    });
+
+    expect(updated).toBeNull();
+    expect(storageService.saveCalendarEvent).not.toHaveBeenCalled();
+    expect(result.current.events[0].isModifiedOccurrence).toBeUndefined();
+  });
+
   it('returns null for an unknown event id', async () => {
     const { result } = renderHook(() =>
       useCalendarEvents({ memories: [], memoriesLoaded: true })

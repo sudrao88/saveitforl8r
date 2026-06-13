@@ -30,12 +30,14 @@ const parseLocal = (iso: string) => new Date(iso.includes('T') ? iso : iso + 'T0
  * Shift the event's end by the same offset the start moved, preserving the
  * original duration. Returns the old end unchanged if anything fails to parse.
  */
-const shiftEnd = (oldStart: string, newStart: string, oldEnd: string, newAllDay: boolean): string => {
+export const shiftEnd = (oldStart: string, newStart: string, oldEnd: string, newAllDay: boolean): string => {
   const deltaMs = parseLocal(newStart).getTime() - parseLocal(oldStart).getTime();
   const shifted = new Date(parseLocal(oldEnd).getTime() + deltaMs);
   if (isNaN(deltaMs) || isNaN(shifted.getTime())) return oldEnd;
   const dateStr = toLocalDateStr(shifted);
-  if (newAllDay || !oldEnd.includes('T')) return dateStr;
+  // Keep the end's format consistent with the new start: date-only for
+  // all-day events, timed otherwise (including all-day → timed transitions).
+  if (newAllDay) return dateStr;
   return `${dateStr}T${pad(shifted.getHours())}:${pad(shifted.getMinutes())}:00`;
 };
 
@@ -51,7 +53,13 @@ const EventEditDialog: React.FC<EventEditDialogProps> = ({ event, onClose, onSav
   const [status, setStatus] = useState<CalendarEvent['status']>(event.status);
   const [saving, setSaving] = useState(false);
 
-  const canSave = title.trim().length > 0 && date.length > 0 && (allDay || time.length > 0);
+  // Guard against partial/invalid picker values: an unparseable startDate
+  // would crash the calendar view when it calls toLocaleDateString().
+  const canSave =
+    title.trim().length > 0 &&
+    date.length > 0 &&
+    (allDay || time.length > 0) &&
+    !isNaN(parseLocal(allDay ? date : `${date}T${time}:00`).getTime());
 
   const handleSave = useCallback(async () => {
     if (!canSave || saving) return;
