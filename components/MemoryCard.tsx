@@ -884,7 +884,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                                         </button>
                                         {/* Why related: tags both notes share, or a fallback when the
                                             match is purely semantic. */}
-                                        {item.sharedTags.length > 0 ? (
+                                        {item.sharedTags && item.sharedTags.length > 0 ? (
                                             <div className="flex flex-wrap items-center gap-1 pl-0.5">
                                                 {item.sharedTags.map((tag) => (
                                                     <span key={tag} className={chip.tag}>#{tag}</span>

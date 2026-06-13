@@ -21,7 +21,9 @@ const tagsOf = (m: Memory): string[] => {
   if (Array.isArray(m.tags)) out.push(...m.tags);
   const suggested = m.enrichment?.suggestedTags;
   if (Array.isArray(suggested)) out.push(...suggested);
-  return out;
+  // Defend against non-string entries from legacy/synced data before any
+  // string ops downstream (.trim()/.toLowerCase()).
+  return out.filter((t): t is string => typeof t === 'string');
 };
 
 // Tags common to both notes (case-insensitive), keeping the source note's
