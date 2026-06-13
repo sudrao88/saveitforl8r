@@ -257,6 +257,77 @@ describe('expandHorizon', () => {
     ];
     expect(expandHorizon(existing)).toEqual([]);
   });
+
+  it('templates new occurrences from the latest unmodified occurrence, not a user-edited one', () => {
+    const existing = [
+      makeEvent({
+        id: 'evt-1',
+        occurrenceDate: '2026-04-10',
+        startDate: '2026-04-10T18:00:00',
+        recurringGroupId: 'group-1',
+        recurrenceRule: { frequency: 'weekly' },
+      }),
+      // User moved this occurrence from Fri 4/17 to Mon 4/20 and renamed it.
+      makeEvent({
+        id: 'evt-2',
+        occurrenceDate: '2026-04-17',
+        startDate: '2026-04-20T19:30:00',
+        title: 'Yoga class (special session)',
+        location: 'Community hall',
+        recurringGroupId: 'group-1',
+        recurrenceRule: { frequency: 'weekly' },
+        isModifiedOccurrence: true,
+      }),
+    ];
+    const added = expandHorizon(existing);
+    expect(added.length).toBeGreaterThan(0);
+    // Generation continues from the series' latest slot (4/17 → 4/24)…
+    expect(added[0].occurrenceDate).toBe('2026-04-24');
+    // …using the unmodified occurrence's properties, not the edited one's.
+    for (const evt of added) {
+      expect(evt.title).toBe('Yoga class');
+      expect(evt.location).toBeUndefined();
+      expect(evt.startDate.endsWith('T18:00:00')).toBe(true);
+      expect(evt.isModifiedOccurrence).toBeUndefined();
+    }
+  });
+
+  it('does not regenerate the original slot of a moved occurrence', () => {
+    // occurrenceDate keeps the original series slot when the user moves an
+    // occurrence, so expansion must not recreate an event on that slot.
+    const existing = [
+      makeEvent({
+        id: 'evt-1',
+        occurrenceDate: '2026-04-10',
+        startDate: '2026-04-13T18:00:00', // moved 4/10 → 4/13
+        recurringGroupId: 'group-1',
+        recurrenceRule: { frequency: 'weekly' },
+        isModifiedOccurrence: true,
+      }),
+    ];
+    const added = expandHorizon(existing);
+    expect(added.length).toBeGreaterThan(0);
+    expect(added.some(e => e.occurrenceDate === '2026-04-10')).toBe(false);
+    expect(added[0].occurrenceDate).toBe('2026-04-17');
+  });
+
+  it('falls back to the latest occurrence as template when every occurrence was edited', () => {
+    const existing = [
+      makeEvent({
+        id: 'evt-1',
+        occurrenceDate: '2026-04-10',
+        startDate: '2026-04-10T19:00:00',
+        title: 'Edited title',
+        recurringGroupId: 'group-1',
+        recurrenceRule: { frequency: 'weekly' },
+        isModifiedOccurrence: true,
+      }),
+    ];
+    const added = expandHorizon(existing);
+    expect(added.length).toBeGreaterThan(0);
+    expect(added[0].title).toBe('Edited title');
+    expect(added[0].startDate.endsWith('T19:00:00')).toBe(true);
+  });
 });
 
 describe('expandEventDays', () => {

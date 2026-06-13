@@ -20,11 +20,13 @@ import {
   FileText,
   CalendarDays,
   Repeat,
+  Pencil,
 } from 'lucide-react';
 import { CalendarEvent, TodoItem, Memory, Attachment } from '../types';
 import MemoryPreviewModal from './MemoryPreviewModal';
+import EventEditDialog from './EventEditDialog';
 import { expandEventDays, MultiDayInfo } from '../utils/calendarUtils';
-import { overlay } from '../styles/design-system';
+import { btn, overlay } from '../styles/design-system';
 
 interface CalendarAgendaViewProps {
   events: CalendarEvent[];
@@ -44,6 +46,11 @@ interface CalendarAgendaViewProps {
   onOpenEvent?: (eventId: string) => void;
   /** Opens the to-do list scrolled to the given item (from preview modal links) */
   onOpenTodoItem?: (itemId: string) => void;
+  /**
+   * Persist edits to a single event. For occurrences of a recurring series
+   * only that occurrence changes. When omitted, event editing is disabled.
+   */
+  onUpdateEvent?: (eventId: string, changes: Partial<CalendarEvent>) => Promise<void> | void;
 }
 
 // One event card within a day group; multi-day events produce an item
@@ -165,7 +172,8 @@ const EventCard: React.FC<{
   isHighlighted?: boolean;
   multiDay?: MultiDayInfo;
   onViewMemory: (memory: Memory) => void;
-}> = ({ event, memory, isPast, isHighlighted, multiDay, onViewMemory }) => {
+  onEditEvent?: (event: CalendarEvent) => void;
+}> = ({ event, memory, isPast, isHighlighted, multiDay, onViewMemory, onEditEvent }) => {
   const time = formatTime(event.startDate);
   const endTime = event.endDate ? formatTime(event.endDate) : null;
   const detailTextClass = isPast ? 'text-(--color-text-tertiary)' : 'text-(--color-text-secondary)';
@@ -256,7 +264,18 @@ const EventCard: React.FC<{
             <span className="flex items-center gap-1 text-xs text-(--color-accent)">
               <Repeat size={10} />
               {event.recurrenceRule?.frequency}
+              {event.isModifiedOccurrence ? ' · edited' : ''}
             </span>
+          )}
+          {/* Edit (first day only for multi-day spans) */}
+          {onEditEvent && isFirstDay && (
+            <button
+              onClick={() => onEditEvent(event)}
+              className={`${btn.icon} -mr-2`}
+              aria-label="Edit event"
+            >
+              <Pencil size={14} />
+            </button>
           )}
         </div>
       </div>
@@ -293,8 +312,10 @@ const CalendarAgendaView: React.FC<CalendarAgendaViewProps> = ({
   todosByMemory,
   onOpenEvent,
   onOpenTodoItem,
+  onUpdateEvent,
 }) => {
   const [previewMemoryId, setPreviewMemoryId] = useState<string | null>(null);
+  const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
   const [activeHighlightId, setActiveHighlightId] = useState<string | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -341,6 +362,9 @@ const CalendarAgendaView: React.FC<CalendarAgendaViewProps> = ({
 
   // Dismiss preview modal on Android back button
   useBackButton(() => setPreviewMemoryId(null), previewMemoryId !== null);
+
+  // Dismiss event edit dialog on Android back button
+  useBackButton(() => setEditingEvent(null), editingEvent !== null);
 
   const handleViewMemory = useCallback(
     (memory: Memory) => {
@@ -431,6 +455,7 @@ const CalendarAgendaView: React.FC<CalendarAgendaViewProps> = ({
                           isHighlighted={activeHighlightId === event.id}
                           multiDay={multiDay}
                           onViewMemory={handleViewMemory}
+                          onEditEvent={onUpdateEvent ? setEditingEvent : undefined}
                         />
                       ))}
                     </div>
@@ -441,6 +466,15 @@ const CalendarAgendaView: React.FC<CalendarAgendaViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* Event Edit Dialog */}
+      {editingEvent && onUpdateEvent && (
+        <EventEditDialog
+          event={editingEvent}
+          onClose={() => setEditingEvent(null)}
+          onSave={changes => onUpdateEvent(editingEvent.id, changes)}
+        />
+      )}
 
       {/* Memory Preview Modal */}
       {previewMemory && (

@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from '@testing-library/react';
+import { renderHook, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useCalendarEvents } from './useCalendarEvents';
 import * as storageService from '../services/storageService';
@@ -247,6 +247,163 @@ describe('useCalendarEvents orphan reconciliation', () => {
       expect(storageService.softDeleteCalendarEventsByMemoryId).toHaveBeenCalledWith('deleted-note');
       expect(onTombstones).toHaveBeenCalledWith([tombstone]);
     });
+  });
+});
+
+describe('useCalendarEvents updateEvent', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (storageService.getCalendarEvents as any).mockResolvedValue([]);
+    (storageService.getCalendarEventsByMemoryId as any).mockResolvedValue([]);
+    (storageService.saveCalendarEvent as any).mockResolvedValue(undefined);
+    (storageService.saveCalendarEvents as any).mockResolvedValue(undefined);
+    (storageService.softDeleteCalendarEventsByMemoryId as any).mockResolvedValue([]);
+    (storageService.replaceCalendarEventsForMemory as any).mockResolvedValue([]);
+  });
+
+  it('edits a single occurrence of a recurring series and marks it as modified', async () => {
+    const occurrence = makeEvent('e2', 'note-1', {
+      startDate: '2026-08-01T15:30:00',
+      occurrenceDate: '2026-08-01',
+      allDay: false,
+      recurringGroupId: 'group-1',
+      recurrenceRule: { frequency: 'weekly' },
+    });
+    const events = [
+      makeEvent('e1', 'note-1', {
+        startDate: '2026-07-25T15:30:00',
+        occurrenceDate: '2026-07-25',
+        recurringGroupId: 'group-1',
+        recurrenceRule: { frequency: 'weekly' },
+      }),
+      occurrence,
+    ];
+    (storageService.getCalendarEvents as any).mockResolvedValue(events);
+
+    const { result } = renderHook(() =>
+      useCalendarEvents({ memories: [makeMemory('note-1')], memoriesLoaded: true })
+    );
+    await waitFor(() => expect(result.current.events).toHaveLength(2));
+
+    // Move the Saturday 8/1 occurrence to Monday 8/3
+    let updated: CalendarEvent | null = null;
+    await act(async () => {
+      updated = await result.current.updateEvent('e2', { startDate: '2026-08-03T15:30:00' });
+    });
+
+    expect(updated).not.toBeNull();
+    expect(updated!.startDate).toBe('2026-08-03T15:30:00');
+    expect(updated!.isModifiedOccurrence).toBe(true);
+    // Series-tracking fields are untouched so the rest of the series (and
+    // horizon expansion) is unaffected.
+    expect(updated!.occurrenceDate).toBe('2026-08-01');
+    expect(updated!.recurringGroupId).toBe('group-1');
+    expect(updated!.recurrenceRule).toEqual({ frequency: 'weekly' });
+    expect(updated!.updatedAt).toBeGreaterThanOrEqual(occurrence.updatedAt);
+    expect(storageService.saveCalendarEvent).toHaveBeenCalledWith(updated);
+
+    // Only the edited occurrence changed in state; its sibling is untouched.
+    await waitFor(() => {
+      const e1 = result.current.events.find(e => e.id === 'e1');
+      const e2 = result.current.events.find(e => e.id === 'e2');
+      expect(e1?.startDate).toBe('2026-07-25T15:30:00');
+      expect(e1?.isModifiedOccurrence).toBeUndefined();
+      expect(e2?.startDate).toBe('2026-08-03T15:30:00');
+    });
+  });
+
+  it('does not strip identity fields when changes include them', async () => {
+    const event = makeEvent('e1', 'note-1', {
+      occurrenceDate: '2026-06-01',
+      recurringGroupId: 'group-1',
+      recurrenceRule: { frequency: 'weekly' },
+    });
+    (storageService.getCalendarEvents as any).mockResolvedValue([event]);
+
+    const { result } = renderHook(() =>
+      useCalendarEvents({ memories: [makeMemory('note-1')], memoriesLoaded: true })
+    );
+    await waitFor(() => expect(result.current.events).toHaveLength(1));
+
+    let updated: CalendarEvent | null = null;
+    await act(async () => {
+      updated = await result.current.updateEvent('e1', {
+        title: 'New title',
+        id: 'hijacked',
+        memoryId: 'other-note',
+        occurrenceDate: '2026-06-08',
+        recurringGroupId: 'other-group',
+      } as Partial<CalendarEvent>);
+    });
+
+    expect(updated).toMatchObject({
+      id: 'e1',
+      memoryId: 'note-1',
+      title: 'New title',
+      occurrenceDate: '2026-06-01',
+      recurringGroupId: 'group-1',
+    });
+  });
+
+  it('does not mark non-recurring events as modified occurrences', async () => {
+    const event = makeEvent('e1', 'note-1');
+    (storageService.getCalendarEvents as any).mockResolvedValue([event]);
+
+    const { result } = renderHook(() =>
+      useCalendarEvents({ memories: [makeMemory('note-1')], memoriesLoaded: true })
+    );
+    await waitFor(() => expect(result.current.events).toHaveLength(1));
+
+    let updated: CalendarEvent | null = null;
+    await act(async () => {
+      updated = await result.current.updateEvent('e1', { title: 'Renamed' });
+    });
+    expect(updated!.title).toBe('Renamed');
+    expect(updated!.isModifiedOccurrence).toBeUndefined();
+  });
+
+  it('does not persist or mark as modified when nothing actually changed', async () => {
+    const event = makeEvent('e1', 'note-1', {
+      title: 'Music class',
+      startDate: '2026-08-01T15:30:00',
+      allDay: false,
+      occurrenceDate: '2026-08-01',
+      recurringGroupId: 'group-1',
+      recurrenceRule: { frequency: 'weekly' },
+    });
+    (storageService.getCalendarEvents as any).mockResolvedValue([event]);
+
+    const { result } = renderHook(() =>
+      useCalendarEvents({ memories: [makeMemory('note-1')], memoriesLoaded: true })
+    );
+    await waitFor(() => expect(result.current.events).toHaveLength(1));
+
+    // Save with all fields identical to the current values
+    let updated: CalendarEvent | null = null;
+    await act(async () => {
+      updated = await result.current.updateEvent('e1', {
+        title: 'Music class',
+        startDate: '2026-08-01T15:30:00',
+        allDay: false,
+        location: undefined,
+        status: 'confirmed',
+      });
+    });
+
+    expect(updated).toBeNull();
+    expect(storageService.saveCalendarEvent).not.toHaveBeenCalled();
+    expect(result.current.events[0].isModifiedOccurrence).toBeUndefined();
+  });
+
+  it('returns null for an unknown event id', async () => {
+    const { result } = renderHook(() =>
+      useCalendarEvents({ memories: [], memoriesLoaded: true })
+    );
+    await waitFor(() => expect(storageService.getCalendarEvents).toHaveBeenCalled());
+
+    const updated = await result.current.updateEvent('missing', { title: 'x' });
+    expect(updated).toBeNull();
+    expect(storageService.saveCalendarEvent).not.toHaveBeenCalled();
   });
 });
 
