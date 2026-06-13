@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
-import { Trash2, Loader2, Clock, ExternalLink, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, WifiOff, CloudOff, FileText, Paperclip, MoreVertical, AlertTriangle, AlertCircle, LogIn, Maximize2, Eye, Pin, Pencil, Lightbulb, CircleCheck, UtensilsCrossed, ListOrdered, ThumbsUp, ThumbsDown, DollarSign, MapPin, CalendarDays, ClipboardList, MessageSquare, Users, Mic, Code, Heart, Scale, GraduationCap, Briefcase, Music, Film, BookOpenCheck, Bookmark, Phone, Mail, ScrollText, Tag, Clock3, Flame, Quote, Hourglass, Sparkles, Calculator, CheckSquare, Square } from 'lucide-react';
+import { Trash2, Loader2, Clock, ExternalLink, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, WifiOff, CloudOff, FileText, Paperclip, MoreVertical, AlertTriangle, AlertCircle, LogIn, Maximize2, Eye, Pin, Pencil, Lightbulb, CircleCheck, UtensilsCrossed, ListOrdered, ThumbsUp, ThumbsDown, DollarSign, MapPin, CalendarDays, ClipboardList, MessageSquare, Users, Mic, Code, Heart, Scale, GraduationCap, Briefcase, Music, Film, BookOpenCheck, Bookmark, Phone, Mail, ScrollText, Tag, Clock3, Flame, Quote, Hourglass, Sparkles, Calculator, CheckSquare, Square, Waypoints } from 'lucide-react';
 import { Memory, Attachment, UploadProgress, CalendarEvent, TodoItem, isMemoryInFlight, isMemoryFailed } from '../types.ts';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
+import type { RelatedMemoryDisplayItem } from '../hooks/useRelatedMemories';
 import { btn, card, confirm, menu, overlay, text } from '../styles/design-system';
 import { downloadDataUri } from '../services/downloadService';
 import { ChecklistDisplay, parseChecklistFromHtml, serializeChecklistToHtml, cascadeToggle } from './ChecklistItems';
@@ -222,6 +223,10 @@ interface MemoryCardProps {
   onOpenCalendarEvent?: (eventId: string) => void;
   /** Opens the to-do list scrolled to the given item */
   onOpenTodoItem?: (itemId: string) => void;
+  /** Similar notes (from embedding similarity) for the "Related" section */
+  relatedMemories?: RelatedMemoryDisplayItem[];
+  /** Opens the given related memory in a preview */
+  onOpenRelatedMemory?: (memoryId: string) => void;
 }
 
 // Recurring events expand into many occurrences sharing a recurringGroupId —
@@ -281,7 +286,7 @@ const linkifyHtml = (html: string): string => {
     }).join('');
 };
 
-const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUpdate, onExpand, onViewAttachment, onTogglePin, onEdit, isDialog, isAuthenticated = true, onSignIn, syncStatus, onSyncRetry, uploadProgress, index, calendarEvents, todoItems, onOpenCalendarEvent, onOpenTodoItem }) => {
+const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUpdate, onExpand, onViewAttachment, onTogglePin, onEdit, isDialog, isAuthenticated = true, onSignIn, syncStatus, onSyncRetry, uploadProgress, index, calendarEvents, todoItems, onOpenCalendarEvent, onOpenTodoItem, relatedMemories, onOpenRelatedMemory }) => {
   const [isConfirming, setIsConfirming] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -416,6 +421,10 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
     () => (onOpenTodoItem ? (todoItems ?? []).filter(item => !item.isDismissed) : []),
     [todoItems, onOpenTodoItem]
   );
+
+  // Similar notes — same dead-button rule as events/todos: without the open
+  // handler the rows would do nothing, so hide the section entirely.
+  const relatedItems = onOpenRelatedMemory ? (relatedMemories ?? []) : [];
 
 
   // Robust AI text extraction
@@ -677,7 +686,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
             {/* Enrichment Icon Row + Expandable Sections */}
             {(() => {
                 const typeSections = enrichment ? getContentTypeSections(enrichment.contentType, enrichment as EnrichmentFields) : [];
-                const hasAnyCTA = aiText || typeSections.length > 0 || targetUri || linkedEvents.length > 0 || linkedTodos.length > 0;
+                const hasAnyCTA = aiText || typeSections.length > 0 || targetUri || linkedEvents.length > 0 || linkedTodos.length > 0 || relatedItems.length > 0;
                 if (!hasAnyCTA) return null;
 
                 // Date-like and Action Items enrichment sections use the same
@@ -730,6 +739,16 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                                     className={`p-2 rounded-(--radius-lg) transition-colors ${expandedSection === 'linked-todos' ? 'bg-(--color-surface-raised)/60 text-(--color-text-primary)' : 'text-(--color-text-tertiary) hover:text-(--color-text-secondary) hover:bg-(--color-surface-hover-subtle)'}`}
                                 >
                                     <CircleCheck size={16} className="text-(--color-success)" />
+                                </button>
+                            )}
+                            {relatedItems.length > 0 && (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); setExpandedSection(expandedSection === 'related' ? null : 'related'); }}
+                                    title="Related memories"
+                                    aria-label="Show related memories"
+                                    className={`p-2 rounded-(--radius-lg) transition-colors ${expandedSection === 'related' ? 'bg-(--color-surface-raised)/60 text-(--color-text-primary)' : 'text-(--color-text-tertiary) hover:text-(--color-text-secondary) hover:bg-(--color-surface-hover-subtle)'}`}
+                                >
+                                    <Waypoints size={16} className="text-(--color-accent)" />
                                 </button>
                             )}
                             {enrichment?.contentType === 'recipe' && Array.isArray(enrichment.ingredients) && enrichment.ingredients.length > 0 && (
@@ -842,6 +861,26 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                                         {item.deadline && (
                                             <span className="text-xs text-(--color-text-tertiary) shrink-0">{formatLinkDate(item.deadline)}</span>
                                         )}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Expandable: similar notes from embedding similarity */}
+                        {expandedSection === 'related' && relatedItems.length > 0 && (
+                            <div className="pt-1 space-y-1 animate-in fade-in slide-in-from-top-1 duration-(--duration-fast)">
+                                <span className={`flex items-center gap-1.5 ${text.label}`}>
+                                    <Waypoints size={12} className="text-(--color-accent)" />
+                                    Related
+                                </span>
+                                {relatedItems.map((item) => (
+                                    <button
+                                        key={item.id}
+                                        onClick={(e) => { e.stopPropagation(); onOpenRelatedMemory?.(item.id); }}
+                                        title="View related memory"
+                                        className="flex items-center gap-1.5 max-w-full text-sm text-(--color-accent) hover:text-(--color-accent-hover) transition-colors duration-(--duration-fast)"
+                                    >
+                                        <span className="truncate">{item.title}</span>
                                     </button>
                                 ))}
                             </div>

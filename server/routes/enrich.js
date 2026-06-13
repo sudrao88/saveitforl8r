@@ -23,6 +23,7 @@ import {
 } from '../services/gemini.js';
 import { sanitizeUserInput } from '../lib/sanitize.js';
 import { sendSilentPush } from '../lib/silentPush.js';
+import { embedTexts, buildEmbeddingText, EMBEDDING_MODEL } from '../lib/embedding.js';
 
 /**
  * Performs moment matching: evaluates if a newly enriched note is relevant
@@ -366,6 +367,29 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
               console.error(`[Enrich] [${req.requestId}] Moment matching failed (non-fatal):`, matchErr.message);
               sanitized.matchedMomentIds = [];
             }
+          }
+
+          // Similarity embedding (non-fatal). Powers client-side "Related
+          // Memories": the client stores this vector, syncs it with the memory,
+          // and matches locally. A failure here just means the note has no
+          // related-notes until the client backfills it via /api/embed.
+          try {
+            const embedInput = buildEmbeddingText(text, sanitized);
+            if (embedInput) {
+              const embedController = new AbortController();
+              const embedTimeout = setTimeout(() => embedController.abort(), GEMINI_TIMEOUT_MS);
+              try {
+                const [vector] = await embedTexts(ai, [embedInput], { signal: embedController.signal });
+                if (vector) {
+                  sanitized.embedding = vector;
+                  sanitized.embeddingModel = EMBEDDING_MODEL;
+                }
+              } finally {
+                clearTimeout(embedTimeout);
+              }
+            }
+          } catch (embedErr) {
+            console.error(`[Enrich] [${req.requestId}] Embedding failed (non-fatal):`, embedErr.message);
           }
 
           persistEnrichmentResult(memoryId, req.userId, 'completed', sanitized);

@@ -163,6 +163,29 @@ export const validateQueryInput = (req, res, next) => {
   next();
 };
 
+const MAX_EMBED_BATCH = 50;
+const MAX_EMBED_TEXT_LENGTH = 8000;
+
+export const validateEmbedInput = (req, res, next) => {
+  const { texts } = req.body;
+
+  if (!Array.isArray(texts))
+    return res.status(400).json({ error: 'texts is required and must be an array' });
+  if (texts.length === 0)
+    return res.status(400).json({ error: 'texts must not be empty' });
+  if (texts.length > MAX_EMBED_BATCH)
+    return res.status(400).json({ error: `Too many texts (max ${MAX_EMBED_BATCH})` });
+
+  for (const t of texts) {
+    if (typeof t !== 'string')
+      return res.status(400).json({ error: 'Each text must be a string' });
+    if (t.length > MAX_EMBED_TEXT_LENGTH)
+      return res.status(400).json({ error: `Text too long (max ${MAX_EMBED_TEXT_LENGTH} chars)` });
+  }
+
+  next();
+};
+
 export const validateResultsInput = (req, res, next) => {
   const { memoryIds } = req.body;
 

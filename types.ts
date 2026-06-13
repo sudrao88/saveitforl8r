@@ -51,6 +51,11 @@ export interface EnrichmentData {
   temporalContext?: TemporalContext;
   matchedMomentIds?: string[];     // Moment IDs this note is relevant to (set by enrichment)
 
+  // Similarity embedding (server-generated, powers client-side Related
+  // Memories). Unit-normalized vector; synced with the memory, matched locally.
+  embedding?: number[];
+  embeddingModel?: string;
+
   // Smart enrichment fields (populated based on content classification)
   keyPoints?: string[];
   actionItems?: string[];
@@ -247,6 +252,16 @@ export const isMemoryInFlight = (m: Pick<Memory, 'enrichmentStatus' | 'isPending
 export const isMemoryFailed = (m: Pick<Memory, 'enrichmentStatus' | 'processingError'>): boolean =>
   m.enrichmentStatus === 'failed_submit' || m.enrichmentStatus === 'failed_server'
   || (m.enrichmentStatus === undefined && m.processingError === true);
+
+// --- Related Memories ---
+
+/** Server-side embedding model used for similarity (client matches locally). */
+export const EMBEDDING_MODEL_ID = 'gemini-embedding-001';
+
+export interface RelatedMemoryEntry {
+  id: string;       // Related memory id
+  score: number;    // Cosine similarity (vectors are unit-normalized)
+}
 
 export interface UploadProgress {
   status: 'uploading' | 'processing' | 'completed' | 'failed';

@@ -1,6 +1,7 @@
 import React from 'react';
 import MemoryCard from './MemoryCard';
 import { Memory, Attachment, UploadProgress, CalendarEvent, TodoItem } from '../types';
+import type { RelatedMemoryDisplayItem } from '../hooks/useRelatedMemories';
 
 interface VirtualizedMemoryGridProps {
   memories: Memory[];
@@ -21,6 +22,8 @@ interface VirtualizedMemoryGridProps {
   todosByMemory?: Map<string, TodoItem[]>;
   onOpenCalendarEvent?: (eventId: string) => void;
   onOpenTodoItem?: (itemId: string) => void;
+  relatedByMemory?: Map<string, RelatedMemoryDisplayItem[]>;
+  onOpenRelatedMemory?: (memoryId: string) => void;
 }
 
 const VirtualizedMemoryGrid: React.FC<VirtualizedMemoryGridProps> = ({
@@ -42,6 +45,8 @@ const VirtualizedMemoryGrid: React.FC<VirtualizedMemoryGridProps> = ({
   todosByMemory,
   onOpenCalendarEvent,
   onOpenTodoItem,
+  relatedByMemory,
+  onOpenRelatedMemory,
 }) => {
   return (
     <div
@@ -77,6 +82,8 @@ const VirtualizedMemoryGrid: React.FC<VirtualizedMemoryGridProps> = ({
             todoItems={todosByMemory?.get(mem.id)}
             onOpenCalendarEvent={onOpenCalendarEvent}
             onOpenTodoItem={onOpenTodoItem}
+            relatedMemories={relatedByMemory?.get(mem.id)}
+            onOpenRelatedMemory={onOpenRelatedMemory}
           />
         </div>
         );
