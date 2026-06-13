@@ -87,7 +87,9 @@ describe('insertIfBetter', () => {
 
   it('is a no-op when the candidate is worse than a full list', () => {
     const full = Array.from({ length: K_STORE }, (_, i) => ({ id: `n${i}`, score: 0.9 - i * 0.01 }));
-    const { changed } = insertIfBetter(full, { id: 'new', score: 0.5 });
+    // minScore 0 so this exercises the "worse than the full list" path, not the
+    // similarity floor (decoupled from MIN_SIMILARITY's tuned value).
+    const { changed } = insertIfBetter(full, { id: 'new', score: 0.5 }, K_STORE, 0);
     expect(changed).toBe(false);
   });
 
@@ -100,7 +102,7 @@ describe('insertIfBetter', () => {
       { id: 'm', score: 0.5 },
       { id: 'z', score: 0.5 },
     ];
-    const { list, changed } = insertIfBetter(full, { id: 'b', score: 0.5 }, 3);
+    const { list, changed } = insertIfBetter(full, { id: 'b', score: 0.5 }, 3, 0);
     expect(changed).toBe(true);
     expect(list.map(e => e.id)).toEqual(['a', 'b', 'm']);
   });
@@ -111,7 +113,7 @@ describe('insertIfBetter', () => {
       { id: 'b', score: 0.5 },
       { id: 'm', score: 0.5 },
     ];
-    const { changed } = insertIfBetter(full, { id: 'z', score: 0.5 }, 3);
+    const { changed } = insertIfBetter(full, { id: 'z', score: 0.5 }, 3, 0);
     expect(changed).toBe(false);
   });
 });
