@@ -71,6 +71,7 @@ export const ANALYTICS_EVENTS = {
   CALENDAR_EVENT: {
     CATEGORY: 'CalendarEvent',
     ACTION_CREATED: 'Created',
+    ACTION_EDITED: 'Edited',
   },
   TODO_ITEM: {
     CATEGORY: 'TodoItem',

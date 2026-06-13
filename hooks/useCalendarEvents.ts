@@ -13,6 +13,7 @@ import { ANALYTICS_EVENTS } from '../constants';
 import {
   getCalendarEvents,
   getCalendarEventsByMemoryId,
+  saveCalendarEvent,
   saveCalendarEvents,
   softDeleteCalendarEventsByMemoryId,
   replaceCalendarEventsForMemory,
@@ -57,6 +58,13 @@ export interface UseCalendarEventsReturn {
   processDetectedEvents: (memory: Memory) => Promise<CalendarEvent[]>;
   /** Remove all events associated with a deleted memory. Returns tombstones that need syncing. */
   removeEventsForMemory: (memoryId: string) => Promise<CalendarEvent[]>;
+  /**
+   * Edit a single event. For an occurrence of a recurring series this changes
+   * only that occurrence — it is marked as modified so the rest of the series
+   * (including future horizon expansion) is unaffected. Returns the updated
+   * event for syncing, or null if the event wasn't found.
+   */
+  updateEvent: (eventId: string, changes: Partial<CalendarEvent>) => Promise<CalendarEvent | null>;
   /** Reload events from IndexedDB (e.g. after sync) */
   refreshEvents: () => Promise<void>;
   /** Count of upcoming events (today and future) */
@@ -167,6 +175,43 @@ export const useCalendarEvents = ({ memories, memoriesLoaded, syncInProgress = f
       ));
     }
     return tombstones;
+  }, []);
+
+  const updateEvent = useCallback(async (eventId: string, changes: Partial<CalendarEvent>): Promise<CalendarEvent | null> => {
+    try {
+      // Read from IDB rather than state so a stale eventsList can't resurrect
+      // fields another writer (e.g. sync) just updated.
+      const allEvents = await getCalendarEvents();
+      const existing = allEvents.find(e => e.id === eventId);
+      if (!existing) {
+        console.error(`[Calendar] Cannot update unknown event ${eventId}`);
+        return null;
+      }
+
+      const updated: CalendarEvent = {
+        ...existing,
+        ...changes,
+        // Identity and series-tracking fields are never editable. In particular
+        // occurrenceDate must keep the original series slot so horizon
+        // expansion doesn't regenerate the slot this occurrence was moved from.
+        id: existing.id,
+        memoryId: existing.memoryId,
+        createdAt: existing.createdAt,
+        recurringGroupId: existing.recurringGroupId,
+        recurrenceRule: existing.recurrenceRule,
+        occurrenceDate: existing.occurrenceDate,
+        isModifiedOccurrence: existing.recurringGroupId ? true : existing.isModifiedOccurrence,
+        updatedAt: Date.now(),
+      };
+
+      await saveCalendarEvent(updated);
+      setEventsList(prev => prev.map(e => (e.id === eventId ? updated : e)));
+      logEvent(ANALYTICS_EVENTS.CALENDAR_EVENT.CATEGORY, ANALYTICS_EVENTS.CALENDAR_EVENT.ACTION_EDITED);
+      return updated;
+    } catch (err) {
+      console.error(`[Calendar] Failed to update event ${eventId}:`, err);
+      return null;
+    }
   }, []);
 
   const checkAndExpandHorizon = useCallback(async (): Promise<CalendarEvent[]> => {
@@ -302,6 +347,7 @@ export const useCalendarEvents = ({ memories, memoriesLoaded, syncInProgress = f
     events,
     processDetectedEvents,
     removeEventsForMemory,
+    updateEvent,
     refreshEvents,
     upcomingCount,
     checkAndExpandHorizon,

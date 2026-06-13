@@ -165,6 +165,7 @@ export interface CalendarEvent {
     endDate?: string;
   };
   occurrenceDate?: string;     // The specific date this occurrence represents
+  isModifiedOccurrence?: boolean; // True when the user edited this single occurrence apart from its series
 }
 
 export interface DetectedActionItem {
