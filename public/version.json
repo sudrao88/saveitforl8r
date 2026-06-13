@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v121",
-  "buildNumber": 121,
-  "buildDate": "2026-06-12T02:25:00.000Z",
+  "version": "saveitforl8r-v122",
+  "buildNumber": 122,
+  "buildDate": "2026-06-13T01:46:00.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Fixed calendar events and to-dos disappearing after the app was killed and relaunched: orphan cleanup now waits for the first Drive sync, and events lost this way are automatically restored from the note's enrichment data."
+  "changelog": "You can now edit a single occurrence of a repeating calendar event — move one week's class to a different day, change its time, location, or status — without affecting the rest of the series. Edited occurrences are marked in the calendar."
 }

@@ -142,6 +142,7 @@ const AppContent: React.FC = () => {
     events: calendarEvents,
     processDetectedEvents,
     removeEventsForMemory,
+    updateEvent,
     refreshEvents,
     upcomingCount: calendarUpcomingCount,
     checkAndExpandHorizon,
@@ -775,6 +776,13 @@ const AppContent: React.FC = () => {
     logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_DELETED);
   }, [handleDelete, deleteNoteFromIndex, removeNoteFromMoments, removeEventsForMemory, syncCalendarEvents, removeTodoItemsForMemory, syncTodoItems]);
 
+  const handleUpdateCalendarEvent = useCallback(async (eventId: string, changes: Partial<CalendarEvent>) => {
+    const updated = await updateEvent(eventId, changes);
+    if (updated) {
+      syncCalendarEvents([updated]).catch(err => console.error('[Calendar] Failed to sync edited event:', err));
+    }
+  }, [updateEvent, syncCalendarEvents]);
+
   const handleRetryMemory = useCallback((id: string) => {
     handleRetry(id);
     logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_RETRIED);
@@ -1304,6 +1312,7 @@ const AppContent: React.FC = () => {
             todosByMemory={todosByMemory}
             onOpenEvent={handleOpenCalendarEvent}
             onOpenTodoItem={handleOpenTodoItem}
+            onUpdateEvent={handleUpdateCalendarEvent}
           />
         </Suspense>
       </AnimatedPresence>

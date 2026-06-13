@@ -245,8 +245,14 @@ export const expandHorizon = (existingEvents: CalendarEvent[]): CalendarEvent[] 
     // Skip if series still has occurrences well into the future
     if (latestDate > thresholdStr) continue;
 
+    // New occurrences must follow the series pattern, not a single occurrence
+    // the user edited apart from it — template from the latest unmodified
+    // occurrence, falling back to the latest if every occurrence was edited.
+    const unmodified = sorted.filter(e => !e.isModifiedOccurrence);
+    const template = unmodified.length > 0 ? unmodified[unmodified.length - 1] : latest;
+
     // Skip if recurrence rule has a fixed end that we've already passed
-    const rule = latest.recurrenceRule;
+    const rule = template.recurrenceRule;
     if (!rule) continue;
     if (rule.endDate) {
       const endBoundary = new Date(rule.endDate);
@@ -265,7 +271,7 @@ export const expandHorizon = (existingEvents: CalendarEvent[]): CalendarEvent[] 
     // Collect existing occurrence dates to avoid duplicates
     const existingDates = new Set(sorted.map(e => e.occurrenceDate ?? e.startDate.split('T')[0]));
 
-    const timeSuffix = extractTimeSuffix(latest.startDate);
+    const timeSuffix = extractTimeSuffix(template.startDate);
     const nowTs = Date.now();
 
     // Start generating from the day after the latest occurrence
@@ -278,15 +284,15 @@ export const expandHorizon = (existingEvents: CalendarEvent[]): CalendarEvent[] 
       if (!existingDates.has(dateStr)) {
         newEvents.push({
           id: deterministicId(`${groupId}:${dateStr}`),
-          memoryId: latest.memoryId,
-          title: latest.title,
-          description: latest.description,
+          memoryId: template.memoryId,
+          title: template.title,
+          description: template.description,
           startDate: dateStr + timeSuffix,
-          endDate: latest.endDate,
-          allDay: latest.allDay,
-          location: latest.location,
-          people: latest.people,
-          status: latest.status,
+          endDate: template.endDate,
+          allDay: template.allDay,
+          location: template.location,
+          people: template.people,
+          status: template.status,
           createdAt: nowTs,
           updatedAt: nowTs,
           recurringGroupId: groupId,
