@@ -49,18 +49,21 @@ interface EmbedResponse {
  */
 export const buildEmbeddingText = (memory: Memory): string => {
   const e = memory.enrichment;
-  const parts: string[] = [];
-  if (memory.content) parts.push(`CONTENT: ${memory.content}`);
-  if (e?.summary) parts.push(`SUMMARY: ${e.summary}`);
-  if (e?.visualDescription) parts.push(`VISUAL: ${e.visualDescription}`);
-  if (e?.suggestedTags?.length) parts.push(`TAGS: ${e.suggestedTags.join(', ')}`);
   const entity = e?.entityContext;
-  if (entity) {
-    if (entity.type) parts.push(`TYPE: ${entity.type}`);
-    if (entity.title) parts.push(`ENTITY: ${entity.title}`);
-    if (entity.subtitle) parts.push(`SUBTITLE: ${entity.subtitle}`);
-    if (entity.description) parts.push(`DESCRIPTION: ${entity.description}`);
-  }
+  const parts: string[] = [];
+  // Field order and labels MUST stay byte-identical to the server's
+  // buildEmbeddingText (server/lib/embedding.js) so backfilled vectors land in
+  // the same space as enrich-time ones. Distilled descriptors lead, and the
+  // title is repeated once to weight the note's subject over body wording.
+  if (entity?.title) parts.push(`TITLE: ${entity.title}`);
+  if (entity?.subtitle) parts.push(`SUBTITLE: ${entity.subtitle}`);
+  if (entity?.type) parts.push(`TYPE: ${entity.type}`);
+  if (e?.summary) parts.push(`SUMMARY: ${e.summary}`);
+  if (e?.suggestedTags?.length) parts.push(`TAGS: ${e.suggestedTags.join(', ')}`);
+  if (entity?.title) parts.push(`TITLE: ${entity.title}`); // repeated for weight
+  if (memory.content) parts.push(`CONTENT: ${memory.content}`);
+  if (e?.visualDescription) parts.push(`VISUAL: ${e.visualDescription}`);
+  if (entity?.description) parts.push(`DESCRIPTION: ${entity.description}`);
   return parts.join('\n').trim();
 };
 

@@ -23,7 +23,13 @@ import {
 } from '../services/gemini.js';
 import { sanitizeUserInput } from '../lib/sanitize.js';
 import { sendSilentPush } from '../lib/silentPush.js';
-import { embedTexts, buildEmbeddingText, EMBEDDING_MODEL } from '../lib/embedding.js';
+import {
+  buildEmbeddingText,
+  buildEmbeddingContent,
+  imagePartsFromContentParts,
+  embedContents,
+  EMBEDDING_MODEL,
+} from '../lib/embedding.js';
 
 /**
  * Performs moment matching: evaluates if a newly enriched note is relevant
@@ -379,7 +385,14 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
               const embedController = new AbortController();
               const embedTimeout = setTimeout(() => embedController.abort(), GEMINI_TIMEOUT_MS);
               try {
-                const [vector] = await embedTexts(ai, [embedInput], { signal: embedController.signal });
+                // Multimodal: fold the note's images (already prepared as parts
+                // for enrichment, and still valid — File API cleanup runs later)
+                // into its vector so visually/semantically similar notes match,
+                // not just text-similar ones. gemini-embedding-2 fuses the text
+                // and image parts of this single Content into one vector.
+                const imageParts = imagePartsFromContentParts(parts);
+                const content = buildEmbeddingContent(embedInput, imageParts);
+                const [vector] = await embedContents(ai, [content], { signal: embedController.signal });
                 if (vector) {
                   sanitized.embedding = vector;
                   sanitized.embeddingModel = EMBEDDING_MODEL;

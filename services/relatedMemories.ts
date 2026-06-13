@@ -15,8 +15,11 @@ import { RelatedMemoryEntry } from '../types';
 // How many entries are kept per memory vs displayed on the card.
 export const K_STORE = 8;
 export const K_DISPLAY = 5;
-// Entries below this cosine similarity are noise, not "related".
-export const MIN_SIMILARITY = 0.5;
+// Entries below this cosine similarity are noise, not "related". Tuned up from
+// 0.5 for gemini-embedding-2: a 0.5 floor (~60° apart) let weakly-related notes
+// through (e.g. a photo of a bar surfacing on an AI article); 0.6 keeps matches
+// topically tighter without starving the list.
+export const MIN_SIMILARITY = 0.6;
 
 export interface MemoryVector {
   id: string;
