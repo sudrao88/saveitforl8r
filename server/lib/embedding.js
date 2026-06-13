@@ -82,7 +82,7 @@ export const embedContents = async (ai, contents, { signal } = {}) => {
     },
   });
 
-  const embeddings = response.embeddings || [];
+  const embeddings = response?.embeddings || [];
   if (embeddings.length !== contents.length) {
     throw new Error(
       `Embedding count mismatch: expected ${contents.length}, got ${embeddings.length}`
@@ -117,7 +117,7 @@ export const embedTexts = async (ai, texts, opts = {}) => {
  * backfill-time vectors live in the same space.
  */
 export const buildEmbeddingText = (content, enrichment = {}) => {
-  const e = enrichment;
+  const e = enrichment || {};
   const entity = e.entityContext || {};
   const parts = [];
   // Lead with the most distilled, highest-signal descriptors (entity + summary)
