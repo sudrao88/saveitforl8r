@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v121",
-  "buildNumber": 121,
-  "buildDate": "2026-06-12T02:25:00.000Z",
+  "version": "saveitforl8r-v123",
+  "buildNumber": 123,
+  "buildDate": "2026-06-13T03:44:28.200Z",
   "minNativeVersion": "1.0.0",
   "changelog": "Fixed calendar events and to-dos disappearing after the app was killed and relaunched: orphan cleanup now waits for the first Drive sync, and events lost this way are automatically restored from the note's enrichment data."
 }
