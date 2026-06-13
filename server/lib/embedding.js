@@ -8,20 +8,21 @@
  * enrichment request that already sends it.
  */
 
-export const EMBEDDING_MODEL = 'gemini-embedding-001';
+export const EMBEDDING_MODEL = 'gemini-embedding-2';
 // Matryoshka truncation: 768 dims is the recommended high-quality/compact
 // tradeoff and keeps the synced vector small (~5-6 KB JSON per memory).
 export const EMBEDDING_DIM = 768;
-// gemini-embedding-001 input cap is 2048 tokens; keep the composed text well
-// under that. Roughly 4 chars/token, so ~8000 chars is a safe ceiling.
+// gemini-embedding-2's text input cap is 8192 tokens; keep the composed text
+// well under that. Roughly 4 chars/token, so ~8000 chars is a safe ceiling.
 export const MAX_EMBEDDING_INPUT_CHARS = 8000;
 
 const round = (n) => Math.round(n * 1e6) / 1e6;
 
 /**
- * L2-normalize a vector. gemini-embedding-001 only returns pre-normalized
- * vectors at the full 3072 dimensionality; truncated outputs must be
- * normalized so the client can treat dot product as cosine similarity.
+ * L2-normalize a vector so the client can treat dot product as cosine
+ * similarity. gemini-embedding-2 already returns L2-normalized vectors for
+ * non-default (truncated) dimensionalities like 768; we normalize defensively
+ * anyway — it's idempotent on an already-unit vector.
  */
 const normalize = (values) => {
   let normSq = 0;
@@ -43,11 +44,15 @@ export const embedTexts = async (ai, texts, { signal } = {}) => {
     typeof t === 'string' ? t.slice(0, MAX_EMBEDDING_INPUT_CHARS) : ''
   );
 
+  // gemini-embedding-2 aggregates multiple inline inputs into a SINGLE vector;
+  // wrapping each text in its own Content object yields one embedding per input
+  // (the count guard below catches any regression). Unlike gemini-embedding-001
+  // it also rejects taskType — passing it errors — so the similarity intent is
+  // expressed purely through the composed text.
   const response = await ai.models.embedContent({
     model: EMBEDDING_MODEL,
-    contents: truncated,
+    contents: truncated.map((text) => ({ parts: [{ text }] })),
     config: {
-      taskType: 'SEMANTIC_SIMILARITY',
       outputDimensionality: EMBEDDING_DIM,
       ...(signal ? { abortSignal: signal } : {}),
     },

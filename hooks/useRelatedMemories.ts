@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { Memory } from '../types';
+import { Memory, EMBEDDING_MODEL_ID } from '../types';
 import { K_DISPLAY, MemoryVector } from '../services/relatedMemories';
 
 export interface RelatedMemoryDisplayItem {
@@ -17,8 +17,16 @@ const titleForMemory = (memory: Memory): string => {
   return memory.content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 };
 
+// Only match vectors from the CURRENT embedding model. A superseded model's
+// vectors share the same dimensionality but live in a different space, so
+// comparing across models produces bogus "related" notes. Stale-model notes are
+// excluded here (showing no related notes) until useRelatedEmbeddingBackfill
+// re-embeds them, at which point they re-enter the matcher.
 const hasEmbedding = (m: Memory): boolean =>
-  !m.isDeleted && Array.isArray(m.enrichment?.embedding) && m.enrichment!.embedding!.length > 0;
+  !m.isDeleted &&
+  Array.isArray(m.enrichment?.embedding) &&
+  m.enrichment!.embedding!.length > 0 &&
+  m.enrichment!.embeddingModel === EMBEDDING_MODEL_ID;
 
 /**
  * Computes per-memory "related notes" from the embeddings the server generated

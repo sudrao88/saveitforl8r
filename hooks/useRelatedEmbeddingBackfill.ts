@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Memory, isMemoryInFlight, isMemoryFailed } from '../types';
+import { Memory, isMemoryInFlight, isMemoryFailed, EMBEDDING_MODEL_ID } from '../types';
 import { embedTexts, buildEmbeddingText } from '../services/geminiService';
 import { getMemory, saveMemory } from '../services/storageService';
 
@@ -20,7 +20,15 @@ const needsEmbedding = (m: Memory): boolean =>
   !isMemoryInFlight(m) &&
   !isMemoryFailed(m) &&
   !!m.enrichment &&
-  !(Array.isArray(m.enrichment.embedding) && m.enrichment.embedding.length > 0);
+  // Missing a vector, or one produced by a superseded embedding model.
+  // Re-embedding stale-model notes keeps every synced vector in the SAME
+  // space — mixing models (same 768 dims) would silently yield bogus
+  // similarities and irrelevant "related" notes.
+  !(
+    Array.isArray(m.enrichment.embedding) &&
+    m.enrichment.embedding.length > 0 &&
+    m.enrichment.embeddingModel === EMBEDDING_MODEL_ID
+  );
 
 /**
  * Backfills similarity embeddings for notes enriched before the feature
@@ -73,7 +81,7 @@ export const useRelatedEmbeddingBackfill = ({ memories, enabled, syncMemory, onR
           for (let j = 0; j < fulls.length; j++) {
             if (cancelled) break;
             const m = fulls[j];
-            m.enrichment = { ...m.enrichment!, embedding: vectors[j], embeddingModel: 'gemini-embedding-001' };
+            m.enrichment = { ...m.enrichment!, embedding: vectors[j], embeddingModel: EMBEDDING_MODEL_ID };
             await saveMemory(m);
             await syncMemory(m).catch(e => console.warn(`[Backfill] sync failed for ${m.id}:`, e));
             processed++;

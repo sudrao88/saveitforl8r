@@ -256,7 +256,7 @@ export const isMemoryFailed = (m: Pick<Memory, 'enrichmentStatus' | 'processingE
 // --- Related Memories ---
 
 /** Server-side embedding model used for similarity (client matches locally). */
-export const EMBEDDING_MODEL_ID = 'gemini-embedding-001';
+export const EMBEDDING_MODEL_ID = 'gemini-embedding-2';
 
 export interface RelatedMemoryEntry {
   id: string;       // Related memory id
