@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v123",
-  "buildNumber": 123,
-  "buildDate": "2026-06-13T03:44:28.200Z",
+  "version": "saveitforl8r-v124",
+  "buildNumber": 124,
+  "buildDate": "2026-06-13T05:47:14.676Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "You can now edit a single occurrence of a repeating calendar event — move one week's class to a different day, change its time, location, or status — without affecting the rest of the series. Edited occurrences are marked in the calendar."
+  "changelog": "Related notes are smarter and more relevant. We upgraded to a more capable, multimodal embedding model, so photos are matched on what they actually show — not just their description — and tightened how closely notes must relate before they're linked, cutting down on off-topic suggestions."
 }
