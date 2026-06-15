@@ -70,7 +70,7 @@ export const getEventsForDate = (events: CalendarEvent[], dateKey: string): Cale
     // occurrenceDate keeps the original series slot purely for horizon
     // bookkeeping — so notifications must key off startDate to honor the
     // edit, never the original occurrenceDate.
-    const eventDateKey = isoToDateKey(e.startDate);
+    const eventDateKey = e.startDate ? isoToDateKey(e.startDate) : '';
     return eventDateKey === dateKey && e.status !== 'cancelled';
   });
 };
