@@ -216,12 +216,15 @@ describe('previousDayProvider', () => {
     expect(notifications).toEqual([]);
   });
 
-  it('uses occurrenceDate for recurring events', async () => {
+  it('honors the edited startDate of a recurring occurrence, not the original occurrenceDate', async () => {
+    // The occurrence was moved (edited) from its original 2026-03-15 slot to
+    // tomorrow (2026-03-22). The heads-up must follow the edited startDate.
     (storageService.getCalendarEvents as any).mockResolvedValue([
       makeEvent({
-        startDate: '2026-03-15T10:00:00',
-        occurrenceDate: '2026-03-22',
+        startDate: '2026-03-22T10:00:00',
+        occurrenceDate: '2026-03-15',
         recurringGroupId: 'group-1',
+        isModifiedOccurrence: true,
       }),
     ]);
 

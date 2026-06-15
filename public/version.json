@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v125",
-  "buildNumber": 125,
-  "buildDate": "2026-06-13T07:03:56.575Z",
+  "version": "saveitforl8r-v126",
+  "buildNumber": 126,
+  "buildDate": "2026-06-15T08:13:31.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Related notes now show why they're related: each suggestion lists the tags it shares with the current note (or 'Similar content' when the match is based on meaning rather than tags), so the connections are easier to trust at a glance."
+  "changelog": "Editing a recurring event's date or time now correctly moves its reminders: the morning brief and previous-day heads-up follow the event's edited time instead of its original scheduled slot."
 }

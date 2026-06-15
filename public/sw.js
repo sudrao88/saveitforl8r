@@ -1,5 +1,5 @@
 // public/sw.js
-const CACHE_NAME = 'saveitforl8r-v125'; // Increment version to force update
+const CACHE_NAME = 'saveitforl8r-v126'; // Increment version to force update
 const STATIC_CACHE = 'saveitforl8r-static-v1';
 const SCOPE = '/';
 
@@ -711,7 +711,9 @@ async function handleMorningBriefingCheck() {
     const events = await getAllFromStore(db, 'calendarEvents');
     const todayEvents = events.filter(e => {
       if (e.isDeleted || e.status === 'cancelled') return false;
-      const dateKey = (e.occurrenceDate || e.startDate || '').slice(0, 10);
+      // startDate holds an edited occurrence's date; occurrenceDate is only
+      // the original series slot, so notifications must honor startDate.
+      const dateKey = (e.startDate || '').slice(0, 10);
       return dateKey === todayKey;
     });
 
