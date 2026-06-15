@@ -65,10 +65,12 @@ const getRoute = (hasEvents: boolean, hasTodos: boolean): string => {
 /** Filter calendar events for a specific date key */
 export const getEventsForDate = (events: CalendarEvent[], dateKey: string): CalendarEvent[] => {
   return events.filter(e => {
-    // Use occurrenceDate for recurring event instances, startDate otherwise
-    const eventDateKey = e.occurrenceDate
-      ? isoToDateKey(e.occurrenceDate)
-      : isoToDateKey(e.startDate);
+    // An event happens on its startDate. When the user edits a single
+    // recurring occurrence, startDate holds the edited date/time while
+    // occurrenceDate keeps the original series slot purely for horizon
+    // bookkeeping — so notifications must key off startDate to honor the
+    // edit, never the original occurrenceDate.
+    const eventDateKey = isoToDateKey(e.startDate);
     return eventDateKey === dateKey && e.status !== 'cancelled';
   });
 };

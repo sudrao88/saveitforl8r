@@ -173,18 +173,24 @@ describe('morningBriefingProvider', () => {
     expect(notifications[0].id).toBe(1001); // tomorrow
   });
 
-  it('uses occurrenceDate for recurring events', async () => {
+  it('honors the edited startDate of a recurring occurrence, not the original occurrenceDate', async () => {
+    // The occurrence was moved (edited) from its original 2026-03-14 slot to
+    // today (2026-03-21). occurrenceDate keeps the original series slot, but
+    // the notification must follow the edited startDate.
     (storageService.getCalendarEvents as any).mockResolvedValue([
       makeEvent({
-        startDate: '2026-03-14T10:00:00',
-        occurrenceDate: '2026-03-21',
+        startDate: '2026-03-21T10:00:00',
+        occurrenceDate: '2026-03-14',
         recurringGroupId: 'group-1',
+        isModifiedOccurrence: true,
       }),
     ]);
 
     const notifications = await morningBriefingProvider.getNotifications();
-    expect(notifications).toHaveLength(1);
-    expect(notifications[0].body).toBe('You have 1 event today');
+    // Fires today (the edited startDate), not on the original occurrenceDate.
+    const todayNotif = notifications.find(n => n.id === 1000);
+    expect(todayNotif).toBeDefined();
+    expect(todayNotif!.body).toBe('You have 1 event today');
   });
 
   it('uses custom notification time from preferences', async () => {
