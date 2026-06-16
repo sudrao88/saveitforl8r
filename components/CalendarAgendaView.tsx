@@ -35,6 +35,7 @@ interface CalendarAgendaViewProps {
   onViewAttachment?: (attachment: Attachment, allAttachments: Attachment[]) => void;
   onDelete?: (id: string) => void;
   onEdit?: (memory: Memory) => void;
+  onUpdate?: (id: string, content: string) => void;
   onTogglePin?: (id: string, isPinned: boolean) => void;
   /** When set, scroll to this event and flash a highlight ring */
   highlightEventId?: string | null;
@@ -306,6 +307,7 @@ const CalendarAgendaView: React.FC<CalendarAgendaViewProps> = ({
   onViewAttachment,
   onDelete,
   onEdit,
+  onUpdate,
   onTogglePin,
   highlightEventId,
   onHighlightHandled,
@@ -484,6 +486,7 @@ const CalendarAgendaView: React.FC<CalendarAgendaViewProps> = ({
           onViewAttachment={onViewAttachment}
           onDelete={onDelete}
           onEdit={onEdit}
+          onUpdate={onUpdate}
           onTogglePin={onTogglePin}
           calendarEvents={previewEvents}
           todoItems={previewTodos}

@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v126",
-  "buildNumber": 126,
-  "buildDate": "2026-06-15T08:13:31.000Z",
+  "version": "saveitforl8r-v127",
+  "buildNumber": 127,
+  "buildDate": "2026-06-16T02:40:49.477Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Editing a recurring event's date or time now correctly moves its reminders: the morning brief and previous-day heads-up follow the event's edited time instead of its original scheduled slot."
+  "changelog": "You can now check off to-do items directly from a note's preview card. Previously the checkboxes in the preview did nothing."
 }

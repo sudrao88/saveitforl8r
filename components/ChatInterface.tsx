@@ -17,6 +17,7 @@ interface ChatInterfaceProps {
   onViewAttachment: (attachment: Attachment, allAttachments: Attachment[]) => void;
   onDelete?: (id: string) => void;
   onEdit?: (memory: Memory) => void;
+  onUpdate?: (id: string, content: string) => void;
   onTogglePin?: (id: string, isPinned: boolean) => void;
 }
 
@@ -33,7 +34,7 @@ interface Message {
   isOffline?: boolean;
 }
 
-const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, searchFunction, onViewAttachment, onDelete, onEdit, onTogglePin }) => {
+const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, searchFunction, onViewAttachment, onDelete, onEdit, onUpdate, onTogglePin }) => {
   const [query, setQuery] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
@@ -339,6 +340,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ memories, onClose, search
             onViewAttachment={onViewAttachment}
             onDelete={onDelete}
             onEdit={onEdit}
+            onUpdate={onUpdate}
             onTogglePin={onTogglePin}
           />
       )}
