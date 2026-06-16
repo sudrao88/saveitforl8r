@@ -84,6 +84,7 @@ interface MomentSheetProps {
   onViewAttachment?: (attachment: Attachment, allAttachments: Attachment[]) => void;
   onMemoryDelete?: (id: string) => void;
   onMemoryEdit?: (memory: Memory) => void;
+  onMemoryUpdate?: (id: string, content: string) => void;
   onMemoryTogglePin?: (id: string, isPinned: boolean) => void;
 }
 
@@ -97,6 +98,7 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
   onViewAttachment,
   onMemoryDelete,
   onMemoryEdit,
+  onMemoryUpdate,
   onMemoryTogglePin,
 }) => {
   const [synthesis, setSynthesis] = useState<SynthesisResponse | null>(null);
@@ -379,6 +381,7 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
           onViewAttachment={onViewAttachment}
           onDelete={onMemoryDelete}
           onEdit={onMemoryEdit}
+          onUpdate={onMemoryUpdate}
           onTogglePin={onMemoryTogglePin}
         />
       )}

@@ -1171,6 +1171,7 @@ const AppContent: React.FC = () => {
               onViewAttachment={handleViewAttachment}
               onDelete={handleDeleteMemory}
               onEdit={handleEditMemory}
+              onUpdate={updateMemoryContent}
               onTogglePin={handleTogglePin}
             />
           </Suspense>
@@ -1283,6 +1284,7 @@ const AppContent: React.FC = () => {
               onViewAttachment={handleViewAttachment}
               onMemoryDelete={handleDeleteMemory}
               onMemoryEdit={handleEditMemory}
+              onMemoryUpdate={updateMemoryContent}
               onMemoryTogglePin={handleTogglePin}
             />
           )}
@@ -1329,6 +1331,7 @@ const AppContent: React.FC = () => {
             onViewAttachment={handleViewAttachment}
             onDelete={handleDeleteMemory}
             onEdit={handleEditMemory}
+            onUpdate={updateMemoryContent}
             onTogglePin={handleTogglePin}
             highlightEventId={highlightEventId}
             onHighlightHandled={handleEventHighlightHandled}
@@ -1386,6 +1389,7 @@ const AppContent: React.FC = () => {
             onViewAttachment={handleViewAttachment}
             onDelete={handleDeleteMemory}
             onEdit={handleEditMemory}
+            onUpdate={updateMemoryContent}
             onTogglePin={handleTogglePin}
             highlightItemId={highlightTodoId}
             onHighlightHandled={handleTodoHighlightHandled}

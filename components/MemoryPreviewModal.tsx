@@ -17,6 +17,7 @@ interface MemoryPreviewModalProps {
   onViewAttachment?: (attachment: Attachment, allAttachments: Attachment[]) => void;
   onDelete?: (id: string) => void;
   onEdit?: (memory: Memory) => void;
+  onUpdate?: (id: string, content: string) => void;
   onTogglePin?: (id: string, isPinned: boolean) => void;
   calendarEvents?: CalendarEvent[];
   todoItems?: TodoItem[];
@@ -32,6 +33,7 @@ const MemoryPreviewModal: React.FC<MemoryPreviewModalProps> = ({
   onViewAttachment,
   onDelete,
   onEdit,
+  onUpdate,
   onTogglePin,
   calendarEvents,
   todoItems,
@@ -67,6 +69,7 @@ const MemoryPreviewModal: React.FC<MemoryPreviewModalProps> = ({
             onViewAttachment={onViewAttachment}
             onDelete={onDelete}
             onEdit={onEdit}
+            onUpdate={onUpdate}
             onTogglePin={onTogglePin}
             calendarEvents={calendarEvents}
             todoItems={todoItems}

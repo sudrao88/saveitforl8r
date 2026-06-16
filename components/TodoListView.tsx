@@ -35,6 +35,7 @@ interface TodoListViewProps {
   onViewAttachment?: (attachment: Attachment, allAttachments: Attachment[]) => void;
   onDelete?: (id: string) => void;
   onEdit?: (memory: Memory) => void;
+  onUpdate?: (id: string, content: string) => void;
   onTogglePin?: (id: string, isPinned: boolean) => void;
   /** When set, scroll to this item and flash a highlight ring */
   highlightItemId?: string | null;
@@ -291,6 +292,7 @@ const TodoListView: React.FC<TodoListViewProps> = ({
   onViewAttachment,
   onDelete,
   onEdit,
+  onUpdate,
   onTogglePin,
   highlightItemId,
   onHighlightHandled,
@@ -459,6 +461,7 @@ const TodoListView: React.FC<TodoListViewProps> = ({
           onViewAttachment={onViewAttachment}
           onDelete={onDelete}
           onEdit={onEdit}
+          onUpdate={onUpdate}
           onTogglePin={onTogglePin}
           calendarEvents={previewEvents}
           todoItems={previewTodos}
