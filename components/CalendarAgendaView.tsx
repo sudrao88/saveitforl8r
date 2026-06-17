@@ -25,7 +25,7 @@ import {
 import { CalendarEvent, TodoItem, Memory, Attachment } from '../types';
 import MemoryPreviewModal from './MemoryPreviewModal';
 import EventEditDialog from './EventEditDialog';
-import { expandEventDays, MultiDayInfo } from '../utils/calendarUtils';
+import { expandEventDays, toDateString, MultiDayInfo } from '../utils/calendarUtils';
 import { btn, overlay } from '../styles/design-system';
 
 interface CalendarAgendaViewProps {
@@ -90,11 +90,14 @@ const formatTime = (isoString: string): string | null => {
 
 const groupEventsByDate = (events: CalendarEvent[]): DateGroup[] => {
   const now = new Date();
-  const today = now.toISOString().split('T')[0];
+  // Use local date components, not toISOString() (UTC) — event date keys are
+  // built from local components, so a UTC anchor would shift today/tomorrow by
+  // the timezone offset for non-UTC users.
+  const today = toDateString(now);
 
   const tomorrow = new Date(now);
   tomorrow.setDate(now.getDate() + 1);
-  const tomorrowStr = tomorrow.toISOString().split('T')[0];
+  const tomorrowStr = toDateString(tomorrow);
 
   // Group events by date, expanding multi-day events onto every day they span
   const dateMap = new Map<string, AgendaItem[]>();
@@ -105,8 +108,12 @@ const groupEventsByDate = (events: CalendarEvent[]): DateGroup[] => {
     }
   }
 
-  // Sort dates chronologically, then reorder so past dates come after today+future
-  const sortedDates = [...dateMap.keys()].sort();
+  // Sort dates chronologically, then reorder so past dates come after today+future.
+  // Always surface a "Today" group, even when nothing is scheduled, so the agenda
+  // anchors on the current day instead of jumping straight to Tomorrow.
+  const dateKeys = new Set(dateMap.keys());
+  dateKeys.add(today);
+  const sortedDates = [...dateKeys].sort();
   const futureDates = sortedDates.filter(d => d >= today);
   const pastDates = sortedDates.filter(d => d < today).reverse();
   const orderedDates = [...futureDates, ...pastDates];
@@ -143,8 +150,7 @@ const groupEventsByDate = (events: CalendarEvent[]): DateGroup[] => {
 
     // Sort events within each day by time (multi-day continuations sort
     // first alongside all-day events — their sort key has no time portion)
-    const dayItems = dateMap
-      .get(dateKey)!
+    const dayItems = (dateMap.get(dateKey) ?? [])
       .sort((a, b) => a.sortKey.localeCompare(b.sortKey));
 
     return {
@@ -448,18 +454,24 @@ const CalendarAgendaView: React.FC<CalendarAgendaViewProps> = ({
                       )}
                     </div>
                     <div className="space-y-3">
-                      {group.items.map(({ event, multiDay }) => (
-                        <EventCard
-                          key={event.id}
-                          event={event}
-                          memory={memoryMap.get(event.memoryId)}
-                          isPast={group.isPast}
-                          isHighlighted={activeHighlightId === event.id}
-                          multiDay={multiDay}
-                          onViewMemory={handleViewMemory}
-                          onEditEvent={onUpdateEvent ? setEditingEvent : undefined}
-                        />
-                      ))}
+                      {group.items.length === 0 ? (
+                        <div className="rounded-(--radius-xl) border border-(--color-border-subtle) bg-(--color-surface-raised)/30 p-4">
+                          <p className="text-sm text-(--color-text-tertiary)">No events</p>
+                        </div>
+                      ) : (
+                        group.items.map(({ event, multiDay }) => (
+                          <EventCard
+                            key={event.id}
+                            event={event}
+                            memory={memoryMap.get(event.memoryId)}
+                            isPast={group.isPast}
+                            isHighlighted={activeHighlightId === event.id}
+                            multiDay={multiDay}
+                            onViewMemory={handleViewMemory}
+                            onEditEvent={onUpdateEvent ? setEditingEvent : undefined}
+                          />
+                        ))
+                      )}
                     </div>
                   </section>
                 </React.Fragment>

@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v127",
-  "buildNumber": 127,
-  "buildDate": "2026-06-16T02:40:49.477Z",
+  "version": "saveitforl8r-v128",
+  "buildNumber": 128,
+  "buildDate": "2026-06-17T01:45:00.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "You can now check off to-do items directly from a note's preview card. Previously the checkboxes in the preview did nothing."
+  "changelog": "The calendar now always shows a Today section — even when nothing is scheduled, it displays 'No events' instead of jumping straight to Tomorrow. Also fixed a timezone issue that could mis-label today's events as past."
 }
