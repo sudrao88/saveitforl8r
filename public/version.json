@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v128",
-  "buildNumber": 128,
-  "buildDate": "2026-06-17T01:45:00.000Z",
+  "version": "saveitforl8r-v129",
+  "buildNumber": 129,
+  "buildDate": "2026-06-17T05:15:00.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "The calendar now always shows a Today section — even when nothing is scheduled, it displays 'No events' instead of jumping straight to Tomorrow. Also fixed a timezone issue that could mis-label today's events as past."
+  "changelog": "Fixed an error that could leave the app stuck on a 'Something went wrong' screen when opening a moment or the calendar. The app now reliably recovers from stale cached files after an update."
 }

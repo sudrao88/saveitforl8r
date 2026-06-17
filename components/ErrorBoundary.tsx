@@ -2,6 +2,7 @@ import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { btn, overlay, text, zIndex } from '../styles/design-system';
 import { isChunkLoadError, clearServiceWorkerCaches } from '../utils/chunkErrorUtils';
+import { resetChunkRetryGuard } from '../utils/lazyWithRetry';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -31,6 +32,10 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 
   handleReload = async () => {
+    // A manual reload is an explicit recovery attempt — re-arm the chunk-retry
+    // guard so the next load can self-heal again instead of being suppressed by
+    // a stale one-shot flag from an earlier failure this session.
+    resetChunkRetryGuard();
     // If the error looks like a stale chunk / module import failure,
     // clear all SW caches first so the reload fetches fresh assets.
     if (isChunkLoadError(this.state.error)) {
