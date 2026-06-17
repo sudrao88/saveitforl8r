@@ -105,8 +105,12 @@ const groupEventsByDate = (events: CalendarEvent[]): DateGroup[] => {
     }
   }
 
-  // Sort dates chronologically, then reorder so past dates come after today+future
-  const sortedDates = [...dateMap.keys()].sort();
+  // Sort dates chronologically, then reorder so past dates come after today+future.
+  // Always surface a "Today" group, even when nothing is scheduled, so the agenda
+  // anchors on the current day instead of jumping straight to Tomorrow.
+  const dateKeys = new Set(dateMap.keys());
+  dateKeys.add(today);
+  const sortedDates = [...dateKeys].sort();
   const futureDates = sortedDates.filter(d => d >= today);
   const pastDates = sortedDates.filter(d => d < today).reverse();
   const orderedDates = [...futureDates, ...pastDates];
@@ -143,8 +147,7 @@ const groupEventsByDate = (events: CalendarEvent[]): DateGroup[] => {
 
     // Sort events within each day by time (multi-day continuations sort
     // first alongside all-day events — their sort key has no time portion)
-    const dayItems = dateMap
-      .get(dateKey)!
+    const dayItems = (dateMap.get(dateKey) ?? [])
       .sort((a, b) => a.sortKey.localeCompare(b.sortKey));
 
     return {
@@ -448,18 +451,24 @@ const CalendarAgendaView: React.FC<CalendarAgendaViewProps> = ({
                       )}
                     </div>
                     <div className="space-y-3">
-                      {group.items.map(({ event, multiDay }) => (
-                        <EventCard
-                          key={event.id}
-                          event={event}
-                          memory={memoryMap.get(event.memoryId)}
-                          isPast={group.isPast}
-                          isHighlighted={activeHighlightId === event.id}
-                          multiDay={multiDay}
-                          onViewMemory={handleViewMemory}
-                          onEditEvent={onUpdateEvent ? setEditingEvent : undefined}
-                        />
-                      ))}
+                      {group.items.length === 0 ? (
+                        <div className="rounded-(--radius-xl) border border-(--color-border-subtle) bg-(--color-surface-raised)/30 p-4">
+                          <p className="text-sm text-(--color-text-tertiary)">No events</p>
+                        </div>
+                      ) : (
+                        group.items.map(({ event, multiDay }) => (
+                          <EventCard
+                            key={event.id}
+                            event={event}
+                            memory={memoryMap.get(event.memoryId)}
+                            isPast={group.isPast}
+                            isHighlighted={activeHighlightId === event.id}
+                            multiDay={multiDay}
+                            onViewMemory={handleViewMemory}
+                            onEditEvent={onUpdateEvent ? setEditingEvent : undefined}
+                          />
+                        ))
+                      )}
                     </div>
                   </section>
                 </React.Fragment>
