@@ -25,7 +25,7 @@ import {
 import { CalendarEvent, TodoItem, Memory, Attachment } from '../types';
 import MemoryPreviewModal from './MemoryPreviewModal';
 import EventEditDialog from './EventEditDialog';
-import { expandEventDays, MultiDayInfo } from '../utils/calendarUtils';
+import { expandEventDays, toDateString, MultiDayInfo } from '../utils/calendarUtils';
 import { btn, overlay } from '../styles/design-system';
 
 interface CalendarAgendaViewProps {
@@ -90,11 +90,14 @@ const formatTime = (isoString: string): string | null => {
 
 const groupEventsByDate = (events: CalendarEvent[]): DateGroup[] => {
   const now = new Date();
-  const today = now.toISOString().split('T')[0];
+  // Use local date components, not toISOString() (UTC) — event date keys are
+  // built from local components, so a UTC anchor would shift today/tomorrow by
+  // the timezone offset for non-UTC users.
+  const today = toDateString(now);
 
   const tomorrow = new Date(now);
   tomorrow.setDate(now.getDate() + 1);
-  const tomorrowStr = tomorrow.toISOString().split('T')[0];
+  const tomorrowStr = toDateString(tomorrow);
 
   // Group events by date, expanding multi-day events onto every day they span
   const dateMap = new Map<string, AgendaItem[]>();

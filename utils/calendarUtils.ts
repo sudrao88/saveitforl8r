@@ -62,9 +62,12 @@ const advanceDate = (date: Date, frequency: RecurrenceFrequency): Date => {
 };
 
 /**
- * Format a Date as ISO 8601 date-only string ("2026-06-15").
+ * Format a Date as ISO 8601 date-only string ("2026-06-15") using the
+ * machine's local timezone. Event date keys are built from local components,
+ * so anchoring comparisons (today/tomorrow) must use this too — not
+ * toISOString(), which would shift the date by the UTC offset.
  */
-const toDateString = (d: Date): string =>
+export const toDateString = (d: Date): string =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 /**
