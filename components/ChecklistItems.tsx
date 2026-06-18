@@ -1,4 +1,4 @@
-import React, { useRef, useCallback } from 'react';
+import React, { useRef, useCallback, useLayoutEffect } from 'react';
 import { Plus, GripVertical } from 'lucide-react';
 import { checklist } from '../styles/design-system';
 
@@ -386,6 +386,30 @@ export function ChecklistEditor({
     el.style.height = `${el.scrollHeight}px`;
   }, []);
 
+  // Resize textareas in a layout effect rather than from inline ref/onChange
+  // callbacks. Inline ref callbacks re-run for every item on every render, so
+  // reading scrollHeight there would force O(N) synchronous reflows per
+  // keystroke. Here we only resize items whose text actually changed, which
+  // still covers mounts, additions, deletions, reorders, and programmatic
+  // updates.
+  const prevTextsRef = useRef<Map<string, string>>(new Map());
+
+  useLayoutEffect(() => {
+    items.forEach((item) => {
+      const el = inputRefs.current.get(item.id);
+      if (el && prevTextsRef.current.get(item.id) !== item.text) {
+        autoSize(el);
+        prevTextsRef.current.set(item.id, item.text);
+      }
+    });
+
+    // Drop cache entries for removed items so the map doesn't grow unbounded.
+    const currentIds = new Set(items.map((i) => i.id));
+    prevTextsRef.current.forEach((_, id) => {
+      if (!currentIds.has(id)) prevTextsRef.current.delete(id);
+    });
+  }, [items, autoSize]);
+
   return (
     <div className="space-y-2">
       {items.map((item, index) => {
@@ -408,18 +432,13 @@ export function ChecklistEditor({
             />
             <textarea
               ref={(el) => {
-                if (el) {
-                  inputRefs.current.set(item.id, el);
-                  autoSize(el);
-                } else inputRefs.current.delete(item.id);
+                if (el) inputRefs.current.set(item.id, el);
+                else inputRefs.current.delete(item.id);
               }}
               rows={1}
               value={item.text}
               {...(dataIdAttr ? { 'data-checklist-id': item.id } : {})}
-              onChange={(e) => {
-                onUpdate(item.id, e.target.value);
-                autoSize(e.currentTarget);
-              }}
+              onChange={(e) => onUpdate(item.id, e.target.value)}
               onKeyDown={(e) => {
                 if (
                   onSave &&
