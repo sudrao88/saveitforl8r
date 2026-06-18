@@ -369,7 +369,7 @@ export function ChecklistEditor({
   autoFocusLast = false,
   dataIdAttr = false,
 }: ChecklistEditorProps) {
-  const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
+  const inputRefs = useRef<Map<string, HTMLTextAreaElement>>(new Map());
 
   const focusItem = useCallback((id: string) => {
     const input = inputRefs.current.get(id);
@@ -377,6 +377,13 @@ export function ChecklistEditor({
     input.focus();
     const len = input.value.length;
     input.setSelectionRange(len, len);
+  }, []);
+
+  // Auto-grow the textarea so long text wraps to multiple lines instead of
+  // scrolling horizontally.
+  const autoSize = useCallback((el: HTMLTextAreaElement) => {
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
   }, []);
 
   return (
@@ -399,15 +406,20 @@ export function ChecklistEditor({
               checked={item.checked}
               onClick={() => onToggle(item.id)}
             />
-            <input
+            <textarea
               ref={(el) => {
-                if (el) inputRefs.current.set(item.id, el);
-                else inputRefs.current.delete(item.id);
+                if (el) {
+                  inputRefs.current.set(item.id, el);
+                  autoSize(el);
+                } else inputRefs.current.delete(item.id);
               }}
-              type="text"
+              rows={1}
               value={item.text}
               {...(dataIdAttr ? { 'data-checklist-id': item.id } : {})}
-              onChange={(e) => onUpdate(item.id, e.target.value)}
+              onChange={(e) => {
+                onUpdate(item.id, e.target.value);
+                autoSize(e.currentTarget);
+              }}
               onKeyDown={(e) => {
                 if (
                   onSave &&
@@ -447,7 +459,7 @@ export function ChecklistEditor({
               }}
               autoFocus={autoFocusLast && index === items.length - 1}
               placeholder={isChild ? 'Sub-item...' : 'List item...'}
-              className={`flex-1 bg-transparent text-sm text-(--color-text-primary) placeholder-(--color-text-tertiary) focus:outline-none transition-all text-left ${item.checked ? checklist.itemTextChecked : ''}`}
+              className={`flex-1 min-w-0 resize-none overflow-hidden bg-transparent text-sm text-(--color-text-primary) placeholder-(--color-text-tertiary) focus:outline-none transition-colors text-left ${item.checked ? checklist.itemTextChecked : ''}`}
               dir="ltr"
             />
           </div>
