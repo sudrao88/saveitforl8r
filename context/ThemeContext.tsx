@@ -71,6 +71,13 @@ export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     document.documentElement.setAttribute('data-theme', resolvedTheme);
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute('content', resolvedTheme === 'light' ? '#ffffff' : '#000000');
+
+    // Native (Capacitor Android): keep the system status/navigation bar icon
+    // color in sync with the resolved theme. No-op on web or on older APKs
+    // whose bridge predates setStatusBarStyle.
+    try {
+      window.AndroidBridge?.setStatusBarStyle?.(resolvedTheme === 'dark');
+    } catch { /* bridge unavailable */ }
   }, [resolvedTheme]);
 
   const setTheme = useCallback((next: ThemePreference) => {

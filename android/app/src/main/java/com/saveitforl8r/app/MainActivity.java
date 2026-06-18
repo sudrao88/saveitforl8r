@@ -24,6 +24,8 @@ import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
+import androidx.webkit.WebSettingsCompat;
+import androidx.webkit.WebViewFeature;
 
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.JSObject;
@@ -69,7 +71,9 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
             // works correctly on Android 15+ where edge-to-edge is enforced.
             setupEdgeToEdgeInsets();
 
-            // Set light status bar icons (white text/icons) for dark theme
+            // Initial system-bar appearance: light icons (white) for the dark
+            // default. Once the web layer resolves its theme it calls
+            // setStatusBarStyle() to keep these in sync with light/dark mode.
             WindowInsetsControllerCompat insetsController =
                 WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
             insetsController.setAppearanceLightStatusBars(false);
@@ -205,6 +209,15 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
             }
 
             WebView webView = bridge.getWebView();
+
+            // Let the WebView's prefers-color-scheme media query follow the OS
+            // light/dark setting. The app theme is DayNight, so this reports the
+            // system preference to the web layer (used by ThemeContext's "System"
+            // mode). Our CSS declares `color-scheme`, so the WebView will NOT
+            // apply its own algorithmic darkening on top of our themed styles.
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
+                WebSettingsCompat.setAlgorithmicDarkeningAllowed(webView.getSettings(), true);
+            }
 
             // Add JS Interface for app-ready signaling from React
             webView.addJavascriptInterface(new AppReadyInterface(this), "AndroidBridge");
@@ -371,6 +384,30 @@ public class MainActivity extends BridgeActivity implements ShareIntentHandler.S
                     activity.dispatchPendingWidgetEvent();
                 });
             }
+        }
+
+        /**
+         * Syncs the system status/navigation bar icon color with the web
+         * layer's resolved theme. Called from ThemeContext whenever the
+         * effective theme changes (including live OS changes in "System" mode).
+         *
+         * @param isDark true when the app is showing dark content, so the bars
+         *               need light (white) icons; false for light content.
+         */
+        @JavascriptInterface
+        public void setStatusBarStyle(boolean isDark) {
+            if (activity == null) return;
+            activity.mainHandler.post(() -> {
+                try {
+                    WindowInsetsControllerCompat controller = WindowCompat.getInsetsController(
+                        activity.getWindow(), activity.getWindow().getDecorView());
+                    // "Light bars" means dark icons on a light surface, so invert.
+                    controller.setAppearanceLightStatusBars(!isDark);
+                    controller.setAppearanceLightNavigationBars(!isDark);
+                } catch (Exception e) {
+                    Log.e(TAG, "Failed to set status bar style", e);
+                }
+            });
         }
 
         /**

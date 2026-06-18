@@ -18,6 +18,7 @@ declare global {
       startForegroundSync: (totalItems: number) => void;
       updateSyncProgress: (current: number, total: number) => void;
       stopForegroundSync: () => void;
+      setStatusBarStyle?: (isDark: boolean) => void;
     };
     webkit?: {
       messageHandlers: {
