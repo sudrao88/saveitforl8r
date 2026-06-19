@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v129",
-  "buildNumber": 129,
-  "buildDate": "2026-06-17T05:15:00.000Z",
+  "version": "saveitforl8r-v130",
+  "buildNumber": 130,
+  "buildDate": "2026-06-18T09:53:55.166Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Fixed an error that could leave the app stuck on a 'Something went wrong' screen when opening a moment or the calendar. The app now reliably recovers from stale cached files after an update."
+  "changelog": "Checklist item text now wraps onto multiple lines instead of scrolling sideways, so long items stay fully visible while you edit."
 }

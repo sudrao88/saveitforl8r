@@ -1,4 +1,4 @@
-import React, { useRef, useCallback } from 'react';
+import React, { useRef, useCallback, useLayoutEffect } from 'react';
 import { Plus, GripVertical } from 'lucide-react';
 import { checklist } from '../styles/design-system';
 
@@ -369,7 +369,7 @@ export function ChecklistEditor({
   autoFocusLast = false,
   dataIdAttr = false,
 }: ChecklistEditorProps) {
-  const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
+  const inputRefs = useRef<Map<string, HTMLTextAreaElement>>(new Map());
 
   const focusItem = useCallback((id: string) => {
     const input = inputRefs.current.get(id);
@@ -378,6 +378,37 @@ export function ChecklistEditor({
     const len = input.value.length;
     input.setSelectionRange(len, len);
   }, []);
+
+  // Auto-grow the textarea so long text wraps to multiple lines instead of
+  // scrolling horizontally.
+  const autoSize = useCallback((el: HTMLTextAreaElement) => {
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, []);
+
+  // Resize textareas in a layout effect rather than from inline ref/onChange
+  // callbacks. Inline ref callbacks re-run for every item on every render, so
+  // reading scrollHeight there would force O(N) synchronous reflows per
+  // keystroke. Here we only resize items whose text actually changed, which
+  // still covers mounts, additions, deletions, reorders, and programmatic
+  // updates.
+  const prevTextsRef = useRef<Map<string, string>>(new Map());
+
+  useLayoutEffect(() => {
+    items.forEach((item) => {
+      const el = inputRefs.current.get(item.id);
+      if (el && prevTextsRef.current.get(item.id) !== item.text) {
+        autoSize(el);
+        prevTextsRef.current.set(item.id, item.text);
+      }
+    });
+
+    // Drop cache entries for removed items so the map doesn't grow unbounded.
+    const currentIds = new Set(items.map((i) => i.id));
+    prevTextsRef.current.forEach((_, id) => {
+      if (!currentIds.has(id)) prevTextsRef.current.delete(id);
+    });
+  }, [items, autoSize]);
 
   return (
     <div className="space-y-2">
@@ -399,12 +430,12 @@ export function ChecklistEditor({
               checked={item.checked}
               onClick={() => onToggle(item.id)}
             />
-            <input
+            <textarea
               ref={(el) => {
                 if (el) inputRefs.current.set(item.id, el);
                 else inputRefs.current.delete(item.id);
               }}
-              type="text"
+              rows={1}
               value={item.text}
               {...(dataIdAttr ? { 'data-checklist-id': item.id } : {})}
               onChange={(e) => onUpdate(item.id, e.target.value)}
@@ -447,7 +478,7 @@ export function ChecklistEditor({
               }}
               autoFocus={autoFocusLast && index === items.length - 1}
               placeholder={isChild ? 'Sub-item...' : 'List item...'}
-              className={`flex-1 bg-transparent text-sm text-(--color-text-primary) placeholder-(--color-text-tertiary) focus:outline-none transition-all text-left ${item.checked ? checklist.itemTextChecked : ''}`}
+              className={`flex-1 min-w-0 resize-none overflow-hidden bg-transparent text-sm text-(--color-text-primary) placeholder-(--color-text-tertiary) focus:outline-none transition-colors text-left ${item.checked ? checklist.itemTextChecked : ''}`}
               dir="ltr"
             />
           </div>
