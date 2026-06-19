@@ -7,11 +7,17 @@ import {
     getAccessToken,
     processAuthCallback
 } from '../services/googleDriveService';
-import { ANALYTICS_EVENTS } from '../constants';
-import { logEvent, setUserId, clearUserId } from '../services/analytics';
-import { isNative } from '../services/platform';
-import { getStoredToken } from '../services/tokenService';
+import { setUserId, clearUserId, trackLogin } from '../services/analytics';
+import { isNative, storage } from '../services/platform';
 import { sha256Hash } from '../utils/hash';
+
+// Set the GA4 User-ID from the stored Google account `sub`. Hashing keeps the
+// identifier pseudonymous in GA while remaining stable across devices, so the
+// same person is counted once everywhere they sign in.
+const applyGaUserId = async () => {
+  const sub = await storage.get('gdrive_user_id');
+  if (sub) setUserId(await sha256Hash(sub));
+};
 
 export type AuthStatus = 'unlinked' | 'linked' | 'authenticating' | 'error';
 
@@ -24,11 +30,8 @@ export const useAuth = () => {
     const initStatus = async () => {
         const linked = await checkIsLinked();
         setAuthStatus(linked ? 'linked' : 'unlinked');
-        // Set GA user ID from stored refresh token if already linked
-        if (linked) {
-          const refreshToken = await getStoredToken('refresh_token');
-          if (refreshToken) setUserId(await sha256Hash(refreshToken));
-        }
+        // Restore GA cross-device User-ID if already linked
+        if (linked) await applyGaUserId();
     };
     initStatus();
   }, []);
@@ -50,7 +53,6 @@ export const useAuth = () => {
     await unlinkDrive();
     setAuthStatus('unlinked');
     clearUserId();
-    logEvent(ANALYTICS_EVENTS.AUTH.CATEGORY, ANALYTICS_EVENTS.AUTH.ACTION_LOGOUT);
   }, []);
 
   // Re-check auth status from storage (used after native deep link auth)
@@ -58,9 +60,8 @@ export const useAuth = () => {
     const linked = await checkIsLinked();
     if (linked) {
         setAuthStatus('linked');
-        const refreshToken = await getStoredToken('refresh_token');
-        if (refreshToken) setUserId(await sha256Hash(refreshToken));
-        logEvent(ANALYTICS_EVENTS.AUTH.CATEGORY, ANALYTICS_EVENTS.AUTH.ACTION_LOGIN_SUCCESS);
+        await applyGaUserId();
+        trackLogin();
     }
   }, []);
 
@@ -85,15 +86,14 @@ export const useAuth = () => {
             setAuthStatus('authenticating');
             try {
                 await processAuthCallback();
-                console.log(`[Auth] ${ANALYTICS_EVENTS.AUTH.ACTION_LOGIN_SUCCESS}`);
+                console.log('[Auth] Login successful');
                 window.history.replaceState({}, document.title, window.location.pathname);
                 setAuthStatus('linked');
-                // Set GA user ID from refresh token for cross-session attribution
-                const refreshToken = await getStoredToken('refresh_token');
-                if (refreshToken) setUserId(await sha256Hash(refreshToken));
-                logEvent(ANALYTICS_EVENTS.AUTH.CATEGORY, ANALYTICS_EVENTS.AUTH.ACTION_LOGIN_SUCCESS);
+                // Set GA cross-device User-ID, then record the sign-in.
+                await applyGaUserId();
+                trackLogin();
             } catch (e) {
-                console.error(`[Auth] ${ANALYTICS_EVENTS.AUTH.ACTION_CALLBACK_FAILED}`, e);
+                console.error('[Auth] Callback processing failed', e);
                 setAuthStatus('error');
                 setAuthError('Authentication failed. Please try again.');
             }

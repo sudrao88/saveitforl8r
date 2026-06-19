@@ -1,4 +1,5 @@
 import ReactGA from 'react-ga4';
+import { ANALYTICS_EVENTS } from '../constants';
 
 export const GA_MEASUREMENT_ID = 'G-46ENBSFN2D';
 
@@ -7,12 +8,14 @@ export const initGA = () => {
 };
 
 /**
- * Set the GA4 user ID so all subsequent events are attributed to this user.
- * ReactGA.set({ userId }) maps to gtag('config', ..., { user_id }) which is
- * the standard GA4 User-ID for cross-device reporting.
+ * Set the GA4 User-ID so all subsequent events are attributed to the same
+ * person across devices and browsers.
  *
- * The value is a SHA-256 hash (via Web Crypto) of the refresh token — a stable,
- * pseudonymous identifier that avoids needing `openid` scope or extra API calls.
+ * The value is a SHA-256 hash (via Web Crypto) of the Google account's stable
+ * OpenID `sub` claim. Because `sub` is identical for a given Google account on
+ * every device, the same person signing in anywhere maps to one GA user — so
+ * GA4 counts them once and its new vs. returning user reporting works
+ * cross-device. The hash keeps the identifier pseudonymous in GA.
  */
 export const setUserId = (userId: string) => {
   ReactGA.set({ userId });
@@ -22,15 +25,18 @@ export const clearUserId = () => {
   ReactGA.set({ userId: undefined });
 };
 
-export const logEvent = (category: string, action: string, label?: string, value?: number) => {
-  ReactGA.event({
-    category,
-    action,
-    label,
-    value,
-  });
+/**
+ * Track a Google sign-in. Signing in is the same action as linking Google
+ * Drive, so this fires once whenever a user successfully links their account.
+ */
+export const trackLogin = () => {
+  ReactGA.event(ANALYTICS_EVENTS.LOGIN, { method: 'Google' });
 };
 
-export const logPageView = (pageName: string) => {
-  ReactGA.send({ hitType: "pageview", page: pageName });
+/**
+ * Track a note being saved. Fired once per saved note so the total count of
+ * notes saved per user can be derived in GA4.
+ */
+export const trackNoteSaved = () => {
+  ReactGA.event(ANALYTICS_EVENTS.NOTE_SAVED);
 };

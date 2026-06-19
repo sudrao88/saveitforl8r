@@ -10,8 +10,6 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { TodoItem, DetectedActionItem, Memory } from '../types';
-import { logEvent } from '../services/analytics';
-import { ANALYTICS_EVENTS } from '../constants';
 import {
   getTodoItems,
   saveTodoItems,
@@ -157,9 +155,6 @@ export const useTodoItems = ({ memories, memoriesLoaded, syncInProgress = false,
         ...newItems,
       ]);
 
-      if (newItems.length > 0) {
-        logEvent(ANALYTICS_EVENTS.TODO_ITEM.CATEGORY, ANALYTICS_EVENTS.TODO_ITEM.ACTION_CREATED, undefined, newItems.length);
-      }
       console.log(`[Todo] Created ${newItems.length} item(s) from memory ${memory.id} (${suppressedTitles.size} suppressed)`);
       return [...tombstones, ...newItems];
     } finally {
@@ -193,11 +188,6 @@ export const useTodoItems = ({ memories, memoriesLoaded, syncInProgress = false,
     await updateTodoItem(updated);
     setItemsList(prev => prev.map(i => i.id === itemId ? updated : i));
 
-    const action = updated.isCompleted
-      ? ANALYTICS_EVENTS.TODO_ITEM.ACTION_COMPLETED
-      : ANALYTICS_EVENTS.TODO_ITEM.ACTION_UNCOMPLETED;
-    logEvent(ANALYTICS_EVENTS.TODO_ITEM.CATEGORY, action);
-
     return updated;
   }, [itemsList]);
 
@@ -216,7 +206,6 @@ export const useTodoItems = ({ memories, memoriesLoaded, syncInProgress = false,
     await updateTodoItem(updated);
     setItemsList(prev => prev.map(i => i.id === itemId ? updated : i));
 
-    logEvent(ANALYTICS_EVENTS.TODO_ITEM.CATEGORY, ANALYTICS_EVENTS.TODO_ITEM.ACTION_DISMISSED);
     console.log(`[Todo] Dismissed item ${itemId}`);
 
     return updated;
@@ -237,7 +226,6 @@ export const useTodoItems = ({ memories, memoriesLoaded, syncInProgress = false,
     await updateTodoItem(updated);
     setItemsList(prev => prev.map(i => i.id === itemId ? updated : i));
 
-    logEvent(ANALYTICS_EVENTS.TODO_ITEM.CATEGORY, ANALYTICS_EVENTS.TODO_ITEM.ACTION_RESTORED);
     console.log(`[Todo] Restored item ${itemId}`);
 
     return updated;

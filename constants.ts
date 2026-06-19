@@ -2,95 +2,23 @@ export const STORAGE_KEYS = {
   HAS_SEEN_SHARE_ONBOARDING: 'hasSeenShareOnboarding',
 } as const;
 
+/**
+ * Google Analytics (GA4) events. We deliberately track only three things:
+ *
+ *  1. `login`      — fired when a user signs in with their Google account
+ *                    (which is the same action as linking Google Drive).
+ *  2. user identity — every event is attributed to a stable, cross-device
+ *                    GA4 User-ID derived from the Google account's OpenID
+ *                    `sub` claim, so the same person on different
+ *                    devices/browsers counts as one user (and GA4's new vs.
+ *                    returning reporting works across devices). This is set
+ *                    via `setUserId` in `services/analytics.ts`, not an event.
+ *  3. `note_saved` — fired once per note a user saves, so the total number
+ *                    of notes saved per user can be derived in GA4.
+ *
+ * GA4 event names are lowercase snake_case per Google's recommendations.
+ */
 export const ANALYTICS_EVENTS = {
-  ONBOARDING: {
-    CATEGORY: 'Onboarding',
-    ACTION_DISMISSED: 'Share Modal Dismissed',
-  },
-  SHARE: {
-    CATEGORY: 'Share',
-    ACTION_RECEIVED: 'Received',
-    LABEL_EXTERNAL: 'External Share',
-  },
-  MEMORY: {
-    CATEGORY: 'Memory',
-    ACTION_CAPTURE_CANCELLED: 'Capture Cancelled',
-    ACTION_CREATED: 'Created',
-    ACTION_DELETED: 'Deleted',
-    ACTION_RETRIED: 'Retried',
-  },
-  CHAT: {
-    CATEGORY: 'Chat',
-    ACTION_CLOSED: 'Closed',
-  },
-  NAVIGATION: {
-    CATEGORY: 'Navigation',
-    ACTION_VIEW_CHANGED: 'View Changed',
-    ACTION_SETTINGS_OPENED: 'Settings Opened',
-    ACTION_CAPTURE_OPENED: 'Capture Opened',
-  },
-  FILTER: {
-    CATEGORY: 'Filter',
-    ACTION_CLEARED: 'Cleared',
-    ACTION_CLEARED_EMPTY: 'Cleared from Empty State',
-    ACTION_APPLIED: 'Applied',
-  },
-  APP: {
-    CATEGORY: 'App',
-    ACTION_UPDATED: 'Updated',
-  },
-  SETTINGS: {
-    CATEGORY: 'Settings',
-    ACTION_CLOSED: 'Closed',
-  },
-  DATA: {
-    CATEGORY: 'Data',
-    ACTION_IMPORT_SUCCESS: 'Import Success',
-  },
-  AUTH: {
-    CATEGORY: 'Auth',
-    ACTION_LOGIN_SUCCESS: 'Login successful',
-    ACTION_CALLBACK_FAILED: 'Callback processing failed',
-    ACTION_LOGOUT: 'Logout',
-  },
-  QUICK_NOTE: {
-    CATEGORY: 'QuickNote',
-    ACTION_SAVED: 'Saved',
-    ACTION_EXPANDED: 'Expanded',
-  },
-  ENRICHMENT: {
-    CATEGORY: 'Enrichment',
-    ACTION_COMPLETED: 'Completed',
-    ACTION_FAILED: 'Failed',
-  },
-  MOMENT: {
-    CATEGORY: 'Moment',
-    ACTION_CREATED: 'Created',
-    ACTION_DELETED: 'Deleted',
-  },
-  CALENDAR_EVENT: {
-    CATEGORY: 'CalendarEvent',
-    ACTION_CREATED: 'Created',
-    ACTION_EDITED: 'Edited',
-  },
-  TODO_ITEM: {
-    CATEGORY: 'TodoItem',
-    ACTION_CREATED: 'Created',
-    ACTION_COMPLETED: 'Completed',
-    ACTION_UNCOMPLETED: 'Uncompleted',
-    ACTION_DISMISSED: 'Dismissed',
-    ACTION_RESTORED: 'Restored',
-  },
-  NOTIFICATION: {
-    CATEGORY: 'Notification',
-    ACTION_SCHEDULED: 'Scheduled',
-    ACTION_PERMISSION_GRANTED: 'Permission Granted',
-    ACTION_SETTING_CHANGED: 'Setting Changed',
-  },
-  DELETION_CANDIDATES: {
-    CATEGORY: 'DeletionCandidates',
-    ACTION_OPENED: 'Opened',
-    ACTION_DELETED: 'Deleted',
-    ACTION_DISMISSED: 'Dismissed',
-  },
+  LOGIN: 'login',
+  NOTE_SAVED: 'note_saved',
 } as const;

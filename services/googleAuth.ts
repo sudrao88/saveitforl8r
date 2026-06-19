@@ -27,10 +27,32 @@ if (!CLIENT_SECRET) {
   console.warn('[Auth] VITE_GOOGLE_CLIENT_SECRET is not set. Google Drive sync will not work.');
 }
 
-// Removed email and profile scopes as they are not needed for Refresh Token flow
-const SCOPES = 'https://www.googleapis.com/auth/drive.appdata'; 
+// `openid` yields an ID token whose `sub` claim is a stable, per-account
+// identifier — used as the GA4 User-ID so the same person is counted once
+// across devices/browsers. `drive.appdata` covers sync. We intentionally do
+// NOT request `email`/`profile`: `sub` alone is enough for analytics and
+// avoids handling extra PII.
+const SCOPES = 'openid https://www.googleapis.com/auth/drive.appdata';
 const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
 const AUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth';
+
+// Decode the stable Google account id (`sub`) from an OpenID ID token (JWT).
+// Returns null if the token is absent or malformed. We only read the payload;
+// signature verification is unnecessary because the token came directly from
+// Google's token endpoint over TLS and is used solely as a pseudonymous
+// analytics key.
+const decodeIdTokenSub = (idToken?: string): string | null => {
+  if (!idToken) return null;
+  try {
+    const payload = idToken.split('.')[1];
+    if (!payload) return null;
+    const json = atob(payload.replace(/-/g, '+').replace(/_/g, '/'));
+    const claims = JSON.parse(json);
+    return typeof claims.sub === 'string' ? claims.sub : null;
+  } catch {
+    return null;
+  }
+};
 
 // Initiate Login Flow (PKCE)
 export const initiateLogin = async () => {
@@ -126,7 +148,13 @@ const exchangeCodeForToken = async (code: string | null, error: string | null) =
   await storeTokens(data.access_token, expiresAt, data.refresh_token);
   // Use storage adapter for cross-platform consistency
   await storage.set('gdrive_linked', 'true');
-  
+
+  // Persist the stable account id (`sub`) for use as the GA4 cross-device
+  // User-ID. Captured here at sign-in because the ID token is only returned
+  // by the authorization-code exchange (and refresh, once openid is granted).
+  const sub = decodeIdTokenSub(data.id_token);
+  if (sub) await storage.set('gdrive_user_id', sub);
+
   return true; // Success
 };
 
@@ -193,15 +221,23 @@ const refreshAccessToken = async () => {
       if (res.status === 400 || res.status === 401) {
           await clearTokens();
           await storage.remove('gdrive_linked');
+          await storage.remove('gdrive_user_id');
       }
       throw new Error('Token refresh failed');
   }
 
   const data = await res.json();
   const expiresAt = Date.now() + data.expires_in * 1000;
-  
+
   // Update tokens (keep existing refresh token if not returned new one)
   await storeTokens(data.access_token, expiresAt, data.refresh_token || refreshToken);
+
+  // Refresh responses also carry an ID token once openid is granted; capture
+  // the `sub` here so the GA4 User-ID is populated for sessions that resume via
+  // refresh without a fresh sign-in.
+  const sub = decodeIdTokenSub(data.id_token);
+  if (sub) await storage.set('gdrive_user_id', sub);
+
   return data.access_token;
 };
 
