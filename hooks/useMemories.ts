@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getMemories, deleteMemory, saveMemory, getMemory } from '../services/storageService';
 import { submitEnrichment } from '../services/geminiService';
-import { Memory, Attachment, Moment, CalendarEvent, TodoItem, UploadProgress, isMemoryInFlight } from '../types';
+import { Memory, Attachment, Moment, CalendarEvent, TodoItem, UploadProgress, WebAddition, isMemoryInFlight } from '../types';
 import { uploadFileChunked, LARGE_PAYLOAD_THRESHOLD } from '../services/chunkUploadService';
 import { useSync } from './useSync';
 import { useAuth } from './useAuth';
@@ -458,6 +458,35 @@ export const useMemories = () => {
     }
   }, [trySyncFile]);
 
+  // Merge web findings the moments agent fetched into a note's enrichment.
+  // Lightweight on purpose (modeled on togglePin) — it must NOT clear enrichment
+  // the way updateMemory does, since that would wipe the note and re-enrich it.
+  // De-dupes by sourceUrl+text so repeated agent runs don't pile up duplicates.
+  const applyWebAdditions = useCallback(async (id: string, additions: WebAddition[]) => {
+    if (!additions || additions.length === 0) return;
+    try {
+      const current = await getMemory(id);
+      if (!current || !current.enrichment) return; // only annotate already-enriched notes
+      const existing = current.enrichment.webAdditions || [];
+      const seen = new Set(existing.map(a => `${a.sourceUrl}|${a.text}`));
+      const merged = [...existing];
+      for (const a of additions) {
+        const key = `${a.sourceUrl}|${a.text}`;
+        if (!seen.has(key)) { seen.add(key); merged.push(a); }
+      }
+      if (merged.length === existing.length) return; // nothing new
+      const updated: Memory = {
+        ...current,
+        enrichment: { ...current.enrichment, webAdditions: merged },
+      };
+      await saveMemory(updated);
+      setMemories(prev => prev.map(m => m.id === id ? { ...m, enrichment: updated.enrichment } : m));
+      await trySyncFile(updated);
+    } catch (e) {
+      console.error('Failed to apply web additions', e);
+    }
+  }, [trySyncFile]);
+
   const updateMemory = useCallback(async (
     id: string,
     text: string,
@@ -593,6 +622,7 @@ export const useMemories = () => {
     updateMemory,
     updateMemoryContent,
     togglePin,
+    applyWebAdditions,
     dismissDeletionCandidate,
     isLoading,
     setMomentsRef,

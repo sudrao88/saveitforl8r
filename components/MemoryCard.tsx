@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
-import { Trash2, Loader2, Clock, ExternalLink, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, WifiOff, CloudOff, FileText, Paperclip, MoreVertical, AlertTriangle, AlertCircle, LogIn, Maximize2, Eye, Pin, Pencil, Lightbulb, CircleCheck, UtensilsCrossed, ListOrdered, ThumbsUp, ThumbsDown, DollarSign, MapPin, CalendarDays, ClipboardList, MessageSquare, Users, Mic, Code, Heart, Scale, GraduationCap, Briefcase, Music, Film, BookOpenCheck, Bookmark, Phone, Mail, ScrollText, Tag, Clock3, Flame, Quote, Hourglass, Sparkles, Calculator, CheckSquare, Square, Waypoints } from 'lucide-react';
+import { Trash2, Loader2, Clock, ExternalLink, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, WifiOff, CloudOff, FileText, Paperclip, MoreVertical, AlertTriangle, AlertCircle, LogIn, Maximize2, Eye, Pin, Pencil, Lightbulb, CircleCheck, UtensilsCrossed, ListOrdered, ThumbsUp, ThumbsDown, DollarSign, MapPin, CalendarDays, ClipboardList, MessageSquare, Users, Mic, Code, Heart, Scale, GraduationCap, Briefcase, Music, Film, BookOpenCheck, Bookmark, Phone, Mail, ScrollText, Tag, Clock3, Flame, Quote, Hourglass, Sparkles, Calculator, CheckSquare, Square, Waypoints, Globe } from 'lucide-react';
 import { Memory, Attachment, UploadProgress, CalendarEvent, TodoItem, isMemoryInFlight, isMemoryFailed } from '../types.ts';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import type { RelatedMemoryDisplayItem } from '../hooks/useRelatedMemories';
@@ -900,6 +900,31 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                     </div>
                 );
             })()}
+
+            {/* Added from the web — facts the moments agent fetched and saved
+                back onto this note, each attributed to its source. */}
+            {memory.enrichment?.webAdditions && memory.enrichment.webAdditions.length > 0 && (
+                <div className="flex flex-col gap-1.5 pt-1">
+                    <span className={`flex items-center gap-1.5 ${text.label}`}>
+                        <Globe size={12} className="text-(--color-accent)" />
+                        Added from the web
+                    </span>
+                    {memory.enrichment.webAdditions.map((addition, i) => (
+                        <a
+                            key={`${addition.sourceUrl}-${i}`}
+                            href={addition.sourceUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            title={addition.sourceUrl}
+                            className="flex items-start gap-1.5 max-w-full text-sm text-(--color-text-secondary) hover:text-(--color-accent) transition-colors duration-(--duration-fast)"
+                        >
+                            <ExternalLink size={12} className="shrink-0 mt-0.5 text-(--color-text-tertiary)" />
+                            <span className="flex-1">{addition.text}</span>
+                        </a>
+                    ))}
+                </div>
+            )}
 
             {/* Documents */}
             {documents.length > 0 && !memory._attachmentsDeferred && (

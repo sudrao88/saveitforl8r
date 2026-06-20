@@ -15,6 +15,12 @@ export interface QueryResponse {
   sources: QuerySource[];
 }
 
+export interface NoteEmbellishment {
+  noteId: string;
+  addition: string;
+  sourceUrl: string;
+}
+
 export interface CreateMomentResponse {
   title: string;
   type: string;
@@ -22,6 +28,15 @@ export interface CreateMomentResponse {
   usedNoteIds: string[];
   synthesis: SynthesisResponse;
   refinedObjective?: string;
+  noteEmbellishments?: NoteEmbellishment[];
+}
+
+/** A live progress step emitted by the moment-creation agent. */
+export interface ProgressStep {
+  step: string;
+  tool?: string;
+  summary?: string;
+  at?: number;
 }
 
 interface EnrichmentInput {
@@ -367,13 +382,14 @@ export const submitMomentCreation = async (
 
 export type MomentCreationPollResult =
   | { status: 'completed'; data: CreateMomentResponse }
-  | { status: 'processing' }
+  | { status: 'processing'; progress?: ProgressStep[] }
   | { status: 'failed' }
   | { status: 'not_found' };
 
 interface MomentResultEntry {
   status: 'completed' | 'failed' | 'not_found' | string;
   data?: CreateMomentResponse;
+  progress?: ProgressStep[];
 }
 
 interface MomentResultsResponse {
@@ -403,7 +419,7 @@ export const fetchPendingMomentResults = async (
         } else if (entry?.status === 'failed') {
           result[id] = { status: 'failed' };
         } else if (entry?.status === 'processing') {
-          result[id] = { status: 'processing' };
+          result[id] = { status: 'processing', progress: entry.progress };
         } else {
           result[id] = { status: 'not_found' };
         }
@@ -433,6 +449,7 @@ export const submitResynthesis = async (
   moment: Moment,
   memories: Memory[],
   inputHash?: string,
+  existingSynthesis?: SynthesisResponse,
 ): Promise<{ momentId: string }> => {
   const notes: LightNote[] = moment.noteIds
     .map(id => memories.find(m => m.id === id))
@@ -450,12 +467,17 @@ export const submitResynthesis = async (
         : undefined,
     }));
 
+  // When we have a prior synthesis, ask the server to MERGE (structure-preserving)
+  // rather than regenerate — this keeps web-sourced items and the existing layout.
+  const mergeFields = existingSynthesis ? { existingSynthesis } : {};
+
   const inlineBody: Record<string, unknown> = {
     notes,
     momentType: moment.type,
     momentTitle: moment.title,
     objective: moment.objective,
     momentId: moment.id,
+    ...mergeFields,
     ...(inputHash ? { inputHash } : {}),
   };
 
@@ -475,6 +497,7 @@ export const submitResynthesis = async (
         notesFileUri: uploaded.fileUri,
         notesFileName: uploaded.geminiFileName,
         noteCount: notes.length,
+        ...mergeFields,
         ...(inputHash ? { inputHash } : {}),
       }
     : inlineBody;
@@ -493,10 +516,11 @@ export type SynthesisPollResult =
   | { status: 'completed'; data: SynthesisResponse; inputHash?: string }
   | { status: 'processing'; inputHash?: string }
   | { status: 'failed'; inputHash?: string }
+  | { status: 'needs_rebuild'; inputHash?: string }
   | { status: 'not_found' };
 
 interface SynthesisResultEntry {
-  status: 'completed' | 'failed' | 'not_found' | string;
+  status: 'completed' | 'failed' | 'not_found' | 'needs_rebuild' | string;
   data?: SynthesisResponse;
   inputHash?: string;
 }
@@ -529,6 +553,8 @@ export const fetchPendingSynthesisResults = async (
           result[id] = { status: 'completed', data: entry.data, inputHash: entry.inputHash };
         } else if (entry?.status === 'failed') {
           result[id] = { status: 'failed', inputHash: entry.inputHash };
+        } else if (entry?.status === 'needs_rebuild') {
+          result[id] = { status: 'needs_rebuild', inputHash: entry.inputHash };
         } else {
           // Default unknown statuses to 'processing' as a safe intermediate state
           result[id] = { status: 'processing', inputHash: entry?.inputHash };
@@ -541,6 +567,18 @@ export const fetchPendingSynthesisResults = async (
     return {};
   }
 };
+
+/**
+ * Thrown by pollSynthesisResult when a structure-preserving merge reports it
+ * couldn't place a new note. The caller keeps the existing synthesis and prompts
+ * the user to rebuild the moment with the agent.
+ */
+export class MomentNeedsRebuildError extends Error {
+  constructor() {
+    super('Moment needs agentic rebuild');
+    this.name = 'MomentNeedsRebuildError';
+  }
+}
 
 /** Poll every 1s during the initial fast-polling tier. */
 const SYNTH_FAST_POLL_INTERVAL_MS = 1_000;
@@ -591,6 +629,9 @@ export const pollSynthesisResult = async (
 
     if (result?.status === 'completed' && 'data' in result) {
       return result.data;
+    }
+    if (result?.status === 'needs_rebuild') {
+      throw new MomentNeedsRebuildError();
     }
     if (result?.status === 'failed') {
       throw new Error('Synthesis failed on server');

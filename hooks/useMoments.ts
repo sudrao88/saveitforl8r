@@ -20,6 +20,7 @@ import {
   Moment,
   MomentSynthesis,
   SynthesisResponse,
+  WebAddition,
 } from '../types';
 import {
   getMoments,
@@ -29,7 +30,7 @@ import {
   saveMomentSynthesis,
   deleteMomentSynthesis,
 } from '../services/storageService';
-import { submitMomentCreation, submitResynthesis, pollSynthesisResult, fetchPendingSynthesisResults } from '../services/geminiService';
+import { submitMomentCreation, submitResynthesis, pollSynthesisResult, fetchPendingSynthesisResults, MomentNeedsRebuildError, ProgressStep } from '../services/geminiService';
 import { useMomentCreationPolling } from './useMomentCreationPolling';
 import { computeInputHash } from '../utils/hash';
 
@@ -61,13 +62,28 @@ interface UseMomentsReturn {
   refreshMoments: () => Promise<void>;
   /** Mark a moment as seen (updates lastSeenInputHash to current inputHash) */
   markMomentSeen: (momentId: string) => Promise<void>;
+  /** Re-run the agentic creation loop for a moment (scoped to its current notes) */
+  rebuildMomentWithAgent: (momentId: string) => Promise<void>;
+  /** Dismiss the agentic-rebuild prompt for a moment without rebuilding */
+  dismissAgenticRebuild: (momentId: string) => Promise<void>;
+  /** Live agent progress steps per pending moment, for the creation UI */
+  momentProgress: Map<string, ProgressStep[]>;
 }
 
-export const useMoments = (memories: Memory[]): UseMomentsReturn => {
+export const useMoments = (
+  memories: Memory[],
+  applyWebAdditions?: (id: string, additions: WebAddition[]) => Promise<void>,
+): UseMomentsReturn => {
   const [momentsList, setMomentsList] = useState<Moment[]>([]);
   const [synthesesMap, setSynthesesMap] = useState<Map<string, MomentSynthesis>>(new Map());
   const [synthesisLoading, setSynthesisLoading] = useState<Set<string>>(new Set());
   const [creating, setCreating] = useState(false);
+  const [momentProgress, setMomentProgress] = useState<Map<string, ProgressStep[]>>(new Map());
+
+  // Keep a ref so the polling hook's callbacks can apply embellishments without
+  // re-subscribing when the callback identity changes.
+  const applyWebAdditionsRef = useRef(applyWebAdditions);
+  useEffect(() => { applyWebAdditionsRef.current = applyWebAdditions; }, [applyWebAdditions]);
   const loaded = useRef(false);
   const onMomentChangedRef = useRef<((moment: Moment) => void) | undefined>(undefined);
 
@@ -103,6 +119,8 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
     memoriesRef,
     setMoments: setMomentsList,
     setSynthesesMap,
+    setMomentProgress,
+    applyWebAdditionsRef,
     onMomentCreated: handleMomentCreated,
     onMomentResynthesisRecovered: handleMomentCreated,
   });
@@ -285,12 +303,16 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
         setMomentsList(prev => prev.map(m => m.id === moment.id ? workingMoment : m));
       }
 
+      // Keep web-sourced items unconditionally (they have no note home); only
+      // drop note-sourced items whose note has left the moment.
       const filterSynthesis = (raw: SynthesisResponse): SynthesisResponse => ({
         ...raw,
         sections: raw.sections
           .map(section => ({
             ...section,
-            items: section.items.filter(item => currentNoteIdSet.has(item.sourceNoteId)),
+            items: section.items.filter(item =>
+              item.sourceType === 'web' || currentNoteIdSet.has(item.sourceNoteId ?? '')
+            ),
           }))
           .filter(section => section.items.length > 0),
         generatedFrom: raw.generatedFrom.filter(id => currentNoteIdSet.has(id)),
@@ -390,7 +412,12 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
             await saveMoment(workingMoment);
             setMomentsList(prev => prev.map(m => m.id === moment.id ? workingMoment : m));
 
-            await submitResynthesis(moment, currentMemories, currentHash);
+            // When we have a prior synthesis cached, ask the server to MERGE the
+            // new note into it (structure-preserving — keeps web-sourced items)
+            // rather than regenerate. The forced "Re-synthesize" button and the
+            // removal path (cache cleared) pass no prior synthesis → full regen.
+            const priorSynthesis = force ? undefined : synthesesMap.get(moment.id)?.content;
+            await submitResynthesis(moment, currentMemories, currentHash, priorSynthesis);
             pollingPromise = pollSynthesisResult(moment.id, abort.signal);
             inFlightPolling.current.set(moment.id, { hash: currentHash, promise: pollingPromise, abort });
           }
@@ -429,6 +456,25 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
         // result. Don't log, don't clear, don't persist.
         if ((err as Error)?.name === 'AbortError') {
           return null;
+        }
+        // The structure-preserving merge couldn't place a new note. Keep the
+        // EXISTING synthesis on screen, clear the pending marker, and flag the
+        // moment so the UI can offer an agentic rebuild.
+        if (err instanceof MomentNeedsRebuildError) {
+          const latest = await getMoment(moment.id);
+          if (latest && !latest.isDeleted) {
+            const flagged: Moment = {
+              ...latest,
+              needsAgenticRebuild: true,
+              pendingSynthesisHash: undefined,
+              pendingSynthesisAt: undefined,
+              updatedAt: Date.now(),
+            };
+            await saveMoment(flagged);
+            setMomentsList(prev => prev.map(m => m.id === moment.id ? flagged : m));
+            onMomentChangedRef.current?.(flagged);
+          }
+          return synthesesMap.get(moment.id)?.content ?? null;
         }
         console.error('[Moments] Synthesis failed:', err);
         // Clear the recovery marker so app start doesn't keep polling a dead
@@ -526,6 +572,59 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
         updatedAt: Date.now(),
       };
 
+      await saveMoment(updated);
+      setMomentsList(prev => prev.map(m => m.id === momentId ? updated : m));
+      onMomentChangedRef.current?.(updated);
+    },
+    []
+  );
+
+  // Re-run the agentic creation loop for an existing moment, scoped to its
+  // current notes. Used when a structure-preserving merge couldn't place a note
+  // (needsAgenticRebuild) and the user opts to rebuild. Reuses the creation
+  // endpoint + polling: flips the moment back to pending so the agent produces a
+  // fresh synthesis (which replaces the old one on completion).
+  const rebuildMomentWithAgent = useCallback(
+    async (momentId: string): Promise<void> => {
+      const latest = await getMoment(momentId);
+      if (!latest || latest.isDeleted) return;
+
+      const momentMemories = latest.noteIds
+        .map(id => memoriesRef.current.find(m => m.id === id))
+        .filter((m): m is Memory => !!m);
+
+      const pending: Moment = {
+        ...latest,
+        isPending: true,
+        processingError: false,
+        needsAgenticRebuild: false,
+        pendingSynthesisHash: undefined,
+        pendingSynthesisAt: undefined,
+        updatedAt: Date.now(),
+      };
+      await saveMoment(pending);
+      setMomentsList(prev => prev.map(m => m.id === momentId ? pending : m));
+      onMomentChangedRef.current?.(pending);
+
+      try {
+        await submitMomentCreation(latest.objective, momentMemories, momentId);
+        startPolling();
+      } catch (err) {
+        console.error('[Moments] Agentic rebuild submit failed:', err);
+        const failed: Moment = { ...pending, isPending: false, processingError: true };
+        await saveMoment(failed);
+        setMomentsList(prev => prev.map(m => m.id === momentId ? failed : m));
+      }
+    },
+    [startPolling]
+  );
+
+  // Dismiss the agentic-rebuild prompt without rebuilding.
+  const dismissAgenticRebuild = useCallback(
+    async (momentId: string): Promise<void> => {
+      const latest = await getMoment(momentId);
+      if (!latest || latest.isDeleted || !latest.needsAgenticRebuild) return;
+      const updated: Moment = { ...latest, needsAgenticRebuild: false, updatedAt: Date.now() };
       await saveMoment(updated);
       setMomentsList(prev => prev.map(m => m.id === momentId ? updated : m));
       onMomentChangedRef.current?.(updated);
@@ -679,5 +778,8 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
     setOnMomentChanged,
     refreshMoments,
     markMomentSeen,
+    rebuildMomentWithAgent,
+    dismissAgenticRebuild,
+    momentProgress,
   };
 };

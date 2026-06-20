@@ -16,6 +16,8 @@ import {
   Check,
   RefreshCw,
   FileText,
+  Globe,
+  Sparkles,
 } from 'lucide-react';
 import {
   Moment,
@@ -27,16 +29,36 @@ import {
 } from '../types';
 import MemoryPreviewModal from './MemoryPreviewModal';
 import MomentNoteDeletionSheet from './MomentNoteDeletionSheet';
+import { ProgressStep } from '../services/geminiService';
 import { overlay, btn, chip } from '../styles/design-system';
 
-// Shared loading indicator for pending creation and resynthesis states
-const SynthesisLoadingState: React.FC = () => (
+// Shared loading indicator for pending creation and resynthesis states.
+// When the agent reports live progress steps, surface them so the user can
+// watch it search notes → search the web → embellish → synthesize.
+const SynthesisLoadingState: React.FC<{ progress?: ProgressStep[] }> = ({ progress }) => (
   <div className="text-center px-6">
     <Loader2 size={32} className="animate-spin text-(--color-accent) mx-auto mb-4" />
     <h3 className="text-lg font-bold text-(--color-text-primary) mb-2">Creating your moment…</h3>
     <p className="text-sm text-(--color-text-secondary) max-w-sm">
-      Our AI is analyzing your notes and building a synthesis. This usually takes 15–30 seconds.
+      The agent is reading your notes, searching the web, and building a synthesis. This usually takes 15–30 seconds.
     </p>
+    {progress && progress.length > 0 && (
+      <ul className="mt-4 space-y-1.5 text-left max-w-sm mx-auto">
+        {progress.map((p, i) => {
+          const isLast = i === progress.length - 1;
+          return (
+            <li key={i} className="flex items-center gap-2 text-xs">
+              {isLast
+                ? <Loader2 size={12} className="animate-spin text-(--color-accent) shrink-0" />
+                : <Check size={12} className="text-(--color-success) shrink-0" />}
+              <span className={isLast ? 'text-(--color-text-primary)' : 'text-(--color-text-tertiary)'}>
+                {p.step}{p.summary ? `: ${p.summary}` : ''}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    )}
   </div>
 );
 
@@ -86,6 +108,9 @@ interface MomentSheetProps {
   onMemoryEdit?: (memory: Memory) => void;
   onMemoryUpdate?: (id: string, content: string) => void;
   onMemoryTogglePin?: (id: string, isPinned: boolean) => void;
+  onRebuildWithAgent?: (momentId: string) => Promise<void>;
+  onDismissRebuild?: (momentId: string) => Promise<void>;
+  agentProgress?: ProgressStep[];
 }
 
 const MomentSheet: React.FC<MomentSheetProps> = ({
@@ -100,6 +125,9 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
   onMemoryEdit,
   onMemoryUpdate,
   onMemoryTogglePin,
+  onRebuildWithAgent,
+  onDismissRebuild,
+  agentProgress,
 }) => {
   const [synthesis, setSynthesis] = useState<SynthesisResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -240,7 +268,7 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
     return (
       <SheetShell title={moment.objective} onClose={onClose}>
         <div className="flex-1 flex items-center justify-center">
-          <SynthesisLoadingState />
+          <SynthesisLoadingState progress={agentProgress} />
         </div>
       </SheetShell>
     );
@@ -291,6 +319,32 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
           {moment.objective}
         </p>
       </div>
+
+      {/* Agentic-rebuild prompt — a new note couldn't be slotted into the moment */}
+      {moment.needsAgenticRebuild && (
+        <div className="px-4 sm:px-8 py-3 max-w-2xl mx-auto w-full">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 rounded-(--radius-xl) border border-(--color-warning)/40 bg-(--color-warning)/10">
+            <Sparkles size={18} className="text-(--color-warning) shrink-0" />
+            <p className="text-xs text-(--color-text-secondary) flex-1">
+              A new note couldn't be slotted into this moment. Rebuild it with the agent to fold everything in.
+            </p>
+            <div className="flex gap-2 shrink-0">
+              <button
+                onClick={() => { onRebuildWithAgent?.(moment.id); onClose(); }}
+                className={`${btn.base} ${btn.primarySm}`}
+              >
+                Rebuild
+              </button>
+              <button
+                onClick={() => onDismissRebuild?.(moment.id)}
+                className={`${btn.base} ${btn.secondarySm}`}
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
@@ -498,6 +552,14 @@ function truncateCitation(text: string, max: number = 60): string {
   return cleaned.length > max ? cleaned.slice(0, max - 1) + '…' : cleaned;
 }
 
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return url;
+  }
+}
+
 const ItemView: React.FC<{
   item: SynthesisItem;
   isCompleted: boolean;
@@ -540,7 +602,7 @@ const ItemView: React.FC<{
       {item.detail && (
         <p className="text-xs text-(--color-text-secondary) mt-0.5 break-all">{item.detail}</p>
       )}
-      {/* Source note citation */}
+      {/* Source citation — note (from the user's memories) or web (agent-found) */}
       {sourceMemory && (
         <button
           onClick={(e) => { e.stopPropagation(); onPreviewNote?.(); }}
@@ -551,6 +613,20 @@ const ItemView: React.FC<{
             {truncateCitation(sourceMemory.content)}
           </span>
         </button>
+      )}
+      {!sourceMemory && item.sourceType === 'web' && item.sourceUrl && (
+        <a
+          href={item.sourceUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="flex items-center gap-1.5 mt-1.5 max-w-full overflow-hidden group/cite hover:opacity-80 transition-opacity text-left"
+        >
+          <Globe size={10} className="text-(--color-text-tertiary) shrink-0 group-hover/cite:text-(--color-accent)" />
+          <span className="text-xs text-(--color-text-tertiary) truncate group-hover/cite:text-(--color-accent)">
+            {hostOf(item.sourceUrl)}
+          </span>
+        </a>
       )}
     </div>
     {item.link && (
