@@ -6,11 +6,11 @@ import { marked } from 'marked';
 import { Attachment, Memory } from '../types';
 import { isNative } from '../services/platform';
 import { Keyboard } from '@capacitor/keyboard';
-import { Geolocation } from '@capacitor/geolocation';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { useDeferredAutoFocus } from '../hooks/useDeferredAutoFocus';
 import { escapeHtml, looksLikeMarkdown, parseChecklistMarkdown, sanitizePastedHtml, hasRichFormatting, extractHashtags, mergeTagsWithHashtags, containsUrl, linkifyUrls, handleEditorKeyDown, checkActiveFormats, execFormatCommand, formatsEqual, isEditorEmpty } from '../utils/editorUtils';
 import { processFileInputs, MAX_FILE_SIZE_BYTES, MAX_ATTACHMENTS } from '../utils/attachmentUtils';
+import { prefetchLocation, resolveLocation } from '../utils/locationUtils';
 import FormattingToolbar from './FormattingToolbar';
 import TagInput from './TagInput';
 import { btn, overlay } from '../styles/design-system';
@@ -397,44 +397,9 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
     setIsProcessing(true);
 
     try {
-      let location: { latitude: number; longitude: number; accuracy?: number } | undefined;
-
-      // Only fetch location for new memories, not edits
-      if (!isEditMode) {
-        try {
-          if (isNative()) {
-            // Use Capacitor Geolocation plugin on native to trigger the
-            // iOS "While Using App" permission dialog and access native GPS
-            const pos = await Promise.race([
-              Geolocation.getCurrentPosition({ timeout: 5000 }),
-              new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000))
-            ]);
-            if (pos) {
-              location = {
-                latitude: pos.coords.latitude,
-                longitude: pos.coords.longitude,
-                accuracy: pos.coords.accuracy,
-              };
-            }
-          } else if (navigator.geolocation) {
-            const pos = await Promise.race([
-              new Promise<GeolocationPosition>((resolve, reject) => {
-                navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
-              }),
-              new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000))
-            ]) as GeolocationPosition | null;
-            if (pos) {
-              location = {
-                latitude: pos.coords.latitude,
-                longitude: pos.coords.longitude,
-                accuracy: pos.coords.accuracy,
-              };
-            }
-          }
-        } catch (e) {
-          console.warn("Location access denied or unavailable", e);
-        }
-      }
+      // Only fetch location for new memories, not edits. Location is prefetched
+      // when the user focuses the editor, so this usually resolves immediately.
+      const location = isEditMode ? undefined : await resolveLocation();
 
       const extractedTags = extractHashtags(finalContent);
       const allTags = mergeTagsWithHashtags(tags, extractedTags);
@@ -515,6 +480,7 @@ const NewMemoryPage: React.FC<NewMemoryPageProps> = ({ onClose, onCreate, onUpda
         {/* Full-page editor area */}
         <main
             className="flex-1 overflow-y-auto p-4 sm:p-8 max-w-3xl mx-auto w-full"
+            onFocus={isEditMode ? undefined : prefetchLocation}
             onClick={(e) => {
                 // Focus the editor when tapping empty space in the main area
                 if (!isChecklistMode && editorRef.current && !editorRef.current.contains(e.target as Node)) {
