@@ -113,6 +113,7 @@ const AppContent: React.FC = () => {
     updateMemory,
     updateMemoryContent,
     togglePin,
+    applyWebAdditions,
     dismissDeletionCandidate,
     isLoading,
     setMomentsRef,
@@ -138,7 +139,10 @@ const AppContent: React.FC = () => {
     setOnMomentChanged,
     refreshMoments,
     markMomentSeen,
-  } = useMoments(memories);
+    rebuildMomentWithAgent,
+    dismissAgenticRebuild,
+    momentProgress,
+  } = useMoments(memories, applyWebAdditions);
 
   const {
     events: calendarEvents,
@@ -1240,6 +1244,9 @@ const AppContent: React.FC = () => {
               onMemoryEdit={handleEditMemory}
               onMemoryUpdate={updateMemoryContent}
               onMemoryTogglePin={handleTogglePin}
+              onRebuildWithAgent={rebuildMomentWithAgent}
+              onDismissRebuild={dismissAgenticRebuild}
+              agentProgress={momentProgress.get(frozenActiveMoment.id)}
             />
           )}
         </Suspense>

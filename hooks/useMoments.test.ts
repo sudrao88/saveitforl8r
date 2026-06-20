@@ -392,16 +392,16 @@ describe('useMoments', () => {
       expect(synthesis.generatedFrom).toEqual(['note-1']);
     });
 
-    it('should delete persisted synthesis cache for affected moments', async () => {
+    it('keeps the synthesis cache for surviving moments (preserved for merge), deletes it only for orphans', async () => {
       (storageService.deleteMomentSynthesis as any).mockResolvedValue(undefined);
 
       wireMomentStorage([
-        { ...makeMoment('m1', ['note-1', 'note-2']), inputHash: 'old-hash' },
-        makeMoment('m2', ['note-1', 'note-3']),
+        { ...makeMoment('m1', ['note-1', 'note-2']), inputHash: 'old-hash' }, // survives
+        makeMoment('m2', ['note-1']),                                          // orphaned by removal
       ]);
       stubBackgroundResynthesis();
 
-      const memories = [makeMemory('note-1'), makeMemory('note-2'), makeMemory('note-3')];
+      const memories = [makeMemory('note-1'), makeMemory('note-2')];
 
       const { result } = renderHook(() => useMoments(memories));
 
@@ -415,8 +415,10 @@ describe('useMoments', () => {
         await result.current.removeNoteFromMoments('note-1');
       });
 
-      // deleteMomentSynthesis should have been called for both affected moments
-      expect(storageService.deleteMomentSynthesis).toHaveBeenCalledWith('m1');
+      // m1 survives (note-2 remains) → cache kept so re-synthesis can merge it
+      // and preserve any web-sourced items.
+      expect(storageService.deleteMomentSynthesis).not.toHaveBeenCalledWith('m1');
+      // m2 lost its only note → orphaned (soft-deleted) → cache cleared.
       expect(storageService.deleteMomentSynthesis).toHaveBeenCalledWith('m2');
     });
 
@@ -653,6 +655,7 @@ describe('useMoments', () => {
         expect.objectContaining({ id: 'm1' }),
         memories,
         expectedHash,
+        undefined, // no cached synthesis → full regenerate (no merge)
       );
     });
 
@@ -860,6 +863,139 @@ describe('useMoments', () => {
 
       const m1 = result.current.moments.find(m => m.id === 'm1');
       expect(m1?.noteIds).toEqual(['note-1', 'note-2', 'note-3']);
+    });
+  });
+
+  describe('agentic moments', () => {
+    it('keeps web-sourced items (no sourceNoteId) while dropping stale note items', async () => {
+      (storageService.getMoments as any).mockResolvedValue([makeMoment('m1', ['note-1'])]);
+      const memories = [makeMemory('note-1')];
+
+      (geminiService.submitResynthesis as any).mockResolvedValue({ momentId: 'm1' });
+      (geminiService.pollSynthesisResult as any).mockResolvedValue({
+        format: 'general',
+        title: 'Test',
+        sections: [
+          {
+            heading: 'Mixed',
+            items: [
+              { label: 'From note', sourceType: 'note', sourceNoteId: 'note-1' },
+              { label: 'From the web', sourceType: 'web', sourceUrl: 'https://example.com/x' },
+              { label: 'Stale note', sourceType: 'note', sourceNoteId: 'gone' },
+            ],
+          },
+        ],
+        generatedFrom: ['note-1'],
+      });
+
+      const { result } = renderHook(() => useMoments(memories));
+      await waitFor(() => expect(result.current.moments).toHaveLength(1));
+
+      let synthesis: any;
+      await act(async () => {
+        synthesis = await result.current.loadSynthesis(result.current.moments[0], memories);
+      });
+
+      const labels = synthesis.sections[0].items.map((i: any) => i.label);
+      expect(labels).toContain('From note');
+      expect(labels).toContain('From the web'); // kept despite no sourceNoteId
+      expect(labels).not.toContain('Stale note'); // dropped — note left the moment
+    });
+
+    it('passes the cached synthesis to submitResynthesis so the server merges', async () => {
+      wireMomentStorage([makeMoment('m1', ['note-1'])]);
+      const memories = [makeMemory('note-1'), makeMemory('note-2')];
+
+      // Persisted synthesis fresh for the ['note-1'] set, containing a web item.
+      const cached = {
+        momentId: 'm1',
+        inputHash: computeInputHash(['note-1'], memories),
+        content: {
+          format: 'general', title: 'Cached', sections: [
+            { heading: 'S', items: [{ label: 'web fact', sourceType: 'web', sourceUrl: 'https://example.com/a' }] },
+          ], generatedFrom: [],
+        },
+        generatedAt: Date.now(),
+        noteIds: ['note-1'],
+      };
+      (storageService.getMomentSynthesis as any).mockResolvedValue(cached);
+      (geminiService.submitResynthesis as any).mockResolvedValue({ momentId: 'm1' });
+      (geminiService.pollSynthesisResult as any).mockImplementation(() => new Promise(() => {}));
+
+      const { result } = renderHook(() => useMoments(memories));
+      await waitFor(() => expect(result.current.moments).toHaveLength(1));
+
+      // Prime the in-memory cache (cache hit for the ['note-1'] set, no submit).
+      await act(async () => {
+        await result.current.loadSynthesis(result.current.moments[0], memories);
+      });
+      expect(geminiService.submitResynthesis).not.toHaveBeenCalled();
+
+      // Now load with note-2 added → hash changes → cache miss → merge submit,
+      // forwarding the previously-cached content (with its web item) as 4th arg.
+      const withAddedNote = { ...result.current.moments[0], noteIds: ['note-1', 'note-2'] };
+      await act(async () => {
+        result.current.loadSynthesis(withAddedNote as any, memories);
+      });
+
+      await waitFor(() => expect(geminiService.submitResynthesis).toHaveBeenCalled());
+      const lastCall = (geminiService.submitResynthesis as any).mock.calls.at(-1);
+      expect(lastCall[3]?.sections?.[0]?.items?.[0]?.sourceType).toBe('web');
+    });
+
+    it('flags needsAgenticRebuild and preserves synthesis when merge is unplaceable', async () => {
+      wireMomentStorage([makeMoment('m1', ['note-1'])]);
+      const memories = [makeMemory('note-1')];
+
+      (geminiService.fetchPendingSynthesisResults as any).mockResolvedValue({});
+      (geminiService.submitResynthesis as any).mockResolvedValue({ momentId: 'm1' });
+      (geminiService.pollSynthesisResult as any).mockRejectedValue(
+        new geminiService.MomentNeedsRebuildError()
+      );
+
+      const { result } = renderHook(() => useMoments(memories));
+      await waitFor(() => expect(result.current.moments).toHaveLength(1));
+
+      (storageService.saveMomentSynthesis as any).mockClear();
+
+      await act(async () => {
+        // force a submit → poll rejects with needs-rebuild
+        await result.current.loadSynthesis(result.current.moments[0], memories, undefined, true);
+      });
+
+      await waitFor(() => {
+        const m1 = result.current.moments.find(m => m.id === 'm1');
+        expect(m1?.needsAgenticRebuild).toBe(true);
+      });
+      // The existing synthesis was NOT overwritten.
+      expect(storageService.saveMomentSynthesis).not.toHaveBeenCalled();
+    });
+
+    it('rebuildMomentWithAgent re-submits creation with the moment notes and sets pending', async () => {
+      wireMomentStorage([
+        { ...makeMoment('m1', ['note-1', 'note-2']), needsAgenticRebuild: true },
+      ]);
+      const memories = [makeMemory('note-1'), makeMemory('note-2')];
+      (geminiService.submitMomentCreation as any).mockResolvedValue({ momentId: 'm1' });
+
+      const { result } = renderHook(() => useMoments(memories));
+      await waitFor(() => expect(result.current.moments).toHaveLength(1));
+
+      await act(async () => {
+        await result.current.rebuildMomentWithAgent('m1');
+      });
+
+      expect(geminiService.submitMomentCreation).toHaveBeenCalledWith(
+        'Test objective',
+        expect.arrayContaining([
+          expect.objectContaining({ id: 'note-1' }),
+          expect.objectContaining({ id: 'note-2' }),
+        ]),
+        'm1',
+      );
+      const m1 = result.current.moments.find(m => m.id === 'm1');
+      expect(m1?.isPending).toBe(true);
+      expect(m1?.needsAgenticRebuild).toBe(false);
     });
   });
 });

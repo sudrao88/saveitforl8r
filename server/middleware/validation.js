@@ -208,10 +208,19 @@ export const validateResultsInput = (req, res, next) => {
 };
 
 export const validateSynthesizeInput = (req, res, next) => {
-  const { notes, momentType, momentTitle, objective, momentId, notesFileUri, notesFileName, noteCount, inputHash } = req.body;
+  const { notes, momentType, momentTitle, objective, momentId, notesFileUri, notesFileName, noteCount, inputHash, existingSynthesis } = req.body;
 
   const fileRefError = validateContextFileRef(notesFileUri, notesFileName);
   if (fileRefError) return res.status(400).json({ error: `notesFileUri/Name: ${fileRefError}` });
+
+  if (existingSynthesis !== undefined) {
+    if (typeof existingSynthesis !== 'object' || existingSynthesis === null || Array.isArray(existingSynthesis))
+      return res.status(400).json({ error: 'existingSynthesis must be an object' });
+    if (!Array.isArray(existingSynthesis.sections))
+      return res.status(400).json({ error: 'existingSynthesis.sections must be an array' });
+    if (existingSynthesis.sections.length > 50)
+      return res.status(400).json({ error: 'existingSynthesis has too many sections (max 50)' });
+  }
 
   // When notesFileUri is supplied, notes may be omitted (LLM reads from the file).
   if (notesFileUri) {

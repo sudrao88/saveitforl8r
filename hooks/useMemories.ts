@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getMemories, deleteMemory, saveMemory, getMemory } from '../services/storageService';
 import { submitEnrichment } from '../services/geminiService';
-import { Memory, Attachment, Moment, CalendarEvent, TodoItem, UploadProgress, isMemoryInFlight } from '../types';
+import { Memory, Attachment, Moment, CalendarEvent, TodoItem, UploadProgress, WebAddition, isMemoryInFlight } from '../types';
 import { uploadFileChunked, LARGE_PAYLOAD_THRESHOLD } from '../services/chunkUploadService';
 import { useSync } from './useSync';
 import { useAuth } from './useAuth';
@@ -459,6 +459,44 @@ export const useMemories = () => {
     }
   }, [trySyncFile]);
 
+  // Merge web findings the moments agent fetched into a note's enrichment.
+  // Lightweight on purpose (modeled on togglePin) — it must NOT clear enrichment
+  // the way updateMemory does, since that would wipe the note and re-enrich it.
+  // De-dupes by sourceUrl + normalized text so repeated agent runs (and the
+  // agent occasionally hallucinating a noteId on the file-URI path) don't pile
+  // up duplicates or save empty rows.
+  const dedupKey = (a: WebAddition) => `${a.sourceUrl.trim()}|${a.text.trim().toLowerCase()}`;
+  const applyWebAdditions = useCallback(async (id: string, additions: WebAddition[]) => {
+    const clean = (additions || []).filter(a => a && a.text?.trim() && a.sourceUrl?.trim());
+    if (clean.length === 0) return;
+    try {
+      const current = await getMemory(id);
+      if (!current || !current.enrichment) {
+        // Agent referenced a note that doesn't exist locally or isn't enriched
+        // yet — drop the finding but make the drop visible rather than silent.
+        console.warn(`[Moments] Skipped web additions for ${id}: note missing or not enriched`);
+        return;
+      }
+      const existing = current.enrichment.webAdditions || [];
+      const seen = new Set(existing.map(dedupKey));
+      const merged = [...existing];
+      for (const a of clean) {
+        const key = dedupKey(a);
+        if (!seen.has(key)) { seen.add(key); merged.push(a); }
+      }
+      if (merged.length === existing.length) return; // nothing new
+      const updated: Memory = {
+        ...current,
+        enrichment: { ...current.enrichment, webAdditions: merged },
+      };
+      await saveMemory(updated);
+      setMemories(prev => prev.map(m => m.id === id ? { ...m, enrichment: updated.enrichment } : m));
+      await trySyncFile(updated);
+    } catch (e) {
+      console.error('Failed to apply web additions', e);
+    }
+  }, [trySyncFile]);
+
   const updateMemory = useCallback(async (
     id: string,
     text: string,
@@ -594,6 +632,7 @@ export const useMemories = () => {
     updateMemory,
     updateMemoryContent,
     togglePin,
+    applyWebAdditions,
     dismissDeletionCandidate,
     isLoading,
     setMomentsRef,

@@ -132,6 +132,18 @@ export interface EnrichmentData {
 
   // Action item detection (populated when tasks/to-dos are found)
   detectedActionItems?: DetectedActionItem[];
+
+  // Facts the moments agent fetched from the web and saved back onto this note
+  // for future reuse. Clearly attributed to their source URL.
+  webAdditions?: WebAddition[];
+}
+
+/** A web-sourced fact saved back onto a note by the moments agent. */
+export interface WebAddition {
+  text: string;
+  sourceUrl: string;
+  addedByMomentId: string;
+  addedAt: number;
 }
 
 export type RecurrenceFrequency = 'daily' | 'weekly' | 'monthly' | 'yearly';
@@ -317,13 +329,21 @@ export interface Moment {
   pendingSynthesisHash?: string;
   /** Timestamp when the in-flight resynthesis was submitted. */
   pendingSynthesisAt?: number;
+  /**
+   * Set when a structure-preserving re-synthesis merge reported that a new note
+   * couldn't be slotted into the existing synthesis. Prompts the user to rebuild
+   * the moment with the agent. Cleared on rebuild or dismiss.
+   */
+  needsAgenticRebuild?: boolean;
 }
 
 export interface SynthesisItem {
   label: string;
   detail?: string;
   link?: string;
-  sourceNoteId: string;
+  sourceType?: 'note' | 'web';    // defaults to 'note' when absent (back-compat)
+  sourceNoteId?: string;          // present when sourceType is 'note'
+  sourceUrl?: string;             // present when sourceType is 'web'
   completable?: boolean;
   completed?: boolean;
 }
