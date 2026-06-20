@@ -3,5 +3,5 @@
   "buildNumber": 132,
   "buildDate": "2026-06-20T06:53:40.314Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Checklist item text now wraps onto multiple lines instead of scrolling sideways, so long items stay fully visible while you edit."
+  "changelog": "Behind-the-scenes improvements to analytics and sign-in reliability."
 }

@@ -8,8 +8,6 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { CalendarEvent, DetectedEvent, Memory } from '../types';
-import { logEvent } from '../services/analytics';
-import { ANALYTICS_EVENTS } from '../constants';
 import {
   getCalendarEvents,
   getCalendarEventsByMemoryId,
@@ -158,7 +156,6 @@ export const useCalendarEvents = ({ memories, memoriesLoaded, syncInProgress = f
         ...newEvents,
       ]);
 
-      logEvent(ANALYTICS_EVENTS.CALENDAR_EVENT.CATEGORY, ANALYTICS_EVENTS.CALENDAR_EVENT.ACTION_CREATED, undefined, newEvents.length);
       console.log(`[Calendar] Created ${newEvents.length} event(s) from memory ${memory.id}`);
       return [...tombstones, ...newEvents];
     } finally {
@@ -212,7 +209,6 @@ export const useCalendarEvents = ({ memories, memoriesLoaded, syncInProgress = f
 
       await saveCalendarEvent(updated);
       setEventsList(prev => prev.map(e => (e.id === eventId ? updated : e)));
-      logEvent(ANALYTICS_EVENTS.CALENDAR_EVENT.CATEGORY, ANALYTICS_EVENTS.CALENDAR_EVENT.ACTION_EDITED);
       return updated;
     } catch (err) {
       console.error(`[Calendar] Failed to update event ${eventId}:`, err);

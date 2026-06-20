@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Memory } from '../types';
-import { logEvent } from '../services/analytics';
-import { STORAGE_KEYS, ANALYTICS_EVENTS } from '../constants';
+import { STORAGE_KEYS } from '../constants';
 
 interface UseOnboardingProps {
   memories: Memory[];
@@ -34,7 +33,6 @@ export const useOnboarding = ({ memories }: UseOnboardingProps): UseOnboardingRe
   const closeOnboarding = useCallback(() => {
     setIsShareOnboardingOpen(false);
     localStorage.setItem(STORAGE_KEYS.HAS_SEEN_SHARE_ONBOARDING, 'true');
-    logEvent(ANALYTICS_EVENTS.ONBOARDING.CATEGORY, ANALYTICS_EVENTS.ONBOARDING.ACTION_DISMISSED);
   }, []);
 
   return {

@@ -26,6 +26,7 @@ export const unlinkDrive = async () => {
   await clearTokens();
   await storage.remove('gdrive_linked');
   await storage.remove('gdrive_email');
+  await storage.remove('gdrive_user_id');
 };
 
 const driveFetch = async (url: string, options: RequestInit = {}) => {

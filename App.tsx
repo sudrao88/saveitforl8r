@@ -54,11 +54,10 @@ import { SyncProvider } from './context/SyncContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { reconcileEmbeddings, ReconcileReport, getMemories as getStoredMemories } from './services/storageService';
 import { ViewMode, Memory, Attachment, Moment, QuickNoteState, CalendarEvent, TodoItem, isMemoryInFlight, isMemoryFailed } from './types';
-import { initGA, logPageView, logEvent } from './services/analytics';
+import { initGA } from './services/analytics';
 import { escapeHtml } from './utils/editorUtils';
 import { resolveLocation } from './utils/locationUtils';
 
-import { ANALYTICS_EVENTS } from './constants';
 import { handleDeepLink } from './services/googleAuth';
 import { isLinked as checkDriveLinked } from './services/googleDriveService';
 
@@ -439,7 +438,6 @@ const AppContent: React.FC = () => {
   const handleCaptureClose = useCallback(() => {
     setIsCaptureOpen(false);
     setQuickNoteExpandState(null);
-    logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_CAPTURE_CANCELLED);
     clearShareData();
   }, [clearShareData]);
 
@@ -495,7 +493,6 @@ const AppContent: React.FC = () => {
   // competing for the main thread.
   useEffect(() => {
     initGA();
-    logPageView('home');
 
     // Defer non-critical background work so user interactions (e.g. tapping
     // the quick note bar to open the keyboard) are not blocked.
@@ -672,7 +669,6 @@ const AppContent: React.FC = () => {
 
   useEffect(() => {
     if (shareData) {
-      logEvent(ANALYTICS_EVENTS.SHARE.CATEGORY, ANALYTICS_EVENTS.SHARE.ACTION_RECEIVED, ANALYTICS_EVENTS.SHARE.LABEL_EXTERNAL);
       // Route shared content to the QuickNote bar instead of opening full editor
       if (quickNoteBarRef.current) {
         quickNoteBarRef.current.setContent(shareData.text, shareData.attachments);
@@ -697,7 +693,6 @@ const AppContent: React.FC = () => {
     const id = await createMemory(text, attachments, tags, location);
     setNewMemoryId(id);
     setIsCaptureOpen(false);
-    logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_CREATED);
     clearShareData();
   }, [createMemory, clearShareData]);
 
@@ -708,34 +703,28 @@ const AppContent: React.FC = () => {
     if (expandedMemory?.id === id) {
       setExpandedMemory(null);
     }
-    logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_CREATED, 'updated');
   }, [updateMemory, expandedMemory]);
 
   const handleEditMemory = useCallback((memory: Memory) => {
     setEditingMemory(memory);
     // Close expanded view when opening edit
     setExpandedMemory(null);
-    logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_CREATED, 'edit_started');
   }, []);
 
   const handleChatClose = useCallback(() => {
     setView(ViewMode.FEED);
-    logEvent(ANALYTICS_EVENTS.CHAT.CATEGORY, ANALYTICS_EVENTS.CHAT.ACTION_CLOSED);
   }, []);
 
   const handleSetView = useCallback((newView: ViewMode) => {
     setView(newView);
-    logEvent(ANALYTICS_EVENTS.NAVIGATION.CATEGORY, ANALYTICS_EVENTS.NAVIGATION.ACTION_VIEW_CHANGED, newView);
   }, []);
 
   const handleResetFilters = useCallback(() => {
     clearFilters();
-    logEvent(ANALYTICS_EVENTS.FILTER.CATEGORY, ANALYTICS_EVENTS.FILTER.ACTION_CLEARED);
   }, [clearFilters]);
 
   const handleSettingsClick = useCallback(() => {
     setIsSettingsOpen(true);
-    logEvent(ANALYTICS_EVENTS.NAVIGATION.CATEGORY, ANALYTICS_EVENTS.NAVIGATION.ACTION_SETTINGS_OPENED);
   }, [setIsSettingsOpen]);
 
   const handleUpdateApp = useCallback(() => {
@@ -744,17 +733,14 @@ const AppContent: React.FC = () => {
     } else {
       updateApp();
     }
-    logEvent(ANALYTICS_EVENTS.APP.CATEGORY, ANALYTICS_EVENTS.APP.ACTION_UPDATED);
   }, [updateApp, enableRemoteMode]);
 
   const handleSetFilterType = useCallback((type: string | null) => {
     setFilterType(type);
-    if (type) logEvent(ANALYTICS_EVENTS.FILTER.CATEGORY, ANALYTICS_EVENTS.FILTER.ACTION_APPLIED, type);
   }, [setFilterType]);
 
   const handleClearFiltersEmptyState = useCallback((type?: string) => {
     clearFilters();
-    logEvent(ANALYTICS_EVENTS.FILTER.CATEGORY, ANALYTICS_EVENTS.FILTER.ACTION_CLEARED_EMPTY);
   }, [clearFilters]);
 
   const handleDeleteMemory = useCallback((id: string) => {
@@ -771,7 +757,6 @@ const AppContent: React.FC = () => {
         syncTodoItems(tombstones).catch(err => console.error('[Todo] Failed to sync deleted items:', err));
       }
     }).catch(err => console.error('[Todo] Failed to remove items for memory:', err));
-    logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_DELETED);
     if (expandedMemory?.id === id) setExpandedMemory(null);
   }, [handleDelete, expandedMemory, deleteNoteFromIndex, removeNoteFromMoments, removeEventsForMemory, syncCalendarEvents, removeTodoItemsForMemory, syncTodoItems]);
 
@@ -793,7 +778,6 @@ const AppContent: React.FC = () => {
         console.error(`[DeleteNotes] Failed to delete note ${id}:`, err);
       }
     }));
-    logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_DELETED);
   }, [handleDelete, deleteNoteFromIndex, removeNoteFromMoments, removeEventsForMemory, syncCalendarEvents, removeTodoItemsForMemory, syncTodoItems]);
 
   const handleUpdateCalendarEvent = useCallback(async (eventId: string, changes: Partial<CalendarEvent>) => {
@@ -805,7 +789,6 @@ const AppContent: React.FC = () => {
 
   const handleRetryMemory = useCallback((id: string) => {
     handleRetry(id);
-    logEvent(ANALYTICS_EVENTS.MEMORY.CATEGORY, ANALYTICS_EVENTS.MEMORY.ACTION_RETRIED);
   }, [handleRetry]);
 
   const handleTogglePin = useCallback((id: string, isPinned: boolean) => {
@@ -819,7 +802,6 @@ const AppContent: React.FC = () => {
 
   const handleOpenCapture = useCallback(() => {
     setIsCaptureOpen(true);
-    logEvent(ANALYTICS_EVENTS.NAVIGATION.CATEGORY, ANALYTICS_EVENTS.NAVIGATION.ACTION_CAPTURE_OPENED, 'FAB');
   }, []);
 
   const handleQuickNoteSave = useCallback(async (text: string, attachments: Attachment[], tags: string[]) => {
@@ -828,23 +810,19 @@ const AppContent: React.FC = () => {
     const location = await resolveLocation();
     const id = await createMemory(text, attachments, tags, location);
     setNewMemoryId(id);
-    logEvent(ANALYTICS_EVENTS.QUICK_NOTE.CATEGORY, ANALYTICS_EVENTS.QUICK_NOTE.ACTION_SAVED);
   }, [createMemory]);
 
   const handleQuickNoteExpand = useCallback((state: QuickNoteState) => {
     setQuickNoteExpandState(state);
     setIsCaptureOpen(true);
-    logEvent(ANALYTICS_EVENTS.QUICK_NOTE.CATEGORY, ANALYTICS_EVENTS.QUICK_NOTE.ACTION_EXPANDED);
   }, []);
 
   const handleSettingsClose = useCallback(() => {
     setIsSettingsOpen(false);
-    logEvent(ANALYTICS_EVENTS.SETTINGS.CATEGORY, ANALYTICS_EVENTS.SETTINGS.ACTION_CLOSED);
   }, [setIsSettingsOpen]);
 
   const handleImportSuccess = useCallback(() => {
     handleFullRefresh();
-    logEvent(ANALYTICS_EVENTS.DATA.CATEGORY, ANALYTICS_EVENTS.DATA.ACTION_IMPORT_SUCCESS);
     if (authStatus === 'linked') {
         syncRef.current().then(() => handleFullRefresh());
     } 
@@ -864,11 +842,9 @@ const AppContent: React.FC = () => {
     onFocus: useCallback(() => quickNoteBarRef.current?.focus(), []),
     onCamera: useCallback(() => {
       quickNoteBarRef.current?.triggerCamera();
-      logEvent(ANALYTICS_EVENTS.NAVIGATION.CATEGORY, ANALYTICS_EVENTS.NAVIGATION.ACTION_CAPTURE_OPENED, 'Widget-Camera');
     }, []),
     onDocument: useCallback(() => {
       quickNoteBarRef.current?.triggerDocument();
-      logEvent(ANALYTICS_EVENTS.NAVIGATION.CATEGORY, ANALYTICS_EVENTS.NAVIGATION.ACTION_CAPTURE_OPENED, 'Widget-Document');
     }, []),
   });
 
@@ -1035,7 +1011,6 @@ const AppContent: React.FC = () => {
           deletionCandidateCount={deletionCandidates.length}
           onDeletionCandidatesTap={() => {
             setShowDeletionCandidates(true);
-            logEvent(ANALYTICS_EVENTS.DELETION_CANDIDATES.CATEGORY, ANALYTICS_EVENTS.DELETION_CANDIDATES.ACTION_OPENED);
           }}
         />
 
@@ -1394,11 +1369,9 @@ const AppContent: React.FC = () => {
             onClose={() => setShowDeletionCandidates(false)}
             onDelete={(id) => {
               handleDeleteMemory(id);
-              logEvent(ANALYTICS_EVENTS.DELETION_CANDIDATES.CATEGORY, ANALYTICS_EVENTS.DELETION_CANDIDATES.ACTION_DELETED);
             }}
             onDismiss={(id) => {
               dismissDeletionCandidate(id);
-              logEvent(ANALYTICS_EVENTS.DELETION_CANDIDATES.CATEGORY, ANALYTICS_EVENTS.DELETION_CANDIDATES.ACTION_DISMISSED);
             }}
             onViewAttachment={handleViewAttachment}
             onEdit={handleEditMemory}
