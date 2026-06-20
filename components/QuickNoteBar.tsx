@@ -10,6 +10,7 @@ import FormattingToolbar from './FormattingToolbar';
 import TagInput from './TagInput';
 import { btn, zIndex } from '../styles/design-system';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
+import { prefetchLocation } from '../utils/locationUtils';
 import { ChecklistEditor, ChecklistItemData, serializeChecklistToHtml, cascadeToggle, applyIndent, applyOutdent, applyMove } from './ChecklistItems';
 import useBeforeInputMarkdown from '../hooks/useBeforeInputMarkdown';
 
@@ -396,6 +397,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
   return (
     <div
       ref={containerRef}
+      onFocus={prefetchLocation}
       className={`${keyboardHeight > 0 ? 'fixed left-0 right-0' : 'sticky'} bottom-0 z-(--z-modal) px-3 pb-3 pt-1 lg:w-[34%] lg:mx-auto transition-[bottom,padding-bottom] duration-(--duration-keyboard) ease-(--ease-keyboard)`}
       style={{
         paddingBottom: keyboardHeight > 0 ? '0.75rem' : 'max(0.75rem, var(--sab))',
