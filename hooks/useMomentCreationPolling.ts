@@ -8,9 +8,10 @@
 
 import { useCallback, useEffect, useRef } from 'react';
 import { fetchPendingMomentResults, fetchPendingSynthesisResults, CreateMomentResponse, ProgressStep } from '../services/geminiService';
-import { Moment, Memory, MomentSynthesis, MomentType, SynthesisResponse, WebAddition } from '../types';
+import { Moment, Memory, MomentSynthesis, MomentType, WebAddition } from '../types';
 import { getMoment, saveMoment, saveMomentSynthesis } from '../services/storageService';
 import { computeInputHash } from '../utils/hash';
+import { filterSynthesisToNotes } from '../utils/synthesisFilter';
 
 const MOMENT_CREATION_TIMEOUT_MS = 180_000; // 3 minutes (3-step pipeline)
 /** Drop the pending-synthesis marker if older than this — server doc would have expired anyway. */
@@ -42,29 +43,6 @@ interface UseMomentCreationPollingOptions {
    */
   onMomentResynthesisRecovered?: (moment: Moment) => void;
 }
-
-/**
- * Filters synthesis sections/items to only reference notes still in the moment.
- * Mirrors the same guard in useMoments.ts so recovery handles the case where
- * notes were removed locally between submit and recovery.
- */
-const filterSynthesisToMoment = (
-  raw: SynthesisResponse,
-  noteIdSet: Set<string>,
-): SynthesisResponse => ({
-  ...raw,
-  sections: raw.sections
-    .map(section => ({
-      ...section,
-      // Keep web-sourced items unconditionally; only drop note items whose note
-      // has left the moment.
-      items: section.items.filter(item =>
-        item.sourceType === 'web' || noteIdSet.has(item.sourceNoteId ?? '')
-      ),
-    }))
-    .filter(section => section.items.length > 0),
-  generatedFrom: raw.generatedFrom.filter(id => noteIdSet.has(id)),
-});
 
 /**
  * Applies a moment creation poll result to a pending moment.
@@ -147,7 +125,7 @@ const applyMomentResult = async (
     if (applyWebAdditions && data.noteEmbellishments?.length) {
       const byNote = new Map<string, WebAddition[]>();
       for (const e of data.noteEmbellishments) {
-        if (!e?.noteId || !e?.addition || !e?.sourceUrl) continue;
+        if (!e?.noteId || !e?.addition?.trim() || !e?.sourceUrl) continue;
         const addition: WebAddition = {
           text: e.addition,
           sourceUrl: e.sourceUrl,
@@ -430,7 +408,7 @@ export const useMomentCreationPolling = ({
           }
 
           const noteIdSet = new Set(latest.noteIds);
-          const synthesis = filterSynthesisToMoment(result.data, noteIdSet);
+          const synthesis = filterSynthesisToNotes(result.data, noteIdSet);
           const stored: MomentSynthesis = {
             momentId: latest.id,
             inputHash: currentHash,

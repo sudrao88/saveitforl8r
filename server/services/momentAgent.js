@@ -21,6 +21,7 @@ import { Type } from '@google/genai';
 import { sanitizeUserInput, sanitizeForPromptEmbedding } from '../lib/sanitize.js';
 import { isPublicUrl } from './gemini.js';
 import { embedContents, embedTexts, buildEmbeddingText } from '../lib/embedding.js';
+import { synthesisSchema } from './synthesisSchema.js';
 
 // --- Loop budgets ---
 export const MAX_ITERATIONS = 8;
@@ -32,29 +33,9 @@ const EMBED_BATCH = 100;
 
 // --- Tool parameter schemas ---
 
-const synthesisItemSchema = {
-  type: Type.OBJECT,
-  properties: {
-    label: { type: Type.STRING, description: 'Item label.' },
-    detail: { type: Type.STRING, description: 'Optional detail or description.' },
-    link: { type: Type.STRING, description: 'Optional link/URL.' },
-    sourceType: {
-      type: Type.STRING,
-      description: "Where this fact came from: 'note' (from the user's notes) or 'web' (from web_search).",
-    },
-    sourceNoteId: {
-      type: Type.STRING,
-      description: "ID of the source note. Required when sourceType is 'note'.",
-    },
-    sourceUrl: {
-      type: Type.STRING,
-      description: "Source URL. Required when sourceType is 'web'.",
-    },
-    completable: { type: Type.BOOLEAN, description: 'Whether this item can be checked off.' },
-  },
-  required: ['label'],
-};
-
+// The finalize tool's `synthesis` param reuses the canonical synthesis schema
+// (services/synthesisSchema.js) so the agent's output can't drift from the
+// server's stored/validated shape.
 const finalizeParametersSchema = {
   type: Type.OBJECT,
   properties: {
@@ -73,31 +54,7 @@ const finalizeParametersSchema = {
       type: Type.STRING,
       description: 'A detailed, specific restatement of the objective (used later for matching new notes to this moment).',
     },
-    synthesis: {
-      type: Type.OBJECT,
-      properties: {
-        format: { type: Type.STRING, description: 'The moment type.' },
-        title: { type: Type.STRING, description: 'Title of the synthesis.' },
-        subtitle: { type: Type.STRING, description: 'Optional subtitle.' },
-        sections: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              heading: { type: Type.STRING, description: 'Section heading.' },
-              items: { type: Type.ARRAY, items: synthesisItemSchema },
-            },
-            required: ['heading', 'items'],
-          },
-        },
-        generatedFrom: {
-          type: Type.ARRAY,
-          items: { type: Type.STRING },
-          description: 'Note IDs used to generate this synthesis.',
-        },
-      },
-      required: ['format', 'title', 'sections', 'generatedFrom'],
-    },
+    synthesis: synthesisSchema,
   },
   required: ['displayTitle', 'momentType', 'emoji', 'usedNoteIds', 'synthesis'],
 };
@@ -384,19 +341,39 @@ export const runMomentAgent = async ({
     const sections = Array.isArray(synthesis.sections) ? synthesis.sections : [];
     const normalizedSections = sections.map((s) => ({
       heading: s.heading || '',
-      items: (Array.isArray(s.items) ? s.items : []).map((it) => {
-        const sourceType = it.sourceType === 'web' ? 'web' : 'note';
-        return {
-          label: it.label || '',
-          ...(it.detail ? { detail: it.detail } : {}),
-          ...(it.link ? { link: it.link } : {}),
-          ...(it.completable ? { completable: true } : {}),
-          sourceType,
-          ...(sourceType === 'web'
-            ? { sourceUrl: it.sourceUrl || it.link || '' }
-            : { sourceNoteId: it.sourceNoteId || '' }),
-        };
-      }),
+      items: (Array.isArray(s.items) ? s.items : [])
+        .map((it) => {
+          const wantsWeb = it.sourceType === 'web';
+          const webUrl = it.sourceUrl || it.link || '';
+          // A web item with no usable URL would render as an unattributed claim
+          // ("never present an unsourced claim"). If the model gave a sourceNoteId
+          // fall back to a note citation; otherwise drop the item entirely.
+          if (wantsWeb && !isPublicUrl(webUrl)) {
+            if (it.sourceNoteId) {
+              return {
+                label: it.label || '',
+                ...(it.detail ? { detail: it.detail } : {}),
+                ...(it.link ? { link: it.link } : {}),
+                ...(it.completable ? { completable: true } : {}),
+                sourceType: 'note',
+                sourceNoteId: String(it.sourceNoteId),
+              };
+            }
+            return null;
+          }
+          const sourceType = wantsWeb ? 'web' : 'note';
+          return {
+            label: it.label || '',
+            ...(it.detail ? { detail: it.detail } : {}),
+            ...(it.link ? { link: it.link } : {}),
+            ...(it.completable ? { completable: true } : {}),
+            sourceType,
+            ...(sourceType === 'web'
+              ? { sourceUrl: webUrl }
+              : { sourceNoteId: it.sourceNoteId || '' }),
+          };
+        })
+        .filter(Boolean),
     }));
     return {
       title: (args.displayTitle || synthesis.title || objective).slice(0, 60),

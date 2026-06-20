@@ -110,6 +110,37 @@ describe('runMomentAgent', () => {
     ]);
   });
 
+  it('drops web items with no usable URL, demoting to note when a noteId exists', async () => {
+    const args = {
+      ...finalizeArgs,
+      synthesis: {
+        ...finalizeArgs.synthesis,
+        sections: [
+          {
+            heading: 'Mixed',
+            items: [
+              { label: 'web no url', sourceType: 'web' }, // dropped (unsourced)
+              { label: 'web no url but has note', sourceType: 'web', sourceNoteId: 'n1' }, // demoted
+              { label: 'web private url', sourceType: 'web', sourceUrl: 'http://127.0.0.1/x' }, // dropped
+              { label: 'good web', sourceType: 'web', sourceUrl: 'https://example.com/ok' }, // kept
+            ],
+          },
+        ],
+      },
+    };
+    const ai = makeAi([fc('finalize', args)]);
+    const result = await runMomentAgent({ ai, model: 'm', objective: 'x', notes: NOTES, requestId: 'r7' });
+    const items = result.synthesis.sections[0].items;
+    const labels = items.map((i) => i.label);
+    expect(labels).not.toContain('web no url'); // unattributed → dropped
+    expect(labels).not.toContain('web private url'); // SSRF-filtered → dropped
+    expect(labels).toContain('good web');
+    // The web item with a noteId is demoted to a note citation rather than shown unsourced.
+    const demoted = items.find((i) => i.label === 'web no url but has note');
+    expect(demoted.sourceType).toBe('note');
+    expect(demoted.sourceNoteId).toBe('n1');
+  });
+
   it('offers search_notes/read_notes on the inline path', async () => {
     const ai = makeAi([fc('finalize', finalizeArgs)]);
     await runMomentAgent({ ai, model: 'm', objective: 'x', notes: NOTES, requestId: 'r2' });

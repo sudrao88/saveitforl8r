@@ -392,16 +392,16 @@ describe('useMoments', () => {
       expect(synthesis.generatedFrom).toEqual(['note-1']);
     });
 
-    it('should delete persisted synthesis cache for affected moments', async () => {
+    it('keeps the synthesis cache for surviving moments (preserved for merge), deletes it only for orphans', async () => {
       (storageService.deleteMomentSynthesis as any).mockResolvedValue(undefined);
 
       wireMomentStorage([
-        { ...makeMoment('m1', ['note-1', 'note-2']), inputHash: 'old-hash' },
-        makeMoment('m2', ['note-1', 'note-3']),
+        { ...makeMoment('m1', ['note-1', 'note-2']), inputHash: 'old-hash' }, // survives
+        makeMoment('m2', ['note-1']),                                          // orphaned by removal
       ]);
       stubBackgroundResynthesis();
 
-      const memories = [makeMemory('note-1'), makeMemory('note-2'), makeMemory('note-3')];
+      const memories = [makeMemory('note-1'), makeMemory('note-2')];
 
       const { result } = renderHook(() => useMoments(memories));
 
@@ -415,8 +415,10 @@ describe('useMoments', () => {
         await result.current.removeNoteFromMoments('note-1');
       });
 
-      // deleteMomentSynthesis should have been called for both affected moments
-      expect(storageService.deleteMomentSynthesis).toHaveBeenCalledWith('m1');
+      // m1 survives (note-2 remains) → cache kept so re-synthesis can merge it
+      // and preserve any web-sourced items.
+      expect(storageService.deleteMomentSynthesis).not.toHaveBeenCalledWith('m1');
+      // m2 lost its only note → orphaned (soft-deleted) → cache cleared.
       expect(storageService.deleteMomentSynthesis).toHaveBeenCalledWith('m2');
     });
 

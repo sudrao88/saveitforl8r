@@ -22,6 +22,7 @@ import { createEnrichRouter } from './routes/enrich.js';
 import { createQueryRouter } from './routes/query.js';
 import { createEmbedRouter } from './routes/embed.js';
 import { createMomentRouter } from './routes/moment.js';
+import { synthesisSchema } from './services/synthesisSchema.js';
 import { createPushRouter } from './routes/push.js';
 import { createUploadRouter } from './routes/upload.js';
 import { authenticateRequest } from './middleware/auth.js';
@@ -159,6 +160,10 @@ app.use('/api/upload', createUploadRouter({ ai, db }));
 
 // --- Moment schemas & routes ---
 
+// Canonical synthesis shape lives in services/synthesisSchema.js (shared with
+// the create-moment agent so the two never drift).
+const synthesisResponseSchema = synthesisSchema;
+
 const createMomentResponseSchema = {
   type: Type.OBJECT,
   properties: {
@@ -179,47 +184,7 @@ const createMomentResponseSchema = {
       items: { type: Type.STRING },
       description: 'IDs of the notes that were relevant and used for the synthesis.',
     },
-    synthesis: {
-      type: Type.OBJECT,
-      description: 'The synthesized output based on the relevant notes.',
-      properties: {
-        format: { type: Type.STRING, description: 'The moment type.' },
-        title: { type: Type.STRING, description: 'Title of the synthesis.' },
-        subtitle: { type: Type.STRING, description: 'Optional subtitle.' },
-        sections: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              heading: { type: Type.STRING, description: 'Section heading.' },
-              items: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    label: { type: Type.STRING, description: 'Item label.' },
-                    detail: { type: Type.STRING, description: 'Optional detail.' },
-                    link: { type: Type.STRING, description: 'Optional link.' },
-                    sourceType: { type: Type.STRING, description: "'note' or 'web'." },
-                    sourceNoteId: { type: Type.STRING, description: "Source note ID (when sourceType is 'note')." },
-                    sourceUrl: { type: Type.STRING, description: "Source URL (when sourceType is 'web')." },
-                    completable: { type: Type.BOOLEAN },
-                  },
-                  required: ['label'],
-                },
-              },
-            },
-            required: ['heading', 'items'],
-          },
-        },
-        generatedFrom: {
-          type: Type.ARRAY,
-          items: { type: Type.STRING },
-          description: 'Note IDs used to generate this synthesis.',
-        },
-      },
-      required: ['format', 'title', 'sections', 'generatedFrom'],
-    },
+    synthesis: synthesisSchema,
     noteEmbellishments: {
       type: Type.ARRAY,
       description: 'Web findings to save back onto specific notes for future reuse.',
@@ -235,78 +200,6 @@ const createMomentResponseSchema = {
     },
   },
   required: ['title', 'type', 'emoji', 'usedNoteIds', 'synthesis'],
-};
-
-const synthesisResponseSchema = {
-  type: Type.OBJECT,
-  properties: {
-    format: {
-      type: Type.STRING,
-      description: 'The format/type of the synthesized output.',
-    },
-    title: { type: Type.STRING, description: 'Title of the synthesized moment.' },
-    subtitle: {
-      type: Type.STRING,
-      description: 'Optional subtitle for additional context.',
-    },
-    sections: {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          heading: {
-            type: Type.STRING,
-            description: 'Section heading.',
-          },
-          items: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                label: { type: Type.STRING, description: 'Item label.' },
-                detail: {
-                  type: Type.STRING,
-                  description: 'Optional detail or description.',
-                },
-                link: {
-                  type: Type.STRING,
-                  description: 'Optional link/URL.',
-                },
-                sourceType: {
-                  type: Type.STRING,
-                  description: "Where this fact came from: 'note' or 'web'.",
-                },
-                sourceNoteId: {
-                  type: Type.STRING,
-                  description: "ID of the source note (when sourceType is 'note').",
-                },
-                sourceUrl: {
-                  type: Type.STRING,
-                  description: "Source URL (when sourceType is 'web').",
-                },
-                completable: {
-                  type: Type.BOOLEAN,
-                  description: 'Whether this item can be marked as complete.',
-                },
-                completed: {
-                  type: Type.BOOLEAN,
-                  description: 'Whether this item is completed.',
-                },
-              },
-              required: ['label'],
-            },
-          },
-        },
-        required: ['heading', 'items'],
-      },
-    },
-    generatedFrom: {
-      type: Type.ARRAY,
-      items: { type: Type.STRING },
-      description: 'IDs of the notes used to generate this synthesis.',
-    },
-  },
-  required: ['format', 'title', 'sections', 'generatedFrom'],
 };
 
 // Merge schema for re-synthesis: the full synthesis plus a status flag telling
@@ -327,7 +220,7 @@ const synthesisMergeSchema = {
 const momentDeps = {
   ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GEMINI_TIMEOUT_MS,
   MOMENT_COLLECTION, MOMENT_TTL_MS, MOMENT_FAILED_TTL_MS,
-  createMomentResponseSchema, synthesisResponseSchema,
+  createMomentResponseSchema,
   aiLimiter,
 };
 app.use('/api/create-moment', createMomentRouter(momentDeps));

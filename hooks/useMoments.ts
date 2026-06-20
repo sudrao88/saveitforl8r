@@ -33,6 +33,7 @@ import {
 import { submitMomentCreation, submitResynthesis, pollSynthesisResult, fetchPendingSynthesisResults, MomentNeedsRebuildError, ProgressStep } from '../services/geminiService';
 import { useMomentCreationPolling } from './useMomentCreationPolling';
 import { computeInputHash } from '../utils/hash';
+import { filterSynthesisToNotes } from '../utils/synthesisFilter';
 
 interface UseMomentsReturn {
   /** All active moments */
@@ -303,23 +304,8 @@ export const useMoments = (
         setMomentsList(prev => prev.map(m => m.id === moment.id ? workingMoment : m));
       }
 
-      // Keep web-sourced items unconditionally (they have no note home); only
-      // drop note-sourced items whose note has left the moment.
-      const filterSynthesis = (raw: SynthesisResponse): SynthesisResponse => ({
-        ...raw,
-        sections: raw.sections
-          .map(section => ({
-            ...section,
-            items: section.items.filter(item =>
-              item.sourceType === 'web' || currentNoteIdSet.has(item.sourceNoteId ?? '')
-            ),
-          }))
-          .filter(section => section.items.length > 0),
-        generatedFrom: raw.generatedFrom.filter(id => currentNoteIdSet.has(id)),
-      });
-
       const persistResult = async (raw: SynthesisResponse): Promise<SynthesisResponse | null> => {
-        const synthesis = filterSynthesis(raw);
+        const synthesis = filterSynthesisToNotes(raw, currentNoteIdSet);
         // Re-read latest from IDB before persisting (mirrors the note
         // enrichment polling pattern). The user may have deleted the moment
         // while the synthesis network round-trip was in flight; without this
@@ -474,7 +460,14 @@ export const useMoments = (
             setMomentsList(prev => prev.map(m => m.id === moment.id ? flagged : m));
             onMomentChangedRef.current?.(flagged);
           }
-          return synthesesMap.get(moment.id)?.content ?? null;
+          // Keep the last good synthesis on screen (with the rebuild banner)
+          // rather than showing an error. Prefer the in-memory cache, but fall
+          // back to the persisted (stale-but-valid) one so a cold open doesn't
+          // surface a "Synthesis failed" screen.
+          const cached = synthesesMap.get(moment.id)?.content;
+          if (cached) return cached;
+          const persisted = await getMomentSynthesis(moment.id);
+          return persisted?.content ?? null;
         }
         console.error('[Moments] Synthesis failed:', err);
         // Clear the recovery marker so app start doesn't keep polling a dead
@@ -691,24 +684,30 @@ export const useMoments = (
 
       if (changedMoments.length === 0) return;
 
-      // Clear synthesis caches for affected moments so stale synthesis
-      // (which still references the deleted note) cannot be served.
-      setSynthesesMap(prev => {
-        const next = new Map(prev);
-        for (const m of changedMoments) {
-          next.delete(m.id);
-        }
-        return next;
-      });
+      // Only orphaned (soft-deleted) moments get their synthesis cache cleared.
+      // Surviving moments KEEP their cached synthesis so the background
+      // re-synthesis can MERGE it (preserving web-sourced items); the client
+      // filter (filterSynthesisToNotes) drops the removed note's items.
+      const orphaned = changedMoments.filter(m => m.isDeleted);
+      if (orphaned.length > 0) {
+        setSynthesesMap(prev => {
+          const next = new Map(prev);
+          for (const m of orphaned) next.delete(m.id);
+          return next;
+        });
+      }
 
-      // Persist and sync each affected moment, and clear persisted synthesis
+      // Persist and sync each affected moment; clear persisted synthesis only
+      // for orphans.
       await Promise.all(
         changedMoments.map(m =>
           Promise.all([
             saveMoment(m),
-            deleteMomentSynthesis(m.id).catch(e =>
-              console.warn(`[Moments] Failed to delete synthesis cache for ${m.id}:`, e)
-            ),
+            m.isDeleted
+              ? deleteMomentSynthesis(m.id).catch(e =>
+                  console.warn(`[Moments] Failed to delete synthesis cache for ${m.id}:`, e)
+                )
+              : Promise.resolve(),
           ]).then(() => {
             onMomentChangedRef.current?.(m);
           })
