@@ -46,7 +46,11 @@ const decodeIdTokenSub = (idToken?: string): string | null => {
   try {
     const payload = idToken.split('.')[1];
     if (!payload) return null;
-    const json = atob(payload.replace(/-/g, '+').replace(/_/g, '/'));
+    // JWT payloads are base64url and unpadded; atob needs standard base64 with
+    // correct padding or it throws DOMException for many token lengths.
+    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
+    const json = atob(padded);
     const claims = JSON.parse(json);
     return typeof claims.sub === 'string' ? claims.sub : null;
   } catch {

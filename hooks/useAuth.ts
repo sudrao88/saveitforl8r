@@ -13,10 +13,16 @@ import { sha256Hash } from '../utils/hash';
 
 // Set the GA4 User-ID from the stored Google account `sub`. Hashing keeps the
 // identifier pseudonymous in GA while remaining stable across devices, so the
-// same person is counted once everywhere they sign in.
+// same person is counted once everywhere they sign in. Wrapped so analytics
+// failures (e.g. crypto.subtle unavailable in a non-secure context) can never
+// break the authentication flow.
 const applyGaUserId = async () => {
-  const sub = await storage.get('gdrive_user_id');
-  if (sub) setUserId(await sha256Hash(sub));
+  try {
+    const sub = await storage.get('gdrive_user_id');
+    if (sub) setUserId(await sha256Hash(sub));
+  } catch (e) {
+    console.warn('[Auth] Failed to set GA User-ID:', e);
+  }
 };
 
 export type AuthStatus = 'unlinked' | 'linked' | 'authenticating' | 'error';
