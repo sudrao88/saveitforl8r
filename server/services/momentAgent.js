@@ -186,24 +186,32 @@ export const runMomentAgent = async ({
 
   // --- Lazily-built per-run note embedding cache (inline path only) ---
   let noteVectors = null; // Map<id, number[]> or null if embedding failed
-  const ensureNoteVectors = async () => {
-    if (noteVectors !== null || !inlineNotes || noteList.length === 0) return;
-    try {
-      const vecMap = new Map();
-      for (let i = 0; i < noteList.length; i += EMBED_BATCH) {
-        const batch = noteList.slice(i, i + EMBED_BATCH);
-        const contents = batch.map((n) => ({
-          parts: [{ text: buildEmbeddingText(n.content || '', n.enrichment) }],
-        }));
-        const vecs = await embedContents(ai, contents, { signal });
-        batch.forEach((n, j) => vecMap.set(String(n.id), vecs[j]));
+  // Memoize the in-flight build so concurrent search_notes calls (tool calls in
+  // one model turn now resolve in parallel) don't each kick off the embedding
+  // bootstrap.
+  let noteVectorsPromise = null;
+  const ensureNoteVectors = () => {
+    if (noteVectorsPromise) return noteVectorsPromise;
+    noteVectorsPromise = (async () => {
+      if (noteVectors !== null || !inlineNotes || noteList.length === 0) return;
+      try {
+        const vecMap = new Map();
+        for (let i = 0; i < noteList.length; i += EMBED_BATCH) {
+          const batch = noteList.slice(i, i + EMBED_BATCH);
+          const contents = batch.map((n) => ({
+            parts: [{ text: buildEmbeddingText(n.content || '', n.enrichment) }],
+          }));
+          const vecs = await embedContents(ai, contents, { signal });
+          batch.forEach((n, j) => vecMap.set(String(n.id), vecs[j]));
+        }
+        noteVectors = vecMap;
+        log(`embedded ${noteVectors.size} notes for search`);
+      } catch (err) {
+        log(`note embedding failed (${err.message}); using keyword fallback`);
+        noteVectors = new Map(); // empty → triggers keyword path
       }
-      noteVectors = vecMap;
-      log(`embedded ${noteVectors.size} notes for search`);
-    } catch (err) {
-      log(`note embedding failed (${err.message}); using keyword fallback`);
-      noteVectors = new Map(); // empty → triggers keyword path
-    }
+    })();
+    return noteVectorsPromise;
   };
 
   // --- Tool resolvers ---
@@ -449,11 +457,14 @@ export const runMomentAgent = async ({
       return mapFinalize(finalizeCall.args || {});
     }
 
-    const responseParts = [];
-    for (const fc of functionCalls) {
-      const result = await resolveTool(fc.name, fc.args);
-      responseParts.push({ functionResponse: { name: fc.name, response: result } });
-    }
+    // Resolve all tool calls in this turn concurrently (web_search makes an
+    // outbound request, so sequential awaits would serialize latency). map()
+    // preserves order, so functionResponses still line up with their calls.
+    const responseParts = await Promise.all(
+      functionCalls.map(async (fc) => ({
+        functionResponse: { name: fc.name, response: await resolveTool(fc.name, fc.args) },
+      }))
+    );
     contents.push({ role: 'user', parts: responseParts });
   }
 
