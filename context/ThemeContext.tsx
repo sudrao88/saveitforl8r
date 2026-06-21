@@ -1,4 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState, useCallback, ReactNode } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { isNative } from '../services/platform';
 
 export type ThemePreference = 'light' | 'dark' | 'system';
 export type ResolvedTheme = 'light' | 'dark';
@@ -71,6 +73,27 @@ export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     document.documentElement.setAttribute('data-theme', resolvedTheme);
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute('content', resolvedTheme === 'light' ? '#ffffff' : '#000000');
+  }, [resolvedTheme]);
+
+  // Sync the native status bar to the resolved theme. The status bar style is
+  // otherwise set once from capacitor.config (style: DARK = light icons) and
+  // never updated, so in light mode the light icons are invisible. Web is a
+  // no-op. Style.Dark = light icons (dark bg); Style.Light = dark icons (light
+  // bg). setBackgroundColor is Android-only.
+  useEffect(() => {
+    if (!isNative()) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { StatusBar, Style } = await import('@capacitor/status-bar');
+        if (cancelled) return;
+        await StatusBar.setStyle({ style: resolvedTheme === 'dark' ? Style.Dark : Style.Light });
+        if (Capacitor.getPlatform() === 'android') {
+          await StatusBar.setBackgroundColor({ color: resolvedTheme === 'dark' ? '#000000' : '#ffffff' });
+        }
+      } catch { /* StatusBar plugin unavailable — best effort */ }
+    })();
+    return () => { cancelled = true; };
   }, [resolvedTheme]);
 
   const setTheme = useCallback((next: ThemePreference) => {

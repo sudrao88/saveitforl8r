@@ -71,6 +71,10 @@
     <link rel="icon" type="image/svg+xml" href="/logo-full.svg" />
     <link rel="apple-touch-icon" href="/icon.svg" />
     <meta name="theme-color" content="#000000" />
+    <!-- Signal that the page renders both schemes itself (via data-theme/CSS) so
+         the Android WebView doesn't algorithmically force-darken our content once
+         the native theme is DayNight. -->
+    <meta name="color-scheme" content="light dark" />
 
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
