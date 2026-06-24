@@ -101,6 +101,7 @@ describe('previousDayProvider', () => {
     expect(notifications[0].body).toBe('You have an upcoming event tomorrow');
     expect(notifications[0].title).toBe('Heads up for tomorrow');
     expect(notifications[0].extra?.route).toBe('calendar');
+    expect(notifications[0].extra?.targetDate).toBe('2026-03-22'); // announced (next) day
     // Should fire today at 18:00
     expect(notifications[0].scheduledAt.getDate()).toBe(21);
     expect(notifications[0].scheduledAt.getHours()).toBe(18);

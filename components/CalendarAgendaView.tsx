@@ -41,6 +41,10 @@ interface CalendarAgendaViewProps {
   highlightEventId?: string | null;
   /** Called once the highlight has been shown, so the owner can clear it */
   onHighlightHandled?: () => void;
+  /** When set (YYYY-MM-DD), scroll the agenda to that day's group (e.g. from a notification) */
+  scrollToDateKey?: string | null;
+  /** Called once the day has been scrolled into view, so the owner can clear it */
+  onScrollToDateHandled?: () => void;
   /** To-do items grouped by source memory (for links in the preview modal) */
   todosByMemory?: Map<string, TodoItem[]>;
   /** Opens the calendar scrolled to the given event (from preview modal links) */
@@ -317,6 +321,8 @@ const CalendarAgendaView: React.FC<CalendarAgendaViewProps> = ({
   onTogglePin,
   highlightEventId,
   onHighlightHandled,
+  scrollToDateKey,
+  onScrollToDateHandled,
   todosByMemory,
   onOpenEvent,
   onOpenTodoItem,
@@ -367,6 +373,29 @@ const CalendarAgendaView: React.FC<CalendarAgendaViewProps> = ({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [highlightEventId]);
+
+  // Scroll the agenda to a specific day (e.g. a "heads up for tomorrow"
+  // notification opens the calendar at tomorrow's events, not today's).
+  // Re-runs when dateGroups change so a cold-start deep-link still lands once
+  // events finish loading; only clears the request once the day is rendered.
+  useEffect(() => {
+    if (!scrollToDateKey) return;
+    let innerRaf = 0;
+    const raf = requestAnimationFrame(() => {
+      // Second frame so the sheet's open transition has committed layout
+      innerRaf = requestAnimationFrame(() => {
+        const el = scrollContainerRef.current?.querySelector(`[data-date-key="${scrollToDateKey}"]`);
+        if (!el) return; // day not rendered yet — retry when dateGroups updates
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        onScrollToDateHandled?.();
+      });
+    });
+    return () => {
+      cancelAnimationFrame(raf);
+      cancelAnimationFrame(innerRaf);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scrollToDateKey, dateGroups]);
 
   // Dismiss preview modal on Android back button
   useBackButton(() => setPreviewMemoryId(null), previewMemoryId !== null);
@@ -434,7 +463,7 @@ const CalendarAgendaView: React.FC<CalendarAgendaViewProps> = ({
                   )}
 
                   {/* Date group */}
-                  <section className="mb-4">
+                  <section className="mb-4" data-date-key={group.dateKey}>
                     <div className="flex items-baseline gap-2 mb-2">
                       <h3
                         className={`text-sm font-semibold ${

@@ -136,7 +136,8 @@ export const morningBriefingProvider: NotificationProvider = {
         title: "Good morning! Here's your day",
         body,
         scheduledAt,
-        extra: { route },
+        // targetDate lets the calendar deep-link scroll to the briefing's day.
+        extra: { route, targetDate: dateKey },
       });
     }
 

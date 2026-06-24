@@ -46,12 +46,25 @@ export interface UseNotificationsReturn {
   isSupported: boolean;
   /** Route to navigate to when a notification is tapped */
   pendingRoute: string | null;
+  /** YYYY-MM-DD of the day a tapped notification announced, so the calendar can scroll to it */
+  pendingDateKey: string | null;
   clearPendingRoute: () => void;
   /** Opens device notification settings (native only) */
   openSettings: () => void;
 }
 
 const DEBOUNCE_MS = 2000;
+
+/**
+ * Read the notification deep-link the service worker placed on the PWA URL
+ * (/?route=...&date=...). Web only — native taps arrive via a Capacitor
+ * listener instead.
+ */
+const readWebDeepLink = (): { route: string | null; date: string | null } => {
+  if (isNative()) return { route: null, date: null };
+  const params = new URLSearchParams(window.location.search);
+  return { route: params.get('route'), date: params.get('date') };
+};
 
 export const useNotifications = (
   calendarEvents: CalendarEvent[],
@@ -62,7 +75,10 @@ export const useNotifications = (
   const [notificationTime, setNotificationTime] = useState('07:00');
   const [previousDayEnabled, setPreviousDayEnabled] = useState(true);
   const [previousDayTime, setPreviousDayTime] = useState('18:00');
-  const [pendingRoute, setPendingRoute] = useState<string | null>(null);
+  // Seed from the web deep-link URL at mount so the app can open the right
+  // sheet on first render (native taps update these via the listener below).
+  const [pendingRoute, setPendingRoute] = useState<string | null>(() => readWebDeepLink().route);
+  const [pendingDateKey, setPendingDateKey] = useState<string | null>(() => readWebDeepLink().date);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initialized = useRef(false);
 
@@ -108,6 +124,7 @@ export const useNotifications = (
         const route = event.notification.extra?.route;
         if (route) {
           setPendingRoute(route);
+          setPendingDateKey(event.notification.extra?.targetDate ?? null);
         }
       },
     );
@@ -115,6 +132,21 @@ export const useNotifications = (
     return () => {
       listener.then(h => h.remove()).catch(err => console.debug('[Notifications] Listener cleanup error:', err));
     };
+  }, []);
+
+  // The deep-link params were seeded into pending state at mount; strip them
+  // from the URL so a reload or share doesn't re-trigger the navigation.
+  useEffect(() => {
+    if (isNative()) return;
+
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has('route') && !params.has('date')) return;
+
+    params.delete('route');
+    params.delete('date');
+    const query = params.toString();
+    const newUrl = `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`;
+    window.history.replaceState({}, '', newUrl);
   }, []);
 
   // Re-check permission and re-sync on app resume (native only).
@@ -228,6 +260,7 @@ export const useNotifications = (
 
   const clearPendingRoute = useCallback(() => {
     setPendingRoute(null);
+    setPendingDateKey(null);
   }, []);
 
   return {
@@ -243,6 +276,7 @@ export const useNotifications = (
     setPreviousDayTime: setPreviousDayTimeHandler,
     isSupported,
     pendingRoute,
+    pendingDateKey,
     clearPendingRoute,
     openSettings: openNotificationSettings,
   };

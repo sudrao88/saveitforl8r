@@ -193,6 +193,10 @@ const AppContent: React.FC = () => {
   const [highlightEventId, setHighlightEventId] = useState<string | null>(null);
   const [highlightTodoId, setHighlightTodoId] = useState<string | null>(null);
 
+  // When a notification deep-links to the calendar, scroll to the day it
+  // announced (e.g. tomorrow's events) instead of opening at today.
+  const [calendarScrollDateKey, setCalendarScrollDateKey] = useState<string | null>(null);
+
   // Group events/todos by source note so each card can link to what it created
   const eventsByMemory = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>();
@@ -245,6 +249,7 @@ const AppContent: React.FC = () => {
   }, []);
 
   const handleEventHighlightHandled = useCallback(() => setHighlightEventId(null), []);
+  const handleCalendarScrollHandled = useCallback(() => setCalendarScrollDateKey(null), []);
   const handleTodoHighlightHandled = useCallback(() => setHighlightTodoId(null), []);
 
   const deletionCandidates = useDeletionCandidates(memories, calendarEvents, todoItems);
@@ -264,6 +269,7 @@ const AppContent: React.FC = () => {
     setPreviousDayTime: setPreviousDayNotifTime,
     isSupported: notificationsSupported,
     pendingRoute: notificationPendingRoute,
+    pendingDateKey: notificationPendingDateKey,
     clearPendingRoute: clearNotificationRoute,
     openSettings: openNotificationSettings,
   } = useNotifications(calendarEvents, todoItems);
@@ -272,13 +278,14 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     if (!notificationPendingRoute) return;
     if (notificationPendingRoute === 'calendar') {
+      if (notificationPendingDateKey) setCalendarScrollDateKey(notificationPendingDateKey);
       setShowCalendarAgenda(true);
     } else if (notificationPendingRoute === 'todo') {
       setShowTodoList(true);
     }
     // 'home' — just open the app, which is the default
     clearNotificationRoute();
-  }, [notificationPendingRoute, clearNotificationRoute]);
+  }, [notificationPendingRoute, notificationPendingDateKey, clearNotificationRoute]);
 
   // Wire up moments ref and callback for enrichment-time moment matching
   useEffect(() => {
@@ -1288,7 +1295,7 @@ const AppContent: React.FC = () => {
           <CalendarAgendaView
             events={calendarEvents}
             memories={memories}
-            onClose={() => { setShowCalendarAgenda(false); setHighlightEventId(null); }}
+            onClose={() => { setShowCalendarAgenda(false); setHighlightEventId(null); setCalendarScrollDateKey(null); }}
             onViewAttachment={handleViewAttachment}
             onDelete={handleDeleteMemory}
             onEdit={handleEditMemory}
@@ -1296,6 +1303,8 @@ const AppContent: React.FC = () => {
             onTogglePin={handleTogglePin}
             highlightEventId={highlightEventId}
             onHighlightHandled={handleEventHighlightHandled}
+            scrollToDateKey={calendarScrollDateKey}
+            onScrollToDateHandled={handleCalendarScrollHandled}
             todosByMemory={todosByMemory}
             onOpenEvent={handleOpenCalendarEvent}
             onOpenTodoItem={handleOpenTodoItem}

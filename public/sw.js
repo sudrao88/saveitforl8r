@@ -779,7 +779,14 @@ function getAllFromStore(db, storeName) {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const route = event.notification.data?.route;
-  const targetUrl = route ? `/?route=${encodeURIComponent(route)}` : '/';
+  const targetDate = event.notification.data?.targetDate;
+  let targetUrl = '/';
+  if (route) {
+    const params = new URLSearchParams({ route });
+    // targetDate lets the calendar scroll to the announced day on open.
+    if (targetDate) params.set('date', targetDate);
+    targetUrl = `/?${params.toString()}`;
+  }
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
       // Focus existing window and navigate if available

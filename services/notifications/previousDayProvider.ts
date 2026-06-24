@@ -130,7 +130,9 @@ export const previousDayProvider: NotificationProvider = {
         title: 'Heads up for tomorrow',
         body,
         scheduledAt,
-        extra: { route },
+        // targetDate lets the calendar deep-link scroll to the announced day's
+        // events instead of opening at today.
+        extra: { route, targetDate: targetKey },
       });
     }
 
