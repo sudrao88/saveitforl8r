@@ -293,6 +293,32 @@ const synchronizeNative = async (): Promise<void> => {
 
 // ─── Web scheduling (best-effort) ──────────────────────────────────
 
+/**
+ * Show a web notification that deep-links into the app on click. Notifications
+ * created with `new Notification()` (page context) fire their own onclick
+ * rather than the service worker's notificationclick, so navigate here. The
+ * URL params are consumed by useNotifications on load to open the right sheet
+ * and scroll to the announced day.
+ */
+const showWebNotification = (
+  title: string,
+  body: string,
+  route: string,
+  targetDate: string,
+): void => {
+  const notif = new Notification(title, {
+    body,
+    icon: '/icon.svg',
+    data: { route, targetDate },
+  });
+  notif.onclick = () => {
+    notif.close();
+    window.focus();
+    const params = new URLSearchParams({ route, date: targetDate });
+    window.location.assign(`/?${params.toString()}`);
+  };
+};
+
 const synchronizeWeb = async (): Promise<void> => {
   if (!('Notification' in window) || Notification.permission !== 'granted') return;
 
@@ -316,11 +342,12 @@ const synchronizeWeb = async (): Promise<void> => {
       if (todayEvents.length > 0 || todayTodos.length > 0) {
         const body = buildBody(todayEvents.length, todayTodos.length, 'today');
         try {
-          new Notification("Good morning! Here's your day", {
+          showWebNotification(
+            "Good morning! Here's your day",
             body,
-            icon: '/icon.svg',
-            data: { route: todayEvents.length > 0 ? 'calendar' : 'todo' },
-          });
+            todayEvents.length > 0 ? 'calendar' : 'todo',
+            todayKey,
+          );
           await storage.set(PREF_WEB_LAST_SHOWN_DATE, todayKey);
         } catch (err) {
           console.error('[Notifications] Web notification error:', err);
@@ -358,11 +385,12 @@ const synchronizeWeb = async (): Promise<void> => {
   const prevBody = buildPreviousDayBody(tomorrowEvents.length, tomorrowTodos.length);
 
   try {
-    new Notification('Heads up for tomorrow', {
-      body: prevBody,
-      icon: '/icon.svg',
-      data: { route: tomorrowEvents.length > 0 ? 'calendar' : 'todo' },
-    });
+    showWebNotification(
+      'Heads up for tomorrow',
+      prevBody,
+      tomorrowEvents.length > 0 ? 'calendar' : 'todo',
+      tomorrowKey,
+    );
     await storage.set(PREF_WEB_LAST_SHOWN_PREVIOUS_DAY, todayKey);
   } catch (err) {
     console.error('[Notifications] Previous-day web notification error:', err);

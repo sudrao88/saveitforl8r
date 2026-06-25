@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v134",
-  "buildNumber": 134,
-  "buildDate": "2026-06-21T03:19:03.000Z",
+  "version": "saveitforl8r-v135",
+  "buildNumber": 135,
+  "buildDate": "2026-06-25T00:31:20.175Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Behind-the-scenes improvements to analytics and sign-in reliability."
+  "changelog": "Tapping a calendar reminder now jumps straight to that day's events."
 }

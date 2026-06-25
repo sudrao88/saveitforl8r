@@ -72,6 +72,7 @@ describe('morningBriefingProvider', () => {
     expect(notifications[0].id).toBe(1000); // dayOffset 0
     expect(notifications[0].body).toBe('You have 2 events today');
     expect(notifications[0].extra?.route).toBe('calendar');
+    expect(notifications[0].extra?.targetDate).toBe('2026-03-21'); // the briefing's day
   });
 
   it('generates notification for today with todos only', async () => {
