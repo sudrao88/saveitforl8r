@@ -227,6 +227,57 @@ describe('useMoments', () => {
     expect(geminiService.embedMomentTerms).not.toHaveBeenCalled();
   });
 
+  it('does not show a background upgrade as "creating"', async () => {
+    wireMomentStorage([makeMoment('old', { intentVector: undefined })]);
+    let resolveEmbed: (v: unknown) => void = () => {};
+    (geminiService.embedMomentTerms as any).mockImplementation(
+      () => new Promise(r => { resolveEmbed = r; })
+    );
+    const { result } = renderHook(() => useMoments([]));
+    await flush();
+    expect(geminiService.embedMomentTerms).toHaveBeenCalled();
+    expect(result.current.embeddingIds.has('old')).toBe(false);
+    await act(async () => {
+      resolveEmbed({ vectors: [Y], intentVector: Y, emoji: '✨', model: EMBEDDING_MODEL_ID });
+      await new Promise(r => setTimeout(r, 0));
+    });
+  });
+
+  it('keeps an intent vector that synced in from another device during the request', async () => {
+    const store = wireMomentStorage([makeMoment('m1', { intentVector: undefined })]);
+    let resolveEmbed: (v: unknown) => void = () => {};
+    (geminiService.embedMomentTerms as any).mockImplementation(
+      () => new Promise(r => { resolveEmbed = r; })
+    );
+    renderHook(() => useMoments([]));
+    await flush();
+
+    store.set('m1', { ...store.get('m1')!, intentVector: Z });
+    await act(async () => {
+      resolveEmbed({ vectors: [Y], intentVector: Y, emoji: '✨', model: EMBEDDING_MODEL_ID });
+      await new Promise(r => setTimeout(r, 0));
+    });
+    expect(store.get('m1')!.intentVector).toEqual(Z);
+  });
+
+  it('leaves a term-only moment untouched (no save, no sync) when the proxy returns no intent vector', async () => {
+    const original = makeMoment('old', { intentVector: undefined });
+    const store = wireMomentStorage([original, makeMoment('old2', { intentVector: undefined })]);
+    (geminiService.embedMomentTerms as any).mockImplementation(async (terms: string[]) => ({
+      vectors: terms.map(() => Y), emoji: '✨', model: EMBEDDING_MODEL_ID,
+    }));
+    const onChanged = vi.fn();
+    const { result } = renderHook(() => useMoments([]));
+    act(() => result.current.setOnMomentChanged(onChanged));
+    await flush();
+    await flush();
+
+    expect(store.get('old')).toEqual(original);
+    expect(onChanged).not.toHaveBeenCalled();
+    // After the first answer it stops asking for the rest of the session.
+    expect(geminiService.embedMomentTerms).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps term vectors and backs off when an older proxy returns no intent vector', async () => {
     const store = wireMomentStorage([
       makeMoment('m1', { termVectors: undefined, intentVector: undefined, embeddingModel: undefined }),

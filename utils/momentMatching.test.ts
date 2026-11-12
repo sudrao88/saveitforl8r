@@ -92,6 +92,10 @@ describe('scoreNoteForMoment', () => {
   it('returns null when no vector has a comparable dimension', () => {
     expect(scoreNoteForMoment(moment(), [1, 0, 0])).toBeNull();
   });
+
+  it('returns null when only the intent vector has a different dimension', () => {
+    expect(scoreNoteForMoment(moment({ intentVector: [1, 0, 0] }), at(0))).toBeNull();
+  });
 });
 
 describe('matchNotesToMoment', () => {

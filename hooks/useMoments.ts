@@ -18,7 +18,13 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Memory, Moment, EMBEDDING_MODEL_ID } from '../types';
 import { getMoments, getMoment, saveMoment } from '../services/storageService';
 import { embedMomentTerms } from '../services/geminiService';
-import { needsMomentEmbedding, matchNotesToMoment, scoreNoteForMoment, MomentMatch } from '../utils/momentMatching';
+import {
+  isMomentEmbedded,
+  needsMomentEmbedding,
+  matchNotesToMoment,
+  scoreNoteForMoment,
+  MomentMatch,
+} from '../utils/momentMatching';
 
 // After a failed embed, wait this long before retrying the same moment so a
 // persistent error (signed out, rate limited) doesn't fire on every refresh.
@@ -83,6 +89,9 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
   const onMomentChangedRef = useRef<((moment: Moment) => void) | undefined>(undefined);
   const inFlightEmbeds = useRef<Set<string>>(new Set());
   const lastEmbedFailure = useRef<Map<string, number>>(new Map());
+  // Set once the proxy answers without an intent vector (an older server):
+  // stop trying to upgrade term-only moments for the rest of the session.
+  const proxyLacksIntent = useRef(false);
 
   const setOnMomentChanged = useCallback((cb: (moment: Moment) => void) => {
     onMomentChangedRef.current = cb;
@@ -102,16 +111,28 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
   const embedMoment = useCallback(async (momentId: string): Promise<Moment | null> => {
     if (inFlightEmbeds.current.has(momentId)) return null;
     inFlightEmbeds.current.add(momentId);
-    setEmbeddingIds(prev => new Set(prev).add(momentId));
     try {
       const current = await getMoment(momentId);
       if (!current || current.isDeleted || current.terms.length === 0) return null;
       if (!needsMomentEmbedding(current)) return current;
+      // A moment that already matches by its terms is being upgraded in the
+      // background — don't show it as "creating".
+      const upgrading = isMomentEmbedded(current);
+      if (upgrading && proxyLacksIntent.current) return current;
+      if (!upgrading) setEmbeddingIds(prev => new Set(prev).add(momentId));
 
       const result = await embedMomentTerms(current.terms);
 
       const latest = await getMoment(momentId);
       if (!latest || latest.isDeleted) return null;
+      // Another device may have upgraded it (and synced) meanwhile — keep that.
+      if (!needsMomentEmbedding(latest)) return latest;
+      if (!result.intentVector) {
+        proxyLacksIntent.current = true;
+        // Nothing new for a moment that already had term vectors: don't
+        // rewrite or re-sync it.
+        if (isMomentEmbedded(latest)) return latest;
+      }
       const updated: Moment = {
         ...latest,
         termVectors: result.vectors,
@@ -126,10 +147,7 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
       await saveMoment(updated);
       replaceInList(updated);
       onMomentChangedRef.current?.(updated);
-      // An older proxy returns no intent vector: the moment works on its
-      // terms, but back off before asking again instead of on every refresh.
-      if (result.intentVector) lastEmbedFailure.current.delete(momentId);
-      else lastEmbedFailure.current.set(momentId, Date.now());
+      lastEmbedFailure.current.delete(momentId);
       return updated;
     } catch (err) {
       lastEmbedFailure.current.set(momentId, Date.now());
@@ -154,6 +172,7 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
     const now = Date.now();
     for (const m of list) {
       if (m.isDeleted || !needsMomentEmbedding(m)) continue;
+      if (proxyLacksIntent.current && isMomentEmbedded(m)) continue;
       const failedAt = lastEmbedFailure.current.get(m.id);
       if (failedAt && now - failedAt < EMBED_RETRY_DELAY_MS) continue;
       await embedMoment(m.id);

@@ -82,7 +82,9 @@ export interface MomentEmbedResult {
  * Called once per moment; matching against notes then happens locally.
  */
 export const embedMomentTerms = async (terms: string[]): Promise<MomentEmbedResult> => {
-  const result = await postProxy<MomentEmbedResult>('/api/moment/embed', { terms });
+  // The server may spend up to ~12s expanding the terms with an LLM before
+  // embedding, so allow more than the default 30s on a slow connection.
+  const result = await postProxy<MomentEmbedResult>('/api/moment/embed', { terms }, { timeout: 45_000 });
   if (!Array.isArray(result?.vectors) || result.vectors.length !== terms.length) {
     throw new Error('Unexpected moment embedding response');
   }

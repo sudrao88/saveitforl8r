@@ -42,9 +42,6 @@ export const MOMENT_MIN_SIMILARITY = 0.5;
 /** Notes more than this far below the moment's best match are dropped. */
 export const MOMENT_RELATIVE_MARGIN = 0.15;
 
-/** Floor for moments still on term-only (pre-intent) vectors. */
-export const LEGACY_MOMENT_MIN_SIMILARITY = 0.5;
-
 /** Upper bound on notes shown for one moment. */
 export const MAX_MOMENT_NOTES = 50;
 
@@ -97,7 +94,8 @@ const noteVector = (m: Memory): number[] | null => {
 
 /**
  * Score one note vector against an embedded moment. Returns null when the
- * vectors aren't comparable (dimension mismatch).
+ * vectors aren't comparable (dimension mismatch) — including an intent vector
+ * of another size, so every score for a moment is on the same scale.
  */
 export const scoreNoteForMoment = (moment: Moment, v: number[]): MomentScore | null => {
   let term = -Infinity;
@@ -106,11 +104,12 @@ export const scoreNoteForMoment = (moment: Moment, v: number[]): MomentScore | n
     const s = dot(tv, v);
     if (s > term) term = s;
   }
-  const iv = moment.intentVector;
-  const intent = hasIntentVector(moment) && iv!.length === v.length ? dot(iv!, v) : null;
-  if (intent === null) {
+  if (!hasIntentVector(moment)) {
     return term === -Infinity ? null : { score: term, intent: null, term };
   }
+  const iv = moment.intentVector!;
+  if (iv.length !== v.length) return null;
+  const intent = dot(iv, v);
   if (term === -Infinity) return { score: intent, intent, term: intent };
   return { score: INTENT_WEIGHT * intent + TERM_WEIGHT * term, intent, term };
 };
@@ -126,7 +125,6 @@ export const matchNotesToMoment = (
 ): MomentMatch[] => {
   if (!isMomentEmbedded(moment)) return [];
   const useIntent = hasIntentVector(moment);
-  const floor = useIntent ? MOMENT_MIN_SIMILARITY : LEGACY_MOMENT_MIN_SIMILARITY;
   const excluded = new Set(moment.excludedNoteIds || []);
   const matches: MomentMatch[] = [];
 
@@ -135,7 +133,7 @@ export const matchNotesToMoment = (
     const v = noteVector(m);
     if (!v) continue;
     const s = scoreNoteForMoment(moment, v);
-    if (s && s.score >= floor) matches.push({ id: m.id, score: s.score });
+    if (s && s.score >= MOMENT_MIN_SIMILARITY) matches.push({ id: m.id, score: s.score });
   }
 
   matches.sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : 1));

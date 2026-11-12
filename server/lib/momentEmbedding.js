@@ -22,14 +22,16 @@
 import { Type } from '@google/genai';
 import { embedTexts, buildEmbeddingText } from './embedding.js';
 import { EMOJI_DICTIONARY, DEFAULT_MOMENT_EMOJI } from './emojiDictionary.js';
-import { sanitizeUserInput, sanitizeString } from './sanitize.js';
+import { sanitizeForPromptEmbedding, sanitizeString, parseJsonResponse } from './sanitize.js';
 
 // Gemini's embedContent accepts at most 100 contents per call.
 const EMBED_BATCH = 100;
 
 // The intent expansion is a nice-to-have: give up and use the template rather
-// than hold moment creation hostage to a slow model.
-const INTENT_TIMEOUT_MS = 15_000;
+// than hold moment creation hostage to a slow model. One budget covers both
+// the primary and fallback model, keeping the whole request well inside the
+// client's request timeout.
+const INTENT_BUDGET_MS = 12_000;
 
 const MAX_INTENT_TITLE = 120;
 const MAX_INTENT_SUMMARY = 500;
@@ -45,11 +47,16 @@ export const buildTermEmbeddingText = (term) => {
 
 /**
  * Fallback intent text when the LLM expansion is unavailable: every term in
- * one note-shaped text, so the vector still reflects the combination.
+ * one text, laid out like a note (buildEmbeddingText) so the vector still
+ * reflects the combination and sits on the same scale as LLM intents.
  */
 export const buildFallbackIntentText = (terms) => {
   const clean = terms.map((t) => String(t).trim()).filter(Boolean);
-  return `TITLE: ${clean.join(', ')}\nSUMMARY: Notes about ${clean.join(' and ')}.\nTAGS: ${clean.join(', ')}`;
+  return buildEmbeddingText('', {
+    summary: `Notes about ${clean.join(' and ')}.`,
+    suggestedTags: clean,
+    entityContext: { title: clean.join(', ') },
+  });
 };
 
 export const MOMENT_INTENT_SYSTEM_PROMPT = `You help a personal note-taking app find the user's own saved notes.
@@ -124,7 +131,9 @@ const linkedSignal = (outer, timeoutMs) => {
 };
 
 const generateIntent = async (ai, model, terms, signal) => {
-  const userContent = `MOMENT TERMS:\n${terms.map((t) => `- ${sanitizeUserInput(t)}`).join('\n')}`;
+  // One line per term: newlines/control chars stripped so a term can't add
+  // lines of its own to the prompt.
+  const userContent = `MOMENT TERMS:\n${terms.map((t) => `- ${sanitizeForPromptEmbedding(t)}`).join('\n')}`;
   const response = await ai.models.generateContent({
     model,
     contents: [{ role: 'user', parts: [{ text: userContent }] }],
@@ -136,7 +145,7 @@ const generateIntent = async (ai, model, terms, signal) => {
       ...(signal ? { abortSignal: signal } : {}),
     },
   });
-  const intent = sanitizeMomentIntent(JSON.parse(response?.text || '{}'));
+  const intent = sanitizeMomentIntent(parseJsonResponse(response?.text));
   if (!intent) throw new Error('Empty moment intent');
   return intent;
 };
@@ -146,19 +155,23 @@ const generateIntent = async (ai, model, terms, signal) => {
  * fallback model. Returns null if neither works (or no model is configured);
  * the caller then embeds buildFallbackIntentText instead.
  */
-export const expandMomentIntent = async (ai, terms, { model, fallbackModel, signal } = {}) => {
-  for (const m of [model, fallbackModel].filter(Boolean)) {
-    if (signal?.aborted) return null;
-    const linked = linkedSignal(signal, INTENT_TIMEOUT_MS);
-    try {
-      return await generateIntent(ai, m, terms, linked.signal);
-    } catch (err) {
-      console.warn(`[MomentEmbed] Intent expansion with ${m} failed:`, err.message);
-    } finally {
-      linked.dispose();
+export const expandMomentIntent = async (
+  ai, terms, { model, fallbackModel, signal, budgetMs = INTENT_BUDGET_MS } = {},
+) => {
+  const linked = linkedSignal(signal, budgetMs);
+  try {
+    for (const m of [model, fallbackModel].filter(Boolean)) {
+      if (linked.signal.aborted) return null;
+      try {
+        return await generateIntent(ai, m, terms, linked.signal);
+      } catch (err) {
+        console.warn(`[MomentEmbed] Intent expansion with ${m} failed:`, err.message);
+      }
     }
+    return null;
+  } finally {
+    linked.dispose();
   }
-  return null;
 };
 
 const dot = (a, b) => {
@@ -222,20 +235,23 @@ export const pickEmoji = (vectors, emojiVectors) => {
  * 'llm' or 'template' (useful in logs when tuning).
  */
 export const embedMomentTerms = async (ai, terms, opts = {}) => {
-  const { signal, model, fallbackModel } = opts;
-  const intent = await expandMomentIntent(ai, terms, { model, fallbackModel, signal });
-  const intentText = intent ? buildIntentEmbeddingText(intent) : buildFallbackIntentText(terms);
+  const { signal, model, fallbackModel, intentBudgetMs } = opts;
 
-  // Terms and intent in one embed call; the intent vector is the last one.
-  const all = await embedTexts(ai, [...terms.map(buildTermEmbeddingText), intentText], { signal });
-  const vectors = all.slice(0, terms.length);
-  const intentVector = all[terms.length];
-
-  let emoji = DEFAULT_MOMENT_EMOJI;
-  try {
-    emoji = pickEmoji([intentVector], await getEmojiVectors(ai));
-  } catch (err) {
+  // The term vectors and emoji dictionary don't depend on the intent, so they
+  // run while the model expands it; latency is the slowest step, not the sum.
+  const emojiVectorsP = getEmojiVectors(ai).catch((err) => {
     console.warn('[MomentEmbed] Emoji dictionary embedding failed:', err.message);
-  }
+    return null;
+  });
+  const [intent, vectors] = await Promise.all([
+    expandMomentIntent(ai, terms, { model, fallbackModel, signal, budgetMs: intentBudgetMs }),
+    embedTexts(ai, terms.map(buildTermEmbeddingText), { signal }),
+  ]);
+
+  const intentText = intent ? buildIntentEmbeddingText(intent) : buildFallbackIntentText(terms);
+  const [intentVector] = await embedTexts(ai, [intentText], { signal });
+
+  const emojiVectors = await emojiVectorsP;
+  const emoji = emojiVectors ? pickEmoji([intentVector], emojiVectors) : DEFAULT_MOMENT_EMOJI;
   return { vectors, intentVector, emoji, intentSource: intent ? 'llm' : 'template' };
 };
