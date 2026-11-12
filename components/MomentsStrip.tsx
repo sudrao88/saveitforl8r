@@ -20,7 +20,10 @@ interface MomentsStripProps {
   calendarEventCount: number;
   onTodoTap: () => void;
   todoPendingCount: number;
-  synthesisLoading?: Set<string>;
+  /** Number of matching notes per moment id */
+  matchCounts: Map<string, number>;
+  /** Moment ids whose terms are being embedded right now */
+  embeddingIds?: Set<string>;
   deletionCandidateCount: number;
   onDeletionCandidatesTap: () => void;
 }
@@ -34,7 +37,8 @@ const MomentsStrip: React.FC<MomentsStripProps> = ({
   calendarEventCount,
   onTodoTap,
   todoPendingCount,
-  synthesisLoading,
+  matchCounts,
+  embeddingIds,
   deletionCandidateCount,
   onDeletionCandidatesTap,
 }) => {
@@ -50,7 +54,7 @@ const MomentsStrip: React.FC<MomentsStripProps> = ({
             <Sparkles size={22} className="text-(--color-accent)" />
           </div>
           <span className="text-xs font-semibold text-(--color-accent) leading-tight text-center">
-            Synthesize
+            New
           </span>
         </button>
 
@@ -109,7 +113,8 @@ const MomentsStrip: React.FC<MomentsStripProps> = ({
             key={moment.id}
             moment={moment}
             onTap={onMomentTap}
-            isResynthesizing={synthesisLoading?.has(moment.id) ?? false}
+            noteCount={matchCounts.get(moment.id) ?? 0}
+            isEmbedding={embeddingIds?.has(moment.id) ?? false}
           />
         ))}
 

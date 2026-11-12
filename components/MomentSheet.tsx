@@ -1,243 +1,101 @@
 /**
  * MomentSheet.tsx
  *
- * Full-screen synthesis detail sheet. Opens when user taps a Moment bubble.
- * Handles loading, caching, synthesis display, item completion, and
- * source note citations for each synthesis item.
+ * Full-screen sheet for one moment: its terms, and every note that matches
+ * them, best match first. Matches are computed locally (useMoments) and update
+ * live as notes change. Notes can be opened in a preview or hidden from this
+ * moment. A moment can't be edited — delete it and create a new one.
  */
 
-import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { useBackButton } from '../hooks/useBackButton';
-import {
-  X,
-  Loader2,
-  Trash2,
-  ExternalLink,
-  Check,
-  RefreshCw,
-  FileText,
-  Globe,
-  Sparkles,
-} from 'lucide-react';
-import {
-  Moment,
-  SynthesisResponse,
-  SynthesisSection,
-  SynthesisItem,
-  Memory,
-  Attachment,
-} from '../types';
+import { X, Trash2, EyeOff, CloudOff, Loader2, RefreshCw } from 'lucide-react';
+import { Moment, Memory, Attachment } from '../types';
 import MemoryPreviewModal from './MemoryPreviewModal';
 import MomentNoteDeletionSheet from './MomentNoteDeletionSheet';
-import { ProgressStep } from '../services/geminiService';
-import { overlay, btn, chip } from '../styles/design-system';
-
-// Shared loading indicator for pending creation and resynthesis states.
-// When the agent reports live progress steps, surface them so the user can
-// watch it search notes → search the web → embellish → synthesize.
-const SynthesisLoadingState: React.FC<{ progress?: ProgressStep[] }> = ({ progress }) => (
-  <div className="text-center px-6">
-    <Loader2 size={32} className="animate-spin text-(--color-accent) mx-auto mb-4" />
-    <h3 className="text-lg font-bold text-(--color-text-primary) mb-2">Creating your moment…</h3>
-    <p className="text-sm text-(--color-text-secondary) max-w-sm">
-      The agent is reading your notes, searching the web, and building a synthesis. This usually takes 15–30 seconds.
-    </p>
-    {progress && progress.length > 0 && (
-      <ul className="mt-4 space-y-1.5 text-left max-w-sm mx-auto">
-        {progress.map((p, i) => {
-          const isLast = i === progress.length - 1;
-          return (
-            <li key={i} className="flex items-center gap-2 text-xs">
-              {isLast
-                ? <Loader2 size={12} className="animate-spin text-(--color-accent) shrink-0" />
-                : <Check size={12} className="text-(--color-success) shrink-0" />}
-              <span className={isLast ? 'text-(--color-text-primary)' : 'text-(--color-text-tertiary)'}>
-                {p.step}{p.summary ? `: ${p.summary}` : ''}
-              </span>
-            </li>
-          );
-        })}
-      </ul>
-    )}
-  </div>
-);
-
-// Shared shell for all sheet states (pending, error, normal)
-const SheetShell: React.FC<{
-  title: string;
-  subtitle?: string;
-  headerRight?: React.ReactNode;
-  onClose: () => void;
-  children: React.ReactNode;
-}> = ({ title, subtitle, headerRight, onClose, children }) => (
-  <div className={overlay.sheetBase}>
-    <div className={overlay.sheetHeader}>
-      <div className="flex items-center gap-3">
-        <button
-          onClick={onClose}
-          className={overlay.closeBtn}
-        >
-          <X size={24} />
-        </button>
-        <div>
-          <h2 className="text-lg font-bold text-(--color-text-primary) truncate max-w-[200px] sm:max-w-md">
-            {title}
-          </h2>
-          {subtitle && (
-            <p className="text-xs text-(--color-text-secondary)">{subtitle}</p>
-          )}
-        </div>
-      </div>
-      {headerRight}
-    </div>
-    {children}
-  </div>
-);
+import { FALLBACK_MOMENT_EMOJI } from './MomentBubble';
+import { overlay, btn, chip, card, text } from '../styles/design-system';
+import { isMomentEmbedded, MomentMatch } from '../utils/momentMatching';
 
 type DeleteConfirmStep = 'choose' | 'confirm-notes';
 
 interface MomentSheetProps {
   moment: Moment;
   memories: Memory[];
+  matches: MomentMatch[];
+  isEmbedding: boolean;
   onClose: () => void;
-  loadSynthesis: (moment: Moment, memories: Memory[], signal?: AbortSignal, force?: boolean) => Promise<SynthesisResponse | null>;
   onDelete: (momentId: string) => Promise<void>;
+  onHideNote: (momentId: string, noteId: string) => Promise<void>;
+  onRetryEmbedding: (momentId: string) => Promise<void>;
   onDeleteNotes?: (noteIds: string[]) => void;
   onViewAttachment?: (attachment: Attachment, allAttachments: Attachment[]) => void;
   onMemoryDelete?: (id: string) => void;
   onMemoryEdit?: (memory: Memory) => void;
   onMemoryUpdate?: (id: string, content: string) => void;
   onMemoryTogglePin?: (id: string, isPinned: boolean) => void;
-  onRebuildWithAgent?: (momentId: string) => Promise<void>;
-  onDismissRebuild?: (momentId: string) => Promise<void>;
-  agentProgress?: ProgressStep[];
 }
+
+const plainText = (html: string): string =>
+  (html || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+
+// Best human-readable label for a note: AI entity title, then summary, then
+// the note content itself.
+const noteTitle = (m: Memory): string =>
+  m.enrichment?.entityContext?.title || m.enrichment?.summary || plainText(m.content) || 'Untitled note';
+
+// Secondary line: the summary when the title came from the entity, otherwise
+// the note content.
+const noteSnippet = (m: Memory): string => {
+  if (m.enrichment?.entityContext?.title && m.enrichment.summary) return m.enrichment.summary;
+  const content = plainText(m.content);
+  return content === noteTitle(m) ? '' : content;
+};
+
+const formatDate = (ts: number): string =>
+  new Date(ts).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 
 const MomentSheet: React.FC<MomentSheetProps> = ({
   moment,
   memories,
+  matches,
+  isEmbedding,
   onClose,
-  loadSynthesis,
   onDelete,
+  onHideNote,
+  onRetryEmbedding,
   onDeleteNotes,
   onViewAttachment,
   onMemoryDelete,
   onMemoryEdit,
   onMemoryUpdate,
   onMemoryTogglePin,
-  onRebuildWithAgent,
-  onDismissRebuild,
-  agentProgress,
 }) => {
-  const [synthesis, setSynthesis] = useState<SynthesisResponse | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(false);
-  const [completedItems, setCompletedItems] = useState<Set<string>>(new Set());
   const [previewMemoryId, setPreviewMemoryId] = useState<string | null>(null);
   const [deleteConfirmStep, setDeleteConfirmStep] = useState<DeleteConfirmStep | null>(null);
 
-  // Build a lookup map for source note citations
-  const memoriesMap = useMemo(() => {
-    const map = new Map<string, Memory>();
-    for (const m of memories) {
-      map.set(m.id, m);
+  const memoriesMap = useMemo(() => new Map(memories.map(m => [m.id, m])), [memories]);
+
+  // Matched notes in rank order (matches only ever reference live notes, but
+  // guard against a stale id between renders).
+  const notes = useMemo(() => {
+    const out: Memory[] = [];
+    for (const match of matches) {
+      const m = memoriesMap.get(match.id);
+      if (m && !m.isDeleted) out.push(m);
     }
-    return map;
-  }, [memories]);
+    return out;
+  }, [matches, memoriesMap]);
 
   const previewMemory = previewMemoryId ? memoriesMap.get(previewMemoryId) : undefined;
-
-  // Resolved, in-order list of the moment's notes (skip missing or soft-deleted).
-  // Drives every displayed note count so the header, confirmation prompt, and
-  // deletion sheet stay in sync even when moment.noteIds contains dangling refs.
-  const momentNotes = useMemo(() => {
-    const result: Memory[] = [];
-    for (const id of moment.noteIds) {
-      const m = memoriesMap.get(id);
-      if (m && !m.isDeleted) result.push(m);
-    }
-    return result;
-  }, [moment.noteIds, memoriesMap]);
-
-  const noteCount = momentNotes.length;
+  const embedded = isMomentEmbedded(moment);
+  const noteCount = notes.length;
   const noteLabel = noteCount === 1 ? 'note' : 'notes';
+  const hiddenCount = moment.excludedNoteIds?.length ?? 0;
 
   // Dismiss nested dialogs on Android back button
   useBackButton(() => setPreviewMemoryId(null), previewMemoryId !== null);
   useBackButton(() => setDeleteConfirmStep(null), deleteConfirmStep !== null);
-
-  // Keep refs to latest props so the effect always uses current values
-  const momentRef = useRef(moment);
-  const memoriesRef = useRef(memories);
-  momentRef.current = moment;
-  memoriesRef.current = memories;
-
-  // Track actual noteIds content (not just length) so the effect re-runs
-  // when notes are added or removed — even if the count stays the same.
-  const noteIdsKey = useMemo(() => moment.noteIds.slice().sort().join(','), [moment.noteIds]);
-
-  useEffect(() => {
-    // Don't load synthesis for pending moments
-    if (moment.isPending) {
-      setIsLoading(false);
-      return;
-    }
-
-    const abortController = new AbortController();
-
-    const load = async () => {
-      setIsLoading(true);
-      setError(false);
-      try {
-        const result = await loadSynthesis(momentRef.current, memoriesRef.current, abortController.signal);
-        if (!abortController.signal.aborted) {
-          setSynthesis(result);
-          if (!result) setError(true);
-        }
-      } catch (err) {
-        if (!abortController.signal.aborted) {
-          // Ignore AbortError — it just means a newer loadSynthesis superseded this one
-          if (err instanceof DOMException && err.name === 'AbortError') return;
-          setError(true);
-        }
-      } finally {
-        if (!abortController.signal.aborted) setIsLoading(false);
-      }
-    };
-
-    load();
-
-    return () => {
-      abortController.abort();
-    };
-  }, [moment.id, noteIdsKey, moment.isPending, loadSynthesis]);
-
-  const handleRetry = useCallback(async () => {
-    setIsLoading(true);
-    setError(false);
-    try {
-      // force=true bypasses caches so the user always gets a fresh synthesis
-      const result = await loadSynthesis(moment, memories, undefined, true);
-      setSynthesis(result);
-      if (!result) setError(true);
-    } catch {
-      setError(true);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [moment, memories, loadSynthesis]);
-
-  const toggleItemComplete = useCallback((itemKey: string) => {
-    setCompletedItems(prev => {
-      const next = new Set(prev);
-      if (next.has(itemKey)) {
-        next.delete(itemKey);
-      } else {
-        next.add(itemKey);
-      }
-      return next;
-    });
-  }, []);
 
   const handleDeleteClick = useCallback(() => {
     if (noteCount > 0 && onDeleteNotes) {
@@ -263,167 +121,116 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
     onClose();
   }, [moment.id, onDelete, onDeleteNotes, onClose]);
 
-  // Pending state — moment is still being created
-  if (moment.isPending) {
-    return (
-      <SheetShell title={moment.objective} onClose={onClose}>
-        <div className="flex-1 flex items-center justify-center">
-          <SynthesisLoadingState progress={agentProgress} />
-        </div>
-      </SheetShell>
-    );
-  }
-
-  // Error state — moment creation failed
-  if (moment.processingError && !synthesis) {
-    return (
-      <SheetShell title={moment.title} onClose={onClose}>
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center px-6">
-            <div className="w-16 h-16 bg-(--color-danger)/20 rounded-full flex items-center justify-center mx-auto mb-4">
-              <X size={32} className="text-(--color-danger)" />
-            </div>
-            <h3 className="text-lg font-bold text-(--color-text-primary) mb-2">
-              Moment creation failed
-            </h3>
-            <p className="text-sm text-(--color-text-secondary) mb-4">
-              Could not create this moment. Check your connection and try again.
-            </p>
-            <button
-              onClick={handleDeleteClick}
-              className="px-6 py-2.5 bg-(--color-danger)/20 text-(--color-danger) rounded-(--radius-xl) text-sm font-bold hover:bg-(--color-danger)/30 transition-colors active:scale-95"
-            >
-              Remove
-            </button>
-          </div>
-        </div>
-      </SheetShell>
-    );
-  }
-
   return (
-    <SheetShell
-      title={moment.title}
-      subtitle={synthesis?.subtitle}
-      headerRight={
-        <div className="flex items-center gap-2 text-xs text-(--color-text-tertiary)">
-          <span>{noteCount} {noteLabel}</span>
+    <div className={overlay.sheetBase}>
+      <div className={overlay.sheetHeader}>
+        <div className="flex items-center gap-3 min-w-0">
+          <button onClick={onClose} className={overlay.closeBtn}>
+            <X size={24} />
+          </button>
+          <span className="text-2xl shrink-0" role="img" aria-hidden="true">
+            {moment.emoji || FALLBACK_MOMENT_EMOJI}
+          </span>
+          <h2 className="text-lg font-bold text-(--color-text-primary) truncate min-w-0">
+            {moment.title}
+          </h2>
         </div>
-      }
-      onClose={onClose}
-    >
-
-      {/* Objective banner */}
-      <div className="px-4 sm:px-8 py-2 bg-(--color-surface-overlay)/50 border-b border-(--color-border-subtle) max-w-2xl mx-auto w-full">
-        <p className="text-xs text-(--color-text-secondary) italic truncate">
-          {moment.objective}
-        </p>
+        {embedded && (
+          <span className="text-xs text-(--color-text-tertiary) shrink-0">
+            {noteCount} {noteLabel}
+          </span>
+        )}
       </div>
 
-      {/* Agentic-rebuild prompt — a new note couldn't be slotted into the moment */}
-      {moment.needsAgenticRebuild && (
-        <div className="px-4 sm:px-8 py-3 max-w-2xl mx-auto w-full">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 rounded-(--radius-xl) border border-(--color-warning)/40 bg-(--color-warning)/10">
-            <Sparkles size={18} className="text-(--color-warning) shrink-0" />
-            <p className="text-xs text-(--color-text-secondary) flex-1">
-              A new note couldn't be slotted into this moment. Rebuild it with the agent to fold everything in.
-            </p>
-            <div className="flex gap-2 shrink-0">
-              <button
-                onClick={() => { onRebuildWithAgent?.(moment.id); onClose(); }}
-                className={`${btn.base} ${btn.primarySm}`}
-              >
-                Rebuild
-              </button>
-              <button
-                onClick={() => onDismissRebuild?.(moment.id)}
-                className={`${btn.base} ${btn.secondarySm}`}
-              >
-                Dismiss
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Content */}
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-2xl mx-auto p-4 sm:p-8 pb-32">
-          {/* Cold-load: no cached synthesis yet — block with the full-screen spinner */}
-          {isLoading && !synthesis && (
-            <div className="flex items-center justify-center py-24">
-              <SynthesisLoadingState />
-            </div>
-          )}
+          {/* Terms */}
+          <div className="flex flex-wrap gap-2 mb-6">
+            {moment.terms.map(term => (
+              <span key={term} className={`${chip.base} ${chip.inactive} max-w-full`}>
+                <span className="truncate">{term}</span>
+              </span>
+            ))}
+          </div>
 
-          {/* Background resync: a previous synthesis is already on screen.
-              Show an inline "Updating…" pill instead of hiding the content. */}
-          {isLoading && synthesis && (
-            <div className="flex justify-center mb-4">
-              <div className={`${chip.base} ${chip.inactive}`}>
-                <Loader2 size={14} className="animate-spin text-(--color-accent)" />
-                <span>Updating…</span>
-              </div>
-            </div>
-          )}
-
-          {error && !isLoading && (
-            <div className="text-center py-12">
-              <div className="w-16 h-16 bg-(--color-danger)/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                <X size={32} className="text-(--color-danger)" />
-              </div>
+          {!embedded ? (
+            <div className="text-center py-16 px-6">
+              {isEmbedding ? (
+                <Loader2 size={32} className="animate-spin text-(--color-accent) mx-auto mb-4" />
+              ) : (
+                <CloudOff size={32} className="text-(--color-warning) mx-auto mb-4" />
+              )}
               <h3 className="text-lg font-bold text-(--color-text-primary) mb-2">
-                Synthesis failed
+                {isEmbedding ? 'Setting up this moment…' : 'Waiting for a connection'}
               </h3>
-              <p className="text-sm text-(--color-text-secondary) mb-4">
-                Could not generate the moment. Check your connection and try again.
+              <p className={`${text.body} mb-4`}>
+                {isEmbedding
+                  ? 'Matching notes will appear in a moment.'
+                  : 'This moment will fill in with matching notes as soon as you’re back online.'}
               </p>
-              <button
-                onClick={handleRetry}
-                className={`${btn.base} ${btn.primary} px-6`}
-              >
-                Retry
-              </button>
+              {!isEmbedding && (
+                <button
+                  onClick={() => onRetryEmbedding(moment.id)}
+                  className={`${btn.outlinedSm} mx-auto`}
+                >
+                  <RefreshCw size={14} />
+                  Try again
+                </button>
+              )}
             </div>
+          ) : noteCount === 0 ? (
+            <div className="text-center py-16 px-6">
+              <h3 className="text-lg font-bold text-(--color-text-primary) mb-2">No matching notes yet</h3>
+              <p className={text.body}>
+                Notes you save that relate to these terms will show up here automatically.
+              </p>
+            </div>
+          ) : (
+            <ul className="space-y-2">
+              {notes.map(memory => {
+                const snippet = noteSnippet(memory);
+                return (
+                  <li key={memory.id} className={`${card.base} flex items-start gap-2 p-3`}>
+                    <button
+                      onClick={() => setPreviewMemoryId(memory.id)}
+                      className="flex-1 min-w-0 text-left"
+                    >
+                      <p className="text-sm font-medium text-(--color-text-primary) line-clamp-2">
+                        {noteTitle(memory)}
+                      </p>
+                      {snippet && (
+                        <p className="text-xs text-(--color-text-secondary) mt-0.5 line-clamp-2">
+                          {snippet}
+                        </p>
+                      )}
+                      <p className={`${text.caption} mt-1`}>{formatDate(memory.timestamp)}</p>
+                    </button>
+                    <button
+                      onClick={() => onHideNote(moment.id, memory.id)}
+                      className={`${btn.icon} shrink-0`}
+                      aria-label="Hide from this moment"
+                      title="Hide from this moment"
+                    >
+                      <EyeOff size={16} />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
           )}
 
-          {synthesis && !error && (
-            <>
-              <div className="space-y-6">
-                {synthesis.sections.map((section, sIdx) => (
-                  <SectionView
-                    key={sIdx}
-                    section={section}
-                    sectionIndex={sIdx}
-                    completedItems={completedItems}
-                    onToggleComplete={toggleItemComplete}
-                    memoriesMap={memoriesMap}
-                    onPreviewNote={setPreviewMemoryId}
-                  />
-                ))}
-              </div>
-
-              {/* Actions */}
-              <div className="mt-8 pt-6 border-t border-(--color-border-default)">
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleRetry}
-                    className={btn.outlinedSm}
-                  >
-                    <RefreshCw size={14} />
-                    Re-synthesize
-                  </button>
-                  <button
-                    onClick={handleDeleteClick}
-                    className={btn.outlinedDangerSm}
-                  >
-                    <Trash2 size={14} />
-                    Delete moment
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
+          {/* Actions */}
+          <div className="mt-8 pt-6 border-t border-(--color-border-default) flex flex-wrap items-center gap-3">
+            <button onClick={handleDeleteClick} className={btn.outlinedDangerSm}>
+              <Trash2 size={14} />
+              Delete moment
+            </button>
+            {hiddenCount > 0 && (
+              <span className={text.caption}>
+                {hiddenCount} {hiddenCount === 1 ? 'note' : 'notes'} hidden
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -454,12 +261,12 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
               <div>
                 <h3 className="text-base font-bold text-(--color-text-primary)">Delete moment</h3>
                 <p className="text-xs text-(--color-text-tertiary) mt-0.5">
-                  This moment has {noteCount} associated {noteLabel}
+                  This moment matches {noteCount} {noteLabel}
                 </p>
               </div>
             </div>
             <p className="text-sm text-(--color-text-secondary) mb-6">
-              Would you also like to delete the associated notes, or only remove the moment?
+              Would you also like to delete the matching notes, or only remove the moment?
             </p>
             <div className="flex flex-col gap-2">
               <button
@@ -489,7 +296,7 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
       {deleteConfirmStep === 'confirm-notes' && (
         <MomentNoteDeletionSheet
           moment={moment}
-          notes={momentNotes}
+          notes={notes}
           onCancel={() => setDeleteConfirmStep(null)}
           onConfirm={handleDeleteWithNotes}
           onViewAttachment={onViewAttachment}
@@ -497,150 +304,8 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
           onMemoryTogglePin={onMemoryTogglePin}
         />
       )}
-    </SheetShell>
+    </div>
   );
 };
-
-// --- Section Component ---
-
-const SectionView: React.FC<{
-  section: SynthesisSection;
-  sectionIndex: number;
-  completedItems: Set<string>;
-  onToggleComplete: (key: string) => void;
-  memoriesMap: Map<string, Memory>;
-  onPreviewNote: (id: string) => void;
-}> = ({ section, sectionIndex, completedItems, onToggleComplete, memoriesMap, onPreviewNote }) => (
-  <div>
-    <h3 className="text-base font-bold text-(--color-text-primary) mb-3 flex items-center gap-2">
-      <div className="w-1.5 h-1.5 bg-(--color-accent) rounded-full" />
-      {section.heading}
-    </h3>
-    <div className="space-y-2">
-      {section.items.map((item, iIdx) => {
-        const key = `${sectionIndex}-${iIdx}`;
-        const isCompleted = item.completed
-          ? !completedItems.has(key)
-          : completedItems.has(key);
-        return (
-          <ItemView
-            key={key}
-            item={item}
-            isCompleted={isCompleted}
-            completable={item.completable !== false}
-            onToggle={() => onToggleComplete(key)}
-            sourceMemory={item.sourceNoteId ? memoriesMap.get(item.sourceNoteId) : undefined}
-            onPreviewNote={item.sourceNoteId ? () => onPreviewNote(item.sourceNoteId!) : undefined}
-          />
-        );
-      })}
-    </div>
-  </div>
-);
-
-// --- Item Component ---
-
-function stripHtml(html: string): string {
-  if (!html) return '';
-  const doc = new DOMParser().parseFromString(html, 'text/html');
-  return (doc.body.textContent || '').replace(/\s+/g, ' ').trim();
-}
-
-function truncateCitation(text: string, max: number = 60): string {
-  if (!text) return '';
-  const cleaned = stripHtml(text);
-  return cleaned.length > max ? cleaned.slice(0, max - 1) + '…' : cleaned;
-}
-
-function hostOf(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, '');
-  } catch {
-    return url;
-  }
-}
-
-const ItemView: React.FC<{
-  item: SynthesisItem;
-  isCompleted: boolean;
-  completable: boolean;
-  onToggle: () => void;
-  sourceMemory?: Memory;
-  onPreviewNote?: () => void;
-}> = ({ item, isCompleted, completable, onToggle, sourceMemory, onPreviewNote }) => (
-  <div
-    className={`flex items-start gap-3 p-3 rounded-(--radius-xl) border transition-all ${
-      isCompleted
-        ? 'bg-(--color-surface-raised)/30 border-(--color-border-default) opacity-60'
-        : 'bg-(--color-surface-raised)/50 border-(--color-border-subtle) hover:border-(--color-border-default)/50'
-    }`}
-  >
-    {completable && (
-      <button
-        onClick={onToggle}
-        className="shrink-0 mt-0.5"
-      >
-        <div
-          className={`w-5 h-5 rounded-(--radius-md) border-2 flex items-center justify-center transition-colors ${
-            isCompleted
-              ? 'border-(--color-accent) bg-(--color-accent)/20'
-              : 'border-(--color-border-default) hover:border-(--color-border-default)'
-          }`}
-        >
-          {isCompleted && <Check size={12} className="text-(--color-accent)" />}
-        </div>
-      </button>
-    )}
-    <div className="flex-1 min-w-0">
-      <p
-        className={`text-sm font-medium ${
-          isCompleted ? 'line-through text-(--color-text-tertiary)' : 'text-(--color-text-primary)'
-        }`}
-      >
-        {item.label}
-      </p>
-      {item.detail && (
-        <p className="text-xs text-(--color-text-secondary) mt-0.5 break-all">{item.detail}</p>
-      )}
-      {/* Source citation — note (from the user's memories) or web (agent-found) */}
-      {sourceMemory && (
-        <button
-          onClick={(e) => { e.stopPropagation(); onPreviewNote?.(); }}
-          className="flex items-center gap-1.5 mt-1.5 max-w-full overflow-hidden group/cite hover:opacity-80 transition-opacity text-left"
-        >
-          <FileText size={10} className="text-(--color-text-tertiary) shrink-0 group-hover/cite:text-(--color-accent)" />
-          <span className="text-xs text-(--color-text-tertiary) truncate group-hover/cite:text-(--color-accent)">
-            {truncateCitation(sourceMemory.content)}
-          </span>
-        </button>
-      )}
-      {!sourceMemory && item.sourceType === 'web' && item.sourceUrl && (
-        <a
-          href={item.sourceUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={(e) => e.stopPropagation()}
-          className="flex items-center gap-1.5 mt-1.5 max-w-full overflow-hidden group/cite hover:opacity-80 transition-opacity text-left"
-        >
-          <Globe size={10} className="text-(--color-text-tertiary) shrink-0 group-hover/cite:text-(--color-accent)" />
-          <span className="text-xs text-(--color-text-tertiary) truncate group-hover/cite:text-(--color-accent)">
-            {hostOf(item.sourceUrl)}
-          </span>
-        </a>
-      )}
-    </div>
-    {item.link && (
-      <a
-        href={item.link}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="shrink-0 p-1.5 text-(--color-text-tertiary) hover:text-(--color-accent) transition-colors"
-        onClick={e => e.stopPropagation()}
-      >
-        <ExternalLink size={14} />
-      </a>
-    )}
-  </div>
-);
 
 export default MomentSheet;

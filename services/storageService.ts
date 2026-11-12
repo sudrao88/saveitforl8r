@@ -1,5 +1,5 @@
 
-import { Memory, Moment, MomentSynthesis, CalendarEvent, TodoItem, isMemoryFailed } from '../types.ts';
+import { Memory, Moment, CalendarEvent, TodoItem, isMemoryFailed } from '../types.ts';
 import { encryptData, decryptData, decryptBatch, EncryptedPayload } from './encryptionService';
 import { db } from './db';
 import { storage } from './platform';
@@ -7,10 +7,11 @@ import { storage } from './platform';
 const DB_NAME = 'SaveItForL8rDB';
 const STORE_NAME = 'memories';
 const MOMENTS_STORE = 'moments';
-const MOMENT_SYNTHESIS_STORE = 'momentSyntheses';
+// Removed in v6 (moments became vector matches; there's no synthesis to cache).
+const LEGACY_MOMENT_SYNTHESIS_STORE = 'momentSyntheses';
 const CALENDAR_EVENTS_STORE = 'calendarEvents';
 const TODO_ITEMS_STORE = 'todoItems';
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 
 export interface ReconcileReport {
     total: number;
@@ -51,9 +52,6 @@ const openDB = (): Promise<IDBDatabase> => {
       if (!dbInstance.objectStoreNames.contains(MOMENTS_STORE)) {
         dbInstance.createObjectStore(MOMENTS_STORE, { keyPath: 'id' });
       }
-      if (!dbInstance.objectStoreNames.contains(MOMENT_SYNTHESIS_STORE)) {
-        dbInstance.createObjectStore(MOMENT_SYNTHESIS_STORE, { keyPath: 'momentId' });
-      }
       // v4: Calendar events store with index on startDate for range queries
       if (!dbInstance.objectStoreNames.contains(CALENDAR_EVENTS_STORE)) {
         const eventStore = dbInstance.createObjectStore(CALENDAR_EVENTS_STORE, { keyPath: 'id' });
@@ -64,6 +62,10 @@ const openDB = (): Promise<IDBDatabase> => {
       if (!dbInstance.objectStoreNames.contains(TODO_ITEMS_STORE)) {
         const todoStore = dbInstance.createObjectStore(TODO_ITEMS_STORE, { keyPath: 'id' });
         todoStore.createIndex('memoryId', 'memoryId', { unique: false });
+      }
+      // v6: Moments no longer have an AI synthesis — drop its cache store
+      if (dbInstance.objectStoreNames.contains(LEGACY_MOMENT_SYNTHESIS_STORE)) {
+        dbInstance.deleteObjectStore(LEGACY_MOMENT_SYNTHESIS_STORE);
       }
     };
 
@@ -110,7 +112,51 @@ export const normalizeMemory = (memory: Memory): Memory => {
   // consistent state. Drop these mirrors after one release cycle.
   memory.isPending = memory.enrichmentStatus === 'submitting' || memory.enrichmentStatus === 'processing';
   memory.processingError = memory.enrichmentStatus === 'failed_submit' || memory.enrichmentStatus === 'failed_server';
+  // Drop fields from the retired agentic moments flow (web facts the agent
+  // saved onto notes, and server-side moment matches). Moments now match notes
+  // locally by vector similarity.
+  if (memory.enrichment) {
+    const legacy = memory.enrichment as Record<string, unknown>;
+    if ('webAdditions' in legacy || 'matchedMomentIds' in legacy) {
+      const { webAdditions: _w, matchedMomentIds: _m, ...rest } = legacy;
+      memory.enrichment = rest as unknown as Memory['enrichment'];
+    }
+  }
   return memory;
+};
+
+// Fields only the retired agentic moments flow wrote. Stripped on read so
+// legacy records (local, or downloaded from an older client) take the new shape.
+const LEGACY_MOMENT_FIELDS = [
+  'objective', 'refinedObjective', 'type', 'noteIds', 'lastSynthesizedAt',
+  'inputHash', 'lastSeenInputHash', 'isPending', 'processingError',
+  'pendingSynthesisHash', 'pendingSynthesisAt', 'needsAgenticRebuild',
+] as const;
+
+/**
+ * Bring a stored/synced moment into the current shape. A legacy moment's
+ * objective becomes its single term; it has no termVectors yet, so useMoments
+ * embeds it (and re-syncs the clean record) on the next online load.
+ */
+export const normalizeMoment = (raw: Moment): Moment => {
+  const legacy = raw as Moment & Record<string, unknown>;
+  let terms = Array.isArray(raw.terms)
+    ? raw.terms.filter((t): t is string => typeof t === 'string' && t.trim().length > 0)
+    : [];
+  if (terms.length === 0 && typeof legacy.objective === 'string' && legacy.objective.trim()) {
+    terms = [legacy.objective.trim()];
+  }
+  const moment: Moment & Record<string, unknown> = { ...legacy, terms };
+  for (const f of LEGACY_MOMENT_FIELDS) delete moment[f];
+  if (!moment.title) moment.title = terms.join(', ');
+  if (!Array.isArray(moment.termVectors) || moment.termVectors.length !== terms.length) {
+    delete moment.termVectors;
+    delete moment.embeddingModel;
+  }
+  if (moment.excludedNoteIds !== undefined && !Array.isArray(moment.excludedNoteIds)) {
+    delete moment.excludedNoteIds;
+  }
+  return moment as Moment;
 };
 
 // Helper: Convert StoredMemory to Application Memory
@@ -385,7 +431,7 @@ export const getMoments = async (): Promise<Moment[]> => {
       const tx = dbInstance.transaction(MOMENTS_STORE, 'readonly');
       const store = tx.objectStore(MOMENTS_STORE);
       const request = store.getAll();
-      request.onsuccess = () => resolve((request.result as Moment[]).filter(m => !m.isDeleted));
+      request.onsuccess = () => resolve((request.result as Moment[]).filter(m => !m.isDeleted).map(normalizeMoment));
       request.onerror = () => reject(request.error);
     });
   } catch (error) {
@@ -401,7 +447,7 @@ export const getAllMomentsIncludingDeleted = async (): Promise<Moment[]> => {
       const tx = dbInstance.transaction(MOMENTS_STORE, 'readonly');
       const store = tx.objectStore(MOMENTS_STORE);
       const request = store.getAll();
-      request.onsuccess = () => resolve(request.result as Moment[]);
+      request.onsuccess = () => resolve((request.result as Moment[]).map(normalizeMoment));
       request.onerror = () => reject(request.error);
     });
   } catch (error) {
@@ -428,7 +474,10 @@ export const getMoment = async (id: string): Promise<Moment | null> => {
       const tx = dbInstance.transaction(MOMENTS_STORE, 'readonly');
       const store = tx.objectStore(MOMENTS_STORE);
       const request = store.get(id);
-      request.onsuccess = () => resolve((request.result as Moment | undefined) ?? null);
+      request.onsuccess = () => {
+        const m = request.result as Moment | undefined;
+        resolve(m ? normalizeMoment(m) : null);
+      };
       request.onerror = () => reject(request.error);
     });
   } catch (error) {
@@ -443,48 +492,6 @@ export const deleteMomentHard = async (id: string): Promise<void> => {
     const tx = dbInstance.transaction(MOMENTS_STORE, 'readwrite');
     const store = tx.objectStore(MOMENTS_STORE);
     store.delete(id);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-  // Also clean up the associated synthesis cache
-  await deleteMomentSynthesis(id).catch(e => console.warn(`[Storage] Failed to delete synthesis for moment ${id}:`, e));
-};
-
-// --- MomentSynthesis Cache ---
-
-export const getMomentSynthesis = async (momentId: string): Promise<MomentSynthesis | null> => {
-  try {
-    const dbInstance = await openDB();
-    return new Promise((resolve, reject) => {
-      const tx = dbInstance.transaction(MOMENT_SYNTHESIS_STORE, 'readonly');
-      const store = tx.objectStore(MOMENT_SYNTHESIS_STORE);
-      const request = store.get(momentId);
-      request.onsuccess = () => resolve(request.result || null);
-      request.onerror = () => reject(request.error);
-    });
-  } catch (error) {
-    console.error("Failed to get moment synthesis:", error);
-    return null;
-  }
-};
-
-export const deleteMomentSynthesis = async (momentId: string): Promise<void> => {
-  const dbInstance = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = dbInstance.transaction(MOMENT_SYNTHESIS_STORE, 'readwrite');
-    const store = tx.objectStore(MOMENT_SYNTHESIS_STORE);
-    store.delete(momentId);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-};
-
-export const saveMomentSynthesis = async (synthesis: MomentSynthesis): Promise<void> => {
-  const dbInstance = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = dbInstance.transaction(MOMENT_SYNTHESIS_STORE, 'readwrite');
-    const store = tx.objectStore(MOMENT_SYNTHESIS_STORE);
-    store.put(synthesis);
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
@@ -829,7 +836,7 @@ export const factoryReset = async () => {
         }
 
         const dbsToReset = [
-            { name: 'SaveItForL8rDB', stores: ['memories', 'moments', 'momentSyntheses', 'calendarEvents', 'todoItems'] },
+            { name: 'SaveItForL8rDB', stores: ['memories', 'moments', 'calendarEvents', 'todoItems'] },
             { name: 'SaveItForL8rRAG', stores: ['vectors', 'processingQueue'] },
             { name: 'auth_db', stores: ['tokens'] },
             { name: 'saveitforl8r-share', stores: ['shares'] }

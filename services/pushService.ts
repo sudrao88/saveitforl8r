@@ -66,17 +66,12 @@ export const registerPushToken = async (): Promise<void> => {
     // This wakes the app to run the background pipeline.
     PushNotifications.addListener('pushNotificationReceived', async (notification) => {
       const data = notification.data as Record<string, string> | undefined;
-      if (
-        data?.type === 'enrichment-complete' ||
-        data?.type === 'moment-complete' ||
-        data?.type === 'synthesis-complete'
-      ) {
+      if (data?.type === 'enrichment-complete') {
         // Dynamic import to avoid circular dependencies
         const { runBackgroundPipeline } = await import('./backgroundPipeline');
         await runBackgroundPipeline({
-          type: data.type as 'enrichment-complete' | 'moment-complete' | 'synthesis-complete',
+          type: 'enrichment-complete',
           memoryId: data.memoryId,
-          momentId: data.momentId,
         });
       }
     });

@@ -1,103 +1,44 @@
 /**
  * MomentBubble.tsx
  *
- * Individual story bubble in the Moments strip.
- * Shows a circular avatar with icon, label, and note count.
- * Displays a pulsing "Creating..." state for pending moments.
+ * Individual story bubble in the Moments strip: the moment's emoji, title and
+ * how many notes currently match it. A moment still waiting for its term
+ * vectors (created offline, or the request failed) shows a waiting state.
  */
 
-import React, { useEffect, useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import React from 'react';
+import { Loader2, CloudOff } from 'lucide-react';
 import { Moment } from '../types';
 import { text } from '../styles/design-system';
+import { isMomentEmbedded } from '../utils/momentMatching';
 
 interface MomentBubbleProps {
   moment: Moment;
+  noteCount: number;
   onTap: (moment: Moment) => void;
-  isResynthesizing?: boolean;
+  isEmbedding?: boolean;
 }
 
-export function getMomentIcon(type: string, objective: string): string {
-  switch (type) {
-    case 'itinerary':
-      return '✈️';
-    case 'brief':
-      return '📋';
-    case 'list': {
-      const lower = objective.toLowerCase();
-      if (lower.includes('restaurant') || lower.includes('food') || lower.includes('café') || lower.includes('cafe') || lower.includes('dining'))
-        return '🍜';
-      if (lower.includes('movie') || lower.includes('tv') || lower.includes('show'))
-        return '🎬';
-      if (lower.includes('book') || lower.includes('read'))
-        return '📚';
-      if (lower.includes('music') || lower.includes('song'))
-        return '🎵';
-      if (lower.includes('product') || lower.includes('shop'))
-        return '🛍️';
-      return '📝';
-    }
-    case 'dashboard':
-      return '📊';
-    case 'curriculum':
-      return '🎓';
-    case 'gift-guide':
-      return '🎁';
-    case 'meal-plan':
-      return '🍳';
-    case 'general':
-    default:
-      return '💡';
-  }
-}
+/** Shown before a moment has an emoji (not yet embedded). */
+export const FALLBACK_MOMENT_EMOJI = '✨';
 
-function truncateLabel(text: string, max: number = 10): string {
-  return text.length > max ? text.slice(0, max - 1) + '…' : text;
+function truncateLabel(label: string, max: number = 10): string {
+  return label.length > max ? label.slice(0, max - 1) + '…' : label;
 }
 
 const MomentBubble: React.FC<MomentBubbleProps> = ({
   moment,
+  noteCount,
   onTap,
-  isResynthesizing = false,
+  isEmbedding = false,
 }) => {
-  const isPending = moment.isPending || isResynthesizing;
-  const hasError = moment.processingError;
-  const [wasPending, setWasPending] = useState(moment.isPending ?? false);
-  const [showGlow, setShowGlow] = useState(false);
+  const isWaiting = !isMomentEmbedded(moment);
 
-  // Detect pending→complete transition during render (React-approved pattern)
-  if (wasPending !== (moment.isPending ?? false)) {
-    setWasPending(moment.isPending ?? false);
-    if (wasPending && !moment.isPending && !hasError) {
-      setShowGlow(true);
-    }
-  }
-
-  // Auto-clear glow after animation
-  useEffect(() => {
-    if (!showGlow) return;
-    const timer = setTimeout(() => setShowGlow(false), 800);
-    return () => clearTimeout(timer);
-  }, [showGlow]);
-
-  const icon = moment.emoji || getMomentIcon(moment.type, moment.objective);
-  const label = isPending
-    ? truncateLabel(moment.objective, 10)
-    : truncateLabel(moment.title);
-  const noteCount = moment.noteIds.length;
-
-  // Ring states
-  let ringClass: string;
-  if (isPending) {
-    ringClass = 'ring-2 ring-(--color-accent) animate-pulse';
-  } else if (hasError) {
-    ringClass = 'ring-2 ring-(--color-danger)';
-  } else {
-    const hasUnseen = moment.inputHash !== moment.lastSeenInputHash;
-    ringClass = hasUnseen
-      ? 'ring-2 ring-(--color-accent)'
+  const ringClass = isEmbedding
+    ? 'ring-2 ring-(--color-accent) animate-pulse'
+    : isWaiting
+      ? 'ring-2 ring-(--color-warning)'
       : 'ring-2 ring-(--color-border-default)';
-  }
 
   return (
     <button
@@ -105,23 +46,25 @@ const MomentBubble: React.FC<MomentBubbleProps> = ({
       className="flex flex-col items-center gap-1.5 shrink-0 group touch-manipulation"
     >
       <div
-        className={`w-16 h-16 rounded-full flex items-center justify-center bg-gradient-to-br from-(--color-surface-raised) to-(--color-surface-raised) ${ringClass} transition-all group-active:scale-95 ${showGlow ? 'animate-glow-settle' : ''}`}
+        className={`w-16 h-16 rounded-full flex items-center justify-center bg-(--color-surface-raised) ${ringClass} transition-all group-active:scale-95`}
       >
-        {isPending ? (
+        {isEmbedding ? (
           <Loader2 size={24} className="text-(--color-accent) animate-spin" />
+        ) : isWaiting ? (
+          <CloudOff size={22} className="text-(--color-warning)" />
         ) : (
-          <span className="text-2xl" role="img" aria-label={moment.type}>
-            {icon}
+          <span className="text-2xl" role="img" aria-hidden="true">
+            {moment.emoji || FALLBACK_MOMENT_EMOJI}
           </span>
         )}
       </div>
-      <span className="text-xs font-semibold text-(--color-text-secondary) leading-tight text-center max-w-[72px] truncate">
-        {label}
+      <span className="text-xs font-semibold text-(--color-text-secondary) leading-tight text-center max-w-18 truncate">
+        {truncateLabel(moment.title)}
       </span>
-      {isPending ? (
+      {isEmbedding ? (
         <span className={`${text.caption} text-(--color-accent) leading-tight`}>Creating…</span>
-      ) : hasError ? (
-        <span className={`${text.caption} text-(--color-danger) leading-tight`}>Failed</span>
+      ) : isWaiting ? (
+        <span className={`${text.caption} text-(--color-warning) leading-tight`}>Waiting</span>
       ) : (
         <span className={`${text.caption} leading-tight`}>
           {noteCount} note{noteCount !== 1 ? 's' : ''}

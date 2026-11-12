@@ -1,20 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getMemories, deleteMemory, saveMemory, getMemory } from '../services/storageService';
 import { submitEnrichment } from '../services/geminiService';
-import { Memory, Attachment, Moment, CalendarEvent, TodoItem, UploadProgress, WebAddition, isMemoryInFlight } from '../types';
+import { Memory, Attachment, CalendarEvent, TodoItem, UploadProgress, isMemoryInFlight } from '../types';
 import { uploadFileChunked, LARGE_PAYLOAD_THRESHOLD } from '../services/chunkUploadService';
 import { useSync } from './useSync';
 import { useAuth } from './useAuth';
 import { useEnrichmentPolling } from './useEnrichmentPolling';
 import { trackNoteSaved } from '../services/analytics';
-
-/** Builds the lightweight moments metadata array sent with enrichment requests. */
-const buildMomentsMeta = (moments: Moment[]) => {
-  const active = moments
-    .filter(m => !m.isDeleted)
-    .map(m => ({ id: m.id, objective: m.objective, refinedObjective: m.refinedObjective, title: m.title, type: m.type }));
-  return active.length > 0 ? active : undefined;
-};
 
 export const useMemories = () => {
   const [memories, setMemories] = useState<Memory[]>([]);
@@ -22,18 +14,6 @@ export const useMemories = () => {
   const { sync, syncFile } = useSync();
   const { authStatus } = useAuth();
   const mounted = useRef(false);
-
-  // Moments ref and callback for enrichment-time moment matching
-  const momentsRef = useRef<Moment[]>([]);
-  const onNoteMatchedMomentsRef = useRef<((momentId: string, noteId: string) => Promise<void>) | undefined>(undefined);
-
-  const setMomentsRef = useCallback((moments: Moment[]) => {
-    momentsRef.current = moments;
-  }, []);
-
-  const setOnNoteMatchedMoments = useCallback((cb: (momentId: string, noteId: string) => Promise<void>) => {
-    onNoteMatchedMomentsRef.current = cb;
-  }, []);
 
   // Calendar events callback for enrichment-time event extraction
   const onEnrichmentCompleteCalendarRef = useRef<((memory: Memory) => Promise<CalendarEvent[]>) | undefined>(undefined);
@@ -104,26 +84,12 @@ export const useMemories = () => {
 
   // Enrichment polling — extracted into a dedicated hook to eliminate
   // duplicated result-handling logic that was in 3 separate places.
-  // The onEnrichmentComplete callback also handles moment matching.
   const { startPolling, recoverPending } = useEnrichmentPolling({
     memoriesRef,
     setMemories,
     onEnrichmentComplete: useCallback((memory: Memory) => {
       if (authStatus === 'linked') {
         syncFile(memory).catch(err => console.error("Sync failed:", err));
-      }
-      // Handle moment matching from enrichment results
-      const matched = memory.enrichment?.matchedMomentIds;
-      if (matched && matched.length > 0) {
-        if (onNoteMatchedMomentsRef.current) {
-          for (const momentId of matched) {
-            onNoteMatchedMomentsRef.current(momentId, memory.id).catch(err =>
-              console.error(`[Moments] Failed to add note to moment ${momentId}:`, err)
-            );
-          }
-        } else {
-          console.warn(`[Moments] matchedMomentIds present but onNoteMatchedMomentsRef not set — notes not added to moments`);
-        }
       }
       // Process calendar events from enrichment results and sync to Drive
       if (onEnrichmentCompleteCalendarRef.current) {
@@ -321,7 +287,7 @@ export const useMemories = () => {
     // Submit enrichment (fileUri for uploaded attachments, inline data for small ones)
     startPolling();
     try {
-      await submitEnrichment(text, enrichmentAttachments, location, tags, memoryId, buildMomentsMeta(momentsRef.current));
+      await submitEnrichment(text, enrichmentAttachments, location, tags, memoryId);
       updateUploadProgress(memoryId, null);
       // Server has acknowledged the job. Transition from 'submitting' to
       // 'processing' so the polling-driven failure path is the only one
@@ -459,44 +425,6 @@ export const useMemories = () => {
     }
   }, [trySyncFile]);
 
-  // Merge web findings the moments agent fetched into a note's enrichment.
-  // Lightweight on purpose (modeled on togglePin) — it must NOT clear enrichment
-  // the way updateMemory does, since that would wipe the note and re-enrich it.
-  // De-dupes by sourceUrl + normalized text so repeated agent runs (and the
-  // agent occasionally hallucinating a noteId on the file-URI path) don't pile
-  // up duplicates or save empty rows.
-  const dedupKey = (a: WebAddition) => `${a.sourceUrl.trim()}|${a.text.trim().toLowerCase()}`;
-  const applyWebAdditions = useCallback(async (id: string, additions: WebAddition[]) => {
-    const clean = (additions || []).filter(a => a && a.text?.trim() && a.sourceUrl?.trim());
-    if (clean.length === 0) return;
-    try {
-      const current = await getMemory(id);
-      if (!current || !current.enrichment) {
-        // Agent referenced a note that doesn't exist locally or isn't enriched
-        // yet — drop the finding but make the drop visible rather than silent.
-        console.warn(`[Moments] Skipped web additions for ${id}: note missing or not enriched`);
-        return;
-      }
-      const existing = current.enrichment.webAdditions || [];
-      const seen = new Set(existing.map(dedupKey));
-      const merged = [...existing];
-      for (const a of clean) {
-        const key = dedupKey(a);
-        if (!seen.has(key)) { seen.add(key); merged.push(a); }
-      }
-      if (merged.length === existing.length) return; // nothing new
-      const updated: Memory = {
-        ...current,
-        enrichment: { ...current.enrichment, webAdditions: merged },
-      };
-      await saveMemory(updated);
-      setMemories(prev => prev.map(m => m.id === id ? { ...m, enrichment: updated.enrichment } : m));
-      await trySyncFile(updated);
-    } catch (e) {
-      console.error('Failed to apply web additions', e);
-    }
-  }, [trySyncFile]);
-
   const updateMemory = useCallback(async (
     id: string,
     text: string,
@@ -533,10 +461,10 @@ export const useMemories = () => {
       // Sync immediately (save the text changes even before enrichment finishes)
       await trySyncFile(updatedMemory);
 
-      // Submit enrichment with moments metadata and start polling
+      // Submit enrichment and start polling
       startPolling();
 
-      submitEnrichment(text, attachments, updatedMemory.location, tags, id, buildMomentsMeta(momentsRef.current))
+      submitEnrichment(text, attachments, updatedMemory.location, tags, id)
         .then(async () => {
             // Server acknowledged — transition submitting → processing.
             const current = await getMemory(id);
@@ -632,11 +560,8 @@ export const useMemories = () => {
     updateMemory,
     updateMemoryContent,
     togglePin,
-    applyWebAdditions,
     dismissDeletionCandidate,
     isLoading,
-    setMomentsRef,
-    setOnNoteMatchedMoments,
     setOnEnrichmentCompleteCalendar,
     setOnCalendarEventsSync,
     setOnEnrichmentCompleteTodo,

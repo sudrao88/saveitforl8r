@@ -1,13 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { runBackgroundPipeline, recoverAllPendingEnrichments } from './backgroundPipeline';
-import { fetchPendingEnrichments, fetchPendingMomentResults, fetchPendingSynthesisResults } from './geminiService';
+import { fetchPendingEnrichments } from './geminiService';
 import { getMemory, saveMemory, getMemories } from './storageService';
 import { applyEnrichmentResult } from '../hooks/useEnrichmentPolling';
 
 vi.mock('./geminiService', () => ({
   fetchPendingEnrichments: vi.fn(),
-  fetchPendingMomentResults: vi.fn(),
-  fetchPendingSynthesisResults: vi.fn(),
 }));
 
 vi.mock('./storageService', () => ({
@@ -92,80 +90,6 @@ describe('backgroundPipeline', () => {
 
         expect(getMemory).not.toHaveBeenCalled();
         expect(fetchPendingEnrichments).not.toHaveBeenCalled();
-      });
-    });
-
-    describe('moment-complete', () => {
-      it('should flag in localStorage when completed', async () => {
-        vi.mocked(fetchPendingMomentResults).mockResolvedValue({
-          'moment-1': { status: 'completed', data: { title: 'Test Moment', type: 'collection', usedNoteIds: [], synthesis: { format: 'general', title: 'Test Moment', sections: [], generatedFrom: [] } } },
-        });
-
-        await runBackgroundPipeline({ type: 'moment-complete', momentId: 'moment-1' });
-
-        expect(fetchPendingMomentResults).toHaveBeenCalledWith(['moment-1']);
-        const pending = JSON.parse(localStorage.getItem('bg_pending_moments') || '[]');
-        expect(pending).toContain('moment-1');
-      });
-
-      it('should not duplicate momentId in localStorage', async () => {
-        localStorage.setItem('bg_pending_moments', JSON.stringify(['moment-1']));
-        vi.mocked(fetchPendingMomentResults).mockResolvedValue({
-          'moment-1': { status: 'completed', data: { title: 'Test Moment', type: 'collection', usedNoteIds: [], synthesis: { format: 'general', title: 'Test Moment', sections: [], generatedFrom: [] } } },
-        });
-
-        await runBackgroundPipeline({ type: 'moment-complete', momentId: 'moment-1' });
-
-        const pending = JSON.parse(localStorage.getItem('bg_pending_moments') || '[]');
-        expect(pending).toEqual(['moment-1']);
-      });
-
-      it('should skip if still processing', async () => {
-        vi.mocked(fetchPendingMomentResults).mockResolvedValue({
-          'moment-1': { status: 'processing' },
-        });
-
-        await runBackgroundPipeline({ type: 'moment-complete', momentId: 'moment-1' });
-
-        const pending = JSON.parse(localStorage.getItem('bg_pending_moments') || '[]');
-        expect(pending).toEqual([]);
-      });
-
-      it('should no-op if momentId is missing', async () => {
-        await runBackgroundPipeline({ type: 'moment-complete' });
-
-        expect(fetchPendingMomentResults).not.toHaveBeenCalled();
-      });
-    });
-
-    describe('synthesis-complete', () => {
-      it('should flag in localStorage when completed', async () => {
-        vi.mocked(fetchPendingSynthesisResults).mockResolvedValue({
-          'moment-1': { status: 'completed', data: { format: 'general', title: 'Test', sections: [], generatedFrom: [] } },
-        });
-
-        await runBackgroundPipeline({ type: 'synthesis-complete', momentId: 'moment-1' });
-
-        expect(fetchPendingSynthesisResults).toHaveBeenCalledWith(['moment-1']);
-        const pending = JSON.parse(localStorage.getItem('bg_pending_syntheses') || '[]');
-        expect(pending).toContain('moment-1');
-      });
-
-      it('should skip if still processing', async () => {
-        vi.mocked(fetchPendingSynthesisResults).mockResolvedValue({
-          'moment-1': { status: 'processing' },
-        });
-
-        await runBackgroundPipeline({ type: 'synthesis-complete', momentId: 'moment-1' });
-
-        const pending = JSON.parse(localStorage.getItem('bg_pending_syntheses') || '[]');
-        expect(pending).toEqual([]);
-      });
-
-      it('should no-op if momentId is missing', async () => {
-        await runBackgroundPipeline({ type: 'synthesis-complete' });
-
-        expect(fetchPendingSynthesisResults).not.toHaveBeenCalled();
       });
     });
 

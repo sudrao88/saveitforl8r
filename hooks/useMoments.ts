@@ -1,781 +1,241 @@
 /**
  * useMoments.ts
  *
- * React hook for managing user-created moments.
- * Moments are explicit synthesis objectives created by the user.
- * Notes are matched to moments during enrichment, and synthesis
- * is regenerated on-demand when new notes are added.
+ * Moments are saved semantic searches. The user enters a few terms; each term
+ * is embedded once on the server (same model as notes) and stored, with an
+ * emoji, on the moment. Matching notes are computed here, locally, from the
+ * synced note vectors — so a moment updates live as notes are added, edited,
+ * synced or deleted, works offline once embedded, and shows the same notes on
+ * every device without the matches themselves being synced.
  *
- * Moment creation is async: a pending placeholder appears immediately,
- * the server runs a 3-step AI pipeline in the background, and the
- * client polls for results.
+ * A moment created offline (or whose embed request failed, or a legacy moment
+ * migrated from the old agentic flow) is saved without vectors and embedded as
+ * soon as the app is back online.
  */
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { flushSync } from 'react-dom';
-import {
-  Memory,
-  Moment,
-  MomentSynthesis,
-  SynthesisResponse,
-  WebAddition,
-} from '../types';
-import {
-  getMoments,
-  getMoment,
-  saveMoment,
-  getMomentSynthesis,
-  saveMomentSynthesis,
-  deleteMomentSynthesis,
-} from '../services/storageService';
-import { submitMomentCreation, submitResynthesis, pollSynthesisResult, fetchPendingSynthesisResults, MomentNeedsRebuildError, ProgressStep } from '../services/geminiService';
-import { useMomentCreationPolling } from './useMomentCreationPolling';
-import { computeInputHash } from '../utils/hash';
-import { filterSynthesisToNotes } from '../utils/synthesisFilter';
+import { Memory, Moment, EMBEDDING_MODEL_ID } from '../types';
+import { getMoments, getMoment, saveMoment } from '../services/storageService';
+import { embedMomentTerms } from '../services/geminiService';
+import { isMomentEmbedded, matchNotesToMoment, MomentMatch } from '../utils/momentMatching';
+
+// After a failed embed, wait this long before retrying the same moment so a
+// persistent error (signed out, rate limited) doesn't fire on every refresh.
+const EMBED_RETRY_DELAY_MS = 60_000;
 
 interface UseMomentsReturn {
-  /** All active moments */
+  /** All active moments, newest first */
   moments: Moment[];
-  /** Create a new moment from an objective (returns immediately with pending placeholder) */
-  createNewMoment: (objective: string, memories: Memory[]) => Promise<Moment | null>;
-  /** Load synthesis for a moment (cache-aware, triggers re-synthesis if new notes).
-   *  Pass `force: true` to bypass caches and always submit a fresh resynthesis. */
-  loadSynthesis: (moment: Moment, memories: Memory[], signal?: AbortSignal, force?: boolean) => Promise<SynthesisResponse | null>;
-  /** Set of moment IDs currently loading synthesis */
-  synthesisLoading: Set<string>;
-  /** Current moment creation loading state */
+  /** Matching notes per moment id, best match first */
+  matchesByMoment: Map<string, MomentMatch[]>;
+  /** Create a moment from its terms. Embeds right away when online. */
+  createNewMoment: (terms: string[]) => Promise<Moment | null>;
+  /** True while a create call is in progress */
   creating: boolean;
-  /** Add a note to a moment (called when enrichment matches) */
-  addNoteToMoment: (momentId: string, noteId: string) => Promise<void>;
-  /** Remove a note from all moments that reference it (on note deletion) */
-  removeNoteFromMoments: (noteId: string) => Promise<void>;
+  /** Moment ids whose terms are being embedded right now */
+  embeddingIds: Set<string>;
+  /** Retry embedding a moment that's waiting for its vectors */
+  retryEmbedding: (momentId: string) => Promise<void>;
+  /** Hide a matched note from a moment (synced) */
+  hideNoteInMoment: (momentId: string, noteId: string) => Promise<void>;
   /** Soft-delete a moment */
   deleteMoment: (momentId: string) => Promise<void>;
-  /** Cached synthesis map for UI state */
-  synthesesMap: Map<string, MomentSynthesis>;
-  /** Callback to sync a moment to Drive */
-  onMomentChanged?: (moment: Moment) => void;
-  /** Set the sync callback */
+  /** Set the callback that syncs a changed moment to Drive */
   setOnMomentChanged: (cb: (moment: Moment) => void) => void;
   /** Reload moments from IndexedDB (e.g. after sync) */
   refreshMoments: () => Promise<void>;
-  /** Mark a moment as seen (updates lastSeenInputHash to current inputHash) */
-  markMomentSeen: (momentId: string) => Promise<void>;
-  /** Re-run the agentic creation loop for a moment (scoped to its current notes) */
-  rebuildMomentWithAgent: (momentId: string) => Promise<void>;
-  /** Dismiss the agentic-rebuild prompt for a moment without rebuilding */
-  dismissAgenticRebuild: (momentId: string) => Promise<void>;
-  /** Live agent progress steps per pending moment, for the creation UI */
-  momentProgress: Map<string, ProgressStep[]>;
 }
 
-export const useMoments = (
-  memories: Memory[],
-  applyWebAdditions?: (id: string, additions: WebAddition[]) => Promise<void>,
-): UseMomentsReturn => {
+export const useMoments = (memories: Memory[]): UseMomentsReturn => {
   const [momentsList, setMomentsList] = useState<Moment[]>([]);
-  const [synthesesMap, setSynthesesMap] = useState<Map<string, MomentSynthesis>>(new Map());
-  const [synthesisLoading, setSynthesisLoading] = useState<Set<string>>(new Set());
   const [creating, setCreating] = useState(false);
-  const [momentProgress, setMomentProgress] = useState<Map<string, ProgressStep[]>>(new Map());
+  const [embeddingIds, setEmbeddingIds] = useState<Set<string>>(new Set());
 
-  // Keep a ref so the polling hook's callbacks can apply embellishments without
-  // re-subscribing when the callback identity changes.
-  const applyWebAdditionsRef = useRef(applyWebAdditions);
-  useEffect(() => { applyWebAdditionsRef.current = applyWebAdditions; }, [applyWebAdditions]);
   const loaded = useRef(false);
   const onMomentChangedRef = useRef<((moment: Moment) => void) | undefined>(undefined);
-
-  // Track in-flight synthesis polling so concurrent calls for the same moment
-  // can either reuse (same input hash) or supersede (different hash, e.g. a
-  // fresh note matched while polling). The AbortController cancels the older
-  // poll when a newer call submits a fresh resynthesis for an updated note set.
-  type InFlightPoll = {
-    hash: string;
-    promise: Promise<SynthesisResponse>;
-    abort: AbortController;
-  };
-  const inFlightPolling = useRef<Map<string, InFlightPoll>>(new Map());
-
-  // Keep refs for polling access
-  const momentsListRef = useRef<Moment[]>([]);
-  const memoriesRef = useRef<Memory[]>(memories);
-  useEffect(() => { momentsListRef.current = momentsList; }, [momentsList]);
-  useEffect(() => { memoriesRef.current = memories; }, [memories]);
+  const inFlightEmbeds = useRef<Set<string>>(new Set());
+  const lastEmbedFailure = useRef<Map<string, number>>(new Map());
 
   const setOnMomentChanged = useCallback((cb: (moment: Moment) => void) => {
     onMomentChangedRef.current = cb;
   }, []);
 
-  // Stable callback for moment creation polling
-  const handleMomentCreated = useCallback((moment: Moment) => {
-    onMomentChangedRef.current?.(moment);
+  const replaceInList = useCallback((moment: Moment) => {
+    setMomentsList(prev => {
+      const exists = prev.some(m => m.id === moment.id);
+      if (moment.isDeleted) return prev.filter(m => m.id !== moment.id);
+      return exists ? prev.map(m => (m.id === moment.id ? moment : m)) : [...prev, moment];
+    });
   }, []);
 
-  // Integrate moment creation polling
-  const { startPolling, recoverPending, recoverPendingResynthesis } = useMomentCreationPolling({
-    momentsRef: momentsListRef,
-    memoriesRef,
-    setMoments: setMomentsList,
-    setSynthesesMap,
-    setMomentProgress,
-    applyWebAdditionsRef,
-    onMomentCreated: handleMomentCreated,
-    onMomentResynthesisRecovered: handleMomentCreated,
-  });
+  // Embed one moment's terms and persist the vectors + emoji. Re-reads the
+  // latest record first so a moment deleted meanwhile (locally or via sync)
+  // isn't resurrected. Returns the saved moment, or null if it didn't embed.
+  const embedMoment = useCallback(async (momentId: string): Promise<Moment | null> => {
+    if (inFlightEmbeds.current.has(momentId)) return null;
+    inFlightEmbeds.current.add(momentId);
+    setEmbeddingIds(prev => new Set(prev).add(momentId));
+    try {
+      const current = await getMoment(momentId);
+      if (!current || current.isDeleted || current.terms.length === 0) return null;
+      if (isMomentEmbedded(current)) return current;
+
+      const result = await embedMomentTerms(current.terms);
+
+      const latest = await getMoment(momentId);
+      if (!latest || latest.isDeleted) return null;
+      const updated: Moment = {
+        ...latest,
+        termVectors: result.vectors,
+        embeddingModel: result.model || EMBEDDING_MODEL_ID,
+        emoji: result.emoji || latest.emoji,
+        updatedAt: Date.now(),
+      };
+      await saveMoment(updated);
+      replaceInList(updated);
+      lastEmbedFailure.current.delete(momentId);
+      onMomentChangedRef.current?.(updated);
+      return updated;
+    } catch (err) {
+      lastEmbedFailure.current.set(momentId, Date.now());
+      console.warn(`[Moments] Embedding failed for ${momentId} (will retry when online):`, err);
+      return null;
+    } finally {
+      inFlightEmbeds.current.delete(momentId);
+      setEmbeddingIds(prev => {
+        if (!prev.has(momentId)) return prev;
+        const next = new Set(prev);
+        next.delete(momentId);
+        return next;
+      });
+    }
+  }, [replaceInList]);
+
+  // Embed every moment that's still waiting for vectors (created offline, a
+  // failed request, a legacy moment, or vectors from a superseded model).
+  const embedPending = useCallback(async (list: Moment[]) => {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+    const now = Date.now();
+    for (const m of list) {
+      if (m.isDeleted || isMomentEmbedded(m)) continue;
+      const failedAt = lastEmbedFailure.current.get(m.id);
+      if (failedAt && now - failedAt < EMBED_RETRY_DELAY_MS) continue;
+      await embedMoment(m.id);
+    }
+  }, [embedMoment]);
 
   const refreshMoments = useCallback(async () => {
     try {
       const loadedMoments = await getMoments();
       setMomentsList(loadedMoments);
-
-      // Recover any pending moments that were downloaded during sync
-      const pending = loadedMoments.filter(m => m.isPending);
-      if (pending.length > 0) {
-        recoverPending(pending);
-      }
-      // Recover interrupted resynthesis requests too — the synthesis may have
-      // completed server-side while we were offline.
-      recoverPendingResynthesis(loadedMoments);
+      embedPending(loadedMoments);
     } catch (err) {
       console.error('[Moments] Failed to refresh moments:', err);
     }
-  }, [recoverPending, recoverPendingResynthesis]);
+  }, [embedPending]);
 
-  // Load persisted moments on mount + recover any pending from previous session
+  // Load persisted moments on mount
   useEffect(() => {
     if (loaded.current) return;
     loaded.current = true;
+    refreshMoments();
+  }, [refreshMoments]);
 
-    const loadData = async () => {
-      try {
-        const loadedMoments = await getMoments();
-        setMomentsList(loadedMoments);
-
-        // Recover pending moments from a previous session
-        const pending = loadedMoments.filter(m => m.isPending);
-        if (pending.length > 0) {
-          recoverPending(pending);
-        }
-        // Recover interrupted user-triggered resynthesis requests.
-        recoverPendingResynthesis(loadedMoments);
-      } catch (err) {
-        console.error('[Moments] Failed to load persisted data:', err);
-      }
+  // Back online → embed anything created while offline
+  const momentsListRef = useRef<Moment[]>([]);
+  useEffect(() => { momentsListRef.current = momentsList; }, [momentsList]);
+  useEffect(() => {
+    const onOnline = () => {
+      lastEmbedFailure.current.clear();
+      embedPending(momentsListRef.current);
     };
-    loadData();
-  }, [recoverPending, recoverPendingResynthesis]);
+    window.addEventListener('online', onOnline);
+    return () => window.removeEventListener('online', onOnline);
+  }, [embedPending]);
 
-  // Create a new moment (async — returns pending placeholder immediately)
-  const createNewMoment = useCallback(
-    async (objective: string, currentMemories: Memory[]): Promise<Moment | null> => {
-      setCreating(true);
-      try {
-        const momentId = crypto.randomUUID();
-
-        // Create pending placeholder immediately
-        const pendingMoment: Moment = {
-          id: momentId,
-          objective,
-          title: objective.substring(0, 40),
-          type: 'general',
-          noteIds: [],
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-          isPending: true,
-        };
-
-        // Save to IndexedDB and update state immediately
-        await saveMoment(pendingMoment);
-        setMomentsList(prev => [...prev, pendingMoment]);
-
-        // Submit to server (fire-and-forget with error handling)
-        try {
-          await submitMomentCreation(objective, currentMemories, momentId);
-          startPolling();
-        } catch (submitErr) {
-          console.error('[Moments] Submit failed:', submitErr);
-          const failedMoment: Moment = {
-            ...pendingMoment,
-            isPending: false,
-            processingError: true,
-          };
-          await saveMoment(failedMoment);
-          setMomentsList(prev => prev.map(m => m.id === momentId ? failedMoment : m));
-          return failedMoment;
-        }
-
-        // Trigger sync for the pending moment
-        onMomentChangedRef.current?.(pendingMoment);
-
-        return pendingMoment;
-      } catch (err) {
-        console.error('[Moments] Failed to create moment:', err);
-        return null;
-      } finally {
-        setCreating(false);
-      }
-    },
-    [startPolling]
-  );
-
-  // Load synthesis (cache-aware; re-synthesizes if notes have changed).
-  // `force` bypasses every cache/server-result check and always submits a
-  // fresh resynthesis — used by the "Re-synthesize" button so the user can
-  // regenerate even when nothing about the input has changed.
-  const loadSynthesis = useCallback(
-    async (moment: Moment, currentMemories: Memory[], signal?: AbortSignal, force?: boolean): Promise<SynthesisResponse | null> => {
-      const currentHash = computeInputHash(moment.noteIds, currentMemories);
-      const currentNoteIdSet = new Set(moment.noteIds);
-
-      // Safety check: verify cached synthesis noteIds match current moment noteIds.
-      // This catches stale synthesis that survived cache invalidation (e.g. from
-      // a Drive sync downloading an old synthesis after a note was deleted).
-      const isSynthesisFresh = (cached: MomentSynthesis): boolean => {
-        if (cached.inputHash !== currentHash) return false;
-        // If the cached synthesis tracked which noteIds it was built from,
-        // verify they match the current set exactly.
-        if (cached.noteIds) {
-          if (cached.noteIds.length !== moment.noteIds.length) return false;
-          for (const id of cached.noteIds) {
-            if (!currentNoteIdSet.has(id)) return false;
-          }
-        }
-        return true;
+  const createNewMoment = useCallback(async (terms: string[]): Promise<Moment | null> => {
+    const clean = terms.map(t => t.trim()).filter(Boolean);
+    if (clean.length === 0) return null;
+    setCreating(true);
+    try {
+      const now = Date.now();
+      const moment: Moment = {
+        id: crypto.randomUUID(),
+        title: clean.join(', '),
+        terms: clean,
+        createdAt: now,
+        updatedAt: now,
       };
+      await saveMoment(moment);
+      replaceInList(moment);
 
-      if (!force) {
-        // Check in-memory cache first
-        const cached = synthesesMap.get(moment.id);
-        if (cached && isSynthesisFresh(cached)) {
-          return cached.content;
-        }
+      // Embed straight away when we can; otherwise it stays waiting and the
+      // online listener / next refresh picks it up.
+      const embedded = navigator.onLine === false ? null : await embedMoment(moment.id);
+      if (embedded) return embedded;
 
-        // Check IndexedDB
-        const persisted = await getMomentSynthesis(moment.id);
-        if (persisted && isSynthesisFresh(persisted)) {
-          setSynthesesMap(prev => {
-            const next = new Map(prev);
-            next.set(moment.id, persisted);
-            return next;
-          });
-          return persisted.content;
-        }
-      }
+      onMomentChangedRef.current?.(moment);
+      return moment;
+    } catch (err) {
+      console.error('[Moments] Failed to create moment:', err);
+      return null;
+    } finally {
+      setCreating(false);
+    }
+  }, [embedMoment, replaceInList]);
 
-      // Cache miss — first check the server's Firestore-backed result store
-      // for a completed synthesis from a previous session (e.g. one that was
-      // submitted before the user exited mid-polling). Only submit a new
-      // request if no usable result exists.
-      //
-      // Polling is decoupled from the caller's AbortSignal so that navigating
-      // away from a MomentSheet doesn't cancel background polling — the result
-      // is cached and ready when the user returns.
-      //
-      // If a poll is already in flight for this moment from an earlier call in
-      // this session (e.g. user reopens the sheet while polling continues), we
-      // either reuse it (same input hash → same result) or supersede it
-      // (different hash → the older poll's result is now stale).
-      const existingPoll = inFlightPolling.current.get(moment.id);
-      // When forcing, never reuse an existing poll — the user wants a fresh
-      // synthesis, even if a same-hash poll is already in flight.
-      const reusableExistingPoll = !force && existingPoll && existingPoll.hash === currentHash
-        ? existingPoll
-        : undefined;
-      if (existingPoll && !reusableExistingPoll) {
-        // Newer note set (or forced) — abort the older poll. Its caller's
-        // `await` throws AbortError and the catch-block bails without
-        // persisting stale data.
-        existingPoll.abort.abort();
-        inFlightPolling.current.delete(moment.id);
-      }
+  const retryEmbedding = useCallback(async (momentId: string): Promise<void> => {
+    lastEmbedFailure.current.delete(momentId);
+    await embedMoment(momentId);
+  }, [embedMoment]);
 
-      setSynthesisLoading(prev => prev.has(moment.id) ? prev : new Set(prev).add(moment.id));
+  const hideNoteInMoment = useCallback(async (momentId: string, noteId: string): Promise<void> => {
+    const latest = await getMoment(momentId);
+    if (!latest || latest.isDeleted) return;
+    const excluded = latest.excludedNoteIds || [];
+    if (excluded.includes(noteId)) return;
+    const updated: Moment = {
+      ...latest,
+      excludedNoteIds: [...excluded, noteId],
+      updatedAt: Date.now(),
+    };
+    await saveMoment(updated);
+    replaceInList(updated);
+    onMomentChangedRef.current?.(updated);
+  }, [replaceInList]);
 
-      // Snapshot the moment with processingError cleared (issue 2). We hold
-      // this so subsequent persistence writes layer on a clean slate.
-      let workingMoment: Moment = moment;
-      if (!reusableExistingPoll && moment.processingError) {
-        workingMoment = { ...moment, processingError: false, updatedAt: Date.now() };
-        await saveMoment(workingMoment);
-        setMomentsList(prev => prev.map(m => m.id === moment.id ? workingMoment : m));
-      }
+  // Soft-delete, then sync. The sync layer (performMomentSync) deletes the
+  // Drive file and hard-deletes the local tombstone.
+  const deleteMoment = useCallback(async (momentId: string): Promise<void> => {
+    const latest = await getMoment(momentId);
+    if (!latest) return;
+    const tombstone: Moment = { ...latest, isDeleted: true, updatedAt: Date.now() };
+    await saveMoment(tombstone);
+    replaceInList(tombstone);
+    onMomentChangedRef.current?.(tombstone);
+  }, [replaceInList]);
 
-      const persistResult = async (raw: SynthesisResponse): Promise<SynthesisResponse | null> => {
-        const synthesis = filterSynthesisToNotes(raw, currentNoteIdSet);
-        // Re-read latest from IDB before persisting (mirrors the note
-        // enrichment polling pattern). The user may have deleted the moment
-        // while the synthesis network round-trip was in flight; without this
-        // guard we'd resurrect the deleted moment by spreading the captured
-        // alive workingMoment back into IDB.
-        const latest = await getMoment(moment.id);
-        if (!latest || latest.isDeleted) return null;
-
-        const stored: MomentSynthesis = {
-          momentId: moment.id,
-          inputHash: currentHash,
-          content: synthesis,
-          generatedAt: Date.now(),
-          noteIds: latest.noteIds,
-        };
-        const updatedMoment: Moment = {
-          ...latest,
-          inputHash: currentHash,
-          lastSeenInputHash: currentHash,
-          lastSynthesizedAt: Date.now(),
-          updatedAt: Date.now(),
-          processingError: false,
-          pendingSynthesisHash: undefined,
-          pendingSynthesisAt: undefined,
-        };
-        await saveMoment(updatedMoment);
-        setMomentsList(prev => prev.map(m => m.id === moment.id ? updatedMoment : m));
-        await saveMomentSynthesis(stored);
-        setSynthesesMap(prev => {
-          const next = new Map(prev);
-          next.set(moment.id, stored);
-          return next;
-        });
-        onMomentChangedRef.current?.(updatedMoment);
-        return synthesis;
-      };
-
-      // Hoisted out of the try so the catch block can use promise identity
-      // (rather than hash equality) to decide whether to clear the in-flight
-      // entry — same approach as the success path at line ~388. This avoids a
-      // failing call wiping a *concurrent* call's entry when both share the
-      // same hash but each created its own polling promise during the
-      // narrow setup-phase race window.
-      let pollingPromise: Promise<SynthesisResponse> | undefined = reusableExistingPoll?.promise;
-
-      try {
-        if (!pollingPromise) {
-          // Step 1: check if the server already has a result for this moment.
-          // When forcing, skip this check entirely — the user wants a new
-          // synthesis, not the previously-cached server result.
-          const existing = force ? {} : await fetchPendingSynthesisResults([moment.id]);
-          const serverEntry = existing[moment.id];
-
-          if (
-            serverEntry?.status === 'completed' &&
-            'data' in serverEntry &&
-            serverEntry.inputHash === currentHash
-          ) {
-            // Server already has a fresh result — use it without resubmitting.
-            const synthesis = await persistResult(serverEntry.data);
-            return signal?.aborted ? null : synthesis;
-          }
-
-          // Each fresh poll gets its own AbortController so a later
-          // supersede-call can cancel it without affecting unrelated polls.
-          const abort = new AbortController();
-
-          if (
-            serverEntry?.status === 'processing' &&
-            (!serverEntry.inputHash || serverEntry.inputHash === currentHash)
-          ) {
-            // Server is still synthesizing for the same input — just poll.
-            pollingPromise = pollSynthesisResult(moment.id, abort.signal);
-            inFlightPolling.current.set(moment.id, { hash: currentHash, promise: pollingPromise, abort });
-          } else {
-            // No usable server result — submit a fresh resynthesis. Persist a
-            // recovery marker so that if this session is interrupted, the next
-            // session can resume polling instead of resubmitting (issue 5).
-            // Re-read latest from IDB so a deletion that happened while we
-            // were checking the server can't be reverted.
-            const latest = await getMoment(moment.id);
-            if (!latest || latest.isDeleted) return null;
-
-            workingMoment = {
-              ...latest,
-              pendingSynthesisHash: currentHash,
-              pendingSynthesisAt: Date.now(),
-              updatedAt: Date.now(),
-            };
-            await saveMoment(workingMoment);
-            setMomentsList(prev => prev.map(m => m.id === moment.id ? workingMoment : m));
-
-            // When we have a prior synthesis cached, ask the server to MERGE the
-            // new note into it (structure-preserving — keeps web-sourced items)
-            // rather than regenerate. The forced "Re-synthesize" button and the
-            // removal path (cache cleared) pass no prior synthesis → full regen.
-            const priorSynthesis = force ? undefined : synthesesMap.get(moment.id)?.content;
-            await submitResynthesis(moment, currentMemories, currentHash, priorSynthesis);
-            pollingPromise = pollSynthesisResult(moment.id, abort.signal);
-            inFlightPolling.current.set(moment.id, { hash: currentHash, promise: pollingPromise, abort });
-          }
-        }
-
-        const rawSynthesis = await pollingPromise;
-        // Only clear the in-flight entry if it's still ours — a superseding
-        // call may have already replaced it with a fresh poll.
-        const stillOurs = inFlightPolling.current.get(moment.id);
-        if (stillOurs && stillOurs.promise === pollingPromise) {
-          inFlightPolling.current.delete(moment.id);
-        }
-
-        const synthesis = await persistResult(rawSynthesis);
-
-        // If the caller was aborted (e.g. MomentSheet unmounted), the result
-        // is still cached above — the caller just won't use the return value.
-        if (signal?.aborted) {
-          return null;
-        }
-
-        return synthesis;
-      } catch (err) {
-        // Only clear the in-flight entry if it still references our promise.
-        // Using promise identity (not hash) avoids wiping a concurrent
-        // same-hash call's entry, and naturally leaves any superseding entry
-        // alone (its promise differs).
-        if (pollingPromise) {
-          const stillOurs = inFlightPolling.current.get(moment.id);
-          if (stillOurs && stillOurs.promise === pollingPromise) {
-            inFlightPolling.current.delete(moment.id);
-          }
-        }
-        // An AbortError means a newer call superseded us — that newer call
-        // owns the pendingSynthesisHash marker and will persist its own
-        // result. Don't log, don't clear, don't persist.
-        if ((err as Error)?.name === 'AbortError') {
-          return null;
-        }
-        // The structure-preserving merge couldn't place a new note. Keep the
-        // EXISTING synthesis on screen, clear the pending marker, and flag the
-        // moment so the UI can offer an agentic rebuild.
-        if (err instanceof MomentNeedsRebuildError) {
-          const latest = await getMoment(moment.id);
-          if (latest && !latest.isDeleted) {
-            const flagged: Moment = {
-              ...latest,
-              needsAgenticRebuild: true,
-              pendingSynthesisHash: undefined,
-              pendingSynthesisAt: undefined,
-              updatedAt: Date.now(),
-            };
-            await saveMoment(flagged);
-            setMomentsList(prev => prev.map(m => m.id === moment.id ? flagged : m));
-            onMomentChangedRef.current?.(flagged);
-          }
-          // Keep the last good synthesis on screen (with the rebuild banner)
-          // rather than showing an error. Prefer the in-memory cache, but fall
-          // back to the persisted (stale-but-valid) one so a cold open doesn't
-          // surface a "Synthesis failed" screen.
-          const cached = synthesesMap.get(moment.id)?.content;
-          if (cached) return cached;
-          const persisted = await getMomentSynthesis(moment.id);
-          return persisted?.content ?? null;
-        }
-        console.error('[Moments] Synthesis failed:', err);
-        // Clear the recovery marker so app start doesn't keep polling a dead
-        // request — but only if it still matches the marker *this call* set.
-        // A concurrent newer call may have overwritten it with its own hash;
-        // wiping that would leave the newer in-flight orphan.
-        if (workingMoment.pendingSynthesisHash || workingMoment.pendingSynthesisAt) {
-          const latest = await getMoment(moment.id);
-          if (
-            latest &&
-            !latest.isDeleted &&
-            latest.pendingSynthesisHash === workingMoment.pendingSynthesisHash
-          ) {
-            const cleared: Moment = {
-              ...latest,
-              pendingSynthesisHash: undefined,
-              pendingSynthesisAt: undefined,
-              updatedAt: Date.now(),
-            };
-            await saveMoment(cleared);
-            setMomentsList(prev => prev.map(m => m.id === moment.id ? cleared : m));
-          }
-        }
-        return null;
-      } finally {
-        setSynthesisLoading(prev => {
-          const next = new Set(prev);
-          next.delete(moment.id);
-          return next;
-        });
-      }
-    },
-    [synthesesMap]
-  );
-
-  // Stable ref for cross-callback access to loadSynthesis. addNoteToMoment
-  // uses it to kick off background re-synthesis when a new note matches a
-  // moment, without dragging synthesesMap into the addNoteToMoment dep list
-  // (which would churn the App.tsx setOnNoteMatchedMoments wiring).
-  const loadSynthesisRef = useRef<typeof loadSynthesis>(loadSynthesis);
-  useEffect(() => { loadSynthesisRef.current = loadSynthesis; }, [loadSynthesis]);
-
-  // Add a note to a moment (called when enrichment matches).
-  // Re-reads the latest record from IndexedDB before saving (mirrors the
-  // note enrichment polling pattern) so a moment that's been tombstoned
-  // — locally or via a sync from another device — isn't resurrected by
-  // a stale React-state copy.
-  //
-  // After persisting, kicks off a background re-synthesis so the moment is
-  // ready when the user next opens its sheet. loadSynthesis itself handles
-  // the supersede case if multiple matches arrive in quick succession (an
-  // older in-flight poll for a stale note set is aborted in favor of a fresh
-  // submit). Pending moments are skipped — the creation pipeline already
-  // produces their initial synthesis.
-  const addNoteToMoment = useCallback(
-    async (momentId: string, noteId: string): Promise<void> => {
-      const latest = await getMoment(momentId);
-      if (!latest || latest.isDeleted || latest.noteIds.includes(noteId)) return;
-
-      const newNoteIds = [...latest.noteIds, noteId];
-      const updated: Moment = {
-        ...latest,
-        noteIds: newNoteIds,
-        inputHash: computeInputHash(newNoteIds, memoriesRef.current),
-        updatedAt: Date.now(),
-      };
-
-      await saveMoment(updated);
-      setMomentsList(prev => {
-        const exists = prev.some(m => m.id === momentId);
-        return exists ? prev.map(m => m.id === momentId ? updated : m) : [...prev, updated];
-      });
-      onMomentChangedRef.current?.(updated);
-
-      if (!updated.isPending) {
-        loadSynthesisRef.current(updated, memoriesRef.current).catch(err =>
-          console.error(`[Moments] Background re-synthesis failed for ${momentId}:`, err)
-        );
-      }
-    },
-    []
-  );
-
-  // Mark a moment as seen by updating lastSeenInputHash to match current inputHash.
-  // This persists to IndexedDB and syncs to Drive so the indicator stays correct
-  // across sessions and devices. Same IDB re-read pattern as addNoteToMoment.
-  const markMomentSeen = useCallback(
-    async (momentId: string): Promise<void> => {
-      const latest = await getMoment(momentId);
-      if (!latest || latest.isDeleted || latest.lastSeenInputHash === latest.inputHash) return;
-
-      const updated: Moment = {
-        ...latest,
-        lastSeenInputHash: latest.inputHash,
-        updatedAt: Date.now(),
-      };
-
-      await saveMoment(updated);
-      setMomentsList(prev => prev.map(m => m.id === momentId ? updated : m));
-      onMomentChangedRef.current?.(updated);
-    },
-    []
-  );
-
-  // Re-run the agentic creation loop for an existing moment, scoped to its
-  // current notes. Used when a structure-preserving merge couldn't place a note
-  // (needsAgenticRebuild) and the user opts to rebuild. Reuses the creation
-  // endpoint + polling: flips the moment back to pending so the agent produces a
-  // fresh synthesis (which replaces the old one on completion).
-  const rebuildMomentWithAgent = useCallback(
-    async (momentId: string): Promise<void> => {
-      const latest = await getMoment(momentId);
-      if (!latest || latest.isDeleted) return;
-
-      const momentMemories = latest.noteIds
-        .map(id => memoriesRef.current.find(m => m.id === id))
-        .filter((m): m is Memory => !!m);
-
-      const pending: Moment = {
-        ...latest,
-        isPending: true,
-        processingError: false,
-        needsAgenticRebuild: false,
-        pendingSynthesisHash: undefined,
-        pendingSynthesisAt: undefined,
-        updatedAt: Date.now(),
-      };
-      await saveMoment(pending);
-      setMomentsList(prev => prev.map(m => m.id === momentId ? pending : m));
-      onMomentChangedRef.current?.(pending);
-
-      try {
-        await submitMomentCreation(latest.objective, momentMemories, momentId);
-        startPolling();
-      } catch (err) {
-        console.error('[Moments] Agentic rebuild submit failed:', err);
-        const failed: Moment = { ...pending, isPending: false, processingError: true };
-        await saveMoment(failed);
-        setMomentsList(prev => prev.map(m => m.id === momentId ? failed : m));
-      }
-    },
-    [startPolling]
-  );
-
-  // Dismiss the agentic-rebuild prompt without rebuilding.
-  const dismissAgenticRebuild = useCallback(
-    async (momentId: string): Promise<void> => {
-      const latest = await getMoment(momentId);
-      if (!latest || latest.isDeleted || !latest.needsAgenticRebuild) return;
-      const updated: Moment = { ...latest, needsAgenticRebuild: false, updatedAt: Date.now() };
-      await saveMoment(updated);
-      setMomentsList(prev => prev.map(m => m.id === momentId ? updated : m));
-      onMomentChangedRef.current?.(updated);
-    },
-    []
-  );
-
-  // Remove a note from all moments that reference it (called on note deletion).
-  // Uses setMomentsList's functional updater so each call sees the latest
-  // state — this prevents lost updates when multiple notes are deleted
-  // in quick succession (same pattern as addNoteToMoment).
-  //
-  // Clears `inputHash` on affected moments so that:
-  // 1. MomentBubble shows the stale indicator (hash mismatch)
-  // 2. loadSynthesis triggers re-synthesis on next open (cache miss)
-  //
-  // After persisting, kicks off a background re-synthesis for each surviving
-  // moment (mirrors addNoteToMoment) so the moment is refreshed without the
-  // deleted note's content without waiting for the user to reopen it. Orphan
-  // (soft-deleted) and pending moments are skipped.
-  const removeNoteFromMoments = useCallback(
-    async (noteId: string): Promise<void> => {
-      // Collected from inside the setMomentsList updater. We reassign (not
-      // push) so the updater stays idempotent: React Strict Mode invokes
-      // state updaters twice in development to flag side effects, and a
-      // push-based collector would double every entry and fan out into
-      // duplicate persistence writes and background re-synthesis calls.
-      let changedMoments: Moment[] = [];
-
-      // Use flushSync to ensure the functional updater runs immediately,
-      // so changedMoments is populated before we proceed to persistence.
-      // This also ensures atomicity — each call sees the latest state.
-      flushSync(() => {
-        setMomentsList(prev => {
-          const affected = prev.filter(m => !m.isDeleted && m.noteIds.includes(noteId));
-          if (affected.length === 0) {
-            changedMoments = [];
-            return prev;
-          }
-
-          const collected: Moment[] = [];
-          const updatedMoments = prev.map(m => {
-            if (m.isDeleted || !m.noteIds.includes(noteId)) return m;
-            const remainingNoteIds = m.noteIds.filter(id => id !== noteId);
-            // If the last source note is gone (and this isn't a still-being-created
-            // pending moment), soft-delete the moment — a moment with no source notes
-            // is an orphan, just like an orphan to-do or calendar event.
-            const becameOrphan = remainingNoteIds.length === 0 && !m.isPending;
-            const updated: Moment = {
-              ...m,
-              noteIds: remainingNoteIds,
-              inputHash: undefined,
-              updatedAt: Date.now(),
-              ...(becameOrphan ? { isDeleted: true } : {}),
-            };
-            collected.push(updated);
-            return updated;
-          });
-
-          changedMoments = collected;
-          return updatedMoments;
-        });
-      });
-
-      if (changedMoments.length === 0) return;
-
-      // Only orphaned (soft-deleted) moments get their synthesis cache cleared.
-      // Surviving moments KEEP their cached synthesis so the background
-      // re-synthesis can MERGE it (preserving web-sourced items); the client
-      // filter (filterSynthesisToNotes) drops the removed note's items.
-      const orphaned = changedMoments.filter(m => m.isDeleted);
-      if (orphaned.length > 0) {
-        setSynthesesMap(prev => {
-          const next = new Map(prev);
-          for (const m of orphaned) next.delete(m.id);
-          return next;
-        });
-      }
-
-      // Persist and sync each affected moment; clear persisted synthesis only
-      // for orphans.
-      await Promise.all(
-        changedMoments.map(m =>
-          Promise.all([
-            saveMoment(m),
-            m.isDeleted
-              ? deleteMomentSynthesis(m.id).catch(e =>
-                  console.warn(`[Moments] Failed to delete synthesis cache for ${m.id}:`, e)
-                )
-              : Promise.resolve(),
-          ]).then(() => {
-            onMomentChangedRef.current?.(m);
-          })
-        )
-      );
-
-      // Kick off background re-synthesis for each surviving moment so its
-      // synthesis is regenerated without the deleted note's content. Mirrors
-      // addNoteToMoment — loadSynthesis handles the supersede case when
-      // multiple updates arrive in quick succession.
-      for (const m of changedMoments) {
-        if (m.isDeleted || m.isPending) continue;
-        loadSynthesisRef.current(m, memoriesRef.current).catch(err =>
-          console.error(`[Moments] Background re-synthesis failed for ${m.id}:`, err)
-        );
-      }
-    },
-    []
-  );
-
-  // Soft-delete a moment, then sync the deletion. The sync layer
-  // (performMomentSync) directly deletes the Drive files and hard-deletes the
-  // local tombstone — same pattern as note deletion (handleDelete in
-  // useMemories). Awaiting the callback mirrors note deletion semantics so
-  // callers can react after the deletion has propagated (or failed).
-  const deleteMoment = useCallback(
-    async (momentId: string): Promise<void> => {
-      const current = momentsListRef.current.find(m => m.id === momentId);
-      if (!current) return;
-
-      const tombstone: Moment = { ...current, isDeleted: true, updatedAt: Date.now() };
-
-      // Persist the tombstone first so a sync failure leaves an idempotent
-      // record that the next delta sync will retry.
-      await saveMoment(tombstone);
-
-      setMomentsList(prev => prev.filter(m => m.id !== momentId));
-
-      // Clear cached synthesis so a stale entry can't resurface in the UI.
-      setSynthesesMap(prev => {
-        if (!prev.has(momentId)) return prev;
-        const next = new Map(prev);
-        next.delete(momentId);
-        return next;
-      });
-      onMomentChangedRef.current?.(tombstone);
-    },
-    []
-  );
-
-  // Filter to active moments only
   const moments = useMemo(
-    () => momentsList.filter(m => !m.isDeleted).sort((a, b) => b.updatedAt - a.updatedAt),
+    () => momentsList.filter(m => !m.isDeleted).sort((a, b) => b.createdAt - a.createdAt),
     [momentsList]
   );
 
+  const matchesByMoment = useMemo(() => {
+    const map = new Map<string, MomentMatch[]>();
+    for (const m of moments) map.set(m.id, matchNotesToMoment(m, memories));
+    return map;
+  }, [moments, memories]);
+
   return {
     moments,
+    matchesByMoment,
     createNewMoment,
-    loadSynthesis,
-    synthesisLoading,
     creating,
-    addNoteToMoment,
-    removeNoteFromMoments,
+    embeddingIds,
+    retryEmbedding,
+    hideNoteInMoment,
     deleteMoment,
-    synthesesMap,
     setOnMomentChanged,
     refreshMoments,
-    markMomentSeen,
-    rebuildMomentWithAgent,
-    dismissAgenticRebuild,
-    momentProgress,
   };
 };

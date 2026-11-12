@@ -49,7 +49,6 @@ export interface EnrichmentData {
   entityContext?: EntityContext;
   suggestedTags: string[];
   temporalContext?: TemporalContext;
-  matchedMomentIds?: string[];     // Moment IDs this note is relevant to (set by enrichment)
 
   // Similarity embedding (server-generated, powers client-side Related
   // Memories). Unit-normalized vector; synced with the memory, matched locally.
@@ -133,17 +132,6 @@ export interface EnrichmentData {
   // Action item detection (populated when tasks/to-dos are found)
   detectedActionItems?: DetectedActionItem[];
 
-  // Facts the moments agent fetched from the web and saved back onto this note
-  // for future reuse. Clearly attributed to their source URL.
-  webAdditions?: WebAddition[];
-}
-
-/** A web-sourced fact saved back onto a note by the moments agent. */
-export interface WebAddition {
-  text: string;
-  sourceUrl: string;
-  addedByMomentId: string;
-  addedAt: number;
 }
 
 export type RecurrenceFrequency = 'daily' | 'weekly' | 'monthly' | 'yearly';
@@ -294,77 +282,27 @@ export enum ViewMode {
 
 // --- Moments Feature Types ---
 
-export type MomentType =
-  | 'itinerary'     // Trip or event with temporal window
-  | 'brief'         // Meeting/interview prep
-  | 'list'          // Restaurant, movie, book, shopping picks
-  | 'dashboard'     // Event planning (venue + tasks + budget)
-  | 'curriculum'    // Learning path
-  | 'gift-guide'    // Gift ideas for a person/occasion
-  | 'meal-plan'     // Recipes + meal prep
-  | 'general';      // Fallback
-
+/**
+ * A moment is a saved semantic search: a few terms the user entered, each
+ * embedded with the same model as notes. Matching notes are computed on every
+ * device from the synced note vectors (utils/momentMatching.ts) and are never
+ * stored or synced themselves. A moment is fixed once created — to change its
+ * terms, delete it and create a new one.
+ */
 export interface Moment {
   id: string;                     // crypto.randomUUID(), stable across devices
-  objective: string;              // User's intention, e.g. "build an itinerary for my Singapore trip"
-  refinedObjective?: string;      // AI-refined objective from intent refinement step (more detailed/specific)
-  title: string;                  // Short display title (AI-generated or derived from objective)
-  type: MomentType;               // AI-inferred from objective during creation
-  emoji?: string;                 // AI-generated emoji representing the moment's content
-  noteIds: string[];              // Notes used in the latest synthesis
+  title: string;                  // Display title (the terms joined)
+  terms: string[];                // Terms entered at creation, e.g. ["Singapore", "hawker food"]
+  /**
+   * One unit-normalized vector per term, from the server embedding model.
+   * Absent while the moment is waiting to be embedded (created offline, or the
+   * embed request failed) — the moment matches nothing until it's filled.
+   */
+  termVectors?: number[][];
+  embeddingModel?: string;        // Model that produced termVectors
+  emoji?: string;                 // Picked from the server's emoji dictionary
+  excludedNoteIds?: string[];     // Matched notes the user chose to hide
   createdAt: number;
   updatedAt: number;
   isDeleted?: boolean;            // Soft-delete for multi-device sync (tombstone)
-  lastSynthesizedAt?: number;     // Timestamp of last synthesis
-  inputHash?: string;             // Hash of noteIds for cache invalidation
-  lastSeenInputHash?: string;     // inputHash when user last viewed this moment
-  isPending?: boolean;            // True while server is processing async creation
-  processingError?: boolean;      // True if server pipeline failed
-  /**
-   * inputHash that was sent with an in-flight resynthesis request. Set when the
-   * client calls submitResynthesis and cleared when the poll completes (success
-   * or failure). Used on app start to recover an interrupted resynthesis without
-   * triggering a fresh Gemini call.
-   */
-  pendingSynthesisHash?: string;
-  /** Timestamp when the in-flight resynthesis was submitted. */
-  pendingSynthesisAt?: number;
-  /**
-   * Set when a structure-preserving re-synthesis merge reported that a new note
-   * couldn't be slotted into the existing synthesis. Prompts the user to rebuild
-   * the moment with the agent. Cleared on rebuild or dismiss.
-   */
-  needsAgenticRebuild?: boolean;
-}
-
-export interface SynthesisItem {
-  label: string;
-  detail?: string;
-  link?: string;
-  sourceType?: 'note' | 'web';    // defaults to 'note' when absent (back-compat)
-  sourceNoteId?: string;          // present when sourceType is 'note'
-  sourceUrl?: string;             // present when sourceType is 'web'
-  completable?: boolean;
-  completed?: boolean;
-}
-
-export interface SynthesisSection {
-  heading: string;
-  items: SynthesisItem[];
-}
-
-export interface SynthesisResponse {
-  format: MomentType;
-  title: string;
-  subtitle?: string;
-  sections: SynthesisSection[];
-  generatedFrom: string[];        // Note IDs used
-}
-
-export interface MomentSynthesis {
-  momentId: string;
-  inputHash: string;
-  content: SynthesisResponse;
-  generatedAt: number;
-  noteIds: string[];
 }

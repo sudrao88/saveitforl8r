@@ -35,9 +35,6 @@ vi.mock('../services/storageService', () => ({
   getAllMomentsIncludingDeleted: vi.fn().mockResolvedValue([]),
   saveMoment: vi.fn().mockResolvedValue(undefined),
   deleteMomentHard: vi.fn().mockResolvedValue(undefined),
-  getMomentSynthesis: vi.fn().mockResolvedValue(null),
-  saveMomentSynthesis: vi.fn().mockResolvedValue(undefined),
-  deleteMomentSynthesis: vi.fn().mockResolvedValue(undefined),
   getAllCalendarEventsIncludingDeleted: vi.fn().mockResolvedValue([]),
   saveCalendarEvent: vi.fn().mockResolvedValue(undefined),
   deleteCalendarEventHard: vi.fn().mockResolvedValue(undefined),
@@ -596,17 +593,15 @@ describe('SyncContext', () => {
       expect(driveService.deleteFileById).toHaveBeenCalledWith('drive-del-dup-2');
     });
 
-    it('should delete remote moment file and synthesis and hard-delete locally on single sync of deleted moment', async () => {
+    it('should delete remote moment file and legacy synthesis and hard-delete locally on single sync of deleted moment', async () => {
       // Mirrors the note-deletion semantics: a single moment sync of a
       // tombstone should remove the Drive files and the local tombstone
       // immediately, rather than uploading the tombstone and waiting for
       // the next delta sync (which races with background updates).
       const tombstone = {
         id: 'mom-del',
-        objective: 'Test',
         title: 'Test',
-        type: 'general',
-        noteIds: [],
+        terms: ['Test'],
         createdAt: 1000,
         updatedAt: 2000,
         isDeleted: true,
@@ -631,7 +626,7 @@ describe('SyncContext', () => {
       // Both moment file and synthesis file should be deleted from Drive.
       expect(driveService.deleteFileById).toHaveBeenCalledWith('drive-mom-del');
       expect(driveService.deleteFileById).toHaveBeenCalledWith('drive-synth-mom-del');
-      // Local tombstone hard-deleted (cascades to the synthesis cache).
+      // Local tombstone hard-deleted.
       expect(storageService.deleteMomentHard).toHaveBeenCalledWith('mom-del');
       // The tombstone must NOT be uploaded — that was the buggy path that
       // raced with background activity on the other device.
@@ -645,10 +640,8 @@ describe('SyncContext', () => {
       // the surviving duplicate back down.
       const tombstone = {
         id: 'mom-dup',
-        objective: 'Test',
         title: 'Test',
-        type: 'general',
-        noteIds: [],
+        terms: ['Test'],
         createdAt: 1000,
         updatedAt: 2000,
         isDeleted: true,
@@ -684,7 +677,7 @@ describe('SyncContext', () => {
     });
 
     it('should not resurrect a moment that was deleted on another device', async () => {
-      // Background activity (e.g. addNoteToMoment from enrichment) calls
+      // Background activity (e.g. embedding finishing) calls
       // syncMoment with an alive moment. If the file is missing from Drive
       // but our snapshot says we synced it before, the deletion was made
       // by another device — propagate the deletion instead of re-uploading.
@@ -694,12 +687,10 @@ describe('SyncContext', () => {
 
       const aliveLocal = {
         id: 'mom-1',
-        objective: 'Test',
         title: 'Test',
-        type: 'general',
-        noteIds: ['n1'],
+        terms: ['Test'],
         createdAt: 1000,
-        updatedAt: 9000, // bumped locally by enrichment match
+        updatedAt: 9000, // bumped locally (e.g. embedding finished)
       };
 
       (driveService.findFileByName as any).mockResolvedValue(null);
@@ -721,10 +712,8 @@ describe('SyncContext', () => {
   describe('moment delta sync', () => {
     const makeMoment = (id: string, updatedAt: number, overrides?: any) => ({
       id,
-      objective: 'Test',
       title: 'Test Moment',
-      type: 'general',
-      noteIds: [],
+      terms: ['Test'],
       createdAt: 1000,
       updatedAt,
       ...overrides,
@@ -798,7 +787,7 @@ describe('SyncContext', () => {
         expect.arrayContaining([
           expect.objectContaining({
             filename: 'moment-mom-1.json',
-            content: localMoment,
+            content: { ...localMoment, objective: 'Test', type: 'general', noteIds: [] },
             existingFileId: 'drive-mom-1',
           }),
         ])
@@ -824,7 +813,8 @@ describe('SyncContext', () => {
         expect.arrayContaining([
           expect.objectContaining({
             filename: 'moment-mom-local.json',
-            content: localMoment,
+            // Inert legacy fields keep not-yet-updated clients from crashing.
+            content: { ...localMoment, objective: 'Test', type: 'general', noteIds: [] },
           }),
         ])
       );
@@ -897,9 +887,8 @@ describe('SyncContext', () => {
 
     it('should hard-delete local moment when remote tombstone arrives, even if local updatedAt is newer', async () => {
       // Regression test for moment deletion sync bug:
-      // Background activity on Device B (addNoteToMoment, markMomentSeen,
-      // loadSynthesis, recoverPendingResynthesis) bumps the local
-      // updatedAt. Without this fix, the streaming download handler would
+      // Background activity on Device B (embedding finishing, a note being
+      // hidden) bumps the local updatedAt. Without this fix, the streaming download handler would
       // route the tombstone to "upload local" instead of deleting, silently
       // discarding the deletion and resurrecting the moment elsewhere.
       const remoteTombstone = makeMoment('mom-1', 1500, { isDeleted: true });
@@ -989,160 +978,20 @@ describe('SyncContext', () => {
     });
   });
 
-  describe('post-sync reconciliation', () => {
-    // Helper duplicated locally so this describe block isn't tied to the
-    // moment delta sync block above it.
-    const makeMoment = (id: string, updatedAt: number, overrides?: any) => ({
-      id,
-      objective: 'Test',
-      title: 'Test Moment',
-      type: 'general',
-      noteIds: [],
-      createdAt: 1000,
-      updatedAt,
-      ...overrides,
-    });
-
-    it('resolves existingFileId for reconciled moments from the post-sync file index, not via per-moment findFileByName', async () => {
-      // Snapshot pre-sync agrees with remote — delta sync is a no-op, but the
-      // memory still carries matchedMomentIds that haven't been attached to
-      // the moment locally yet, so reconciliation must pick it up.
+  describe('legacy moment-synthesis cleanup', () => {
+    it('deletes moment-synthesis files from Drive without downloading them', async () => {
+      // Moments no longer have an AI synthesis. Files left on Drive by the
+      // retired agentic flow are removed on the next delta sync.
       mockStorageValues['gdrive_remote_snapshot'] = JSON.stringify({
-        'mem-1': '2024-01-01T00:00:00Z',
-        'moment-mom-1': '2024-01-01T00:00:00Z',
+        'moment-synthesis-mom-1': '2024-01-01T00:00:00Z',
       });
       mockStorageValues['gdrive_last_sync_time'] = '5000';
-
-      (storageService.getMemories as any).mockResolvedValue([
-        {
-          id: 'mem-1',
-          content: 'matched note',
-          timestamp: 1000,
-          tags: [],
-          enrichment: { matchedMomentIds: ['mom-1'] },
-        },
-      ]);
-      (storageService.getAllMomentsIncludingDeleted as any).mockResolvedValue([
-        makeMoment('mom-1', 1000), // noteIds: [] — missing the match
-      ]);
-      (driveService.listAllFiles as any).mockResolvedValue([
-        { id: 'drive-file-mem-1', name: 'mem-1.json', modifiedTime: '2024-01-01T00:00:00Z' },
-        { id: 'drive-file-mom-1', name: 'moment-mom-1.json', modifiedTime: '2024-01-01T00:00:00Z' },
-      ]);
-
-      const { result } = renderHook(() => useSync(), { wrapper });
-
-      await act(async () => {
-        const syncPromise = result.current.sync();
-        await vi.advanceTimersByTimeAsync(2500);
-        await syncPromise;
-      });
-
-      // Reconciliation attached the note to the moment and saved it.
-      expect(storageService.saveMoment).toHaveBeenCalledWith(
-        expect.objectContaining({ id: 'mom-1', noteIds: ['mem-1'] })
-      );
-
-      // The reconciled upload must carry the existing Drive file id (so it
-      // PATCHes instead of creating a duplicate), sourced from the in-memory
-      // map built off listAllFiles.
-      expect(driveService.uploadMultipleFiles).toHaveBeenCalledWith(
-        expect.arrayContaining([
-          expect.objectContaining({
-            filename: 'moment-mom-1.json',
-            existingFileId: 'drive-file-mom-1',
-          }),
-        ])
-      );
-
-      // The whole point of the change: no per-moment Drive round trip during
-      // reconciliation. findFileByName is used elsewhere in sync, so we
-      // assert specifically that it wasn't called for the moment filename.
-      const findCalls = (driveService.findFileByName as any).mock.calls.map(
-        (c: any[]) => c[0]
-      );
-      expect(findCalls).not.toContain('moment-mom-1.json');
-    });
-
-    it('leaves existingFileId undefined for a reconciled moment that has no remote file yet', async () => {
-      // New local moment that hasn't been uploaded yet — reconciliation
-      // should still upload it, but as a POST (no existingFileId). Mirrors
-      // the previous behavior where findFileByName returned null.
-      mockStorageValues['gdrive_remote_snapshot'] = JSON.stringify({
-        'mem-1': '2024-01-01T00:00:00Z',
-      });
-      mockStorageValues['gdrive_last_sync_time'] = '5000';
-
-      (storageService.getMemories as any).mockResolvedValue([
-        {
-          id: 'mem-1',
-          content: 'matched note',
-          timestamp: 1000,
-          tags: [],
-          enrichment: { matchedMomentIds: ['mom-new'] },
-        },
-      ]);
-      (storageService.getAllMomentsIncludingDeleted as any).mockResolvedValue([
-        makeMoment('mom-new', 1000),
-      ]);
-      // Remote has the memory file but not the moment file.
-      (driveService.listAllFiles as any).mockResolvedValue([
-        { id: 'drive-file-mem-1', name: 'mem-1.json', modifiedTime: '2024-01-01T00:00:00Z' },
-      ]);
-
-      const { result } = renderHook(() => useSync(), { wrapper });
-
-      await act(async () => {
-        const syncPromise = result.current.sync();
-        await vi.advanceTimersByTimeAsync(2500);
-        await syncPromise;
-      });
-
-      const uploadCalls = (driveService.uploadMultipleFiles as any).mock.calls;
-      const reconciliationCall = uploadCalls.find((call: any[]) =>
-        call[0].some((item: any) => item.filename === 'moment-mom-new.json')
-      );
-      expect(reconciliationCall).toBeDefined();
-      const reconciledItem = reconciliationCall[0].find(
-        (item: any) => item.filename === 'moment-mom-new.json'
-      );
-      expect(reconciledItem.existingFileId).toBeUndefined();
-    });
-  });
-
-  describe('synthesis upload uses in-memory remote map', () => {
-    const makeMoment = (id: string, updatedAt: number, overrides?: any) => ({
-      id,
-      objective: 'Test',
-      title: 'Test Moment',
-      type: 'general',
-      noteIds: [],
-      createdAt: 1000,
-      updatedAt,
-      ...overrides,
-    });
-
-    it('resolves existingFileId for moment-synthesis files from listAllFiles, not via findFileByName', async () => {
-      // Local moment is newer than remote, so the upload phase queues both
-      // the moment and its synthesis. The synthesis's existingFileId should
-      // be looked up in the remoteMap built from listAllFiles — no
-      // per-synthesis Drive round trip.
-      const localMoment = makeMoment('mom-1', 3000);
-      const remoteMoment = makeMoment('mom-1', 1000);
 
       (storageService.getMemories as any).mockResolvedValue([]);
-      (storageService.getAllMomentsIncludingDeleted as any).mockResolvedValue([localMoment]);
+      (storageService.getAllMomentsIncludingDeleted as any).mockResolvedValue([]);
       (driveService.listAllFiles as any).mockResolvedValue([
-        { id: 'drive-mom-1', name: 'moment-mom-1.json', modifiedTime: '2024-01-01T00:00:00Z' },
         { id: 'drive-synth-1', name: 'moment-synthesis-mom-1.json', modifiedTime: '2024-01-01T00:00:00Z' },
       ]);
-      mockDownloads(new Map([['drive-mom-1', remoteMoment]]));
-      (storageService.getMomentSynthesis as any).mockResolvedValue({
-        momentId: 'mom-1',
-        title: 'Synth',
-        content: 'whatever',
-        createdAt: 1000,
-      });
 
       const { result } = renderHook(() => useSync(), { wrapper });
 
@@ -1152,61 +1001,9 @@ describe('SyncContext', () => {
         await syncPromise;
       });
 
-      // Synthesis upload uses the existing Drive file id from the in-memory
-      // map (PATCH path, no duplicate created).
-      expect(driveService.uploadMultipleFiles).toHaveBeenCalledWith(
-        expect.arrayContaining([
-          expect.objectContaining({
-            filename: 'moment-synthesis-mom-1.json',
-            existingFileId: 'drive-synth-1',
-          }),
-        ])
-      );
-
-      // No per-synthesis findFileByName round trip.
-      const findCalls = (driveService.findFileByName as any).mock.calls.map(
-        (c: any[]) => c[0]
-      );
-      expect(findCalls).not.toContain('moment-synthesis-mom-1.json');
-    });
-
-    it('leaves existingFileId undefined when the synthesis has no remote file yet', async () => {
-      // Brand-new local synthesis; remote has the moment file but no
-      // synthesis yet. Upload must POST (no existingFileId), mirroring the
-      // previous findFileByName-returns-null path.
-      const localMoment = makeMoment('mom-fresh', 3000);
-      const remoteMoment = makeMoment('mom-fresh', 1000);
-
-      (storageService.getMemories as any).mockResolvedValue([]);
-      (storageService.getAllMomentsIncludingDeleted as any).mockResolvedValue([localMoment]);
-      (driveService.listAllFiles as any).mockResolvedValue([
-        { id: 'drive-mom-fresh', name: 'moment-mom-fresh.json', modifiedTime: '2024-01-01T00:00:00Z' },
-      ]);
-      mockDownloads(new Map([['drive-mom-fresh', remoteMoment]]));
-      (storageService.getMomentSynthesis as any).mockResolvedValue({
-        momentId: 'mom-fresh',
-        title: 'Synth',
-        content: 'whatever',
-        createdAt: 1000,
-      });
-
-      const { result } = renderHook(() => useSync(), { wrapper });
-
-      await act(async () => {
-        const syncPromise = result.current.sync();
-        await vi.advanceTimersByTimeAsync(2500);
-        await syncPromise;
-      });
-
-      const uploadCalls = (driveService.uploadMultipleFiles as any).mock.calls;
-      const synthCall = uploadCalls.find((call: any[]) =>
-        call[0].some((item: any) => item.filename === 'moment-synthesis-mom-fresh.json')
-      );
-      expect(synthCall).toBeDefined();
-      const synthItem = synthCall[0].find(
-        (item: any) => item.filename === 'moment-synthesis-mom-fresh.json'
-      );
-      expect(synthItem.existingFileId).toBeUndefined();
+      expect(driveService.deleteFileById).toHaveBeenCalledWith('drive-synth-1');
+      expect(driveService.downloadFilesStreaming).toHaveBeenCalledWith([], expect.any(Function));
+      expect(storageService.deleteMomentHard).not.toHaveBeenCalled();
     });
   });
 
