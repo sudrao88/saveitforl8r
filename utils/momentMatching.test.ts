@@ -1,6 +1,17 @@
 import { describe, it, expect } from 'vitest';
-import { parseMomentTerms, isMomentEmbedded, MAX_MOMENT_TERMS } from './momentMatching';
-import { Moment, EMBEDDING_MODEL_ID } from '../types';
+import {
+  parseMomentTerms,
+  isMomentEmbedded,
+  needsMomentEmbedding,
+  matchNotesToMoment,
+  scoreNoteForMoment,
+  MAX_MOMENT_TERMS,
+  INTENT_WEIGHT,
+  TERM_WEIGHT,
+  MOMENT_MIN_SIMILARITY,
+  MOMENT_RELATIVE_MARGIN,
+} from './momentMatching';
+import { Memory, Moment, EMBEDDING_MODEL_ID } from '../types';
 
 describe('parseMomentTerms', () => {
   it('splits on commas and new lines and trims whitespace', () => {
@@ -27,5 +38,101 @@ describe('isMomentEmbedded', () => {
     expect(isMomentEmbedded({ ...base, termVectors: [[1]], embeddingModel: EMBEDDING_MODEL_ID })).toBe(false);
     expect(isMomentEmbedded({ ...base, termVectors: [[1], [1]], embeddingModel: 'old-model' })).toBe(false);
     expect(isMomentEmbedded({ ...base, termVectors: [[1], [1]], embeddingModel: EMBEDDING_MODEL_ID })).toBe(true);
+  });
+});
+
+describe('needsMomentEmbedding', () => {
+  const base: Moment = {
+    id: 'm', title: 't', terms: ['a'], createdAt: 0, updatedAt: 0,
+    termVectors: [[1, 0]], embeddingModel: EMBEDDING_MODEL_ID,
+  };
+
+  it('is true without vectors, or with term vectors but no intent vector', () => {
+    expect(needsMomentEmbedding({ ...base, termVectors: undefined })).toBe(true);
+    expect(needsMomentEmbedding(base)).toBe(true);
+    expect(needsMomentEmbedding({ ...base, intentVector: [] })).toBe(true);
+  });
+
+  it('is false once both term and intent vectors are present', () => {
+    expect(needsMomentEmbedding({ ...base, intentVector: [1, 0] })).toBe(false);
+  });
+});
+
+// Unit vector at a given angle (degrees) in the x/y plane, so dot = cos(angle).
+const at = (deg: number): number[] => {
+  const r = (deg * Math.PI) / 180;
+  return [Math.cos(r), Math.sin(r)];
+};
+
+const note = (id: string, v: number[]): Memory => ({
+  id, content: id, timestamp: 0, tags: [],
+  enrichment: { summary: '', suggestedTags: [], embedding: v, embeddingModel: EMBEDDING_MODEL_ID } as Memory['enrichment'],
+});
+
+const moment = (overrides: Partial<Moment> = {}): Moment => ({
+  id: 'm', title: 't', terms: ['a', 'b'], createdAt: 0, updatedAt: 0,
+  termVectors: [at(0), at(90)], intentVector: at(0), embeddingModel: EMBEDDING_MODEL_ID,
+  ...overrides,
+});
+
+describe('scoreNoteForMoment', () => {
+  it('blends intent similarity with the best term similarity', () => {
+    const s = scoreNoteForMoment(moment(), at(60))!;
+    expect(s.intent).toBeCloseTo(0.5);
+    expect(s.term).toBeCloseTo(Math.cos((30 * Math.PI) / 180)); // closest term is at 90°
+    expect(s.score).toBeCloseTo(INTENT_WEIGHT * 0.5 + TERM_WEIGHT * s.term);
+  });
+
+  it('uses the best term alone for a moment without an intent vector', () => {
+    const s = scoreNoteForMoment(moment({ intentVector: undefined }), at(80))!;
+    expect(s.intent).toBeNull();
+    expect(s.score).toBeCloseTo(Math.cos((10 * Math.PI) / 180));
+  });
+
+  it('returns null when no vector has a comparable dimension', () => {
+    expect(scoreNoteForMoment(moment(), [1, 0, 0])).toBeNull();
+  });
+
+  it('returns null when only the intent vector has a different dimension', () => {
+    expect(scoreNoteForMoment(moment({ intentVector: [1, 0, 0] }), at(0))).toBeNull();
+  });
+});
+
+describe('matchNotesToMoment', () => {
+  it('drops a note that matches one term perfectly but not the overall intent', () => {
+    const ids = matchNotesToMoment(moment(), [note('on-intent', at(0)), note('term-b-only', at(90))]).map(m => m.id);
+    expect(ids).toEqual(['on-intent']);
+  });
+
+  it('keeps only notes within the relative margin of the best match', () => {
+    const ids = matchNotesToMoment(
+      moment({ terms: ['a'], termVectors: [at(0)] }),
+      [note('best', at(0)), note('near', at(20)), note('far', at(45))],
+    ).map(m => m.id);
+    // best = 1.0; near ≈ 0.94 (inside 0.15); far ≈ 0.71 (outside the margin).
+    expect(MOMENT_RELATIVE_MARGIN).toBe(0.15);
+    expect(ids).toEqual(['best', 'near']);
+  });
+
+  it('applies the absolute floor even to the best match', () => {
+    const angle = (Math.acos(MOMENT_MIN_SIMILARITY) * 180) / Math.PI + 5;
+    expect(matchNotesToMoment(moment({ terms: ['a'], termVectors: [at(0)] }), [note('weak', at(angle))])).toEqual([]);
+  });
+
+  it('skips hidden notes and notes from another embedding model', () => {
+    const stale = note('stale', at(0));
+    stale.enrichment!.embeddingModel = 'old-model';
+    const ids = matchNotesToMoment(
+      moment({ excludedNoteIds: ['hidden'] }),
+      [note('hidden', at(0)), stale, note('ok', at(0))],
+    ).map(m => m.id);
+    expect(ids).toEqual(['ok']);
+  });
+
+  it('falls back to any-term matching for a moment without an intent vector', () => {
+    const ids = matchNotesToMoment(moment({ intentVector: undefined }), [note('x', at(0)), note('y', at(90))])
+      .map(m => m.id)
+      .sort();
+    expect(ids).toEqual(['x', 'y']);
   });
 });

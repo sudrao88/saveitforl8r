@@ -91,7 +91,7 @@ describe('geminiService — large-payload File API fallback', () => {
 
   describe('embedMomentTerms', () => {
     it('posts the terms and returns one vector per term plus the emoji', async () => {
-      mockPostProxy.mockResolvedValue({ vectors: [[1, 0], [0, 1]], emoji: '🇸🇬', model: 'gemini-embedding-2' });
+      mockPostProxy.mockResolvedValue({ vectors: [[1, 0], [0, 1]], intentVector: [0.6, 0.8], emoji: '🇸🇬', model: 'gemini-embedding-2' });
 
       const result = await embedMomentTerms(['Singapore', 'hawker food']);
 
@@ -99,7 +99,13 @@ describe('geminiService — large-payload File API fallback', () => {
       expect(path).toBe('/api/moment/embed');
       expect(body).toEqual({ terms: ['Singapore', 'hawker food'] });
       expect(result.vectors).toHaveLength(2);
+      expect(result.intentVector).toEqual([0.6, 0.8]);
       expect(result.emoji).toBe('🇸🇬');
+    });
+
+    it('throws on a malformed intent vector', async () => {
+      mockPostProxy.mockResolvedValue({ vectors: [[1, 0]], intentVector: [], emoji: '✨', model: 'gemini-embedding-2' });
+      await expect(embedMomentTerms(['a'])).rejects.toThrow();
     });
 
     it('throws when the vector count does not match the terms', async () => {

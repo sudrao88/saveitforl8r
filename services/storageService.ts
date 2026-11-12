@@ -151,7 +151,15 @@ export const normalizeMoment = (raw: Moment): Moment => {
   if (!moment.title) moment.title = terms.join(', ');
   if (!Array.isArray(moment.termVectors) || moment.termVectors.length !== terms.length) {
     delete moment.termVectors;
+    delete moment.intentVector;
     delete moment.embeddingModel;
+  }
+  if (
+    moment.intentVector !== undefined &&
+    (!Array.isArray(moment.intentVector) || moment.intentVector.length === 0 ||
+      !moment.intentVector.every(n => typeof n === 'number'))
+  ) {
+    delete moment.intentVector;
   }
   if (moment.excludedNoteIds !== undefined && !Array.isArray(moment.excludedNoteIds)) {
     delete moment.excludedNoteIds;

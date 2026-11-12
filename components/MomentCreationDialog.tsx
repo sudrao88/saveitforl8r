@@ -2,8 +2,8 @@
  * MomentCreationDialog.tsx
  *
  * Modal dialog for creating a new moment. The user enters a few terms as
- * chips (Enter or comma adds one); the moment then shows every note whose
- * meaning is close to any of the terms.
+ * chips (Enter or comma adds one); the moment then shows the notes whose
+ * meaning is close to what the terms describe together.
  */
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
@@ -174,7 +174,7 @@ const MomentCreationDialog: React.FC<MomentCreationDialogProps> = ({
           <p className={`${text.caption} mt-2`}>
             {atLimit
               ? `Up to ${MAX_MOMENT_TERMS} terms per moment.`
-              : 'Add a few terms, separated by Enter or commas. The moment shows every note related to any of them, and keeps updating as you save more notes.'}
+              : 'Add a few terms, separated by Enter or commas. The moment reads them together and shows the notes that fit, and keeps updating as you save more notes.'}
           </p>
         </div>
 

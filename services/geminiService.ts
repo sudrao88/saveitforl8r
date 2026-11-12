@@ -70,19 +70,26 @@ export const embedTexts = async (texts: string[]): Promise<number[][]> => {
 
 export interface MomentEmbedResult {
   vectors: number[][];
+  /** Whole-moment vector. Optional only so an older proxy still works. */
+  intentVector?: number[];
   emoji: string;
   model: string;
 }
 
 /**
- * Embed a new moment's terms (one vector per term, same model as notes) and
- * get an emoji picked from the server's emoji dictionary. Called once per
- * moment; matching against notes then happens locally.
+ * Embed a moment: an intent vector for the terms read together, one vector per
+ * term (same model as notes), and an emoji from the server's emoji dictionary.
+ * Called once per moment; matching against notes then happens locally.
  */
 export const embedMomentTerms = async (terms: string[]): Promise<MomentEmbedResult> => {
-  const result = await postProxy<MomentEmbedResult>('/api/moment/embed', { terms });
+  // The server may spend up to ~12s expanding the terms with an LLM before
+  // embedding, so allow more than the default 30s on a slow connection.
+  const result = await postProxy<MomentEmbedResult>('/api/moment/embed', { terms }, { timeout: 45_000 });
   if (!Array.isArray(result?.vectors) || result.vectors.length !== terms.length) {
     throw new Error('Unexpected moment embedding response');
+  }
+  if (result.intentVector !== undefined && (!Array.isArray(result.intentVector) || result.intentVector.length === 0)) {
+    throw new Error('Unexpected moment intent vector');
   }
   return result;
 };

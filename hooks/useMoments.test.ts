@@ -28,6 +28,7 @@ const makeMoment = (id: string, overrides: Partial<Moment> = {}): Moment => ({
   title: 'Test',
   terms: ['Test'],
   termVectors: [X],
+  intentVector: X,
   embeddingModel: EMBEDDING_MODEL_ID,
   emoji: '🧪',
   createdAt: 1000,
@@ -58,6 +59,7 @@ describe('useMoments', () => {
     wireMomentStorage([]);
     (geminiService.embedMomentTerms as any).mockImplementation(async (terms: string[]) => ({
       vectors: terms.map(() => Y),
+      intentVector: Y,
       emoji: '🇸🇬',
       model: EMBEDDING_MODEL_ID,
     }));
@@ -72,13 +74,14 @@ describe('useMoments', () => {
   });
 
   describe('matching', () => {
-    it('matches notes close to any term, best first, and skips the rest', async () => {
+    it('ranks by the moment\'s overall intent, not by any single term', async () => {
       wireMomentStorage([
-        makeMoment('m1', { terms: ['a', 'b'], termVectors: [X, Y] }),
+        makeMoment('m1', { terms: ['a', 'b'], termVectors: [X, Y], intentVector: X }),
       ]);
       const memories = [
-        makeMemory('close-to-x', [0.9, 0.1, 0].map(v => v / Math.hypot(0.9, 0.1))),
-        makeMemory('exact-y', Y),
+        makeMemory('close-to-x', [0.95, 0.05, 0].map(v => v / Math.hypot(0.95, 0.05))),
+        makeMemory('exact-x', X),
+        makeMemory('only-term-y', Y), // matches term "b" perfectly but not the intent
         makeMemory('unrelated', Z),
         makeMemory('no-vector'),
       ];
@@ -87,7 +90,19 @@ describe('useMoments', () => {
       await flush();
 
       const ids = result.current.matchesByMoment.get('m1')!.map(m => m.id);
-      expect(ids).toEqual(['exact-y', 'close-to-x']);
+      expect(ids).toEqual(['exact-x', 'close-to-x']);
+    });
+
+    it('matches an older term-only moment by its terms until it is re-embedded', async () => {
+      setOnline(false); // keep it from being re-embedded during the test
+      wireMomentStorage([
+        makeMoment('m1', { terms: ['a', 'b'], termVectors: [X, Y], intentVector: undefined }),
+      ]);
+      const { result } = renderHook(() => useMoments([makeMemory('x', X), makeMemory('y', Y), makeMemory('z', Z)]));
+      await flush();
+
+      expect(result.current.matchesByMoment.get('m1')!.map(m => m.id).sort()).toEqual(['x', 'y']);
+      expect(geminiService.embedMomentTerms).not.toHaveBeenCalled();
     });
 
     it('ignores note vectors from a different embedding model', async () => {
@@ -188,7 +203,95 @@ describe('useMoments', () => {
     renderHook(() => useMoments([]));
 
     await waitFor(() => expect(store.get('legacy')!.termVectors).toEqual([Y]));
+    expect(store.get('legacy')!.intentVector).toEqual(Y);
     expect(store.get('legacy')!.emoji).toBe('🇸🇬');
+  });
+
+  it('re-embeds a term-only moment to add its intent vector, keeping its emoji, and syncs it', async () => {
+    const store = wireMomentStorage([
+      makeMoment('old', { terms: ['a'], termVectors: [X], intentVector: undefined, emoji: '🍜' }),
+    ]);
+    const { result } = renderHook(() => useMoments([]));
+    const onChanged = vi.fn();
+    act(() => result.current.setOnMomentChanged(onChanged));
+
+    await waitFor(() => expect(store.get('old')!.intentVector).toEqual(Y));
+    expect(store.get('old')!.emoji).toBe('🍜');
+    expect(onChanged).toHaveBeenCalledWith(expect.objectContaining({ id: 'old', intentVector: Y }));
+  });
+
+  it('does not re-embed a moment that already has an intent vector', async () => {
+    wireMomentStorage([makeMoment('m1')]);
+    renderHook(() => useMoments([]));
+    await flush();
+    expect(geminiService.embedMomentTerms).not.toHaveBeenCalled();
+  });
+
+  it('does not show a background upgrade as "creating"', async () => {
+    wireMomentStorage([makeMoment('old', { intentVector: undefined })]);
+    let resolveEmbed: (v: unknown) => void = () => {};
+    (geminiService.embedMomentTerms as any).mockImplementation(
+      () => new Promise(r => { resolveEmbed = r; })
+    );
+    const { result } = renderHook(() => useMoments([]));
+    await flush();
+    expect(geminiService.embedMomentTerms).toHaveBeenCalled();
+    expect(result.current.embeddingIds.has('old')).toBe(false);
+    await act(async () => {
+      resolveEmbed({ vectors: [Y], intentVector: Y, emoji: '✨', model: EMBEDDING_MODEL_ID });
+      await new Promise(r => setTimeout(r, 0));
+    });
+  });
+
+  it('keeps an intent vector that synced in from another device during the request', async () => {
+    const store = wireMomentStorage([makeMoment('m1', { intentVector: undefined })]);
+    let resolveEmbed: (v: unknown) => void = () => {};
+    (geminiService.embedMomentTerms as any).mockImplementation(
+      () => new Promise(r => { resolveEmbed = r; })
+    );
+    renderHook(() => useMoments([]));
+    await flush();
+
+    store.set('m1', { ...store.get('m1')!, intentVector: Z });
+    await act(async () => {
+      resolveEmbed({ vectors: [Y], intentVector: Y, emoji: '✨', model: EMBEDDING_MODEL_ID });
+      await new Promise(r => setTimeout(r, 0));
+    });
+    expect(store.get('m1')!.intentVector).toEqual(Z);
+  });
+
+  it('leaves a term-only moment untouched (no save, no sync) when the proxy returns no intent vector', async () => {
+    const original = makeMoment('old', { intentVector: undefined });
+    const store = wireMomentStorage([original, makeMoment('old2', { intentVector: undefined })]);
+    (geminiService.embedMomentTerms as any).mockImplementation(async (terms: string[]) => ({
+      vectors: terms.map(() => Y), emoji: '✨', model: EMBEDDING_MODEL_ID,
+    }));
+    const onChanged = vi.fn();
+    const { result } = renderHook(() => useMoments([]));
+    act(() => result.current.setOnMomentChanged(onChanged));
+    await flush();
+    await flush();
+
+    expect(store.get('old')).toEqual(original);
+    expect(onChanged).not.toHaveBeenCalled();
+    // After the first answer it stops asking for the rest of the session.
+    expect(geminiService.embedMomentTerms).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps term vectors and backs off when an older proxy returns no intent vector', async () => {
+    const store = wireMomentStorage([
+      makeMoment('m1', { termVectors: undefined, intentVector: undefined, embeddingModel: undefined }),
+    ]);
+    (geminiService.embedMomentTerms as any).mockImplementation(async (terms: string[]) => ({
+      vectors: terms.map(() => Y), emoji: '✨', model: EMBEDDING_MODEL_ID,
+    }));
+    const { result } = renderHook(() => useMoments([]));
+    await waitFor(() => expect(store.get('m1')!.termVectors).toEqual([Y]));
+    expect(store.get('m1')!.intentVector).toBeUndefined();
+
+    await act(async () => { await result.current.refreshMoments(); });
+    await flush();
+    expect(geminiService.embedMomentTerms).toHaveBeenCalledTimes(1);
   });
 
   it('does not resurrect a moment deleted while its embed was in flight', async () => {
