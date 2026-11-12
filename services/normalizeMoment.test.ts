@@ -33,7 +33,7 @@ describe('normalizeMoment', () => {
   it('keeps a current-format moment unchanged', () => {
     const current: Moment = {
       id: 'm2', title: 'Tokyo, ramen', terms: ['Tokyo', 'ramen'],
-      termVectors: [[1, 0], [0, 1]], embeddingModel: 'gemini-embedding-2',
+      termVectors: [[1, 0], [0, 1]], intentVector: [0.6, 0.8], embeddingModel: 'gemini-embedding-2',
       excludedNoteIds: ['n1'], createdAt: 1, updatedAt: 2,
     };
     expect(normalizeMoment(current)).toEqual(current);
@@ -44,9 +44,20 @@ describe('normalizeMoment', () => {
       id: 'm3', title: 'a, b', terms: ['a', 'b'], termVectors: [[1, 0]],
       embeddingModel: 'gemini-embedding-2', createdAt: 1, updatedAt: 2,
     };
-    const m = normalizeMoment(broken);
+    const m = normalizeMoment({ ...broken, intentVector: [1, 0] });
     expect(m.termVectors).toBeUndefined();
+    expect(m.intentVector).toBeUndefined();
     expect(m.embeddingModel).toBeUndefined();
+  });
+
+  it('drops a malformed intent vector but keeps valid term vectors', () => {
+    const m = normalizeMoment({
+      id: 'm4', title: 'a', terms: ['a'], termVectors: [[1, 0]],
+      intentVector: ['x'] as unknown as number[],
+      embeddingModel: 'gemini-embedding-2', createdAt: 1, updatedAt: 2,
+    });
+    expect(m.intentVector).toBeUndefined();
+    expect(m.termVectors).toEqual([[1, 0]]);
   });
 });
 

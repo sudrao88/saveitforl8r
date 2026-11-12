@@ -7,7 +7,7 @@
  *   services/gemini.js       — Schemas, prompts, sanitization
  *   routes/enrich.js         — /api/enrich + /api/enrich/results
  *   routes/query.js          — /api/query
- *   routes/moment.js         — /api/moment/embed (term vectors + emoji for moments)
+ *   routes/moment.js         — /api/moment/embed (intent + term vectors, emoji for moments)
  *   lib/sanitize.js          — Shared sanitization utilities
  */
 import crypto from 'crypto';

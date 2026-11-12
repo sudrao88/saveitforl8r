@@ -1,27 +1,55 @@
 /**
  * useMoments.ts
  *
- * Moments are saved semantic searches. The user enters a few terms; each term
- * is embedded once on the server (same model as notes) and stored, with an
- * emoji, on the moment. Matching notes are computed here, locally, from the
+ * Moments are saved semantic searches. The user enters a few terms; the server
+ * reads them together into one intent vector and also embeds each term (same
+ * model as notes), and both are stored, with an emoji, on the moment. Matching notes are computed here, locally, from the
  * synced note vectors — so a moment updates live as notes are added, edited,
  * synced or deleted, works offline once embedded, and shows the same notes on
  * every device without the matches themselves being synced.
  *
  * A moment created offline (or whose embed request failed, or a legacy moment
  * migrated from the old agentic flow) is saved without vectors and embedded as
- * soon as the app is back online.
+ * soon as the app is back online. A moment embedded before intent vectors
+ * existed keeps matching by its terms and is quietly re-embedded to gain one.
  */
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Memory, Moment, EMBEDDING_MODEL_ID } from '../types';
 import { getMoments, getMoment, saveMoment } from '../services/storageService';
 import { embedMomentTerms } from '../services/geminiService';
-import { isMomentEmbedded, matchNotesToMoment, MomentMatch } from '../utils/momentMatching';
+import { needsMomentEmbedding, matchNotesToMoment, scoreNoteForMoment, MomentMatch } from '../utils/momentMatching';
 
 // After a failed embed, wait this long before retrying the same moment so a
 // persistent error (signed out, rate limited) doesn't fire on every refresh.
 const EMBED_RETRY_DELAY_MS = 60_000;
+
+// Set localStorage 'debug:moments' to '1' to log each moment's top match
+// scores (intent / best term / blended) — for tuning the matching constants.
+const isMomentDebugOn = (): boolean => {
+  try {
+    return typeof localStorage !== 'undefined' && localStorage.getItem('debug:moments') === '1';
+  } catch {
+    return false;
+  }
+};
+
+const logMomentScores = (moment: Moment, matches: MomentMatch[], memories: Memory[]) => {
+  const byId = new Map(memories.map(m => [m.id, m]));
+  const rows = matches.slice(0, 20).map(({ id }) => {
+    const note = byId.get(id);
+    const s = note?.enrichment?.embedding ? scoreNoteForMoment(moment, note.enrichment.embedding) : null;
+    return {
+      note: (note?.enrichment?.entityContext?.title || note?.content || id).slice(0, 60),
+      score: s?.score.toFixed(3),
+      intent: s?.intent?.toFixed(3) ?? '—',
+      term: s?.term.toFixed(3),
+    };
+  });
+  console.groupCollapsed(`[Moments] ${moment.emoji ?? ''} ${moment.title}: ${matches.length} match(es)`);
+  console.table(rows);
+  console.groupEnd();
+};
 
 interface UseMomentsReturn {
   /** All active moments, newest first */
@@ -78,7 +106,7 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
     try {
       const current = await getMoment(momentId);
       if (!current || current.isDeleted || current.terms.length === 0) return null;
-      if (isMomentEmbedded(current)) return current;
+      if (!needsMomentEmbedding(current)) return current;
 
       const result = await embedMomentTerms(current.terms);
 
@@ -88,13 +116,20 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
         ...latest,
         termVectors: result.vectors,
         embeddingModel: result.model || EMBEDDING_MODEL_ID,
-        emoji: result.emoji || latest.emoji,
+        // Keep an existing emoji so re-embedding an older moment doesn't
+        // change how it looks.
+        emoji: latest.emoji || result.emoji,
         updatedAt: Date.now(),
       };
+      if (result.intentVector) updated.intentVector = result.intentVector;
+      else delete updated.intentVector;
       await saveMoment(updated);
       replaceInList(updated);
-      lastEmbedFailure.current.delete(momentId);
       onMomentChangedRef.current?.(updated);
+      // An older proxy returns no intent vector: the moment works on its
+      // terms, but back off before asking again instead of on every refresh.
+      if (result.intentVector) lastEmbedFailure.current.delete(momentId);
+      else lastEmbedFailure.current.set(momentId, Date.now());
       return updated;
     } catch (err) {
       lastEmbedFailure.current.set(momentId, Date.now());
@@ -112,12 +147,13 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
   }, [replaceInList]);
 
   // Embed every moment that's still waiting for vectors (created offline, a
-  // failed request, a legacy moment, or vectors from a superseded model).
+  // failed request, a legacy moment, vectors from a superseded model, or
+  // term-only vectors from before intent vectors existed).
   const embedPending = useCallback(async (list: Moment[]) => {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
     const now = Date.now();
     for (const m of list) {
-      if (m.isDeleted || isMomentEmbedded(m)) continue;
+      if (m.isDeleted || !needsMomentEmbedding(m)) continue;
       const failedAt = lastEmbedFailure.current.get(m.id);
       if (failedAt && now - failedAt < EMBED_RETRY_DELAY_MS) continue;
       await embedMoment(m.id);
@@ -222,7 +258,12 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
 
   const matchesByMoment = useMemo(() => {
     const map = new Map<string, MomentMatch[]>();
-    for (const m of moments) map.set(m.id, matchNotesToMoment(m, memories));
+    const debug = isMomentDebugOn();
+    for (const m of moments) {
+      const matches = matchNotesToMoment(m, memories);
+      map.set(m.id, matches);
+      if (debug) logMomentScores(m, matches, memories);
+    }
     return map;
   }, [moments, memories]);
 

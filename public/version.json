@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v136",
-  "buildNumber": 136,
-  "buildDate": "2026-11-12T05:40:27.108Z",
+  "version": "saveitforl8r-v137",
+  "buildNumber": 137,
+  "buildDate": "2026-11-12T06:02:07.413Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Moments are simpler: pick a few terms and see every related note, updated live and available offline."
+  "changelog": "Moments now understand what your terms mean together, so the notes they surface are more relevant."
 }

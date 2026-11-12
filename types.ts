@@ -283,8 +283,9 @@ export enum ViewMode {
 // --- Moments Feature Types ---
 
 /**
- * A moment is a saved semantic search: a few terms the user entered, each
- * embedded with the same model as notes. Matching notes are computed on every
+ * A moment is a saved semantic search: a few terms the user entered. The terms
+ * are read together into one intent vector (the moment's overall meaning) and
+ * also embedded one by one, all with the same model as notes. Matching notes are computed on every
  * device from the synced note vectors (utils/momentMatching.ts) and are never
  * stored or synced themselves. A moment is fixed once created — to change its
  * terms, delete it and create a new one.
@@ -299,7 +300,14 @@ export interface Moment {
    * embed request failed) — the moment matches nothing until it's filled.
    */
   termVectors?: number[][];
-  embeddingModel?: string;        // Model that produced termVectors
+  /**
+   * One unit-normalized vector for the moment as a whole: the terms expanded
+   * (server-side) into a note-shaped description of their combined theme.
+   * Drives ranking; term vectors only add a small boost. Absent on moments
+   * embedded before it existed — they match by terms alone until re-embedded.
+   */
+  intentVector?: number[];
+  embeddingModel?: string;        // Model that produced termVectors / intentVector
   emoji?: string;                 // Picked from the server's emoji dictionary
   excludedNoteIds?: string[];     // Matched notes the user chose to hide
   createdAt: number;
