@@ -70,7 +70,7 @@ The client-side React application uses Vite to inject environment variables at b
 - **Server-Side API Key**: The `GEMINI_API_KEY` is stored securely in Google Secret Manager and only accessible by the server-side proxy, never the client.
 - **Authentication Proxy**: All AI-related requests are sent to the secure server proxy, which validates the user's Google OAuth token before proceeding. This prevents anonymous API abuse. Validated tokens are cached for 5 minutes server-side to reduce latency.
 - **CORS**: The proxy server restricts origins via the `ALLOWED_ORIGINS` environment variable. Only explicitly listed origins can make cross-origin requests.
-- **Rate Limiting**: Per-user rate limits are enforced on both `/api/enrich` (20/min) and `/api/query` (10/min) endpoints to prevent API abuse.
+- **Rate Limiting**: Per-user rate limits are enforced on `/api/enrich` (20/min), `/api/query` (10/min) and `/api/moment/embed` (20/min) to prevent API abuse.
 - **Input Validation**: All proxy endpoints validate request payloads (text length, attachment count/size/MIME type, tag limits, coordinate ranges) before processing.
 - **Prompt Injection Mitigation**: System instructions are separated from user content using Gemini's `systemInstruction` config. User inputs are sanitized (control characters stripped) before embedding in prompts.
 - **Security Headers**: The proxy uses `helmet` for HTTP security headers. Nginx adds `X-Content-Type-Options`, `X-Frame-Options`, and `Referrer-Policy`.

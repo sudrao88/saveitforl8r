@@ -25,9 +25,8 @@ try {
  * Send a silent push to wake the client app for background data processing.
  * @param {string} userId - The user's ID (to look up their push subscription)
  * @param {Object} data - Data payload to include in the push
- * @param {string} data.type - Type of completion ('enrichment-complete' | 'moment-complete' | 'synthesis-complete')
+ * @param {string} data.type - Type of completion ('enrichment-complete')
  * @param {string} [data.memoryId] - The ID of the completed memory
- * @param {string} [data.momentId] - The ID of the completed moment
  * @param {import('@google-cloud/firestore').Firestore} db - Firestore instance
  * @returns {Promise<Array>} Array of send results
  */
@@ -60,7 +59,6 @@ export async function sendSilentPush(userId, data, db) {
             data: {
               type: data.type,
               memoryId: data.memoryId || '',
-              momentId: data.momentId || '',
             },
             android: {
               priority: 'high', // Wake device from Doze
@@ -74,7 +72,6 @@ export async function sendSilentPush(userId, data, db) {
             data: {
               type: data.type,
               memoryId: data.memoryId || '',
-              momentId: data.momentId || '',
             },
             apns: {
               headers: { 'apns-priority': '5' }, // Silent pushes must use priority 5

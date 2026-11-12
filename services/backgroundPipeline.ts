@@ -1,5 +1,5 @@
 /**
- * Background data pipeline for processing enrichment/moment/synthesis results.
+ * Background data pipeline for processing enrichment results.
  * Shared logic callable from foreground polling, background push handlers,
  * and service worker Background Sync events.
  *
@@ -9,15 +9,14 @@
  * run safely in background contexts (push handlers, service workers).
  */
 
-import { fetchPendingEnrichments, fetchPendingMomentResults, fetchPendingSynthesisResults } from './geminiService';
+import { fetchPendingEnrichments } from './geminiService';
 import { getMemory, saveMemory } from './storageService';
 import { applyEnrichmentResult } from '../hooks/useEnrichmentPolling';
 import { isMemoryInFlight } from '../types';
 
 export interface PushData {
-  type: 'enrichment-complete' | 'moment-complete' | 'synthesis-complete';
+  type: 'enrichment-complete';
   memoryId?: string;
-  momentId?: string;
 }
 
 /**
@@ -28,23 +27,13 @@ export interface PushData {
  * applyEnrichmentResult() checks isPending and skips already-processed memories.
  */
 export const runBackgroundPipeline = async (data: PushData): Promise<void> => {
-  console.log('[BackgroundPipeline] Processing:', data.type, data.memoryId || data.momentId);
+  console.log('[BackgroundPipeline] Processing:', data.type, data.memoryId);
 
   try {
     switch (data.type) {
       case 'enrichment-complete': {
         if (!data.memoryId) return;
         await processEnrichmentCompletion(data.memoryId);
-        break;
-      }
-      case 'moment-complete': {
-        if (!data.momentId) return;
-        await processMomentCompletion(data.momentId);
-        break;
-      }
-      case 'synthesis-complete': {
-        if (!data.momentId) return;
-        await processSynthesisCompletion(data.momentId);
         break;
       }
     }
@@ -77,57 +66,6 @@ async function processEnrichmentCompletion(memoryId: string): Promise<void> {
     // The modified memory is now in IndexedDB.
     // SyncContext will pick it up on next sync cycle (visibility change, periodic, etc.)
     // We don't trigger Drive sync directly from here to avoid circular dependencies.
-  }
-}
-
-/**
- * Fetch and apply a moment creation result.
- * Moment results require complex state updates (creating/updating Moment objects),
- * so we flag them for processing by the foreground moments hook.
- */
-async function processMomentCompletion(momentId: string): Promise<void> {
-  const results = await fetchPendingMomentResults([momentId]);
-  const result = results[momentId];
-
-  if (!result || result.status === 'processing') return;
-
-  if (result.status === 'completed' && result.data) {
-    // Store a flag in localStorage so the app processes it on next foreground
-    try {
-      const pending = JSON.parse(localStorage.getItem('bg_pending_moments') || '[]') as string[];
-      if (!pending.includes(momentId)) {
-        pending.push(momentId);
-        localStorage.setItem('bg_pending_moments', JSON.stringify(pending));
-      }
-    } catch {
-      // Best-effort -- localStorage may be unavailable in some contexts
-    }
-    console.log(`[BackgroundPipeline] Moment ${momentId} completed, flagged for foreground processing`);
-  }
-}
-
-/**
- * Fetch and apply a synthesis result.
- * Like moments, synthesis results need complex state updates,
- * so we flag them for foreground processing.
- */
-async function processSynthesisCompletion(momentId: string): Promise<void> {
-  const results = await fetchPendingSynthesisResults([momentId]);
-  const result = results[momentId];
-
-  if (!result || result.status === 'processing') return;
-
-  if (result.status === 'completed' && result.data) {
-    try {
-      const pending = JSON.parse(localStorage.getItem('bg_pending_syntheses') || '[]') as string[];
-      if (!pending.includes(momentId)) {
-        pending.push(momentId);
-        localStorage.setItem('bg_pending_syntheses', JSON.stringify(pending));
-      }
-    } catch {
-      // Best-effort
-    }
-    console.log(`[BackgroundPipeline] Synthesis ${momentId} completed, flagged for foreground processing`);
   }
 }
 

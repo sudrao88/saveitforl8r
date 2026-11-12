@@ -25,8 +25,8 @@ const GEMINI_FILE_NAME_RE = /^files\/[A-Za-z0-9_-]+$/;
 
 /**
  * Validates an optional pair (fileUri, fileName) referencing a Gemini File
- * API upload — used by /api/query, /api/create-moment, /api/synthesize when
- * the inline notes/memories payload exceeds the 1.2 MB threshold.
+ * API upload — used by /api/query when the inline memories payload exceeds
+ * the 1.2 MB threshold.
  *
  * Returns null when valid (or both fields absent), or an error string.
  */
@@ -109,14 +109,6 @@ export const validateEnrichInput = (req, res, next) => {
     ) {
       return res.status(400).json({ error: 'Invalid location coordinates' });
     }
-  }
-
-  const { moments } = req.body;
-  if (moments !== undefined) {
-    if (!Array.isArray(moments))
-      return res.status(400).json({ error: 'moments must be an array' });
-    if (moments.length > 50)
-      return res.status(400).json({ error: 'Too many moments (max 50)' });
   }
 
   next();
@@ -207,67 +199,22 @@ export const validateResultsInput = (req, res, next) => {
   next();
 };
 
-export const validateSynthesizeInput = (req, res, next) => {
-  const { notes, momentType, momentTitle, objective, momentId, notesFileUri, notesFileName, noteCount, inputHash, existingSynthesis } = req.body;
+/** Max terms per moment, and max length of one term. Mirrored client-side in utils/momentMatching.ts. */
+export const MAX_MOMENT_TERMS = 10;
+export const MAX_MOMENT_TERM_LENGTH = 200;
 
-  const fileRefError = validateContextFileRef(notesFileUri, notesFileName);
-  if (fileRefError) return res.status(400).json({ error: `notesFileUri/Name: ${fileRefError}` });
+export const validateMomentEmbedInput = (req, res, next) => {
+  const { terms } = req.body;
 
-  if (existingSynthesis !== undefined) {
-    if (typeof existingSynthesis !== 'object' || existingSynthesis === null || Array.isArray(existingSynthesis))
-      return res.status(400).json({ error: 'existingSynthesis must be an object' });
-    if (!Array.isArray(existingSynthesis.sections))
-      return res.status(400).json({ error: 'existingSynthesis.sections must be an array' });
-    if (existingSynthesis.sections.length > 50)
-      return res.status(400).json({ error: 'existingSynthesis has too many sections (max 50)' });
-  }
-
-  // When notesFileUri is supplied, notes may be omitted (LLM reads from the file).
-  if (notesFileUri) {
-    if (notes !== undefined) {
-      return res.status(400).json({ error: 'notes must not be provided when notesFileUri is set' });
-    }
-    if (noteCount !== undefined && (typeof noteCount !== 'number' || !Number.isInteger(noteCount) || noteCount < 0 || noteCount > 5_000)) {
-      return res.status(400).json({ error: 'noteCount must be a non-negative integer (max 5000)' });
-    }
-  } else {
-    if (!notes || !Array.isArray(notes))
-      return res.status(400).json({ error: 'notes is required and must be an array' });
-    if (notes.length > 500)
-      return res.status(400).json({ error: 'Too many notes (max 500)' });
-  }
-  if (!momentType || typeof momentType !== 'string')
-    return res.status(400).json({ error: 'momentType is required and must be a string' });
-  if (!momentTitle || typeof momentTitle !== 'string')
-    return res.status(400).json({ error: 'momentTitle is required and must be a string' });
-  if (objective !== undefined && typeof objective !== 'string')
-    return res.status(400).json({ error: 'objective must be a string' });
-  if (!momentId || typeof momentId !== 'string')
-    return res.status(400).json({ error: 'momentId is required and must be a string' });
-  if (!UUID_REGEX.test(momentId))
-    return res.status(400).json({ error: 'momentId must be a valid UUID' });
-  if (inputHash !== undefined) {
-    if (typeof inputHash !== 'string')
-      return res.status(400).json({ error: 'inputHash must be a string' });
-    if (inputHash.length > 64)
-      return res.status(400).json({ error: 'inputHash too long (max 64 chars)' });
-  }
-
-  next();
-};
-
-export const validateSynthesizeResultsInput = (req, res, next) => {
-  const { momentIds } = req.body;
-
-  if (!momentIds || !Array.isArray(momentIds))
-    return res.status(400).json({ error: 'momentIds must be an array' });
-  if (momentIds.length === 0)
-    return res.status(400).json({ error: 'momentIds must not be empty' });
-  if (momentIds.length > 10)
-    return res.status(400).json({ error: 'Maximum 10 momentIds per request' });
-  for (const id of momentIds) {
-    if (typeof id !== 'string' || !UUID_REGEX.test(id))
-      return res.status(400).json({ error: `Invalid momentId: ${id}` });
+  if (!Array.isArray(terms) || terms.length === 0)
+    return res.status(400).json({ error: 'terms must be a non-empty array' });
+  if (terms.length > MAX_MOMENT_TERMS)
+    return res.status(400).json({ error: `Too many terms (max ${MAX_MOMENT_TERMS})` });
+  for (const t of terms) {
+    if (typeof t !== 'string' || !t.trim())
+      return res.status(400).json({ error: 'Each term must be a non-empty string' });
+    if (t.length > MAX_MOMENT_TERM_LENGTH)
+      return res.status(400).json({ error: `Term too long (max ${MAX_MOMENT_TERM_LENGTH} chars)` });
   }
 
   next();

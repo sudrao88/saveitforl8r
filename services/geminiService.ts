@@ -1,5 +1,5 @@
 
-import { EnrichmentData, Memory, Attachment, ChatMessage, Moment, SynthesisResponse, isMemoryInFlight, isMemoryFailed } from '../types.ts';
+import { EnrichmentData, Memory, Attachment, ChatMessage, isMemoryInFlight, isMemoryFailed } from '../types.ts';
 import { postProxy, getProxyUrl } from './proxyService.ts';
 import { getValidToken } from './googleAuth.ts';
 import { enqueue as bgSyncEnqueue } from './backgroundSyncQueue.ts';
@@ -15,37 +15,12 @@ export interface QueryResponse {
   sources: QuerySource[];
 }
 
-export interface NoteEmbellishment {
-  noteId: string;
-  addition: string;
-  sourceUrl: string;
-}
-
-export interface CreateMomentResponse {
-  title: string;
-  type: string;
-  emoji?: string;
-  usedNoteIds: string[];
-  synthesis: SynthesisResponse;
-  refinedObjective?: string;
-  noteEmbellishments?: NoteEmbellishment[];
-}
-
-/** A live progress step emitted by the moment-creation agent. */
-export interface ProgressStep {
-  step: string;
-  tool?: string;
-  summary?: string;
-  at?: number;
-}
-
 interface EnrichmentInput {
   text: string;
   attachments: Attachment[];
   location?: { latitude: number; longitude: number };
   tags: string[];
   memoryId?: string;
-  moments?: { id: string; objective: string; refinedObjective?: string; title: string; type: string }[];
 }
 
 interface SubmitEnrichmentResponse {
@@ -93,12 +68,30 @@ export const embedTexts = async (texts: string[]): Promise<number[][]> => {
   return result.embeddings;
 };
 
+export interface MomentEmbedResult {
+  vectors: number[][];
+  emoji: string;
+  model: string;
+}
+
+/**
+ * Embed a new moment's terms (one vector per term, same model as notes) and
+ * get an emoji picked from the server's emoji dictionary. Called once per
+ * moment; matching against notes then happens locally.
+ */
+export const embedMomentTerms = async (terms: string[]): Promise<MomentEmbedResult> => {
+  const result = await postProxy<MomentEmbedResult>('/api/moment/embed', { terms });
+  if (!Array.isArray(result?.vectors) || result.vectors.length !== terms.length) {
+    throw new Error('Unexpected moment embedding response');
+  }
+  return result;
+};
+
 /**
  * Submits memory content to the server proxy for AI enrichment.
  * The server validates the request, persists a "processing" status,
  * and returns 200 { status: "accepted" } immediately. Enrichment
  * happens asynchronously — poll with fetchPendingEnrichments().
- * Optionally includes moments metadata for moment-matching phase.
  */
 export const submitEnrichment = async (
   text: string,
@@ -106,7 +99,6 @@ export const submitEnrichment = async (
   location?: { latitude: number; longitude: number },
   tags: string[] = [],
   memoryId?: string,
-  moments?: { id: string; objective: string; refinedObjective?: string; title: string; type: string }[]
 ): Promise<void> => {
   // Strip base64 data from attachments that were uploaded via chunked upload
   // to avoid sending the massive payload — the server uses fileUri instead
@@ -122,7 +114,6 @@ export const submitEnrichment = async (
     location,
     tags,
     memoryId,
-    moments,
   };
 
   try {
@@ -258,35 +249,6 @@ const buildMemoriesContextString = (memories: LightMemory[]): string =>
     )
     .join('\n---\n');
 
-interface LightNote {
-  id: string;
-  content: string;
-  tags: string[];
-  enrichment?: {
-    summary?: string;
-    locationContext?: EnrichmentData['locationContext'];
-    entityContext?: EnrichmentData['entityContext'];
-  };
-}
-
-/**
- * Builds the moment-creation/synthesis context string. Mirrors the format
- * server/routes/moment.js (stepNoteSelection, stepSynthesis, singleCallFallback)
- * and server/index.js (synthesize handler) construct when notes are inlined.
- */
-const buildNotesContextString = (notes: LightNote[]): string =>
-  notes
-    .map(
-      (n) =>
-        `[ID: ${n.id}]
-[CONTENT]: ${n.content || ''}
-[TAGS]: ${(n.tags || []).join(', ')}
-[SUMMARY]: ${n.enrichment?.summary || 'N/A'}
-[ENTITY]: ${n.enrichment?.entityContext?.title || 'N/A'} (${n.enrichment?.entityContext?.type || ''})
-[DESCRIPTION]: ${n.enrichment?.entityContext?.description || 'N/A'}`
-    )
-    .join('\n---\n');
-
 /**
  * Generate a v4 UUID. Used as the upload-session "owner id" for context-file
  * uploads (the upload-init validator requires a UUID, but accepts any).
@@ -323,322 +285,6 @@ const uploadContextIfLarge = async (
   const blob = new Blob([contextText], { type: 'text/plain' });
   const fileName = `${fileNamePrefix}-${ownerId}.txt`;
   return uploadFileChunked(blob, 'text/plain', fileName, ownerId);
-};
-
-// --- Async Moment Creation ---
-
-interface SubmitMomentCreationResponse {
-  status: string;
-  momentId: string;
-}
-
-/**
- * Submits a moment creation request asynchronously.
- * Server returns { status: "accepted", momentId } immediately.
- * The 3-step pipeline (intent refinement → note selection → synthesis) runs
- * in the background. Poll with fetchPendingMomentResults() to get the result.
- */
-export const submitMomentCreation = async (
-  objective: string,
-  memories: Memory[],
-  momentId: string,
-): Promise<{ momentId: string }> => {
-  const lightNotes: LightNote[] = memories
-    .filter(m => !isMemoryInFlight(m) && !isMemoryFailed(m) && !m.isDeleted)
-    .map(m => ({
-      id: m.id,
-      content: m.content,
-      tags: m.tags,
-      enrichment: m.enrichment
-        ? {
-            summary: m.enrichment.summary,
-            locationContext: m.enrichment.locationContext,
-            entityContext: m.enrichment.entityContext,
-          }
-        : undefined,
-    }));
-
-  const inlineBody: Record<string, unknown> = { objective, notes: lightNotes, momentId };
-  const inlineSize = JSON.stringify(inlineBody).length;
-  const uploaded = await uploadContextIfLarge(
-    buildNotesContextString(lightNotes),
-    inlineSize,
-    'create-moment-notes',
-  );
-
-  const body: Record<string, unknown> = uploaded
-    ? { objective, momentId, notesFileUri: uploaded.fileUri, notesFileName: uploaded.geminiFileName, noteCount: lightNotes.length }
-    : inlineBody;
-
-  const result = await postProxy<SubmitMomentCreationResponse>('/api/create-moment', body);
-
-  if (result.status !== 'accepted') {
-    throw new Error(`Unexpected moment creation response: ${result.status}`);
-  }
-  return { momentId: result.momentId };
-};
-
-// --- Moment Creation Polling ---
-
-export type MomentCreationPollResult =
-  | { status: 'completed'; data: CreateMomentResponse }
-  | { status: 'processing'; progress?: ProgressStep[] }
-  | { status: 'failed' }
-  | { status: 'not_found' };
-
-interface MomentResultEntry {
-  status: 'completed' | 'failed' | 'not_found' | string;
-  data?: CreateMomentResponse;
-  progress?: ProgressStep[];
-}
-
-interface MomentResultsResponse {
-  results: Record<string, MomentResultEntry>;
-}
-
-/**
- * Fetches moment creation results for pending moments from the server.
- * Returns per-moment status. Mirrors fetchPendingEnrichments() pattern.
- */
-export const fetchPendingMomentResults = async (
-  momentIds: string[],
-): Promise<Record<string, MomentCreationPollResult>> => {
-  try {
-    const payload = { momentIds };
-    const response = await postProxy<MomentResultsResponse>(
-      '/api/create-moment/results',
-      payload as unknown as Record<string, unknown>
-    );
-
-    const result: Record<string, MomentCreationPollResult> = {};
-    if (response && response.results) {
-      for (const id of momentIds) {
-        const entry = response.results[id];
-        if (entry?.status === 'completed' && entry.data) {
-          result[id] = { status: 'completed', data: entry.data };
-        } else if (entry?.status === 'failed') {
-          result[id] = { status: 'failed' };
-        } else if (entry?.status === 'processing') {
-          result[id] = { status: 'processing', progress: entry.progress };
-        } else {
-          result[id] = { status: 'not_found' };
-        }
-      }
-    }
-    return result;
-  } catch (error) {
-    console.error('Failed to fetch pending moment results:', error);
-    return {};
-  }
-};
-
-// --- Async Moment Re-Synthesis ---
-
-interface SubmitResynthesisResponse {
-  status: string;
-  momentId: string;
-}
-
-/**
- * Submits a re-synthesis request asynchronously.
- * Server returns { status: "accepted", momentId } immediately.
- * The synthesis runs in the background. Poll with fetchPendingSynthesisResults()
- * to get the result.
- */
-export const submitResynthesis = async (
-  moment: Moment,
-  memories: Memory[],
-  inputHash?: string,
-  existingSynthesis?: SynthesisResponse,
-): Promise<{ momentId: string }> => {
-  const notes: LightNote[] = moment.noteIds
-    .map(id => memories.find(m => m.id === id))
-    .filter((m): m is Memory => !!m)
-    .map(m => ({
-      id: m.id,
-      content: m.content,
-      tags: m.tags,
-      enrichment: m.enrichment
-        ? {
-            summary: m.enrichment.summary,
-            locationContext: m.enrichment.locationContext,
-            entityContext: m.enrichment.entityContext,
-          }
-        : undefined,
-    }));
-
-  // When we have a prior synthesis, ask the server to MERGE (structure-preserving)
-  // rather than regenerate — this keeps web-sourced items and the existing layout.
-  const mergeFields = existingSynthesis ? { existingSynthesis } : {};
-
-  const inlineBody: Record<string, unknown> = {
-    notes,
-    momentType: moment.type,
-    momentTitle: moment.title,
-    objective: moment.objective,
-    momentId: moment.id,
-    ...mergeFields,
-    ...(inputHash ? { inputHash } : {}),
-  };
-
-  const inlineSize = JSON.stringify(inlineBody).length;
-  const uploaded = await uploadContextIfLarge(
-    buildNotesContextString(notes),
-    inlineSize,
-    'synthesize-notes',
-  );
-
-  const body: Record<string, unknown> = uploaded
-    ? {
-        momentType: moment.type,
-        momentTitle: moment.title,
-        objective: moment.objective,
-        momentId: moment.id,
-        notesFileUri: uploaded.fileUri,
-        notesFileName: uploaded.geminiFileName,
-        noteCount: notes.length,
-        ...mergeFields,
-        ...(inputHash ? { inputHash } : {}),
-      }
-    : inlineBody;
-
-  const result = await postProxy<SubmitResynthesisResponse>('/api/synthesize', body);
-
-  if (result.status !== 'accepted') {
-    throw new Error(`Unexpected synthesis response: ${result.status}`);
-  }
-  return { momentId: result.momentId };
-};
-
-// --- Synthesis Polling ---
-
-export type SynthesisPollResult =
-  | { status: 'completed'; data: SynthesisResponse; inputHash?: string }
-  | { status: 'processing'; inputHash?: string }
-  | { status: 'failed'; inputHash?: string }
-  | { status: 'needs_rebuild'; inputHash?: string }
-  | { status: 'not_found' };
-
-interface SynthesisResultEntry {
-  status: 'completed' | 'failed' | 'not_found' | 'needs_rebuild' | string;
-  data?: SynthesisResponse;
-  inputHash?: string;
-}
-
-interface SynthesisResultsResponse {
-  results: Record<string, SynthesisResultEntry>;
-}
-
-/**
- * Fetches re-synthesis results for pending moments from the server.
- * Mirrors fetchPendingMomentResults() pattern.
- */
-export const fetchPendingSynthesisResults = async (
-  momentIds: string[],
-): Promise<Record<string, SynthesisPollResult>> => {
-  try {
-    const payload = { momentIds };
-    const response = await postProxy<SynthesisResultsResponse>(
-      '/api/synthesize/results',
-      payload as unknown as Record<string, unknown>
-    );
-
-    const result: Record<string, SynthesisPollResult> = {};
-    if (response && response.results) {
-      for (const id of momentIds) {
-        const entry = response.results[id];
-        if (entry?.status === 'not_found') {
-          result[id] = { status: 'not_found' };
-        } else if (entry?.status === 'completed' && entry.data) {
-          result[id] = { status: 'completed', data: entry.data, inputHash: entry.inputHash };
-        } else if (entry?.status === 'failed') {
-          result[id] = { status: 'failed', inputHash: entry.inputHash };
-        } else if (entry?.status === 'needs_rebuild') {
-          result[id] = { status: 'needs_rebuild', inputHash: entry.inputHash };
-        } else {
-          // Default unknown statuses to 'processing' as a safe intermediate state
-          result[id] = { status: 'processing', inputHash: entry?.inputHash };
-        }
-      }
-    }
-    return result;
-  } catch (error) {
-    console.error('Failed to fetch pending synthesis results:', error);
-    return {};
-  }
-};
-
-/**
- * Thrown by pollSynthesisResult when a structure-preserving merge reports it
- * couldn't place a new note. The caller keeps the existing synthesis and prompts
- * the user to rebuild the moment with the agent.
- */
-export class MomentNeedsRebuildError extends Error {
-  constructor() {
-    super('Moment needs agentic rebuild');
-    this.name = 'MomentNeedsRebuildError';
-  }
-}
-
-/** Poll every 1s during the initial fast-polling tier. */
-const SYNTH_FAST_POLL_INTERVAL_MS = 1_000;
-/** Poll every 2s after the fast tier expires. */
-const SYNTH_SLOW_POLL_INTERVAL_MS = 2_000;
-/** Duration of the fast-polling tier (first 15 seconds). */
-const SYNTH_FAST_POLL_TIER_MS = 15_000;
-/** Maximum time to poll before giving up. */
-const SYNTH_POLL_TIMEOUT_MS = 120_000;
-
-/**
- * Polls for a re-synthesis result with tiered intervals (1s for 15s, then 2s).
- * Returns the SynthesisResponse when complete, or throws on failure/timeout.
- * Accepts an optional AbortSignal to stop polling early when the caller is
- * cancelled (e.g. when a note deletion triggers a new synthesis request).
- */
-export const pollSynthesisResult = async (
-  momentId: string,
-  signal?: AbortSignal,
-): Promise<SynthesisResponse> => {
-  const start = Date.now();
-
-  while (Date.now() - start < SYNTH_POLL_TIMEOUT_MS) {
-    if (signal?.aborted) {
-      throw new DOMException('Synthesis polling aborted', 'AbortError');
-    }
-
-    const elapsed = Date.now() - start;
-    const interval = elapsed < SYNTH_FAST_POLL_TIER_MS
-      ? SYNTH_FAST_POLL_INTERVAL_MS
-      : SYNTH_SLOW_POLL_INTERVAL_MS;
-
-    // Abort-aware delay: rejects immediately if signal fires during the wait
-    await new Promise<void>((resolve, reject) => {
-      const onAbort = () => {
-        clearTimeout(timer);
-        reject(new DOMException('Synthesis polling aborted', 'AbortError'));
-      };
-      const timer = setTimeout(() => {
-        signal?.removeEventListener('abort', onAbort);
-        resolve();
-      }, interval);
-      signal?.addEventListener('abort', onAbort, { once: true });
-    });
-
-    const results = await fetchPendingSynthesisResults([momentId]);
-    const result = results[momentId];
-
-    if (result?.status === 'completed' && 'data' in result) {
-      return result.data;
-    }
-    if (result?.status === 'needs_rebuild') {
-      throw new MomentNeedsRebuildError();
-    }
-    if (result?.status === 'failed') {
-      throw new Error('Synthesis failed on server');
-    }
-  }
-
-  throw new Error('Synthesis polling timed out');
 };
 
 /**

@@ -113,11 +113,8 @@ const AppContent: React.FC = () => {
     updateMemory,
     updateMemoryContent,
     togglePin,
-    applyWebAdditions,
     dismissDeletionCandidate,
     isLoading,
-    setMomentsRef,
-    setOnNoteMatchedMoments,
     setOnEnrichmentCompleteCalendar,
     setOnCalendarEventsSync,
     setOnEnrichmentCompleteTodo,
@@ -128,21 +125,22 @@ const AppContent: React.FC = () => {
 
   const {
     moments,
+    matchesByMoment,
     createNewMoment,
-    loadSynthesis,
-    synthesisLoading,
     creating: momentCreating,
-    addNoteToMoment,
-    removeNoteFromMoments,
+    embeddingIds: momentEmbeddingIds,
+    retryEmbedding: retryMomentEmbedding,
+    hideNoteInMoment,
     deleteMoment,
-    synthesesMap,
     setOnMomentChanged,
     refreshMoments,
-    markMomentSeen,
-    rebuildMomentWithAgent,
-    dismissAgenticRebuild,
-    momentProgress,
-  } = useMoments(memories, applyWebAdditions);
+  } = useMoments(memories);
+
+  const momentMatchCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const [id, matches] of matchesByMoment) counts.set(id, matches.length);
+    return counts;
+  }, [matchesByMoment]);
 
   const {
     events: calendarEvents,
@@ -287,15 +285,6 @@ const AppContent: React.FC = () => {
     clearNotificationRoute();
   }, [notificationPendingRoute, notificationPendingDateKey, clearNotificationRoute]);
 
-  // Wire up moments ref and callback for enrichment-time moment matching
-  useEffect(() => {
-    setMomentsRef(moments);
-  }, [moments, setMomentsRef]);
-
-  useEffect(() => {
-    setOnNoteMatchedMoments(addNoteToMoment);
-  }, [addNoteToMoment, setOnNoteMatchedMoments]);
-
   // Wire up calendar event extraction from enrichment
   useEffect(() => {
     setOnEnrichmentCompleteCalendar(processDetectedEvents);
@@ -337,8 +326,7 @@ const AppContent: React.FC = () => {
 
   const handleMomentTap = useCallback((moment: Moment) => {
     setActiveMoment(moment);
-    markMomentSeen(moment.id);
-  }, [markMomentSeen]);
+  }, []);
 
   const handleMomentClose = useCallback(() => {
     setActiveMoment(null);
@@ -368,7 +356,7 @@ const AppContent: React.FC = () => {
       return;
     }
     if (memories.length === 0) {
-      setMomentError('You don\'t have any notes yet. Save some notes first, then come back to create a synthesis!');
+      setMomentError('You don\'t have any notes yet. Save some notes first, then come back to create a moment!');
       setTimeout(() => setMomentError(null), 5000);
       return;
     }
@@ -388,16 +376,16 @@ const AppContent: React.FC = () => {
     }
   }, [momentError]);
 
-  const handleCreateMomentSubmit = useCallback(async (objective: string) => {
+  const handleCreateMomentSubmit = useCallback(async (terms: string[]) => {
     setMomentError(null);
-    const moment = await createNewMoment(objective, memories);
+    const moment = await createNewMoment(terms);
     setShowCreateMoment(false);
     if (moment) {
       setActiveMoment(moment);
     } else {
-      setMomentError('Failed to create moment. Please check your connection and try again.');
+      setMomentError('Failed to create moment. Please try again.');
     }
-  }, [createNewMoment, memories]);
+  }, [createNewMoment]);
 
   const handleFullRefresh = useCallback(async () => {
       const [, , , , report] = await Promise.all([
@@ -757,7 +745,6 @@ const AppContent: React.FC = () => {
   const handleDeleteMemory = useCallback((id: string) => {
     handleDelete(id);
     deleteNoteFromIndex(id);
-    removeNoteFromMoments(id).catch(err => console.error('[Moments] Failed to remove note from moments:', err));
     removeEventsForMemory(id).then(tombstones => {
       if (tombstones.length > 0) {
         syncCalendarEvents(tombstones).catch(err => console.error('[Calendar] Failed to sync deleted events:', err));
@@ -769,14 +756,13 @@ const AppContent: React.FC = () => {
       }
     }).catch(err => console.error('[Todo] Failed to remove items for memory:', err));
     if (expandedMemory?.id === id) setExpandedMemory(null);
-  }, [handleDelete, expandedMemory, deleteNoteFromIndex, removeNoteFromMoments, removeEventsForMemory, syncCalendarEvents, removeTodoItemsForMemory, syncTodoItems]);
+  }, [handleDelete, expandedMemory, deleteNoteFromIndex, removeEventsForMemory, syncCalendarEvents, removeTodoItemsForMemory, syncTodoItems]);
 
   const handleDeleteNotes = useCallback(async (noteIds: string[]) => {
     await Promise.all(noteIds.map(async (id) => {
       try {
         await handleDelete(id);
         deleteNoteFromIndex(id);
-        await removeNoteFromMoments(id);
         const eventTombstones = await removeEventsForMemory(id);
         if (eventTombstones.length > 0) {
           await syncCalendarEvents(eventTombstones);
@@ -789,7 +775,7 @@ const AppContent: React.FC = () => {
         console.error(`[DeleteNotes] Failed to delete note ${id}:`, err);
       }
     }));
-  }, [handleDelete, deleteNoteFromIndex, removeNoteFromMoments, removeEventsForMemory, syncCalendarEvents, removeTodoItemsForMemory, syncTodoItems]);
+  }, [handleDelete, deleteNoteFromIndex, removeEventsForMemory, syncCalendarEvents, removeTodoItemsForMemory, syncTodoItems]);
 
   const handleUpdateCalendarEvent = useCallback(async (eventId: string, changes: Partial<CalendarEvent>) => {
     const updated = await updateEvent(eventId, changes);
@@ -928,8 +914,8 @@ const AppContent: React.FC = () => {
     return memories.find(m => m.id === expandedMemory.id) || expandedMemory;
   }, [expandedMemory, memories]);
 
-  // Keep active moment in sync with moments list so pending→completed
-  // transitions are reflected in the MomentSheet automatically.
+  // Keep active moment in sync with the moments list so a moment that finishes
+  // embedding (or has a note hidden) updates the open MomentSheet.
   const liveActiveMoment = useMemo(() => {
     if (!activeMoment) return null;
     return moments.find(m => m.id === activeMoment.id) || activeMoment;
@@ -1018,7 +1004,8 @@ const AppContent: React.FC = () => {
           calendarEventCount={calendarUpcomingCount}
           onTodoTap={handleTodoTap}
           todoPendingCount={todoPendingCount}
-          synthesisLoading={synthesisLoading}
+          matchCounts={momentMatchCounts}
+          embeddingIds={momentEmbeddingIds}
           deletionCandidateCount={deletionCandidates.length}
           onDeletionCandidatesTap={() => {
             setShowDeletionCandidates(true);
@@ -1242,18 +1229,18 @@ const AppContent: React.FC = () => {
             <MomentSheet
               moment={frozenActiveMoment}
               memories={memories}
+              matches={matchesByMoment.get(frozenActiveMoment.id) ?? []}
+              isEmbedding={momentEmbeddingIds.has(frozenActiveMoment.id)}
               onClose={handleMomentClose}
-              loadSynthesis={loadSynthesis}
               onDelete={deleteMoment}
+              onHideNote={hideNoteInMoment}
+              onRetryEmbedding={retryMomentEmbedding}
               onDeleteNotes={handleDeleteNotes}
               onViewAttachment={handleViewAttachment}
               onMemoryDelete={handleDeleteMemory}
               onMemoryEdit={handleEditMemory}
               onMemoryUpdate={updateMemoryContent}
               onMemoryTogglePin={handleTogglePin}
-              onRebuildWithAgent={rebuildMomentWithAgent}
-              onDismissRebuild={dismissAgenticRebuild}
-              agentProgress={momentProgress.get(frozenActiveMoment.id)}
             />
           )}
         </Suspense>
@@ -1278,6 +1265,7 @@ const AppContent: React.FC = () => {
         <Suspense fallback={null}>
           <AllMomentsSheet
             moments={moments}
+            matchCounts={momentMatchCounts}
             onClose={() => setShowAllMoments(false)}
             onSelectMoment={handleSelectMomentFromList}
           />

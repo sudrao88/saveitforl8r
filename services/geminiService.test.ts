@@ -1,11 +1,10 @@
 /**
- * Tests for the >1.2 MB request fallback in queryBrain, submitMomentCreation,
- * and submitResynthesis. Small payloads send notes/memories inline; large
- * payloads chunk-upload the context to the Gemini File API and send only the
- * resulting fileUri to the server.
+ * Tests for the >1.2 MB request fallback in queryBrain (small payloads send
+ * memories inline; large payloads chunk-upload the context to the Gemini File
+ * API and send only the resulting fileUri), and for embedMomentTerms.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { Memory, Moment } from '../types';
+import type { Memory } from '../types';
 
 vi.mock('./proxyService', () => ({
   postProxy: vi.fn(),
@@ -28,7 +27,7 @@ vi.mock('./chunkUploadService', () => ({
 
 import { postProxy } from './proxyService';
 import { uploadFileChunked } from './chunkUploadService';
-import { queryBrain, submitMomentCreation, submitResynthesis } from './geminiService';
+import { queryBrain, embedMomentTerms } from './geminiService';
 
 const mockPostProxy = postProxy as unknown as ReturnType<typeof vi.fn>;
 const mockUploadFileChunked = uploadFileChunked as unknown as ReturnType<typeof vi.fn>;
@@ -90,77 +89,22 @@ describe('geminiService — large-payload File API fallback', () => {
     });
   });
 
-  describe('submitMomentCreation', () => {
-    it('sends notes inline when payload is small', async () => {
-      mockPostProxy.mockResolvedValue({ status: 'accepted', momentId: 'mom-1' });
-      const memories = [makeMemory('mem-1')];
+  describe('embedMomentTerms', () => {
+    it('posts the terms and returns one vector per term plus the emoji', async () => {
+      mockPostProxy.mockResolvedValue({ vectors: [[1, 0], [0, 1]], emoji: '🇸🇬', model: 'gemini-embedding-2' });
 
-      await submitMomentCreation('plan a trip', memories, 'mom-1');
+      const result = await embedMomentTerms(['Singapore', 'hawker food']);
 
-      expect(mockUploadFileChunked).not.toHaveBeenCalled();
       const [path, body] = mockPostProxy.mock.calls[0];
-      expect(path).toBe('/api/create-moment');
-      expect(body.notes).toBeDefined();
-      expect(body.notesFileUri).toBeUndefined();
+      expect(path).toBe('/api/moment/embed');
+      expect(body).toEqual({ terms: ['Singapore', 'hawker food'] });
+      expect(result.vectors).toHaveLength(2);
+      expect(result.emoji).toBe('🇸🇬');
     });
 
-    it('uploads context and sends notesFileUri when payload exceeds threshold', async () => {
-      mockPostProxy.mockResolvedValue({ status: 'accepted', momentId: 'mom-1' });
-      const memories = Array.from({ length: 300 }, (_, i) => makeMemory(`mem-${i}`, 5_000));
-
-      await submitMomentCreation('plan a trip', memories, 'mom-1');
-
-      expect(mockUploadFileChunked).toHaveBeenCalledTimes(1);
-      const [path, body] = mockPostProxy.mock.calls[0];
-      expect(path).toBe('/api/create-moment');
-      expect(body.notesFileUri).toBe(FAKE_FILE_URI);
-      expect(body.notesFileName).toBe(FAKE_FILE_NAME);
-      expect(body.noteCount).toBe(300);
-      expect(body.notes).toBeUndefined();
-      expect(body.objective).toBe('plan a trip');
-    });
-  });
-
-  describe('submitResynthesis', () => {
-    const moment = {
-      id: 'mom-1',
-      title: 'My Moment',
-      type: 'general',
-      objective: 'test objective',
-      noteIds: [],
-      createdAt: 1700000000000,
-      updatedAt: 1700000000000,
-    } as unknown as Moment;
-
-    it('sends notes inline when payload is small', async () => {
-      mockPostProxy.mockResolvedValue({ status: 'accepted', momentId: 'mom-1' });
-      const memories = [makeMemory('mem-1')];
-      const m: Moment = { ...moment, noteIds: ['mem-1'] } as Moment;
-
-      await submitResynthesis(m, memories);
-
-      expect(mockUploadFileChunked).not.toHaveBeenCalled();
-      const [path, body] = mockPostProxy.mock.calls[0];
-      expect(path).toBe('/api/synthesize');
-      expect(body.notes).toBeDefined();
-      expect(body.notesFileUri).toBeUndefined();
-    });
-
-    it('uploads context and sends notesFileUri when payload exceeds threshold', async () => {
-      mockPostProxy.mockResolvedValue({ status: 'accepted', momentId: 'mom-1' });
-      const memories = Array.from({ length: 300 }, (_, i) => makeMemory(`mem-${i}`, 5_000));
-      const m: Moment = { ...moment, noteIds: memories.map((mem) => mem.id) } as Moment;
-
-      await submitResynthesis(m, memories);
-
-      expect(mockUploadFileChunked).toHaveBeenCalledTimes(1);
-      const [path, body] = mockPostProxy.mock.calls[0];
-      expect(path).toBe('/api/synthesize');
-      expect(body.notesFileUri).toBe(FAKE_FILE_URI);
-      expect(body.notesFileName).toBe(FAKE_FILE_NAME);
-      expect(body.noteCount).toBe(300);
-      expect(body.notes).toBeUndefined();
-      expect(body.momentId).toBe('mom-1');
+    it('throws when the vector count does not match the terms', async () => {
+      mockPostProxy.mockResolvedValue({ vectors: [[1, 0]], emoji: '✨', model: 'gemini-embedding-2' });
+      await expect(embedMomentTerms(['a', 'b'])).rejects.toThrow();
     });
   });
 });

@@ -2,7 +2,7 @@
 
 **Project:** SaveItForL8R
 **Feature:** Moments — Proactive synthesis of time-relevant notes
-**Status:** Design complete, ready for implementation
+**Status:** Superseded — moments are now saved semantic searches: terms are embedded once (`/api/moment/embed`) and notes are matched on-device by vector similarity (`utils/momentMatching.ts`, `hooks/useMoments.ts`). There is no AI synthesis. This document is kept for history.
 **Date:** 2026-02-24
 
 ---
