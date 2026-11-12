@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v135",
-  "buildNumber": 135,
-  "buildDate": "2026-06-25T00:31:20.175Z",
+  "version": "saveitforl8r-v136",
+  "buildNumber": 136,
+  "buildDate": "2026-11-12T05:40:27.108Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Tapping a calendar reminder now jumps straight to that day's events."
+  "changelog": "Moments are simpler: pick a few terms and see every related note, updated live and available offline."
 }
