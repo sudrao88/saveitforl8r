@@ -19,10 +19,13 @@ import { Memory, Moment, EMBEDDING_MODEL_ID } from '../types';
 import { getMoments, getMoment, saveMoment } from '../services/storageService';
 import { embedMomentTerms } from '../services/geminiService';
 import {
-  isMomentEmbedded,
+  canMatchMoment,
+  hasIntentVector,
   needsMomentEmbedding,
   matchNotesToMoment,
   explainMomentMatch,
+  buildMomentNoteIndex,
+  MomentNoteIndex,
   MAX_MOMENT_NOTES,
   MomentMatch,
 } from '../utils/momentMatching';
@@ -31,10 +34,10 @@ import {
 // persistent error (signed out, rate limited) doesn't fire on every refresh.
 const EMBED_RETRY_DELAY_MS = 60_000;
 
-// Set localStorage 'debug:moments' to '1' to log, for every moment, each
-// shown note's scores (blended / intent / best term) plus the notes hidden by
-// the user and the closest ones that fell below the cutoff — for tuning the
-// matching constants.
+// Set localStorage 'debug:moments' to '1' to log, for every moment, how each
+// note was matched: for hybrid moments the concepts, the word each note hit
+// per concept, its keyword and vector scores, plus the closest notes that
+// missed a concept; for embedding-only moments the vector scores and cutoff.
 const isMomentDebugOn = (): boolean => {
   try {
     return typeof localStorage !== 'undefined' && localStorage.getItem('debug:moments') === '1';
@@ -43,37 +46,39 @@ const isMomentDebugOn = (): boolean => {
   }
 };
 
-/** How many of the best below-cutoff notes to include, to show the margin. */
+/** How many near misses (partial / below-cutoff notes) to include. */
 export const DEBUG_NEAR_MISSES = 15;
 
 const fmt = (n: number | null | undefined) => (typeof n === 'number' ? n.toFixed(3) : '—');
 
-const logMomentScores = (moment: Moment, memories: Memory[]) => {
-  const report = explainMomentMatch(moment, memories);
-  const byId = new Map(memories.map(m => [m.id, m]));
-  const shownCount = report.rows.filter(r => r.status === 'shown').length;
-  const hiddenCount = report.rows.filter(r => r.status === 'hidden').length;
-  const overLimit = report.rows.filter(r => r.status === 'over-limit').length;
+const logMomentScores = (moment: Moment, index: MomentNoteIndex) => {
+  const report = explainMomentMatch(moment, index);
+  const count = (st: string) => report.rows.filter(r => r.status === st).length;
+  const overLimit = count('over-limit');
   let nearMisses = 0;
   const rows = report.rows
-    .filter(r => r.status !== 'below-cutoff' || nearMisses++ < DEBUG_NEAR_MISSES)
+    .filter(r => (r.status !== 'below-cutoff' && r.status !== 'partial') || nearMisses++ < DEBUG_NEAR_MISSES)
     .map((r, i) => {
-      const note = byId.get(r.id);
+      const note = index.byId.get(r.id);
       return {
         rank: i + 1,
         status: r.status,
         note: (note?.enrichment?.entityContext?.title || note?.content || r.id).slice(0, 60),
+        ...(report.mode === 'hybrid' ? { matched: r.matched, keyword: fmt(r.keyword) } : {}),
         score: fmt(r.score),
+        semantic: fmt(r.semantic),
         intent: fmt(r.intent),
         term: fmt(r.term),
         id: r.id,
       };
     });
+  const how = report.mode === 'hybrid'
+    ? `concepts ${report.concepts!.map(c => `[${c.join(' | ')}]`).join(' AND ')}`
+    : `cutoff ${fmt(report.cutoff)}`;
   console.groupCollapsed(
-    `[Moments] ${moment.emoji ?? ''} ${moment.title}: ${shownCount} shown, ${hiddenCount} hidden` +
-      (overLimit ? `, ${overLimit} over the ${MAX_MOMENT_NOTES}-note cap` : '') + ' — ' +
-      `mode ${report.mode}, best ${fmt(report.best)}, cutoff ${fmt(report.cutoff)}, ` +
-      `${report.rows.length} notes scored`,
+    `[Moments] ${moment.emoji ?? ''} ${moment.title}: ${count('shown')} shown, ${count('hidden')} hidden` +
+      (overLimit ? `, ${overLimit} over the ${MAX_MOMENT_NOTES}-note cap` : '') +
+      ` — mode ${report.mode}, ${how}`,
   );
   console.table(rows);
   console.groupEnd();
@@ -111,9 +116,10 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
   const onMomentChangedRef = useRef<((moment: Moment) => void) | undefined>(undefined);
   const inFlightEmbeds = useRef<Set<string>>(new Set());
   const lastEmbedFailure = useRef<Map<string, number>>(new Map());
-  // Set once the proxy answers without an intent vector (an older server):
-  // stop trying to upgrade term-only moments for the rest of the session.
-  const proxyLacksIntent = useRef(false);
+  // Set once the proxy answers without an intent vector or concepts (an older
+  // server): stop trying to upgrade already-working moments for the rest of
+  // the session.
+  const proxyOutdated = useRef(false);
 
   const setOnMomentChanged = useCallback((cb: (moment: Moment) => void) => {
     onMomentChangedRef.current = cb;
@@ -137,10 +143,10 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
       const current = await getMoment(momentId);
       if (!current || current.isDeleted || current.terms.length === 0) return null;
       if (!needsMomentEmbedding(current)) return current;
-      // A moment that already matches by its terms is being upgraded in the
-      // background — don't show it as "creating".
-      const upgrading = isMomentEmbedded(current);
-      if (upgrading && proxyLacksIntent.current) return current;
+      // A moment that already matches is being upgraded in the background —
+      // don't show it as "creating".
+      const upgrading = canMatchMoment(current);
+      if (upgrading && proxyOutdated.current) return current;
       if (!upgrading) setEmbeddingIds(prev => new Set(prev).add(momentId));
 
       const result = await embedMomentTerms(current.terms);
@@ -149,11 +155,13 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
       if (!latest || latest.isDeleted) return null;
       // Another device may have upgraded it (and synced) meanwhile — keep that.
       if (!needsMomentEmbedding(latest)) return latest;
-      if (!result.intentVector) {
-        proxyLacksIntent.current = true;
-        // Nothing new for a moment that already had term vectors: don't
-        // rewrite or re-sync it.
-        if (isMomentEmbedded(latest)) return latest;
+      const hasNewConcepts = Array.isArray(result.concepts) && result.concepts.length > 0;
+      if (!result.intentVector || !hasNewConcepts) {
+        proxyOutdated.current = true;
+        // Nothing new for a moment that already matches: don't rewrite or
+        // re-sync it.
+        const addsIntent = !!result.intentVector && !hasIntentVector(latest);
+        if (canMatchMoment(latest) && !addsIntent) return latest;
       }
       const updated: Moment = {
         ...latest,
@@ -166,6 +174,8 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
       };
       if (result.intentVector) updated.intentVector = result.intentVector;
       else delete updated.intentVector;
+      if (hasNewConcepts) updated.concepts = result.concepts;
+      else delete updated.concepts;
       await saveMoment(updated);
       replaceInList(updated);
       onMomentChangedRef.current?.(updated);
@@ -194,7 +204,7 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
     const now = Date.now();
     for (const m of list) {
       if (m.isDeleted || !needsMomentEmbedding(m)) continue;
-      if (proxyLacksIntent.current && isMomentEmbedded(m)) continue;
+      if (proxyOutdated.current && canMatchMoment(m)) continue;
       const failedAt = lastEmbedFailure.current.get(m.id);
       if (failedAt && now - failedAt < EMBED_RETRY_DELAY_MS) continue;
       await embedMoment(m.id);
@@ -297,16 +307,20 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
     [momentsList]
   );
 
+  // Note vectors and keyword index, prepared once per change to the notes and
+  // shared by every moment.
+  const noteIndex = useMemo(() => buildMomentNoteIndex(memories), [memories]);
+
   const matchesByMoment = useMemo(() => {
     const map = new Map<string, MomentMatch[]>();
     const debug = isMomentDebugOn();
     for (const m of moments) {
-      const matches = matchNotesToMoment(m, memories);
+      const matches = matchNotesToMoment(m, noteIndex);
       map.set(m.id, matches);
-      if (debug) logMomentScores(m, memories);
+      if (debug) logMomentScores(m, noteIndex);
     }
     return map;
-  }, [moments, memories]);
+  }, [moments, noteIndex]);
 
   return {
     moments,

@@ -307,6 +307,14 @@ export interface Moment {
    * embedded before it existed — they match by terms alone until re-embedded.
    */
   intentVector?: number[];
+  /**
+   * Required keyword concepts, each a list of synonyms with its label first,
+   * e.g. [["cafe", "café", "coffee shop"], ["bangalore", "bengaluru"]]. A note
+   * must mention every concept to match (utils/keywordMatching.ts); vectors
+   * then rank the matches. Absent on moments created before concepts existed
+   * — they match by vectors alone until re-embedded.
+   */
+  concepts?: string[][];
   embeddingModel?: string;        // Model that produced termVectors / intentVector
   emoji?: string;                 // Picked from the server's emoji dictionary
   excludedNoteIds?: string[];     // Matched notes the user chose to hide

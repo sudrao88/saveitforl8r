@@ -155,6 +155,13 @@ export const normalizeMoment = (raw: Moment): Moment => {
     delete moment.embeddingModel;
   }
   if (
+    moment.concepts !== undefined &&
+    (!Array.isArray(moment.concepts) || moment.concepts.length === 0 ||
+      !moment.concepts.every(c => Array.isArray(c) && c.length > 0 && c.every(w => typeof w === 'string')))
+  ) {
+    delete moment.concepts;
+  }
+  if (
     moment.intentVector !== undefined &&
     (!Array.isArray(moment.intentVector) || moment.intentVector.length === 0 ||
       !moment.intentVector.every(n => typeof n === 'number'))

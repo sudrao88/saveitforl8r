@@ -1,8 +1,20 @@
 import { Memory, Moment, EMBEDDING_MODEL_ID } from '../types';
 import { dot } from '../services/relatedMemories';
+import { buildKeywordIndex, KeywordIndex, prepareConcepts, scoreConcepts } from './keywordMatching';
 
 /**
- * Local vector matching for Moments.
+ * Local matching for Moments.
+ *
+ * Hybrid (moments with concepts). The server turns a moment's terms into 1-3
+ * required concepts with synonyms. A note qualifies only when its enriched
+ * fields mention every concept (keywordMatching.ts) — so "Fashion tips" can't
+ * pick up a wedding reminder and "Cafes in bangalore" can't pick up a shoe
+ * brand, however close their vectors happen to be. Qualifying notes are then
+ * ranked by reciprocal rank fusion of their keyword score and their vector
+ * similarity, and each match records the words it matched on.
+ *
+ * Embedding-only (moments created before concepts existed, until useMoments
+ * re-embeds them), described below.
  *
  * A moment carries an intent vector (its terms read together and expanded
  * server-side into a note-shaped description of the theme) and one vector per
@@ -42,6 +54,9 @@ export const MOMENT_MIN_SIMILARITY = 0.5;
 /** Notes more than this far below the moment's best match are dropped. */
 export const MOMENT_RELATIVE_MARGIN = 0.15;
 
+/** Reciprocal rank fusion constant (the standard 60). */
+export const RRF_K = 60;
+
 /** Upper bound on notes shown for one moment. */
 export const MAX_MOMENT_NOTES = 50;
 
@@ -52,7 +67,28 @@ export const MAX_MOMENT_TERM_LENGTH = 200;
 export interface MomentMatch {
   id: string;
   score: number;
+  /** Hybrid moments: the word that matched each concept, e.g. ["cafe", "bengaluru"]. */
+  matched?: string[];
 }
+
+/**
+ * Everything matching needs from the notes, prepared once per change to the
+ * notes and shared by every moment.
+ */
+export interface MomentNoteIndex {
+  memories: Memory[];
+  byId: Map<string, Memory>;
+  keyword: KeywordIndex;
+}
+
+export const buildMomentNoteIndex = (memories: Memory[]): MomentNoteIndex => ({
+  memories,
+  byId: new Map(memories.map(m => [m.id, m])),
+  keyword: buildKeywordIndex(memories),
+});
+
+const asIndex = (notes: Memory[] | MomentNoteIndex): MomentNoteIndex =>
+  Array.isArray(notes) ? buildMomentNoteIndex(notes) : notes;
 
 /** Score parts for one note, for debugging/tuning. */
 export interface MomentScore {
@@ -75,12 +111,26 @@ export const isMomentEmbedded = (moment: Moment): boolean =>
 export const hasIntentVector = (moment: Moment): boolean =>
   Array.isArray(moment.intentVector) && moment.intentVector.length > 0;
 
+/** True when the moment has keyword concepts (hybrid matching). */
+export const hasConcepts = (moment: Moment): boolean =>
+  Array.isArray(moment.concepts) &&
+  moment.concepts.length > 0 &&
+  moment.concepts.every(c => Array.isArray(c) && c.length > 0);
+
+/**
+ * True when the moment can show matches: it has usable vectors, or keyword
+ * concepts (which match even while its vectors are being refreshed, e.g.
+ * after an embedding-model change). False means it's still being set up.
+ */
+export const canMatchMoment = (moment: Moment): boolean =>
+  isMomentEmbedded(moment) || hasConcepts(moment);
+
 /**
  * True when the moment should be (re-)embedded: no usable vectors yet, or
- * only the older term-only vectors without an intent vector.
+ * older vectors without an intent vector or keyword concepts.
  */
 export const needsMomentEmbedding = (moment: Moment): boolean =>
-  !isMomentEmbedded(moment) || !hasIntentVector(moment);
+  !isMomentEmbedded(moment) || !hasIntentVector(moment) || !hasConcepts(moment);
 
 const noteVector = (m: Memory): number[] | null => {
   if (m.isDeleted) return null;
@@ -114,14 +164,69 @@ export const scoreNoteForMoment = (moment: Moment, v: number[]): MomentScore | n
   return { score: INTENT_WEIGHT * intent + TERM_WEIGHT * term, intent, term };
 };
 
+/** One qualifying note in a hybrid match, before the cap. */
+interface HybridCandidate {
+  id: string;
+  keyword: number;
+  semantic: number | null;
+  matched: string[];
+  score: number;
+}
+
+/**
+ * Hybrid match: notes that hit every concept, ranked by reciprocal rank
+ * fusion of keyword score and vector similarity. Includes hidden notes (the
+ * caller filters them) so the debug report can show them.
+ */
+const hybridCandidates = (moment: Moment, index: MomentNoteIndex): HybridCandidate[] => {
+  const concepts = prepareConcepts(moment.concepts!);
+  const qualifying = scoreConcepts(index.keyword, concepts).filter(r => r.hits.every(Boolean));
+  const cands: HybridCandidate[] = qualifying.map(r => {
+    const v = index.byId.get(r.id);
+    const vec = v ? noteVector(v) : null;
+    const sem = vec && isMomentEmbedded(moment) ? scoreNoteForMoment(moment, vec) : null;
+    return { id: r.id, keyword: r.score, semantic: sem?.score ?? null, matched: r.hits.map(h => h!.synonym), score: 0 };
+  });
+
+  const rank = (key: (c: HybridCandidate) => number) => {
+    const order = [...cands].sort((a, b) => key(b) - key(a) || (a.id < b.id ? -1 : 1));
+    return new Map(order.map((c, i) => [c.id, i + 1]));
+  };
+  const kwRank = rank(c => c.keyword);
+  const semRank = rank(c => c.semantic ?? -Infinity);
+  for (const c of cands) c.score = 1 / (RRF_K + kwRank.get(c.id)!) + 1 / (RRF_K + semRank.get(c.id)!);
+  return cands.sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : 1));
+};
+
 /**
  * Score every note against a moment and return the matches, best first.
- * Hidden notes (excludedNoteIds) are left out.
+ * Hidden notes (excludedNoteIds) are left out. Pass a prebuilt
+ * MomentNoteIndex to share the per-note work across moments.
  */
 export const matchNotesToMoment = (
   moment: Moment,
-  memories: Memory[],
+  notes: Memory[] | MomentNoteIndex,
   limit: number = MAX_MOMENT_NOTES,
+): MomentMatch[] => {
+  const index = asIndex(notes);
+  if (hasConcepts(moment)) {
+    const excluded = new Set(moment.excludedNoteIds || []);
+    return hybridCandidates(moment, index)
+      .filter(c => !excluded.has(c.id))
+      .slice(0, limit)
+      .map(c => ({ id: c.id, score: c.score, matched: c.matched }));
+  }
+  return matchByEmbedding(moment, index.memories, limit);
+};
+
+/**
+ * Embedding-only match for moments without concepts: blended similarity with
+ * a fixed floor and, for intent moments, a margin below the best match.
+ */
+const matchByEmbedding = (
+  moment: Moment,
+  memories: Memory[],
+  limit: number,
 ): MomentMatch[] => {
   if (!isMomentEmbedded(moment)) return [];
   const useIntent = hasIntentVector(moment);
@@ -148,21 +253,29 @@ export const matchNotesToMoment = (
 /** One note in a moment's debug breakdown. */
 export interface MomentDebugRow {
   id: string;
+  /** Ranking score (RRF for hybrid moments, blended similarity otherwise). */
   score: number;
+  /** Blended vector similarity and its intent / best-term parts. */
+  semantic: number | null;
   intent: number | null;
-  term: number;
+  term: number | null;
+  /** Hybrid only: keyword (BM25) score and the word matched per concept ("✗" = missed). */
+  keyword: number | null;
+  matched: string | null;
   /**
-   * shown = in the moment; hidden = the user hid it; over-limit = passed the
-   * cutoff but past the MAX_MOMENT_NOTES cap; below-cutoff = scored too low.
+   * shown = in the moment; hidden = the user hid it; over-limit = qualified
+   * but past the MAX_MOMENT_NOTES cap; partial = hit some concepts but not
+   * all (hybrid); below-cutoff = scored too low (embedding-only).
    */
-  status: 'shown' | 'hidden' | 'over-limit' | 'below-cutoff';
+  status: 'shown' | 'hidden' | 'over-limit' | 'partial' | 'below-cutoff';
 }
 
 export interface MomentDebugReport {
-  mode: 'intent' | 'term-only' | 'not-embedded';
-  /** Score a note needed to be shown (null when nothing qualified). */
+  mode: 'hybrid' | 'intent' | 'term-only' | 'not-embedded';
+  /** Hybrid: the concepts a note must all match. */
+  concepts: string[][] | null;
+  /** Embedding-only: score a note needed (null when nothing qualified). */
   cutoff: number | null;
-  best: number | null;
   rows: MomentDebugRow[];
 }
 
@@ -171,15 +284,49 @@ export interface MomentDebugReport {
  * Statuses come from matchNotesToMoment itself, so the report can't drift
  * from what the moment actually shows. Rows are best first.
  */
-export const explainMomentMatch = (moment: Moment, memories: Memory[]): MomentDebugReport => {
-  if (!isMomentEmbedded(moment)) return { mode: 'not-embedded', cutoff: null, best: null, rows: [] };
-  const useIntent = hasIntentVector(moment);
-  const shown = new Set(matchNotesToMoment(moment, memories).map(m => m.id));
-  const passing = new Set(matchNotesToMoment(moment, memories, Infinity).map(m => m.id));
+export const explainMomentMatch = (moment: Moment, notes: Memory[] | MomentNoteIndex): MomentDebugReport => {
+  const index = asIndex(notes);
   const excluded = new Set(moment.excludedNoteIds || []);
+  const shown = new Set(matchNotesToMoment(moment, index).map(m => m.id));
+  const statusOf = (id: string, qualifies: boolean): MomentDebugRow['status'] =>
+    excluded.has(id) ? 'hidden'
+      : shown.has(id) ? 'shown'
+      : qualifies ? 'over-limit'
+      : 'partial';
 
+  if (hasConcepts(moment)) {
+    const qualified = hybridCandidates(moment, index);
+    const qualifiedIds = new Set(qualified.map(c => c.id));
+    const semanticOf = (id: string) => {
+      const m = index.byId.get(id);
+      const v = m ? noteVector(m) : null;
+      return v && isMomentEmbedded(moment) ? scoreNoteForMoment(moment, v) : null;
+    };
+    const rows: MomentDebugRow[] = qualified.map(c => {
+      const sem = semanticOf(c.id);
+      return {
+        id: c.id, score: c.score, semantic: sem?.score ?? null, intent: sem?.intent ?? null, term: sem?.term ?? null,
+        keyword: c.keyword, matched: c.matched.join(' + '), status: statusOf(c.id, true),
+      };
+    });
+    const partial = scoreConcepts(index.keyword, prepareConcepts(moment.concepts!))
+      .filter(r => !qualifiedIds.has(r.id))
+      .sort((a, b) => b.hits.filter(Boolean).length - a.hits.filter(Boolean).length || b.score - a.score);
+    for (const r of partial) {
+      const sem = semanticOf(r.id);
+      rows.push({
+        id: r.id, score: 0, semantic: sem?.score ?? null, intent: sem?.intent ?? null, term: sem?.term ?? null,
+        keyword: r.score, matched: r.hits.map(h => h?.synonym ?? '✗').join(' + '), status: statusOf(r.id, false),
+      });
+    }
+    return { mode: 'hybrid', concepts: moment.concepts!, cutoff: null, rows };
+  }
+
+  if (!isMomentEmbedded(moment)) return { mode: 'not-embedded', concepts: null, cutoff: null, rows: [] };
+  const useIntent = hasIntentVector(moment);
+  const passing = new Set(matchByEmbedding(moment, index.memories, Infinity).map(m => m.id));
   const rows: MomentDebugRow[] = [];
-  for (const m of memories) {
+  for (const m of index.memories) {
     const v = noteVector(m);
     if (!v) continue;
     const s = scoreNoteForMoment(moment, v);
@@ -188,16 +335,19 @@ export const explainMomentMatch = (moment: Moment, memories: Memory[]): MomentDe
       : shown.has(m.id) ? 'shown'
       : passing.has(m.id) ? 'over-limit'
       : 'below-cutoff';
-    rows.push({ id: m.id, score: s.score, intent: s.intent, term: s.term, status });
+    rows.push({
+      id: m.id, score: s.score, semantic: s.score, intent: s.intent, term: s.term,
+      keyword: null, matched: null, status,
+    });
   }
   rows.sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : 1));
 
-  // Mirror matchNotesToMoment's cutoff for display.
+  // Mirror matchByEmbedding's cutoff for display.
   const best = rows.find(r => r.status !== 'hidden' && r.score >= MOMENT_MIN_SIMILARITY)?.score ?? null;
   const cutoff = best === null
     ? null
     : useIntent ? Math.max(MOMENT_MIN_SIMILARITY, best - MOMENT_RELATIVE_MARGIN) : MOMENT_MIN_SIMILARITY;
-  return { mode: useIntent ? 'intent' : 'term-only', cutoff, best, rows };
+  return { mode: useIntent ? 'intent' : 'term-only', concepts: null, cutoff, rows };
 };
 
 /**

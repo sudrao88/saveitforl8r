@@ -50,6 +50,17 @@ describe('normalizeMoment', () => {
     expect(m.embeddingModel).toBeUndefined();
   });
 
+  it('keeps valid concepts and drops malformed ones', () => {
+    const base = {
+      id: 'm5', title: 'a', terms: ['a'], termVectors: [[1, 0]],
+      embeddingModel: 'gemini-embedding-2', createdAt: 1, updatedAt: 2,
+    };
+    expect(normalizeMoment({ ...base, concepts: [['cafe', 'coffee'], ['bangalore']] }).concepts)
+      .toEqual([['cafe', 'coffee'], ['bangalore']]);
+    expect(normalizeMoment({ ...base, concepts: [[]] }).concepts).toBeUndefined();
+    expect(normalizeMoment({ ...base, concepts: [[1]] as unknown as string[][] }).concepts).toBeUndefined();
+  });
+
   it('drops a malformed intent vector but keeps valid term vectors', () => {
     const m = normalizeMoment({
       id: 'm4', title: 'a', terms: ['a'], termVectors: [[1, 0]],

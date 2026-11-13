@@ -3,7 +3,7 @@ import { X } from 'lucide-react';
 import { Moment } from '../types';
 import { FALLBACK_MOMENT_EMOJI } from './MomentBubble';
 import { overlay, card } from '../styles/design-system';
-import { isMomentEmbedded } from '../utils/momentMatching';
+import { canMatchMoment } from '../utils/momentMatching';
 
 interface AllMomentsSheetProps {
   moments: Moment[];
@@ -56,7 +56,7 @@ const AllMomentsSheet: React.FC<AllMomentsSheetProps> = ({
                     {moment.title}
                   </p>
                   <p className="text-xs text-(--color-text-secondary)">
-                    {isMomentEmbedded(moment)
+                    {canMatchMoment(moment)
                       ? `${count} note${count !== 1 ? 's' : ''}`
                       : 'Waiting for connection'}
                   </p>
