@@ -145,6 +145,61 @@ export const matchNotesToMoment = (
   return matches.slice(0, limit);
 };
 
+/** One note in a moment's debug breakdown. */
+export interface MomentDebugRow {
+  id: string;
+  score: number;
+  intent: number | null;
+  term: number;
+  /**
+   * shown = in the moment; hidden = the user hid it; over-limit = passed the
+   * cutoff but past the MAX_MOMENT_NOTES cap; below-cutoff = scored too low.
+   */
+  status: 'shown' | 'hidden' | 'over-limit' | 'below-cutoff';
+}
+
+export interface MomentDebugReport {
+  mode: 'intent' | 'term-only' | 'not-embedded';
+  /** Score a note needed to be shown (null when nothing qualified). */
+  cutoff: number | null;
+  best: number | null;
+  rows: MomentDebugRow[];
+}
+
+/**
+ * Score every note against a moment and label each one, for the debug log.
+ * Statuses come from matchNotesToMoment itself, so the report can't drift
+ * from what the moment actually shows. Rows are best first.
+ */
+export const explainMomentMatch = (moment: Moment, memories: Memory[]): MomentDebugReport => {
+  if (!isMomentEmbedded(moment)) return { mode: 'not-embedded', cutoff: null, best: null, rows: [] };
+  const useIntent = hasIntentVector(moment);
+  const shown = new Set(matchNotesToMoment(moment, memories).map(m => m.id));
+  const passing = new Set(matchNotesToMoment(moment, memories, Infinity).map(m => m.id));
+  const excluded = new Set(moment.excludedNoteIds || []);
+
+  const rows: MomentDebugRow[] = [];
+  for (const m of memories) {
+    const v = noteVector(m);
+    if (!v) continue;
+    const s = scoreNoteForMoment(moment, v);
+    if (!s) continue;
+    const status = excluded.has(m.id) ? 'hidden'
+      : shown.has(m.id) ? 'shown'
+      : passing.has(m.id) ? 'over-limit'
+      : 'below-cutoff';
+    rows.push({ id: m.id, score: s.score, intent: s.intent, term: s.term, status });
+  }
+  rows.sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : 1));
+
+  // Mirror matchNotesToMoment's cutoff for display.
+  const best = rows.find(r => r.status !== 'hidden' && r.score >= MOMENT_MIN_SIMILARITY)?.score ?? null;
+  const cutoff = best === null
+    ? null
+    : useIntent ? Math.max(MOMENT_MIN_SIMILARITY, best - MOMENT_RELATIVE_MARGIN) : MOMENT_MIN_SIMILARITY;
+  return { mode: useIntent ? 'intent' : 'term-only', cutoff, best, rows };
+};
+
 /**
  * Split the creation input into terms: commas or new lines separate terms,
  * whitespace is collapsed, and duplicates (case-insensitive) are dropped.

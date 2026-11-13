@@ -129,6 +129,40 @@ describe('useMoments', () => {
     });
   });
 
+  describe('debug log', () => {
+    afterEach(() => localStorage.removeItem('debug:moments'));
+
+    it('logs every shown note plus near misses when debug:moments is on', async () => {
+      localStorage.setItem('debug:moments', '1');
+      const group = vi.spyOn(console, 'groupCollapsed').mockImplementation(() => {});
+      const table = vi.spyOn(console, 'table').mockImplementation(() => {});
+      vi.spyOn(console, 'groupEnd').mockImplementation(() => {});
+      wireMomentStorage([makeMoment('m1')]);
+      const memories = [
+        ...Array.from({ length: 25 }, (_, i) => makeMemory(`hit${i}`, X)),
+        makeMemory('miss', Z),
+      ];
+
+      renderHook(() => useMoments(memories));
+      await flush();
+
+      const rows = table.mock.calls.at(-1)![0] as { status: string; id: string }[];
+      expect(rows.filter(r => r.status === 'shown')).toHaveLength(25);
+      expect(rows.some(r => r.id === 'miss' && r.status === 'below-cutoff')).toBe(true);
+      expect(group.mock.calls.at(-1)![0]).toMatch(/25 shown, 0 hidden — mode intent/);
+      vi.restoreAllMocks();
+    });
+
+    it('logs nothing when debug:moments is off', async () => {
+      const table = vi.spyOn(console, 'table').mockImplementation(() => {});
+      wireMomentStorage([makeMoment('m1')]);
+      renderHook(() => useMoments([makeMemory('n1', X)]));
+      await flush();
+      expect(table).not.toHaveBeenCalled();
+      vi.restoreAllMocks();
+    });
+  });
+
   describe('createNewMoment', () => {
     it('embeds the terms, stores vectors + emoji, and syncs once', async () => {
       const store = wireMomentStorage([]);
