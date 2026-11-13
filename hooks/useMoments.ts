@@ -22,7 +22,8 @@ import {
   isMomentEmbedded,
   needsMomentEmbedding,
   matchNotesToMoment,
-  scoreNoteForMoment,
+  explainMomentMatch,
+  MAX_MOMENT_NOTES,
   MomentMatch,
 } from '../utils/momentMatching';
 
@@ -30,8 +31,10 @@ import {
 // persistent error (signed out, rate limited) doesn't fire on every refresh.
 const EMBED_RETRY_DELAY_MS = 60_000;
 
-// Set localStorage 'debug:moments' to '1' to log each moment's top match
-// scores (intent / best term / blended) — for tuning the matching constants.
+// Set localStorage 'debug:moments' to '1' to log, for every moment, each
+// shown note's scores (blended / intent / best term) plus the notes hidden by
+// the user and the closest ones that fell below the cutoff — for tuning the
+// matching constants.
 const isMomentDebugOn = (): boolean => {
   try {
     return typeof localStorage !== 'undefined' && localStorage.getItem('debug:moments') === '1';
@@ -40,19 +43,38 @@ const isMomentDebugOn = (): boolean => {
   }
 };
 
-const logMomentScores = (moment: Moment, matches: MomentMatch[], memories: Memory[]) => {
+/** How many of the best below-cutoff notes to include, to show the margin. */
+export const DEBUG_NEAR_MISSES = 15;
+
+const fmt = (n: number | null | undefined) => (typeof n === 'number' ? n.toFixed(3) : '—');
+
+const logMomentScores = (moment: Moment, memories: Memory[]) => {
+  const report = explainMomentMatch(moment, memories);
   const byId = new Map(memories.map(m => [m.id, m]));
-  const rows = matches.slice(0, 20).map(({ id }) => {
-    const note = byId.get(id);
-    const s = note?.enrichment?.embedding ? scoreNoteForMoment(moment, note.enrichment.embedding) : null;
-    return {
-      note: (note?.enrichment?.entityContext?.title || note?.content || id).slice(0, 60),
-      score: s?.score.toFixed(3),
-      intent: s?.intent?.toFixed(3) ?? '—',
-      term: s?.term.toFixed(3),
-    };
-  });
-  console.groupCollapsed(`[Moments] ${moment.emoji ?? ''} ${moment.title}: ${matches.length} match(es)`);
+  const shownCount = report.rows.filter(r => r.status === 'shown').length;
+  const hiddenCount = report.rows.filter(r => r.status === 'hidden').length;
+  const overLimit = report.rows.filter(r => r.status === 'over-limit').length;
+  let nearMisses = 0;
+  const rows = report.rows
+    .filter(r => r.status !== 'below-cutoff' || nearMisses++ < DEBUG_NEAR_MISSES)
+    .map((r, i) => {
+      const note = byId.get(r.id);
+      return {
+        rank: i + 1,
+        status: r.status,
+        note: (note?.enrichment?.entityContext?.title || note?.content || r.id).slice(0, 60),
+        score: fmt(r.score),
+        intent: fmt(r.intent),
+        term: fmt(r.term),
+        id: r.id,
+      };
+    });
+  console.groupCollapsed(
+    `[Moments] ${moment.emoji ?? ''} ${moment.title}: ${shownCount} shown, ${hiddenCount} hidden` +
+      (overLimit ? `, ${overLimit} over the ${MAX_MOMENT_NOTES}-note cap` : '') + ' — ' +
+      `mode ${report.mode}, best ${fmt(report.best)}, cutoff ${fmt(report.cutoff)}, ` +
+      `${report.rows.length} notes scored`,
+  );
   console.table(rows);
   console.groupEnd();
 };
@@ -281,7 +303,7 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
     for (const m of moments) {
       const matches = matchNotesToMoment(m, memories);
       map.set(m.id, matches);
-      if (debug) logMomentScores(m, matches, memories);
+      if (debug) logMomentScores(m, memories);
     }
     return map;
   }, [moments, memories]);

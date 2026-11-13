@@ -5,6 +5,7 @@ import {
   needsMomentEmbedding,
   matchNotesToMoment,
   scoreNoteForMoment,
+  explainMomentMatch,
   MAX_MOMENT_TERMS,
   INTENT_WEIGHT,
   TERM_WEIGHT,
@@ -134,5 +135,48 @@ describe('matchNotesToMoment', () => {
       .map(m => m.id)
       .sort();
     expect(ids).toEqual(['x', 'y']);
+  });
+});
+
+describe('explainMomentMatch', () => {
+  it('scores every note and labels shown, hidden and below-cutoff, best first', () => {
+    const report = explainMomentMatch(
+      moment({ terms: ['a'], termVectors: [at(0)], excludedNoteIds: ['hidden'] }),
+      [note('best', at(0)), note('hidden', at(5)), note('near', at(20)), note('far', at(45)), note('opposite', at(180))],
+    );
+    expect(report.mode).toBe('intent');
+    expect(report.best).toBeCloseTo(1);
+    expect(report.cutoff).toBeCloseTo(1 - MOMENT_RELATIVE_MARGIN);
+    expect(report.rows.map(r => [r.id, r.status])).toEqual([
+      ['best', 'shown'],
+      ['hidden', 'hidden'],
+      ['near', 'shown'],
+      ['far', 'below-cutoff'],
+      ['opposite', 'below-cutoff'],
+    ]);
+  });
+
+  it('agrees with matchNotesToMoment on which notes are shown', () => {
+    const notes = Array.from({ length: 30 }, (_, i) => note(`n${i}`, at(i * 6)));
+    const m = moment();
+    const shown = explainMomentMatch(m, notes).rows.filter(r => r.status === 'shown').map(r => r.id);
+    expect(shown).toEqual(matchNotesToMoment(m, notes).map(x => x.id));
+  });
+
+  it('labels notes past the note cap as over-limit', () => {
+    const notes = Array.from({ length: 60 }, (_, i) => note(`n${String(i).padStart(2, '0')}`, at(0)));
+    const report = explainMomentMatch(moment({ terms: ['a'], termVectors: [at(0)] }), notes);
+    expect(report.rows.filter(r => r.status === 'shown')).toHaveLength(50);
+    expect(report.rows.filter(r => r.status === 'over-limit')).toHaveLength(10);
+  });
+
+  it('reports term-only mode with the fixed floor for a moment without an intent vector', () => {
+    const report = explainMomentMatch(moment({ intentVector: undefined }), [note('x', at(0))]);
+    expect(report.mode).toBe('term-only');
+    expect(report.cutoff).toBe(MOMENT_MIN_SIMILARITY);
+  });
+
+  it('reports not-embedded for a moment still waiting for vectors', () => {
+    expect(explainMomentMatch(moment({ termVectors: undefined }), [note('x', at(0))]).mode).toBe('not-embedded');
   });
 });
