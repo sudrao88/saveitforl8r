@@ -254,11 +254,62 @@ describe('useMoments', () => {
     expect(onChanged).toHaveBeenCalledWith(expect.objectContaining({ id: 'old', intentVector: Y }));
   });
 
-  it('does not re-embed a moment that already has an intent vector', async () => {
-    wireMomentStorage([makeMoment('m1')]);
+  it('does not re-embed a moment that already has an intent vector and concepts', async () => {
+    wireMomentStorage([makeMoment('m1', { concepts: [['test']] })]);
     renderHook(() => useMoments([]));
     await flush();
     expect(geminiService.embedMomentTerms).not.toHaveBeenCalled();
+  });
+
+  describe('keyword concepts', () => {
+    const withConcepts = async (terms: string[]) => ({
+      vectors: terms.map(() => Y),
+      intentVector: Y,
+      concepts: [['cafe', 'coffee'], ['bangalore', 'bengaluru']],
+      emoji: '☕',
+      model: EMBEDDING_MODEL_ID,
+    });
+    const cafeNote: Memory = {
+      ...makeMemory('cafe', X),
+      content: 'Beyond Bean Coffee, a cafe in Bengaluru',
+    };
+
+    it('stores concepts from the server and matches by them, recording the matched words', async () => {
+      (geminiService.embedMomentTerms as any).mockImplementation(withConcepts);
+      const store = wireMomentStorage([]);
+      const memories = [cafeNote, makeMemory('other', Y)];
+      const { result } = renderHook(() => useMoments(memories));
+      await flush();
+
+      let created: Moment | null = null;
+      await act(async () => { created = await result.current.createNewMoment(['Cafes in bangalore']); });
+
+      expect(store.get(created!.id)!.concepts).toEqual([['cafe', 'coffee'], ['bangalore', 'bengaluru']]);
+      const matches = result.current.matchesByMoment.get(created!.id)!;
+      // 'other' is closer by vector (Y) but mentions neither concept.
+      expect(matches.map(m => m.id)).toEqual(['cafe']);
+      expect(matches[0].matched).toEqual(['cafe', 'bengaluru']);
+    });
+
+    it('re-embeds a moment that has an intent vector but no concepts, keeping its emoji', async () => {
+      (geminiService.embedMomentTerms as any).mockImplementation(withConcepts);
+      const store = wireMomentStorage([makeMoment('m1', { emoji: '🍜' })]);
+      renderHook(() => useMoments([]));
+      await waitFor(() => expect(store.get('m1')!.concepts).toHaveLength(2));
+      expect(store.get('m1')!.emoji).toBe('🍜');
+    });
+
+    it('leaves a working moment untouched when the server returns no concepts', async () => {
+      const original = makeMoment('m1');
+      const store = wireMomentStorage([original]);
+      const onChanged = vi.fn();
+      const { result } = renderHook(() => useMoments([]));
+      act(() => result.current.setOnMomentChanged(onChanged));
+      await flush();
+      await flush();
+      expect(store.get('m1')).toEqual(original);
+      expect(onChanged).not.toHaveBeenCalled();
+    });
   });
 
   it('does not show a background upgrade as "creating"', async () => {

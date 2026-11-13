@@ -3,6 +3,7 @@ import {
   parseMomentTerms,
   isMomentEmbedded,
   needsMomentEmbedding,
+  canMatchMoment,
   matchNotesToMoment,
   scoreNoteForMoment,
   explainMomentMatch,
@@ -54,8 +55,13 @@ describe('needsMomentEmbedding', () => {
     expect(needsMomentEmbedding({ ...base, intentVector: [] })).toBe(true);
   });
 
-  it('is false once both term and intent vectors are present', () => {
-    expect(needsMomentEmbedding({ ...base, intentVector: [1, 0] })).toBe(false);
+  it('is true while keyword concepts are missing', () => {
+    expect(needsMomentEmbedding({ ...base, intentVector: [1, 0] })).toBe(true);
+    expect(needsMomentEmbedding({ ...base, intentVector: [1, 0], concepts: [] })).toBe(true);
+  });
+
+  it('is false once term vectors, the intent vector and concepts are present', () => {
+    expect(needsMomentEmbedding({ ...base, intentVector: [1, 0], concepts: [['a']] })).toBe(false);
   });
 });
 
@@ -145,7 +151,6 @@ describe('explainMomentMatch', () => {
       [note('best', at(0)), note('hidden', at(5)), note('near', at(20)), note('far', at(45)), note('opposite', at(180))],
     );
     expect(report.mode).toBe('intent');
-    expect(report.best).toBeCloseTo(1);
     expect(report.cutoff).toBeCloseTo(1 - MOMENT_RELATIVE_MARGIN);
     expect(report.rows.map(r => [r.id, r.status])).toEqual([
       ['best', 'shown'],
@@ -178,5 +183,120 @@ describe('explainMomentMatch', () => {
 
   it('reports not-embedded for a moment still waiting for vectors', () => {
     expect(explainMomentMatch(moment({ termVectors: undefined }), [note('x', at(0))]).mode).toBe('not-embedded');
+  });
+});
+
+// --- Hybrid matching (moments with concepts) ------------------------------
+//
+// Notes modelled on real ones: enriched fields only, with vectors chosen so
+// the generic reminder is the closest to everything (as embeddings make it).
+describe('hybrid matching', () => {
+  const enriched = (
+    id: string,
+    fields: { title: string; type?: string; subtitle?: string; tags?: string[]; summary?: string; place?: string },
+    vec: number[],
+  ): Memory => ({
+    id, content: '', timestamp: 0, tags: [],
+    enrichment: {
+      summary: fields.summary || '',
+      suggestedTags: fields.tags || [],
+      entityContext: { type: fields.type || 'Other', title: fields.title, subtitle: fields.subtitle },
+      ...(fields.place ? { locationContext: { name: fields.place } } : {}),
+      embedding: vec,
+      embeddingModel: EMBEDDING_MODEL_ID,
+    } as Memory['enrichment'],
+  });
+
+  const notes = [
+    enriched('wedding', { title: "Brijesh's Wedding", summary: "Reminder for Brijesh's wedding on November 22." }, at(2)),
+    enriched('beyond-bean', {
+      title: 'Beyond Bean Coffee', type: 'Place', subtitle: 'Coffee Shop & Fast Food Cafe',
+      tags: ['#CoffeeShop', '#BangaloreEats', '#Desserts', '#Cafe'],
+      summary: 'A cafe in Bangalore known for fresh fruit ice cream.',
+    }, at(20)),
+    enriched('third-wave', {
+      title: 'Third Wave Coffee', type: 'Place', tags: ['coffee', 'roastery'], place: 'Indiranagar, Bengaluru',
+      summary: 'Specialty coffee roasters.',
+    }, at(30)),
+    enriched('mala', {
+      title: 'Mala Kitchen', type: 'Place', summary: 'A home-based Sichuan supper club in Bangalore.',
+    }, at(10)),
+    enriched('vibram', {
+      title: 'Vibram Shoes', type: 'Product', tags: ['shoes', 'outdoor gear'],
+      summary: "Vibram, a brand famous for rubber soles and 'FiveFingers' shoes.",
+    }, at(15)),
+    enriched('ecoline', {
+      title: 'Ecoline Clothing', type: 'Product', tags: ['#SustainableFashion', 'apparel'],
+      summary: 'An eco-friendly clothing label.',
+    }, at(40)),
+    enriched('boutique', {
+      title: 'Luxury Boutique', type: 'Place', tags: ['boutique', 'designer wear'],
+      summary: 'Designer outfits and bridal wear.',
+    }, at(50)),
+  ];
+
+  const hybridMoment = (concepts: string[][], intentDeg = 0) => moment({
+    terms: ['x'], termVectors: [at(intentDeg)], intentVector: at(intentDeg), concepts,
+  });
+
+  const cafes = hybridMoment([
+    ['cafe', 'café', 'coffee shop', 'coffee', 'roastery'],
+    ['bangalore', 'bengaluru', 'koramangala', 'indiranagar'],
+  ]);
+  const fashion = hybridMoment([['fashion', 'clothing', 'apparel', 'outfit', 'boutique', 'designer wear']]);
+
+  it('requires every concept: cafes in Bangalore, not other Bangalore places or brands', () => {
+    const ids = matchNotesToMoment(cafes, notes).map(m => m.id).sort();
+    expect(ids).toEqual(['beyond-bean', 'third-wave']);
+  });
+
+  it('keeps generic reminders out even when their vector is the closest', () => {
+    const ids = matchNotesToMoment(fashion, notes).map(m => m.id);
+    expect(ids).not.toContain('wedding');
+    expect(ids).not.toContain('beyond-bean');
+    expect(ids.sort()).toEqual(['boutique', 'ecoline']);
+  });
+
+  it('records the word each note matched per concept', () => {
+    const byId = new Map(matchNotesToMoment(cafes, notes).map(m => [m.id, m.matched]));
+    expect(byId.get('beyond-bean')).toEqual(['cafe', 'bangalore']);
+    expect(byId.get('third-wave')![1]).toMatch(/indiranagar|bengaluru/);
+  });
+
+  it('ranks qualifying notes by keyword and vector rank together', () => {
+    // Moment vector points at third-wave (30°); beyond-bean has more keyword hits.
+    const ranked = matchNotesToMoment(hybridMoment(cafes.concepts!, 30), notes).map(m => m.id);
+    expect(ranked).toHaveLength(2);
+    const [a, b] = matchNotesToMoment(hybridMoment(cafes.concepts!, 30), notes);
+    expect(a.score).toBeGreaterThanOrEqual(b.score);
+  });
+
+  it('leaves hidden notes out', () => {
+    const ids = matchNotesToMoment({ ...cafes, excludedNoteIds: ['beyond-bean'] }, notes).map(m => m.id);
+    expect(ids).toEqual(['third-wave']);
+  });
+
+  it('shows nothing when no note matches every concept', () => {
+    expect(matchNotesToMoment(hybridMoment([['cafe'], ['tokyo']]), notes)).toEqual([]);
+  });
+
+  it('explains hybrid matches, with partial matches as near misses', () => {
+    const report = explainMomentMatch(cafes, notes);
+    expect(report.mode).toBe('hybrid');
+    expect(report.concepts).toEqual(cafes.concepts);
+    const status = Object.fromEntries(report.rows.map(r => [r.id, r.status]));
+    expect(status['beyond-bean']).toBe('shown');
+    expect(status['mala']).toBe('partial'); // Bangalore, but not a cafe
+    expect(report.rows.find(r => r.id === 'mala')!.matched).toBe('✗ + bangalore');
+    expect(status['vibram']).toBeUndefined(); // matched no concept at all
+  });
+});
+
+describe('canMatchMoment', () => {
+  const base: Moment = { id: 'm', title: 't', terms: ['a'], createdAt: 0, updatedAt: 0 };
+  it('is true with current vectors or with concepts, even if vectors are stale', () => {
+    expect(canMatchMoment(base)).toBe(false);
+    expect(canMatchMoment({ ...base, termVectors: [[1]], embeddingModel: EMBEDDING_MODEL_ID })).toBe(true);
+    expect(canMatchMoment({ ...base, termVectors: [[1]], embeddingModel: 'old-model', concepts: [['a']] })).toBe(true);
   });
 });

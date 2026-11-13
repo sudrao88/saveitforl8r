@@ -4,7 +4,7 @@
  * Moments are matched to notes entirely on the client: each note already
  * carries a synced similarity vector, and the moment carries an intent vector
  * (the terms read together, expanded into a note-shaped description) plus one
- * vector per term. This endpoint is only called when a moment is created (or
+ * vector per term, and the keyword concepts a note must match. This endpoint is only called when a moment is created (or
  * re-embedded after a matching upgrade) to produce those vectors (same model
  * as notes) and pick an emoji from the emoji dictionary. Nothing is persisted
  * server-side.
@@ -28,7 +28,7 @@ export const createMomentRouter = ({ ai, MODEL_NAME, FALLBACK_MODEL_NAME, GEMINI
     message: { error: 'Rate limit exceeded. Try again later.' },
   });
 
-  // POST /api/moment/embed { terms: string[] } → { vectors, intentVector, emoji, model }
+  // POST /api/moment/embed { terms: string[] } → { vectors, intentVector, concepts, emoji, model }
   router.post('/embed', authenticateRequest, validateMomentEmbedInput, momentLimiter, async (req, res) => {
     const terms = req.body.terms.map((t) => t.trim());
 
@@ -37,14 +37,17 @@ export const createMomentRouter = ({ ai, MODEL_NAME, FALLBACK_MODEL_NAME, GEMINI
     req.on('close', () => controller.abort());
 
     try {
-      const { vectors, intentVector, emoji, intentSource } = await embedMomentTerms(ai, terms, {
+      const { vectors, intentVector, concepts, emoji, intentSource } = await embedMomentTerms(ai, terms, {
         signal: controller.signal,
         model: MODEL_NAME,
         fallbackModel: FALLBACK_MODEL_NAME,
       });
       clearTimeout(timeout);
-      console.log(`[MomentEmbed] [${req.requestId}] Embedded ${terms.length} term(s), intent from ${intentSource}`);
-      res.json({ vectors, intentVector, emoji, model: EMBEDDING_MODEL });
+      console.log(
+        `[MomentEmbed] [${req.requestId}] Embedded ${terms.length} term(s), intent from ${intentSource}, ` +
+          `${concepts.length} concept(s)`,
+      );
+      res.json({ vectors, intentVector, concepts, emoji, model: EMBEDDING_MODEL });
     } catch (err) {
       clearTimeout(timeout);
       console.error(`[MomentEmbed] [${req.requestId}] Embedding failed:`, err.message);

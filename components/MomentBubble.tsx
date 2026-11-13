@@ -10,7 +10,7 @@ import React from 'react';
 import { Loader2, CloudOff } from 'lucide-react';
 import { Moment } from '../types';
 import { text } from '../styles/design-system';
-import { isMomentEmbedded } from '../utils/momentMatching';
+import { canMatchMoment } from '../utils/momentMatching';
 
 interface MomentBubbleProps {
   moment: Moment;
@@ -32,7 +32,7 @@ const MomentBubble: React.FC<MomentBubbleProps> = ({
   onTap,
   isEmbedding = false,
 }) => {
-  const isWaiting = !isMomentEmbedded(moment);
+  const isWaiting = !canMatchMoment(moment);
 
   const ringClass = isEmbedding
     ? 'ring-2 ring-(--color-accent) animate-pulse'

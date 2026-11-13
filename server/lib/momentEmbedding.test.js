@@ -4,6 +4,8 @@ import {
   buildFallbackIntentText,
   buildIntentEmbeddingText,
   sanitizeMomentIntent,
+  sanitizeConcepts,
+  buildFallbackConcepts,
   pickEmoji,
   embedMomentTerms,
   resetEmojiVectorCache,
@@ -21,6 +23,10 @@ const INTENT = {
   summary: 'A meal at a Singapore hawker centre.',
   description: 'Chicken rice, laksa and satay stalls at Maxwell or Lau Pa Sat.',
   tags: ['hawker centre', 'laksa', 'chicken rice'],
+  concepts: [
+    { label: 'Singapore', synonyms: ['singapore', 'sg', 'maxwell'] },
+    { label: 'hawker food', synonyms: ['hawker centre', 'laksa', 'chicken rice'] },
+  ],
 };
 
 // Fake Gemini client: every content embeds to a one-hot vector chosen by
@@ -86,6 +92,37 @@ describe('intent text', () => {
   });
 });
 
+describe('concepts', () => {
+  it('cleans concepts to lowercase synonym lists, label first, dropping generic words', () => {
+    expect(sanitizeConcepts([
+      { label: 'Cafe', synonyms: ['Café', 'coffee shop', 'cafe', 'tips', '<b>Roastery</b>', 42] },
+      { label: 'tips', synonyms: ['ideas'] },
+      'junk',
+    ])).toEqual([['cafe', 'café', 'coffee shop', 'roastery']]);
+  });
+
+  it('caps concepts and synonyms', () => {
+    const many = Array.from({ length: 6 }, (_, i) => ({ label: `c${i}`, synonyms: Array.from({ length: 20 }, (_, j) => `s${j}`) }));
+    const out = sanitizeConcepts(many);
+    expect(out).toHaveLength(4);
+    expect(out[0]).toHaveLength(12);
+    expect(sanitizeConcepts(undefined)).toEqual([]);
+  });
+
+  it('falls back to one required concept per content word of a single term', () => {
+    expect(buildFallbackConcepts(['Cafes in Bangalore'])).toEqual([['cafes'], ['bangalore']]);
+  });
+
+  it('treats several terms as alternatives in one concept', () => {
+    expect(buildFallbackConcepts(['Tokyo', 'Kyoto ramen'])).toEqual([['tokyo', 'kyoto ramen', 'kyoto', 'ramen']]);
+  });
+
+  it('never returns no concepts, even for generic-only or symbol-only terms', () => {
+    expect(buildFallbackConcepts(['Best ideas'])).toEqual([['best'], ['ideas']]);
+    expect(buildFallbackConcepts(['🙂'])).toEqual([['🙂']]);
+  });
+});
+
 describe('pickEmoji', () => {
   it('picks the emoji closest to the mean of the given vectors', () => {
     const emojiVectors = EMOJI_DICTIONARY.map((_, i) => (i === 7 ? unit(1) : unit(0)));
@@ -123,6 +160,8 @@ describe('embedMomentTerms', () => {
     expect(vectors).toEqual([unit(0), unit(0)]);
     expect(intentVector).toEqual(unit(3));
     expect(intentSource).toBe('llm');
+    const { concepts } = await embedMomentTerms(ai, ['Singapore', 'hawker food'], MODELS);
+    expect(concepts).toEqual([['singapore', 'sg', 'maxwell'], ['hawker food', 'hawker centre', 'laksa', 'chicken rice']]);
     const call = ai.models.generateContent.mock.calls[0][0];
     expect(call.model).toBe('primary');
     expect(call.config.systemInstruction).toMatch(/TOGETHER/);
@@ -164,6 +203,18 @@ describe('embedMomentTerms', () => {
     expect(ai.models.generateContent.mock.calls.map(([a]) => a.model)).toEqual(['primary', 'fallback']);
     expect(intentVector).toEqual(unit(1));
     expect(intentSource).toBe('template');
+  });
+
+  it('uses the terms\' content words as concepts when expansion fails', async () => {
+    const ai = makeAi(() => unit(0), new Error('down'));
+    const { concepts } = await embedMomentTerms(ai, ['Cafes in Bangalore'], MODELS);
+    expect(concepts).toEqual([['cafes'], ['bangalore']]);
+  });
+
+  it('uses the fallback when the model returns only generic concepts', async () => {
+    const ai = makeAi(() => unit(0), { ...INTENT, concepts: [{ label: 'tips', synonyms: ['ideas'] }] });
+    const { concepts } = await embedMomentTerms(ai, ['Fashion tips'], MODELS);
+    expect(concepts).toEqual([['fashion']]);
   });
 
   it('uses the template without calling a model when none is configured', async () => {

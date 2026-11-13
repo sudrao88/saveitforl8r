@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v138",
-  "buildNumber": 138,
-  "buildDate": "2026-11-13T02:02:06.613Z",
+  "version": "saveitforl8r-v139",
+  "buildNumber": 139,
+  "buildDate": "2026-11-13T02:20:37.283Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Moments: a more detailed debug log of how notes are matched, to help tune relevance."
+  "changelog": "Moments are more precise: notes must mention what the moment is about, and each shows the words it matched."
 }

@@ -15,7 +15,7 @@ import MemoryPreviewModal from './MemoryPreviewModal';
 import MomentNoteDeletionSheet from './MomentNoteDeletionSheet';
 import { FALLBACK_MOMENT_EMOJI } from './MomentBubble';
 import { overlay, btn, chip, card, text } from '../styles/design-system';
-import { isMomentEmbedded, MomentMatch } from '../utils/momentMatching';
+import { canMatchMoment, MomentMatch } from '../utils/momentMatching';
 
 type DeleteConfirmStep = 'choose' | 'confirm-notes';
 
@@ -87,8 +87,14 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
     return out;
   }, [matches, memoriesMap]);
 
+  // Words each note matched on (hybrid moments), shown under its date.
+  const matchedById = useMemo(
+    () => new Map(matches.filter(m => m.matched?.length).map(m => [m.id, m.matched!])),
+    [matches],
+  );
+
   const previewMemory = previewMemoryId ? memoriesMap.get(previewMemoryId) : undefined;
-  const embedded = isMomentEmbedded(moment);
+  const embedded = canMatchMoment(moment);
   const noteCount = notes.length;
   const noteLabel = noteCount === 1 ? 'note' : 'notes';
   const hiddenCount = moment.excludedNoteIds?.length ?? 0;
@@ -203,7 +209,12 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
                           {snippet}
                         </p>
                       )}
-                      <p className={`${text.caption} mt-1`}>{formatDate(memory.timestamp)}</p>
+                      <p className={`${text.caption} mt-1`}>
+                        {formatDate(memory.timestamp)}
+                        {matchedById.has(memory.id) && (
+                          <span> · matched {matchedById.get(memory.id)!.join(', ')}</span>
+                        )}
+                      </p>
                     </button>
                     <button
                       onClick={() => onHideNote(moment.id, memory.id)}

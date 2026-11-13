@@ -72,6 +72,8 @@ export interface MomentEmbedResult {
   vectors: number[][];
   /** Whole-moment vector. Optional only so an older proxy still works. */
   intentVector?: number[];
+  /** Required keyword concepts (synonyms, label first). Optional for older proxies. */
+  concepts?: string[][];
   emoji: string;
   model: string;
 }
@@ -90,6 +92,13 @@ export const embedMomentTerms = async (terms: string[]): Promise<MomentEmbedResu
   }
   if (result.intentVector !== undefined && (!Array.isArray(result.intentVector) || result.intentVector.length === 0)) {
     throw new Error('Unexpected moment intent vector');
+  }
+  if (
+    result.concepts !== undefined &&
+    (!Array.isArray(result.concepts) ||
+      !result.concepts.every(c => Array.isArray(c) && c.length > 0 && c.every(w => typeof w === 'string')))
+  ) {
+    throw new Error('Unexpected moment concepts');
   }
   return result;
 };
