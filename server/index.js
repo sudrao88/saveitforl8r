@@ -44,7 +44,7 @@ if (!GOOGLE_CLIENT_ID) {
   process.exit(1);
 }
 
-const MODEL_NAME = 'gemini-3-flash-preview';
+const MODEL_NAME = 'gemini-4-hydrogen';
 const FALLBACK_MODEL_NAME = 'gemini-2.0-flash';
 const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
