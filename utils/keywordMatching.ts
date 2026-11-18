@@ -17,6 +17,18 @@ import { Memory } from '../types';
  * Dependency-free and deterministic so every device matches the same notes.
  */
 
+/**
+ * Words that describe the kind of collection rather than its subject ("tips",
+ * "ideas", "places"…), plus stop words. Never a concept or suggestion on their
+ * own. Keep in sync with GENERIC_WORDS in server/lib/momentEmbedding.js.
+ */
+export const GENERIC_KEYWORDS = new Set([
+  'a', 'an', 'and', 'the', 'of', 'in', 'on', 'at', 'for', 'to', 'with', 'from', 'by', 'about', 'my', 'our',
+  'near', 'around', 'or', 'best', 'good', 'great', 'top', 'favorite', 'favourite', 'tips', 'tip', 'ideas',
+  'idea', 'notes', 'note', 'things', 'thing', 'stuff', 'list', 'lists', 'places', 'place', 'info', 'guide',
+  'guides', 'recommendations', 'recommendation', 'suggestions',
+]);
+
 // BM25 parameters (standard values).
 const K1 = 1.2;
 const B = 0.75;

@@ -8,6 +8,8 @@
 import React from 'react';
 import { Sparkles, ChevronRight, Calendar, CheckSquare, Trash2 } from 'lucide-react';
 import MomentBubble from './MomentBubble';
+import SuggestedMomentBubble from './SuggestedMomentBubble';
+import { MomentSuggestion } from '../utils/momentSuggestions';
 import { Moment } from '../types';
 import { text, layout } from '../styles/design-system';
 
@@ -26,6 +28,9 @@ interface MomentsStripProps {
   embeddingIds?: Set<string>;
   deletionCandidateCount: number;
   onDeletionCandidatesTap: () => void;
+  /** Moments suggested from clusters of similar notes */
+  suggestions?: MomentSuggestion[];
+  onSuggestionTap?: (suggestion: MomentSuggestion) => void;
 }
 
 const MomentsStrip: React.FC<MomentsStripProps> = ({
@@ -41,6 +46,8 @@ const MomentsStrip: React.FC<MomentsStripProps> = ({
   embeddingIds,
   deletionCandidateCount,
   onDeletionCandidatesTap,
+  suggestions = [],
+  onSuggestionTap,
 }) => {
   return (
     <div className={`${layout.pageContainer} py-3`}>
@@ -116,6 +123,11 @@ const MomentsStrip: React.FC<MomentsStripProps> = ({
             noteCount={matchCounts.get(moment.id) ?? 0}
             isEmbedding={embeddingIds?.has(moment.id) ?? false}
           />
+        ))}
+
+        {/* Suggested moments — after the user's own */}
+        {onSuggestionTap && suggestions.map(s => (
+          <SuggestedMomentBubble key={`suggestion:${s.key}`} suggestion={s} onTap={onSuggestionTap} />
         ))}
 
         {/* "All Moments" overflow button */}

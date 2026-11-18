@@ -26,6 +26,7 @@ const NewMemoryPage = lazyWithRetry(() => import('./components/NewMemoryPage'));
 const MomentSheet = lazyWithRetry(() => import('./components/MomentSheet'));
 const MomentCreationDialog = lazyWithRetry(() => import('./components/MomentCreationDialog'));
 const AllMomentsSheet = lazyWithRetry(() => import('./components/AllMomentsSheet'));
+const SuggestedMomentSheet = lazyWithRetry(() => import('./components/SuggestedMomentSheet'));
 const CalendarAgendaView = lazyWithRetry(() => import('./components/CalendarAgendaView'));
 const TodoListView = lazyWithRetry(() => import('./components/TodoListView'));
 const DeletionCandidatesSheet = lazyWithRetry(() => import('./components/DeletionCandidatesSheet'));
@@ -40,6 +41,8 @@ import { useAuth } from './hooks/useAuth';
 import { useAdaptiveSearch } from './hooks/useAdaptiveSearch';
 import { useHotkeys } from './hooks/useHotkeys';
 import { useMoments } from './hooks/useMoments';
+import { useMomentSuggestions } from './hooks/useMomentSuggestions';
+import type { MomentSuggestion } from './utils/momentSuggestions';
 import { useCalendarEvents } from './hooks/useCalendarEvents';
 import { useTodoItems } from './hooks/useTodoItems';
 import { useRelatedMemories } from './hooks/useRelatedMemories';
@@ -77,6 +80,7 @@ const AppContent: React.FC = () => {
   const [activeMoment, setActiveMoment] = useState<Moment | null>(null);
   const [showAllMoments, setShowAllMoments] = useState(false);
   const [showCreateMoment, setShowCreateMoment] = useState(false);
+  const [activeSuggestion, setActiveSuggestion] = useState<MomentSuggestion | null>(null);
   const [quickNoteExpandState, setQuickNoteExpandState] = useState<QuickNoteState | null>(null);
   const [newMemoryId, setNewMemoryId] = useState<string | null>(null);
   // False until local IDB has been reconciled with Drive this session (first
@@ -134,6 +138,7 @@ const AppContent: React.FC = () => {
     deleteMoment,
     setOnMomentChanged,
     refreshMoments,
+    noteIndex: momentNoteIndex,
   } = useMoments(memories);
 
   const momentMatchCounts = useMemo(() => {
@@ -387,6 +392,22 @@ const AppContent: React.FC = () => {
     }
   }, [createNewMoment]);
 
+  // Suggested moments: keywords shared by a cluster of similar notes. Only
+  // offered when signed in, since adding one embeds it through the proxy.
+  const { suggestions: momentSuggestions, dismissSuggestion } = useMomentSuggestions(
+    momentNoteIndex, moments, matchesByMoment, authStatus === 'linked',
+  );
+
+  const handleAddSuggestedMoment = useCallback(async (suggestion: MomentSuggestion) => {
+    await handleCreateMomentSubmit([suggestion.label]);
+    setActiveSuggestion(null);
+  }, [handleCreateMomentSubmit]);
+
+  const handleDismissSuggestedMoment = useCallback((suggestion: MomentSuggestion) => {
+    dismissSuggestion(suggestion.key);
+    setActiveSuggestion(null);
+  }, [dismissSuggestion]);
+
   const handleFullRefresh = useCallback(async () => {
       const [, , , , report] = await Promise.all([
         refreshMemories(),
@@ -636,6 +657,8 @@ const AppContent: React.FC = () => {
         setShowCalendarAgenda(false);
       } else if (showCreateMoment) {
         setShowCreateMoment(false);
+      } else if (activeSuggestion) {
+        setActiveSuggestion(null);
       } else if (activeMoment) {
         setActiveMoment(null);
       } else if (showAllMoments) {
@@ -664,7 +687,7 @@ const AppContent: React.FC = () => {
       // Since addListener is async in some versions, but usually returns PluginListenerHandle
       listener.then(handle => handle.remove()).catch(e => console.error(e));
     };
-  }, [viewingGallery, expandedMemory, isSettingsOpen, setIsSettingsOpen, editingMemory, isCaptureOpen, view, activeMoment, showAllMoments, showCalendarAgenda, showTodoList, showDeletionCandidates, showCreateMoment, handleCaptureClose, handleEditClose]);
+  }, [viewingGallery, expandedMemory, isSettingsOpen, setIsSettingsOpen, editingMemory, isCaptureOpen, view, activeMoment, activeSuggestion, showAllMoments, showCalendarAgenda, showTodoList, showDeletionCandidates, showCreateMoment, handleCaptureClose, handleEditClose]);
 
   useEffect(() => {
     if (shareData) {
@@ -942,7 +965,7 @@ const AppContent: React.FC = () => {
   // Truly fullscreen views (opaque surface at z-sheet / z-modal) — QuickNoteBar must hide
   const isFullscreenViewOpen = !!editingMemory || isCaptureOpen || view === ViewMode.RECALL || !!viewingGallery;
   // Any overlay (fullscreen OR sheet) — feed behind gets pointer-events-none + aria-hidden
-  const anyOverlayOpen = isFullscreenViewOpen || !!liveExpandedMemory || isSettingsOpen || !!liveActiveMoment || showAllMoments || showCalendarAgenda || showTodoList || showDeletionCandidates;
+  const anyOverlayOpen = isFullscreenViewOpen || !!liveExpandedMemory || isSettingsOpen || !!liveActiveMoment || !!activeSuggestion || showAllMoments || showCalendarAgenda || showTodoList || showDeletionCandidates;
 
   // Keep feed locked during sheet exit animations so background elements
   // don't become interactive/accessible while the sheet is still sliding out.
@@ -973,6 +996,7 @@ const AppContent: React.FC = () => {
   const frozenEditingMemory = useFrozenValue(editingMemory);
   const frozenExpandedMemory = useFrozenValue(liveExpandedMemory);
   const frozenActiveMoment = useFrozenValue(liveActiveMoment);
+  const frozenActiveSuggestion = useFrozenValue(activeSuggestion);
   const frozenViewingGallery = useFrozenValue(viewingGallery);
   const frozenMomentError = useFrozenValue(momentError);
 
@@ -1010,6 +1034,8 @@ const AppContent: React.FC = () => {
           onDeletionCandidatesTap={() => {
             setShowDeletionCandidates(true);
           }}
+          suggestions={momentSuggestions}
+          onSuggestionTap={setActiveSuggestion}
         />
 
         {notificationsSupported && notificationPermission === 'prompt' && !notifBannerDismissed && activeMemoryCount > 0 && (
@@ -1236,6 +1262,32 @@ const AppContent: React.FC = () => {
               onHideNote={hideNoteInMoment}
               onRetryEmbedding={retryMomentEmbedding}
               onDeleteNotes={handleDeleteNotes}
+              onViewAttachment={handleViewAttachment}
+              onMemoryDelete={handleDeleteMemory}
+              onMemoryEdit={handleEditMemory}
+              onMemoryUpdate={updateMemoryContent}
+              onMemoryTogglePin={handleTogglePin}
+            />
+          )}
+        </Suspense>
+      </AnimatedPresence>
+
+      <AnimatedPresence
+        isOpen={!!activeSuggestion}
+        enterClassName={overlay.sheetEnter}
+        exitClassName={overlay.sheetExit}
+        duration={SHEET_DURATION}
+        className="fixed inset-0 z-(--z-sheet)"
+      >
+        <Suspense fallback={null}>
+          {frozenActiveSuggestion && (
+            <SuggestedMomentSheet
+              suggestion={frozenActiveSuggestion}
+              memories={memories}
+              isCreating={momentCreating}
+              onClose={() => setActiveSuggestion(null)}
+              onAdd={handleAddSuggestedMoment}
+              onDismiss={handleDismissSuggestedMoment}
               onViewAttachment={handleViewAttachment}
               onMemoryDelete={handleDeleteMemory}
               onMemoryEdit={handleEditMemory}

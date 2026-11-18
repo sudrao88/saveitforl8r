@@ -33,6 +33,10 @@ import { buildKeywordIndex, KeywordIndex, prepareConcepts, scoreConcepts } from 
  * Moments embedded before intent vectors existed fall back to the old rule
  * (best term similarity) until useMoments re-embeds them.
  *
+ * Suggested moments (momentSuggestions.ts) build draft moments from clusters
+ * of notes and run them through matchNotesToMoment, so a suggestion previews
+ * exactly what this matcher would show.
+ *
  * Every device holds the same vectors and runs this same deterministic
  * ranking, so matches are identical everywhere without being synced.
  * Dependency-free (beyond pure helpers) so it runs unchanged in unit tests.
@@ -132,7 +136,8 @@ export const canMatchMoment = (moment: Moment): boolean =>
 export const needsMomentEmbedding = (moment: Moment): boolean =>
   !isMomentEmbedded(moment) || !hasIntentVector(moment) || !hasConcepts(moment);
 
-const noteVector = (m: Memory): number[] | null => {
+/** A note's vector from the current embedding model, or null. */
+export const noteVector = (m: Memory): number[] | null => {
   if (m.isDeleted) return null;
   const v = m.enrichment?.embedding;
   if (!Array.isArray(v) || v.length === 0) return null;
