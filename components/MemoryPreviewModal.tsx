@@ -9,7 +9,6 @@ import React, { useEffect, useRef } from 'react';
 import { Memory, Attachment, CalendarEvent, TodoItem } from '../types';
 import MemoryCard from './MemoryCard';
 import { overlay } from '../styles/design-system';
-import type { RelatedMemoryDisplayItem } from '../hooks/useRelatedMemories';
 
 interface MemoryPreviewModalProps {
   memory: Memory;
@@ -23,8 +22,6 @@ interface MemoryPreviewModalProps {
   todoItems?: TodoItem[];
   onOpenCalendarEvent?: (eventId: string) => void;
   onOpenTodoItem?: (itemId: string) => void;
-  relatedMemories?: RelatedMemoryDisplayItem[];
-  onOpenRelatedMemory?: (memoryId: string) => void;
 }
 
 const MemoryPreviewModal: React.FC<MemoryPreviewModalProps> = ({
@@ -39,8 +36,6 @@ const MemoryPreviewModal: React.FC<MemoryPreviewModalProps> = ({
   todoItems,
   onOpenCalendarEvent,
   onOpenTodoItem,
-  relatedMemories,
-  onOpenRelatedMemory,
 }) => {
   const onCloseRef = useRef(onClose);
   useEffect(() => { onCloseRef.current = onClose; });
@@ -75,8 +70,6 @@ const MemoryPreviewModal: React.FC<MemoryPreviewModalProps> = ({
             todoItems={todoItems}
             onOpenCalendarEvent={onOpenCalendarEvent}
             onOpenTodoItem={onOpenTodoItem}
-            relatedMemories={relatedMemories}
-            onOpenRelatedMemory={onOpenRelatedMemory}
           />
         </div>
         <button
