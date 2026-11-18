@@ -42,7 +42,6 @@ import { useHotkeys } from './hooks/useHotkeys';
 import { useMoments } from './hooks/useMoments';
 import { useCalendarEvents } from './hooks/useCalendarEvents';
 import { useTodoItems } from './hooks/useTodoItems';
-import { useRelatedMemories } from './hooks/useRelatedMemories';
 import { useRelatedEmbeddingBackfill } from './hooks/useRelatedEmbeddingBackfill';
 import { useDeletionCandidates } from './hooks/useDeletionCandidates';
 import { useNotifications } from './hooks/useNotifications';
@@ -217,9 +216,19 @@ const AppContent: React.FC = () => {
     return map;
   }, [todoItems]);
 
-  // Similar-notes lists, matched locally from server-generated embeddings that
-  // sync with each memory.
-  const { relatedByMemory } = useRelatedMemories(memories);
+  // Moments each note currently belongs to (inverse of matchesByMoment), in
+  // the moments list's order (newest first).
+  const momentsByMemory = useMemo(() => {
+    const map = new Map<string, Moment[]>();
+    for (const moment of moments) {
+      for (const match of matchesByMoment.get(moment.id) ?? []) {
+        const list = map.get(match.id);
+        if (list) list.push(moment);
+        else map.set(match.id, [moment]);
+      }
+    }
+    return map;
+  }, [moments, matchesByMoment]);
 
   // Backfill embeddings for notes enriched before the feature existed.
   useRelatedEmbeddingBackfill({
@@ -229,10 +238,9 @@ const AppContent: React.FC = () => {
     onRefresh: refreshMemories,
   });
 
-  const handleOpenRelatedMemory = useCallback((memoryId: string) => {
-    const target = memories.find(m => m.id === memoryId && !m.isDeleted);
-    if (target) setExpandedMemory(target);
-  }, [memories]);
+  const handleOpenMomentFromNote = useCallback((moment: Moment) => {
+    setActiveMoment(moment);
+  }, []);
 
   const handleOpenCalendarEvent = useCallback((eventId: string) => {
     setShowTodoList(false);
@@ -1087,8 +1095,8 @@ const AppContent: React.FC = () => {
               todosByMemory={todosByMemory}
               onOpenCalendarEvent={handleOpenCalendarEvent}
               onOpenTodoItem={handleOpenTodoItem}
-              relatedByMemory={relatedByMemory}
-              onOpenRelatedMemory={handleOpenRelatedMemory}
+              momentsByMemory={momentsByMemory}
+              onOpenMoment={handleOpenMomentFromNote}
             />
           )}
         </main>
@@ -1169,8 +1177,8 @@ const AppContent: React.FC = () => {
                     todoItems={todosByMemory.get(frozenExpandedMemory.id)}
                     onOpenCalendarEvent={handleOpenCalendarEvent}
                     onOpenTodoItem={handleOpenTodoItem}
-                    relatedMemories={relatedByMemory.get(frozenExpandedMemory.id)}
-                    onOpenRelatedMemory={handleOpenRelatedMemory}
+                    moments={momentsByMemory.get(frozenExpandedMemory.id)}
+                    onOpenMoment={handleOpenMomentFromNote}
                 />
              </div>
           </div>

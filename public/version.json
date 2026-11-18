@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v140",
-  "buildNumber": 140,
-  "buildDate": "2026-11-14T03:51:32.000Z",
+  "version": "saveitforl8r-v141",
+  "buildNumber": 141,
+  "buildDate": "2026-11-18T14:00:00.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Notes are now enriched by a newer Gemini model."
+  "changelog": "Note cards now show which moments a note belongs to, with a button to open them."
 }

@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
-import { Trash2, Loader2, Clock, ExternalLink, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, WifiOff, CloudOff, FileText, Paperclip, MoreVertical, AlertTriangle, AlertCircle, LogIn, Maximize2, Eye, Pin, Pencil, Lightbulb, CircleCheck, UtensilsCrossed, ListOrdered, ThumbsUp, ThumbsDown, DollarSign, MapPin, CalendarDays, ClipboardList, MessageSquare, Users, Mic, Code, Heart, Scale, GraduationCap, Briefcase, Music, Film, BookOpenCheck, Bookmark, Phone, Mail, ScrollText, Tag, Clock3, Flame, Quote, Hourglass, Sparkles, Calculator, CheckSquare, Square, Waypoints } from 'lucide-react';
-import { Memory, Attachment, UploadProgress, CalendarEvent, TodoItem, isMemoryInFlight, isMemoryFailed } from '../types.ts';
+import { Trash2, Loader2, Clock, ExternalLink, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, WifiOff, CloudOff, FileText, Paperclip, MoreVertical, AlertTriangle, AlertCircle, LogIn, Maximize2, Eye, Pin, Pencil, Lightbulb, CircleCheck, UtensilsCrossed, ListOrdered, ThumbsUp, ThumbsDown, DollarSign, MapPin, CalendarDays, ClipboardList, MessageSquare, Users, Mic, Code, Heart, Scale, GraduationCap, Briefcase, Music, Film, BookOpenCheck, Bookmark, Phone, Mail, ScrollText, Tag, Clock3, Flame, Quote, Hourglass, Sparkles, Calculator, CheckSquare, Square } from 'lucide-react';
+import { Memory, Attachment, UploadProgress, CalendarEvent, TodoItem, Moment, isMemoryInFlight, isMemoryFailed } from '../types.ts';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
-import type { RelatedMemoryDisplayItem } from '../hooks/useRelatedMemories';
+import { FALLBACK_MOMENT_EMOJI } from './MomentBubble';
 import { btn, card, chip, confirm, menu, overlay, text } from '../styles/design-system';
 import { downloadDataUri } from '../services/downloadService';
 import { ChecklistDisplay, parseChecklistFromHtml, serializeChecklistToHtml, cascadeToggle } from './ChecklistItems';
@@ -223,10 +223,10 @@ interface MemoryCardProps {
   onOpenCalendarEvent?: (eventId: string) => void;
   /** Opens the to-do list scrolled to the given item */
   onOpenTodoItem?: (itemId: string) => void;
-  /** Similar notes (from embedding similarity) for the "Related" section */
-  relatedMemories?: RelatedMemoryDisplayItem[];
-  /** Opens the given related memory in a preview */
-  onOpenRelatedMemory?: (memoryId: string) => void;
+  /** Moments this note currently belongs to */
+  moments?: Moment[];
+  /** Opens the given moment */
+  onOpenMoment?: (moment: Moment) => void;
 }
 
 // Recurring events expand into many occurrences sharing a recurringGroupId —
@@ -286,7 +286,7 @@ const linkifyHtml = (html: string): string => {
     }).join('');
 };
 
-const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUpdate, onExpand, onViewAttachment, onTogglePin, onEdit, isDialog, isAuthenticated = true, onSignIn, syncStatus, onSyncRetry, uploadProgress, index, calendarEvents, todoItems, onOpenCalendarEvent, onOpenTodoItem, relatedMemories, onOpenRelatedMemory }) => {
+const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUpdate, onExpand, onViewAttachment, onTogglePin, onEdit, isDialog, isAuthenticated = true, onSignIn, syncStatus, onSyncRetry, uploadProgress, index, calendarEvents, todoItems, onOpenCalendarEvent, onOpenTodoItem, moments, onOpenMoment }) => {
   const [isConfirming, setIsConfirming] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -422,9 +422,9 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
     [todoItems, onOpenTodoItem]
   );
 
-  // Similar notes — same dead-button rule as events/todos: without the open
-  // handler the rows would do nothing, so hide the section entirely.
-  const relatedItems = onOpenRelatedMemory ? (relatedMemories ?? []) : [];
+  // Moments containing this note — same dead-button rule as events/todos:
+  // without the open handler the button would do nothing, so hide it.
+  const noteMoments = onOpenMoment ? (moments ?? []) : [];
 
 
   // Robust AI text extraction
@@ -686,7 +686,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
             {/* Enrichment Icon Row + Expandable Sections */}
             {(() => {
                 const typeSections = enrichment ? getContentTypeSections(enrichment.contentType, enrichment as EnrichmentFields) : [];
-                const hasAnyCTA = aiText || typeSections.length > 0 || targetUri || linkedEvents.length > 0 || linkedTodos.length > 0 || relatedItems.length > 0;
+                const hasAnyCTA = aiText || typeSections.length > 0 || targetUri || linkedEvents.length > 0 || linkedTodos.length > 0 || noteMoments.length > 0;
                 if (!hasAnyCTA) return null;
 
                 // Date-like and Action Items enrichment sections use the same
@@ -741,14 +741,19 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                                     <CircleCheck size={16} className="text-(--color-success)" />
                                 </button>
                             )}
-                            {relatedItems.length > 0 && (
+                            {noteMoments.length > 0 && (
                                 <button
-                                    onClick={(e) => { e.stopPropagation(); setExpandedSection(expandedSection === 'related' ? null : 'related'); }}
-                                    title="Related memories"
-                                    aria-label="Show related memories"
-                                    className={`p-2 rounded-(--radius-lg) transition-colors ${expandedSection === 'related' ? 'bg-(--color-surface-raised)/60 text-(--color-text-primary)' : 'text-(--color-text-tertiary) hover:text-(--color-text-secondary) hover:bg-(--color-surface-hover-subtle)'}`}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        // One moment: go straight to it. Several: list them.
+                                        if (noteMoments.length === 1) onOpenMoment?.(noteMoments[0]);
+                                        else setExpandedSection(expandedSection === 'moments' ? null : 'moments');
+                                    }}
+                                    title={noteMoments.length === 1 ? `In moment: ${noteMoments[0].title}` : `In ${noteMoments.length} moments`}
+                                    aria-label={noteMoments.length === 1 ? `Open moment ${noteMoments[0].title}` : 'Show moments containing this note'}
+                                    className={`p-2 rounded-(--radius-lg) transition-colors ${expandedSection === 'moments' ? 'bg-(--color-surface-raised)/60 text-(--color-text-primary)' : 'text-(--color-text-tertiary) hover:text-(--color-text-secondary) hover:bg-(--color-surface-hover-subtle)'}`}
                                 >
-                                    <Waypoints size={16} className="text-(--color-accent)" />
+                                    <Sparkles size={16} className="text-(--color-accent)" />
                                 </button>
                             )}
                             {enrichment?.contentType === 'recipe' && Array.isArray(enrichment.ingredients) && enrichment.ingredients.length > 0 && (
@@ -866,34 +871,23 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                             </div>
                         )}
 
-                        {/* Expandable: similar notes from embedding similarity */}
-                        {expandedSection === 'related' && relatedItems.length > 0 && (
+                        {/* Expandable: moments containing this note (only when there are several) */}
+                        {expandedSection === 'moments' && noteMoments.length > 1 && (
                             <div className="pt-1 space-y-1 animate-in fade-in slide-in-from-top-1 duration-(--duration-fast)">
                                 <span className={`flex items-center gap-1.5 ${text.label}`}>
-                                    <Waypoints size={12} className="text-(--color-accent)" />
-                                    Related
+                                    <Sparkles size={12} className="text-(--color-accent)" />
+                                    In Moments
                                 </span>
-                                {relatedItems.map((item) => (
-                                    <div key={item.id} className="space-y-0.5">
-                                        <button
-                                            onClick={(e) => { e.stopPropagation(); onOpenRelatedMemory?.(item.id); }}
-                                            title="View related memory"
-                                            className="flex items-center gap-1.5 max-w-full text-sm text-(--color-accent) hover:text-(--color-accent-hover) transition-colors duration-(--duration-fast)"
-                                        >
-                                            <span className="truncate">{item.title}</span>
-                                        </button>
-                                        {/* Why related: tags both notes share, or a fallback when the
-                                            match is purely semantic. */}
-                                        {item.sharedTags && item.sharedTags.length > 0 ? (
-                                            <div className="flex flex-wrap items-center gap-1 pl-0.5">
-                                                {item.sharedTags.map((tag) => (
-                                                    <span key={tag} className={chip.tag}>#{tag}</span>
-                                                ))}
-                                            </div>
-                                        ) : (
-                                            <span className={`${text.caption} pl-0.5`}>Similar content</span>
-                                        )}
-                                    </div>
+                                {noteMoments.map((moment) => (
+                                    <button
+                                        key={moment.id}
+                                        onClick={(e) => { e.stopPropagation(); onOpenMoment?.(moment); }}
+                                        title="Open moment"
+                                        className="flex items-center gap-1.5 max-w-full text-sm text-(--color-accent) hover:text-(--color-accent-hover) transition-colors duration-(--duration-fast)"
+                                    >
+                                        <span className="shrink-0" aria-hidden="true">{moment.emoji || FALLBACK_MOMENT_EMOJI}</span>
+                                        <span className="truncate">{moment.title}</span>
+                                    </button>
                                 ))}
                             </div>
                         )}
