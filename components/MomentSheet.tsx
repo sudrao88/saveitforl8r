@@ -16,6 +16,7 @@ import MomentNoteDeletionSheet from './MomentNoteDeletionSheet';
 import { FALLBACK_MOMENT_EMOJI } from './MomentBubble';
 import { overlay, btn, chip, card, text } from '../styles/design-system';
 import { canMatchMoment, MomentMatch } from '../utils/momentMatching';
+import { noteTitle, noteSnippet, formatNoteDate as formatDate } from '../utils/noteLabels';
 
 type DeleteConfirmStep = 'choose' | 'confirm-notes';
 
@@ -35,25 +36,6 @@ interface MomentSheetProps {
   onMemoryUpdate?: (id: string, content: string) => void;
   onMemoryTogglePin?: (id: string, isPinned: boolean) => void;
 }
-
-const plainText = (html: string): string =>
-  (html || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-
-// Best human-readable label for a note: AI entity title, then summary, then
-// the note content itself.
-const noteTitle = (m: Memory): string =>
-  m.enrichment?.entityContext?.title || m.enrichment?.summary || plainText(m.content) || 'Untitled note';
-
-// Secondary line: the summary when the title came from the entity, otherwise
-// the note content.
-const noteSnippet = (m: Memory): string => {
-  if (m.enrichment?.entityContext?.title && m.enrichment.summary) return m.enrichment.summary;
-  const content = plainText(m.content);
-  return content === noteTitle(m) ? '' : content;
-};
-
-const formatDate = (ts: number): string =>
-  new Date(ts).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 
 const MomentSheet: React.FC<MomentSheetProps> = ({
   moment,

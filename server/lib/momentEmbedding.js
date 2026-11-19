@@ -49,7 +49,8 @@ export const MAX_CONCEPT_SYNONYMS = 12;
 const MAX_SYNONYM_LEN = 40;
 
 // Words that describe the kind of collection rather than its subject; never a
-// required concept on their own ("Fashion tips" is about fashion).
+// required concept on their own ("Fashion tips" is about fashion). Keep in sync
+// with GENERIC_KEYWORDS in utils/keywordMatching.ts (suggested moments).
 const GENERIC_WORDS = new Set([
   'a', 'an', 'and', 'the', 'of', 'in', 'on', 'at', 'for', 'to', 'with', 'from', 'by', 'about', 'my', 'our',
   'near', 'around', 'or', 'best', 'good', 'great', 'top', 'favorite', 'favourite', 'tips', 'tip', 'ideas',

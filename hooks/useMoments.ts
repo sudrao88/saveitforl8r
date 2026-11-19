@@ -105,6 +105,8 @@ interface UseMomentsReturn {
   setOnMomentChanged: (cb: (moment: Moment) => void) => void;
   /** Reload moments from IndexedDB (e.g. after sync) */
   refreshMoments: () => Promise<void>;
+  /** Prepared note vectors + keyword index, shared with suggested moments */
+  noteIndex: MomentNoteIndex;
 }
 
 export const useMoments = (memories: Memory[]): UseMomentsReturn => {
@@ -333,5 +335,6 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
     deleteMoment,
     setOnMomentChanged,
     refreshMoments,
+    noteIndex,
   };
 };

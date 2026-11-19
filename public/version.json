@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v141",
-  "buildNumber": 141,
-  "buildDate": "2026-11-18T14:00:00.000Z",
+  "version": "saveitforl8r-v142",
+  "buildNumber": 142,
+  "buildDate": "2026-11-18T14:26:53.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Note cards now show which moments a note belongs to, with a button to open them."
+  "changelog": "Moments are now suggested from groups of similar notes that share a keyword."
 }
