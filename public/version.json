@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v143",
-  "buildNumber": 143,
-  "buildDate": "2026-11-22T01:54:52.000Z",
+  "version": "saveitforl8r-v144",
+  "buildNumber": 144,
+  "buildDate": "2026-11-22T13:29:00.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Filter notes by whether they have an image or a file attachment."
+  "changelog": "Share a moment and its notes as a formatted text note."
 }

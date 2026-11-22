@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import MomentSheet from './MomentSheet';
 import { Memory, Moment, EMBEDDING_MODEL_ID } from '../types';
@@ -42,5 +42,19 @@ describe('MomentSheet', () => {
   it('shows the empty state, not the setup state, for a moment with concepts and no matches', () => {
     renderSheet([]);
     expect(screen.getByText('No matching notes yet')).toBeTruthy();
+  });
+});
+
+describe('MomentSheet sharing', () => {
+  it('shares the moment as formatted text', async () => {
+    const share = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'share', { value: share, configurable: true });
+    renderSheet([{ id: 'n1', score: 1 }]);
+    fireEvent.click(screen.getByLabelText('Share moment'));
+    await waitFor(() => expect(share).toHaveBeenCalledTimes(1));
+    const { title, text } = share.mock.calls[0][0];
+    expect(title).toBe('☕ Cafes in bangalore');
+    expect(text).toContain('1. Beyond Bean Coffee');
+    delete (navigator as { share?: unknown }).share;
   });
 });

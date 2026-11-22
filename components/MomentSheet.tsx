@@ -7,9 +7,9 @@
  * moment. A moment can't be edited — delete it and create a new one.
  */
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useBackButton } from '../hooks/useBackButton';
-import { X, Trash2, EyeOff, CloudOff, Loader2, RefreshCw } from 'lucide-react';
+import { X, Trash2, EyeOff, CloudOff, Loader2, RefreshCw, Share2, Check } from 'lucide-react';
 import { Moment, Memory, Attachment } from '../types';
 import MemoryPreviewModal from './MemoryPreviewModal';
 import MomentNoteDeletionSheet from './MomentNoteDeletionSheet';
@@ -17,6 +17,8 @@ import { FALLBACK_MOMENT_EMOJI } from './MomentBubble';
 import { overlay, btn, chip, card, text } from '../styles/design-system';
 import { canMatchMoment, MomentMatch } from '../utils/momentMatching';
 import { noteTitle, noteSnippet, formatNoteDate as formatDate } from '../utils/noteLabels';
+import { formatMomentForShare, momentShareTitle } from '../utils/momentShare';
+import { shareText } from '../services/platform';
 
 type DeleteConfirmStep = 'choose' | 'confirm-notes';
 
@@ -55,6 +57,7 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
 }) => {
   const [previewMemoryId, setPreviewMemoryId] = useState<string | null>(null);
   const [deleteConfirmStep, setDeleteConfirmStep] = useState<DeleteConfirmStep | null>(null);
+  const [shareStatus, setShareStatus] = useState<'copied' | 'failed' | null>(null);
 
   const memoriesMap = useMemo(() => new Map(memories.map(m => [m.id, m])), [memories]);
 
@@ -84,6 +87,18 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
   // Dismiss nested dialogs on Android back button
   useBackButton(() => setPreviewMemoryId(null), previewMemoryId !== null);
   useBackButton(() => setDeleteConfirmStep(null), deleteConfirmStep !== null);
+
+  // Share the moment as a formatted text note (system share sheet, or copy).
+  const handleShare = useCallback(async () => {
+    const result = await shareText(momentShareTitle(moment), formatMomentForShare(moment, notes));
+    if (result === 'copied' || result === 'failed') setShareStatus(result);
+  }, [moment, notes]);
+
+  useEffect(() => {
+    if (!shareStatus) return;
+    const t = setTimeout(() => setShareStatus(null), 2500);
+    return () => clearTimeout(t);
+  }, [shareStatus]);
 
   const handleDeleteClick = useCallback(() => {
     if (noteCount > 0 && onDeleteNotes) {
@@ -123,12 +138,27 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
             {moment.title}
           </h2>
         </div>
-        {embedded && (
-          <span className="text-xs text-(--color-text-tertiary) shrink-0">
-            {noteCount} {noteLabel}
-          </span>
-        )}
+        <div className="flex items-center gap-2 shrink-0">
+          {embedded && (
+            <span className="text-xs text-(--color-text-tertiary)">
+              {noteCount} {noteLabel}
+            </span>
+          )}
+          <button
+            onClick={handleShare}
+            className={btn.icon}
+            aria-label="Share moment"
+            title="Share moment"
+          >
+            {shareStatus === 'copied' ? <Check size={20} className="text-(--color-success)" /> : <Share2 size={20} />}
+          </button>
+        </div>
       </div>
+      {shareStatus && (
+        <p role="status" className={`${text.caption} text-center py-1`}>
+          {shareStatus === 'copied' ? 'Copied to clipboard' : 'Couldn’t share this moment'}
+        </p>
+      )}
 
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-2xl mx-auto p-4 sm:p-8 pb-32">

@@ -68,6 +68,39 @@ export const shareContent = async (title: string, text: string, url?: string): P
   }
 };
 
+/**
+ * Share a block of text through the system share sheet, falling back to the
+ * clipboard where sharing isn't available. Returns what happened so callers
+ * can confirm a copy; a dismissed share sheet is 'cancelled', not an error.
+ */
+export type ShareTextResult = 'shared' | 'copied' | 'cancelled' | 'failed';
+
+const isCancel = (err: unknown): boolean =>
+  (err instanceof Error && (err.name === 'AbortError' || /cancel/i.test(err.message)));
+
+export const shareText = async (title: string, text: string): Promise<ShareTextResult> => {
+  try {
+    if (isNative()) {
+      await Share.share({ title, text, dialogTitle: 'Share moment' });
+      return 'shared';
+    }
+    if (typeof navigator.share === 'function') {
+      await navigator.share({ title, text });
+      return 'shared';
+    }
+  } catch (err) {
+    if (isCancel(err)) return 'cancelled';
+    console.error('Share failed, falling back to clipboard:', err);
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    return 'copied';
+  } catch (err) {
+    console.error('Failed to copy to clipboard', err);
+    return 'failed';
+  }
+};
+
 // --- Haptics ---
 export const triggerHaptic = async (style: ImpactStyle = ImpactStyle.Medium): Promise<void> => {
   if (isNative()) {
