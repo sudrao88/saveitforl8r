@@ -1,46 +1,58 @@
-
 import { useState, useMemo, useCallback } from 'react';
 import { Memory } from '../types';
 
+export interface MemoryFilters {
+  hasImage: boolean;
+  hasAttachment: boolean;
+}
+
+export type MemoryFilterKey = keyof MemoryFilters;
+
+const EMPTY_FILTERS: MemoryFilters = { hasImage: false, hasAttachment: false };
+
+/**
+ * True when the note carries at least one image — either an image attachment
+ * or the legacy `image` field. Deferred-sync notes have their attachment data
+ * blanked to '' but keep the entries, so we check presence, not content.
+ */
+export const memoryHasImage = (m: Memory): boolean => {
+  if (m.attachments?.some(a => a.type === 'image')) return true;
+  if (!m.attachments?.length && m.image !== undefined && m.image !== null) {
+    return m.image !== '' || m._attachmentsDeferred === true;
+  }
+  return false;
+};
+
+/** True when the note carries at least one non-image file attachment (PDF, doc, etc.). */
+export const memoryHasAttachment = (m: Memory): boolean =>
+  m.attachments?.some(a => a.type === 'file') ?? false;
+
 export const useMemoryFilters = (memories: Memory[]) => {
-  const [filterType, setFilterType] = useState<string | null>(null);
+  const [filters, setFilters] = useState<MemoryFilters>(EMPTY_FILTERS);
 
-  const { availableTypes, filteredMemories } = useMemo(() => {
-    // 1. Extract Filter Options
-    const types = new Set<string>();
-
-    memories.forEach(m => {
-        if (m.enrichment?.entityContext?.type) {
-            types.add(m.enrichment.entityContext.type);
-        }
+  const filteredMemories = useMemo(() => {
+    if (!filters.hasImage && !filters.hasAttachment) return memories;
+    return memories.filter(m => {
+      if (filters.hasImage && !memoryHasImage(m)) return false;
+      if (filters.hasAttachment && !memoryHasAttachment(m)) return false;
+      return true;
     });
+  }, [memories, filters]);
 
-    // 2. Filter Memories
-    const filtered = memories.filter(m => {
-        if (filterType && m.enrichment?.entityContext?.type !== filterType) {
-            return false;
-        }
-        return true;
-    });
-
-    return {
-        availableTypes: Array.from(types).sort(),
-        filteredMemories: filtered
-    };
-  }, [memories, filterType]);
+  const toggleFilter = useCallback((key: MemoryFilterKey) => {
+    setFilters(prev => ({ ...prev, [key]: !prev[key] }));
+  }, []);
 
   const clearFilters = useCallback(() => {
-      setFilterType(null);
+    setFilters(EMPTY_FILTERS);
   }, []);
 
-  const handleSetFilterType = useCallback((type: string | null) => {
-    setFilterType(type);
-  }, []);
+  const hasActiveFilters = filters.hasImage || filters.hasAttachment;
 
   return {
-    filterType,
-    setFilterType: handleSetFilterType,
-    availableTypes,
+    filters,
+    toggleFilter,
+    hasActiveFilters,
     filteredMemories,
     clearFilters
   };
