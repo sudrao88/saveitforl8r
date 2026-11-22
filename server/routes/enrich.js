@@ -20,6 +20,12 @@ import {
   URL_CLASSIFICATION_SYSTEM_PROMPT,
   sanitizeEnrichmentResult,
 } from '../services/gemini.js';
+import {
+  shouldUseMapsGrounding,
+  buildMapsToolConfig,
+  extractMapsPlaces,
+  applyMapsGrounding,
+} from '../services/mapsGrounding.js';
 import { sendSilentPush } from '../lib/silentPush.js';
 import {
   buildEmbeddingText,
@@ -256,10 +262,15 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
           tools = [{ googleSearch: {} }];
         }
 
+        // Ground place lookups in Google Maps so the Maps link comes from a
+        // real place result instead of a URL the model wrote itself.
+        const useMaps = shouldUseMapsGrounding(classification, location);
+        if (useMaps) tools = [...tools, { googleMaps: {} }];
+
         const enrichmentStrategy = hasUrls ? 'url'
           : (classification && classification.searchRecommendation?.value !== 'high' && classification.searchRecommendation?.value !== 'medium') ? 'summarize' : 'search';
 
-        console.log(`[Enrich] [${req.requestId}] user=${req.userId} strategy=${enrichmentStrategy} text="${text?.substring(0, 50)}" urls=${detectedUrls.length}`);
+        console.log(`[Enrich] [${req.requestId}] user=${req.userId} strategy=${enrichmentStrategy} text="${text?.substring(0, 50)}" urls=${detectedUrls.length} maps=${useMaps}`);
 
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
@@ -267,13 +278,32 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
         try {
           const config = { systemInstruction: systemPrompt, thinkingConfig: { thinkingBudget: 0 } };
           if (tools.length > 0) config.tools = tools;
+          const mapsToolConfig = useMaps ? buildMapsToolConfig(location) : undefined;
+          if (mapsToolConfig) config.toolConfig = mapsToolConfig;
 
-          const response = await ai.models.generateContent({
-            model: MODEL_NAME,
-            contents: [{ role: 'user', parts }],
-            config,
-            requestOptions: { signal: controller.signal },
-          });
+          let response;
+          try {
+            response = await ai.models.generateContent({
+              model: MODEL_NAME,
+              contents: [{ role: 'user', parts }],
+              config,
+              requestOptions: { signal: controller.signal },
+            });
+          } catch (mapsError) {
+            // If the model rejects the Maps tool (or this tool combination),
+            // retry once without it rather than dropping to the fallback model.
+            if (!useMaps || controller.signal.aborted) throw mapsError;
+            console.warn(`[Enrich] [${req.requestId}] Call with Google Maps grounding failed, retrying without it:`, mapsError.message);
+            config.tools = tools.filter((t) => !t.googleMaps);
+            if (config.tools.length === 0) delete config.tools;
+            delete config.toolConfig;
+            response = await ai.models.generateContent({
+              model: MODEL_NAME,
+              contents: [{ role: 'user', parts }],
+              config,
+              requestOptions: { signal: controller.signal },
+            });
+          }
           clearTimeout(timeout);
 
           const responseText = response.text || '{}';
@@ -284,6 +314,9 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
           parsed.enrichmentStrategy = enrichmentStrategy;
 
           const sanitized = sanitizeEnrichmentResult(parsed);
+          const mapsPlaces = extractMapsPlaces(response);
+          applyMapsGrounding(sanitized, mapsPlaces, detectedUrls);
+          if (useMaps) console.log(`[Enrich] [${req.requestId}] Maps grounding: ${mapsPlaces.length} place(s), mapsUri=${sanitized.locationContext?.mapsUri ? 'grounded' : 'none'}`);
           if (hasUrls) attachSourceUrl(sanitized, detectedUrls);
 
           // Attach OG preview images (awaiting the parallel fetch started earlier)
@@ -364,6 +397,9 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
           const parsed = parseJsonResponse(response.text || '{}');
           parsed.enrichmentStrategy = 'search';
           const sanitizedFallback = sanitizeEnrichmentResult(parsed);
+          // The fallback runs without Maps grounding, so any mapsUri it wrote is
+          // unverified; keep only a Maps link the user pasted.
+          applyMapsGrounding(sanitizedFallback, extractMapsPlaces(response), detectedUrls);
           if (hasUrls) attachSourceUrl(sanitizedFallback, detectedUrls);
 
           // Attach OG preview images (from the parallel fetch started earlier)
