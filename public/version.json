@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v142",
-  "buildNumber": 142,
-  "buildDate": "2026-11-18T14:26:53.000Z",
+  "version": "saveitforl8r-v143",
+  "buildNumber": 143,
+  "buildDate": "2026-11-22T01:54:52.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Moments are now suggested from groups of similar notes that share a keyword."
+  "changelog": "Filter notes by whether they have an image or a file attachment."
 }
