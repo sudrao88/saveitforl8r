@@ -17,7 +17,6 @@ import { useTheme, ThemePreference } from '../context/ThemeContext';
 // Props interface remains the same as all functionality is preserved
 interface SettingsModalProps {
   onClose: () => void;
-  availableTypes: string[];
   onImportSuccess?: () => void;
   appVersion: string | null;
   syncError: string | null;

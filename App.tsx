@@ -712,9 +712,9 @@ const AppContent: React.FC = () => {
 
 
   const {
-    filterType,
-    setFilterType,
-    availableTypes,
+    filters,
+    toggleFilter,
+    hasActiveFilters,
     filteredMemories,
     clearFilters
   } = useMemoryFilters(memories);
@@ -765,11 +765,7 @@ const AppContent: React.FC = () => {
     }
   }, [updateApp, enableRemoteMode]);
 
-  const handleSetFilterType = useCallback((type: string | null) => {
-    setFilterType(type);
-  }, [setFilterType]);
-
-  const handleClearFiltersEmptyState = useCallback((type?: string) => {
+  const handleClearFiltersEmptyState = useCallback(() => {
     clearFilters();
   }, [clearFilters]);
 
@@ -1070,15 +1066,15 @@ const AppContent: React.FC = () => {
           </div>
         )}
 
-        {availableTypes.length > 0 && (
+        {activeMemoryCount > 0 && (
           <div
             className="sticky z-(--z-dropdown) bg-(--color-surface-base)/80 backdrop-blur-md border-b border-(--color-border-default)/50"
             style={{ top: 'calc(var(--top-nav-h, 0px) + var(--sat, 0px))' }}
           >
             <FilterBar
-              availableTypes={availableTypes}
-              filterType={filterType}
-              setFilterType={handleSetFilterType}
+              filters={filters}
+              toggleFilter={toggleFilter}
+              hasActiveFilters={hasActiveFilters}
               clearFilters={handleResetFilters}
             />
           </div>
@@ -1221,7 +1217,6 @@ const AppContent: React.FC = () => {
         <Suspense fallback={null}>
           <SettingsModal
               onClose={handleSettingsClose}
-              availableTypes={availableTypes}
               onImportSuccess={handleImportSuccess}
               appVersion={versionToDisplay}
               syncError={syncError}
