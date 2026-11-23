@@ -98,7 +98,8 @@ const collectCandidates = (index: MomentNoteIndex): Candidate[] => {
     .slice(0, MAX_CANDIDATE_KEYWORDS);
 };
 
-const pickLabel = (spellings: Map<string, number>): string =>
+/** The spelling used most often (ties: alphabetical). */
+export const pickLabel = (spellings: Map<string, number>): string =>
   [...spellings.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))[0][0];
 
 /**
@@ -133,7 +134,8 @@ export const largestCluster = (
   return best.sort();
 };
 
-const centroid = (vs: number[][]): number[] => {
+/** Unit-length mean of unit vectors. */
+export const centroid = (vs: number[][]): number[] => {
   const out = new Array(vs[0].length).fill(0);
   for (const v of vs) for (let i = 0; i < v.length; i++) out[i] += v[i];
   const norm = Math.sqrt(out.reduce((s, x) => s + x * x, 0)) || 1;

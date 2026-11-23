@@ -3,7 +3,9 @@
  *
  * Full-screen sheet for one moment: its terms, and every note that matches
  * them, best match first. Matches are computed locally (useMoments) and update
- * live as notes change. Notes can be opened in a preview or hidden from this
+ * live as notes change. Larger moments are split into subsections on the
+ * device (utils/momentSections), with chips to switch grouping or go back to
+ * plain relevance order. Notes can be opened in a preview or hidden from this
  * moment. A moment can't be edited — delete it and create a new one.
  */
 
@@ -19,6 +21,36 @@ import { canMatchMoment, MomentMatch } from '../utils/momentMatching';
 import { noteTitle, noteSnippet, formatNoteDate as formatDate } from '../utils/noteLabels';
 import { formatMomentForShare, momentShareTitle } from '../utils/momentShare';
 import { shareText } from '../services/platform';
+import { sectionMoment, SectionLens } from '../utils/momentSections';
+
+type SectionView = SectionLens | 'relevance';
+
+const LENS_LABELS: Record<SectionLens, string> = {
+  topic: 'Topics',
+  kind: 'Kinds',
+  place: 'Places',
+  time: 'Timeline',
+};
+
+/** Per-device memory of how each moment was last grouped (not synced). */
+export const SECTION_VIEW_KEY = 'moments:sectionLens';
+
+const readSectionViews = (): Record<string, string> => {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(SECTION_VIEW_KEY) || '{}');
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
+const writeSectionView = (momentId: string, view: SectionView) => {
+  try {
+    localStorage.setItem(SECTION_VIEW_KEY, JSON.stringify({ ...readSectionViews(), [momentId]: view }));
+  } catch {
+    // Storage unavailable: the choice just lasts for this session.
+  }
+};
 
 type DeleteConfirmStep = 'choose' | 'confirm-notes';
 
@@ -78,6 +110,26 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
     [matches],
   );
 
+  // Ways to split the notes into subsections, best first (empty: stay flat).
+  const sectionings = useMemo(
+    () => sectionMoment(moment, matches, memoriesMap),
+    [moment, matches, memoriesMap],
+  );
+  const [chosenView, setChosenView] = useState<SectionView | null>(
+    () => (readSectionViews()[moment.id] as SectionView | undefined) ?? null,
+  );
+  // The remembered grouping if it still applies, else the best one.
+  const activeSectioning =
+    chosenView === 'relevance'
+      ? undefined
+      : sectionings.find(s => s.lens === chosenView) ?? sectionings[0];
+  const activeView: SectionView = activeSectioning?.lens ?? 'relevance';
+
+  const handleSelectView = useCallback((view: SectionView) => {
+    setChosenView(view);
+    writeSectionView(moment.id, view);
+  }, [moment.id]);
+
   const previewMemory = previewMemoryId ? memoriesMap.get(previewMemoryId) : undefined;
   const embedded = canMatchMoment(moment);
   const noteCount = notes.length;
@@ -90,9 +142,9 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
 
   // Share the moment as a formatted text note (system share sheet, or copy).
   const handleShare = useCallback(async () => {
-    const result = await shareText(momentShareTitle(moment), formatMomentForShare(moment, notes));
+    const result = await shareText(momentShareTitle(moment), formatMomentForShare(moment, notes, activeSectioning?.sections));
     if (result === 'copied' || result === 'failed') setShareStatus(result);
-  }, [moment, notes]);
+  }, [moment, notes, activeSectioning]);
 
   useEffect(() => {
     if (!shareStatus) return;
@@ -123,6 +175,41 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
     setDeleteConfirmStep(null);
     onClose();
   }, [moment.id, onDelete, onDeleteNotes, onClose]);
+
+  const renderNote = (memory: Memory) => {
+    const snippet = noteSnippet(memory);
+    return (
+      <li key={memory.id} className={`${card.base} flex items-start gap-2 p-3`}>
+        <button
+          onClick={() => setPreviewMemoryId(memory.id)}
+          className="flex-1 min-w-0 text-left"
+        >
+          <p className="text-sm font-medium text-(--color-text-primary) line-clamp-2">
+            {noteTitle(memory)}
+          </p>
+          {snippet && (
+            <p className="text-xs text-(--color-text-secondary) mt-0.5 line-clamp-2">
+              {snippet}
+            </p>
+          )}
+          <p className={`${text.caption} mt-1`}>
+            {formatDate(memory.timestamp)}
+            {matchedById.has(memory.id) && (
+              <span> · matched {matchedById.get(memory.id)!.join(', ')}</span>
+            )}
+          </p>
+        </button>
+        <button
+          onClick={() => onHideNote(moment.id, memory.id)}
+          className={`${btn.icon} shrink-0`}
+          aria-label="Hide from this moment"
+          title="Hide from this moment"
+        >
+          <EyeOff size={16} />
+        </button>
+      </li>
+    );
+  };
 
   return (
     <div className={overlay.sheetBase}>
@@ -204,42 +291,42 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
               </p>
             </div>
           ) : (
-            <ul className="space-y-2">
-              {notes.map(memory => {
-                const snippet = noteSnippet(memory);
-                return (
-                  <li key={memory.id} className={`${card.base} flex items-start gap-2 p-3`}>
+            <>
+              {sectionings.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-4" role="group" aria-label="Group notes by">
+                  {(['relevance', ...sectionings.map(s => s.lens)] as SectionView[]).map(view => (
                     <button
-                      onClick={() => setPreviewMemoryId(memory.id)}
-                      className="flex-1 min-w-0 text-left"
+                      key={view}
+                      onClick={() => handleSelectView(view)}
+                      aria-pressed={activeView === view}
+                      className={`${chip.base} ${activeView === view ? chip.active : chip.inactive}`}
                     >
-                      <p className="text-sm font-medium text-(--color-text-primary) line-clamp-2">
-                        {noteTitle(memory)}
-                      </p>
-                      {snippet && (
-                        <p className="text-xs text-(--color-text-secondary) mt-0.5 line-clamp-2">
-                          {snippet}
-                        </p>
-                      )}
-                      <p className={`${text.caption} mt-1`}>
-                        {formatDate(memory.timestamp)}
-                        {matchedById.has(memory.id) && (
-                          <span> · matched {matchedById.get(memory.id)!.join(', ')}</span>
-                        )}
-                      </p>
+                      {view === 'relevance' ? 'Relevance' : LENS_LABELS[view]}
                     </button>
-                    <button
-                      onClick={() => onHideNote(moment.id, memory.id)}
-                      className={`${btn.icon} shrink-0`}
-                      aria-label="Hide from this moment"
-                      title="Hide from this moment"
-                    >
-                      <EyeOff size={16} />
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
+                  ))}
+                </div>
+              )}
+              {activeSectioning ? (
+                <div className="space-y-6">
+                  {activeSectioning.sections.map(section => (
+                    <section key={section.key} aria-label={section.label}>
+                      <div className="flex items-baseline justify-between gap-2 mb-2 px-1">
+                        <h3 className={`${text.label} truncate min-w-0`}>{section.label}</h3>
+                        <span className={`${text.caption} shrink-0`}>{section.noteIds.length}</span>
+                      </div>
+                      <ul className="space-y-2">
+                        {section.noteIds.map(id => {
+                          const memory = memoriesMap.get(id);
+                          return memory ? renderNote(memory) : null;
+                        })}
+                      </ul>
+                    </section>
+                  ))}
+                </div>
+              ) : (
+                <ul className="space-y-2">{notes.map(renderNote)}</ul>
+              )}
+            </>
           )}
 
           {/* Actions */}

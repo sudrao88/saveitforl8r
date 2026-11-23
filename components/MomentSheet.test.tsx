@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
-import MomentSheet from './MomentSheet';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import MomentSheet, { SECTION_VIEW_KEY } from './MomentSheet';
 import { Memory, Moment, EMBEDDING_MODEL_ID } from '../types';
 
 vi.mock('../hooks/useBackButton', () => ({ useBackButton: () => {} }));
@@ -55,6 +55,90 @@ describe('MomentSheet sharing', () => {
     const { title, text } = share.mock.calls[0][0];
     expect(title).toBe('☕ Cafes in bangalore');
     expect(text).toContain('1. Beyond Bean Coffee');
+    delete (navigator as { share?: unknown }).share;
+  });
+});
+
+describe('MomentSheet subsections', () => {
+  // Unit vector at a given angle, so notes near the same angle cluster.
+  const at = (deg: number): number[] => [Math.cos((deg * Math.PI) / 180), Math.sin((deg * Math.PI) / 180)];
+  const DAY = 24 * 60 * 60 * 1000;
+  const topicNote = (id: string, deg: number, tag: string, day: number): Memory => ({
+    id, content: '', timestamp: new Date(2025, 2, 10, 12).getTime() + day * DAY, tags: [tag],
+    enrichment: {
+      summary: '', suggestedTags: [], embedding: at(deg), embeddingModel: EMBEDDING_MODEL_ID,
+      entityContext: { type: 'Place', title: `Title ${id}` },
+    } as Memory['enrichment'],
+  });
+  // Two topics; saved in two bursts that cut across them (a, d, b | c, e, f).
+  const memories = [
+    topicNote('a', 0, 'espresso', 0), topicNote('b', 5, 'espresso', 2), topicNote('c', 10, 'espresso', 90),
+    topicNote('d', 90, 'brunch', 1), topicNote('e', 95, 'brunch', 91), topicNote('f', 100, 'brunch', 92),
+  ];
+  const matches = memories.map((m, i) => ({ id: m.id, score: 1 - i / 10 }));
+
+  const renderSectioned = (onHideNote = vi.fn(async () => {})) =>
+    render(
+      <MomentSheet
+        moment={moment}
+        memories={memories}
+        matches={matches}
+        isEmbedding={false}
+        onClose={() => {}}
+        onDelete={async () => {}}
+        onHideNote={onHideNote}
+        onRetryEmbedding={async () => {}}
+      />,
+    );
+  const headings = () => screen.queryAllByRole('heading', { level: 3 }).map(h => h.textContent);
+  const titles = () => screen.getAllByText(/^Title /).map(el => el.textContent);
+
+  beforeEach(() => localStorage.clear());
+
+  it('groups notes under section headers, best grouping first', () => {
+    renderSectioned();
+    expect(headings()).toEqual(['espresso', 'brunch']);
+    expect(titles()).toEqual(['Title a', 'Title b', 'Title c', 'Title d', 'Title e', 'Title f']);
+    expect(screen.getByRole('button', { name: 'Topics' }).getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('switches grouping, goes back to relevance order, and remembers the choice', () => {
+    const first = renderSectioned();
+    fireEvent.click(screen.getByRole('button', { name: 'Timeline' }));
+    expect(headings()).toEqual(['8–10 Jun 2025', '10–12 Mar 2025']);
+    expect(titles()).toEqual(['Title c', 'Title e', 'Title f', 'Title a', 'Title b', 'Title d']);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Relevance' }));
+    expect(headings()).toEqual([]);
+    expect(titles()).toEqual(['Title a', 'Title b', 'Title c', 'Title d', 'Title e', 'Title f']);
+    expect(JSON.parse(localStorage.getItem(SECTION_VIEW_KEY)!)).toEqual({ m1: 'relevance' });
+
+    first.unmount();
+    renderSectioned();
+    expect(headings()).toEqual([]);
+  });
+
+  it('still hides a note from inside a section', () => {
+    const onHideNote = vi.fn(async () => {});
+    renderSectioned(onHideNote);
+    fireEvent.click(screen.getAllByLabelText('Hide from this moment')[3]);
+    expect(onHideNote).toHaveBeenCalledWith('m1', 'd');
+  });
+
+  it('shows no grouping chips for a small moment', () => {
+    renderSheet([{ id: 'n1', score: 1 }, { id: 'n2', score: 0.5 }]);
+    expect(screen.queryByRole('button', { name: 'Relevance' })).toBeNull();
+  });
+
+  it('shares the notes under their section labels', async () => {
+    const share = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'share', { value: share, configurable: true });
+    renderSectioned();
+    fireEvent.click(screen.getByLabelText('Share moment'));
+    await waitFor(() => expect(share).toHaveBeenCalledTimes(1));
+    const { text } = share.mock.calls[0][0];
+    expect(text).toContain('ESPRESSO\n\n1. Title a');
+    expect(text).toContain('BRUNCH\n\n4. Title d');
     delete (navigator as { share?: unknown }).share;
   });
 });
