@@ -90,8 +90,18 @@ const formatNote = (m: Memory, index: number): string => {
 export const momentShareTitle = (moment: Moment): string =>
   `${moment.emoji || FALLBACK_EMOJI} ${moment.title}`;
 
-/** Full shareable text for a moment and its notes (in the given order). */
-export const formatMomentForShare = (moment: Moment, notes: Memory[]): string => {
+/** A named group of notes within the shared moment. */
+export interface ShareSection {
+  label: string;
+  noteIds: string[];
+}
+
+/**
+ * Full shareable text for a moment and its notes (in the given order). With
+ * sections, notes are grouped under each section's label and numbered
+ * straight through; notes in no section follow at the end.
+ */
+export const formatMomentForShare = (moment: Moment, notes: Memory[], sections?: ShareSection[]): string => {
   const parts: string[] = [momentShareTitle(moment)];
 
   const terms = moment.terms.filter(t => t.trim() && t.trim() !== moment.title.trim());
@@ -101,7 +111,26 @@ export const formatMomentForShare = (moment: Moment, notes: Memory[]): string =>
   parts.push(`${count} ${count === 1 ? 'note' : 'notes'}`);
 
   const header = parts.join('\n');
-  const body = count > 0 ? notes.map(formatNote).join('\n\n') : 'No notes yet.';
+  let body = 'No notes yet.';
+  if (count > 0 && sections && sections.length > 0) {
+    const byId = new Map(notes.map(n => [n.id, n]));
+    const used = new Set<string>();
+    const blocks: string[] = [];
+    let n = 0;
+    for (const section of sections) {
+      const group = section.noteIds
+        .filter(id => byId.has(id) && !used.has(id))
+        .map(id => byId.get(id)!);
+      if (group.length === 0) continue;
+      group.forEach(m => used.add(m.id));
+      blocks.push(`${section.label.toUpperCase()}\n\n${group.map(m => formatNote(m, n++)).join('\n\n')}`);
+    }
+    const rest = notes.filter(m => !used.has(m.id));
+    if (rest.length > 0) blocks.push(rest.map(m => formatNote(m, n++)).join('\n\n'));
+    body = blocks.join('\n\n');
+  } else if (count > 0) {
+    body = notes.map(formatNote).join('\n\n');
+  }
 
   return `${header}\n${'─'.repeat(16)}\n\n${body}\n\n— Shared from SaveItForL8R`;
 };
