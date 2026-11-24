@@ -15,7 +15,7 @@ SaveItForL8R is a **Progressive Web App (PWA)** — a "personal second brain" fo
 - **Cloud Storage**: Google Drive (appDataFolder)
 - **Local Storage**: IndexedDB with AES-GCM encryption
 - **Testing**: Vitest + React Testing Library
-- **Deployment**: Docker + Nginx → Google Cloud Run
+- **Deployment**: Client → Firebase Hosting (static `dist/`); server → Docker on Google Cloud Run (asia-south1), fronted by a Firebase Hosting rewrite for `api.saveitforl8r.com`
 
 ## Commands
 
@@ -73,8 +73,9 @@ The client-side React application uses Vite to inject environment variables at b
 - **Rate Limiting**: Per-user rate limits are enforced on `/api/enrich` (20/min), `/api/query` (10/min) and `/api/moment/embed` (20/min) to prevent API abuse.
 - **Input Validation**: All proxy endpoints validate request payloads (text length, attachment count/size/MIME type, tag limits, coordinate ranges) before processing.
 - **Prompt Injection Mitigation**: System instructions are separated from user content using Gemini's `systemInstruction` config. User inputs are sanitized (control characters stripped) before embedding in prompts.
-- **Security Headers**: The proxy uses `helmet` for HTTP security headers. Nginx adds `X-Content-Type-Options`, `X-Frame-Options`, and `Referrer-Policy`.
-- **Docker**: Containers run as non-root users. Builds use `npm ci` for deterministic dependency resolution.
+- **Security Headers**: The proxy uses `helmet` for HTTP security headers. Firebase Hosting (`firebase.json`) adds `X-Content-Type-Options`, `X-Frame-Options`, and `Referrer-Policy` to the client.
+- **Docker**: The server container runs as a non-root user. Builds use `npm ci` for deterministic dependency resolution.
+- **Hosting request limit**: Firebase Hosting cuts off requests to the server after 60 seconds. Long-running AI work must respond `accepted` immediately and finish in the background (as `/api/enrich` and moment synthesis do); synchronous endpoints must finish well inside 60s.
 - **Sensitive files**: `.env` files are gitignored; never commit credentials.
 
 ### Attachment Limits
