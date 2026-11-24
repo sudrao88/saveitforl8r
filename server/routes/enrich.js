@@ -25,6 +25,9 @@ import {
   buildMapsToolConfig,
   extractMapsPlaces,
   applyMapsGrounding,
+  applyPlacesGrounding,
+  ungroundedPlaces,
+  resolvePlacesWithMaps,
 } from '../services/mapsGrounding.js';
 import { sendSilentPush } from '../lib/silentPush.js';
 import {
@@ -58,6 +61,41 @@ const attachOgPreviews = async (ogImagePromise, sanitized, requestId) => {
     }
   } catch (ogErr) {
     console.error(`[Enrich] [${requestId}] OG image fetch failed (non-fatal):`, ogErr.message);
+  }
+};
+
+/**
+ * Attach grounded Google Maps links to a sanitized result. Uses the places the
+ * enrichment call grounded, then runs a Maps-only lookup for any place still
+ * without a placeId. Non-fatal: a failed lookup leaves name + address search links.
+ */
+const groundLocations = async ({ ai, model, sanitized, groundedPlaces, detectedUrls, location, timeoutMs, requestId }) => {
+  let places = groundedPlaces;
+  applyMapsGrounding(sanitized, places, detectedUrls);
+  applyPlacesGrounding(sanitized, places);
+
+  const missing = ungroundedPlaces(sanitized);
+  if (missing.length > 0) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const extra = await resolvePlacesWithMaps(ai, model, missing, location, controller.signal);
+      console.log(`[Enrich] [${requestId}] Maps lookup for ${missing.length} ungrounded place(s) returned ${extra.length} place(s)`);
+      if (extra.length > 0) {
+        places = [...places, ...extra];
+        applyMapsGrounding(sanitized, places, detectedUrls);
+        applyPlacesGrounding(sanitized, places);
+      }
+    } catch (err) {
+      console.warn(`[Enrich] [${requestId}] Maps lookup failed (non-fatal):`, err.message);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  const all = sanitized.places ?? [];
+  if (all.length > 0 || sanitized.locationContext) {
+    console.log(`[Enrich] [${requestId}] Maps grounding: ${places.length} grounded place(s); main=${sanitized.locationContext?.placeId ? 'grounded' : 'search'}; places=${all.filter((p) => p.placeId).length}/${all.length} grounded`);
   }
 };
 
@@ -314,9 +352,10 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
           parsed.enrichmentStrategy = enrichmentStrategy;
 
           const sanitized = sanitizeEnrichmentResult(parsed);
-          const mapsPlaces = extractMapsPlaces(response);
-          applyMapsGrounding(sanitized, mapsPlaces, detectedUrls);
-          if (useMaps) console.log(`[Enrich] [${req.requestId}] Maps grounding: ${mapsPlaces.length} place(s), mapsUri=${sanitized.locationContext?.mapsUri ? 'grounded' : 'none'}`);
+          await groundLocations({
+            ai, model: MODEL_NAME, sanitized, groundedPlaces: extractMapsPlaces(response),
+            detectedUrls, location, timeoutMs: 20_000, requestId: req.requestId,
+          });
           if (hasUrls) attachSourceUrl(sanitized, detectedUrls);
 
           // Attach OG preview images (awaiting the parallel fetch started earlier)
@@ -399,7 +438,10 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
           const sanitizedFallback = sanitizeEnrichmentResult(parsed);
           // The fallback runs without Maps grounding, so any mapsUri it wrote is
           // unverified; keep only a Maps link the user pasted.
-          applyMapsGrounding(sanitizedFallback, extractMapsPlaces(response), detectedUrls);
+          await groundLocations({
+            ai, model: MODEL_NAME, sanitized: sanitizedFallback, groundedPlaces: [],
+            detectedUrls, location, timeoutMs: 20_000, requestId: req.requestId,
+          });
           if (hasUrls) attachSourceUrl(sanitizedFallback, detectedUrls);
 
           // Attach OG preview images (from the parallel fetch started earlier)
