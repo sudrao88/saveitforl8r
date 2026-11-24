@@ -247,6 +247,9 @@ export interface Memory {
   enrichment?: EnrichmentData;
   tags: string[]; // Finalized tags
   enrichmentStatus?: EnrichmentStatus;
+  /** ID of the latest enrichment submission. Results carrying a different ID
+   *  belong to an earlier submission (e.g. before an edit) and are ignored. */
+  enrichmentRequestId?: string;
   /** @deprecated Mirrored from enrichmentStatus for backward compatibility. Use isMemoryInFlight(). */
   isPending?: boolean;
   isDeleting?: boolean; // UI state for deletion animation

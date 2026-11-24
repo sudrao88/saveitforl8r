@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { applyEnrichmentResult } from './useEnrichmentPolling';
+import { applyEnrichmentResult, isStaleResult } from './useEnrichmentPolling';
 import * as storageService from '../services/storageService';
 import { Memory } from '../types';
 
@@ -64,5 +64,45 @@ describe('applyEnrichmentResult', () => {
     });
     const outcome = await applyEnrichmentResult(baseMemory, { status: 'failed' });
     expect(outcome).toBeNull();
+  });
+});
+
+describe('stale results after an edit or retry', () => {
+  const edited: Memory = {
+    id: 'mem-2', content: 'Fine print coffee hong kong', timestamp: Date.now(), tags: [],
+    enrichmentStatus: 'submitting', isPending: true, enrichmentRequestId: 'req-new',
+  };
+  const oldResult = { status: 'completed', data: { summary: 'old', suggestedTags: [] } };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (storageService.getMemory as any).mockResolvedValue(edited);
+    (storageService.saveMemory as any).mockResolvedValue(undefined);
+  });
+
+  it('ignores a result from an earlier submission', async () => {
+    expect(await applyEnrichmentResult(edited, { ...oldResult, requestId: 'req-old' })).toBeNull();
+    expect(storageService.saveMemory).not.toHaveBeenCalled();
+  });
+
+  it('applies the result for the current submission', async () => {
+    const outcome = await applyEnrichmentResult(edited, { status: 'completed', data: { summary: 'new', suggestedTags: [] }, requestId: 'req-new' });
+    expect(outcome?.updated.enrichment?.summary).toBe('new');
+  });
+
+  it('ignores an old result with no requestId until the server accepts the new submission', async () => {
+    expect(await applyEnrichmentResult(edited, oldResult)).toBeNull();
+    const accepted = { ...edited, enrichmentStatus: 'processing' as const };
+    (storageService.getMemory as any).mockResolvedValue(accepted);
+    expect((await applyEnrichmentResult(accepted, oldResult))?.action).toBe('completed');
+  });
+
+  it('ignores a failure from an earlier submission', async () => {
+    expect(await applyEnrichmentResult(edited, { status: 'failed', requestId: 'req-old' })).toBeNull();
+  });
+
+  it('isStaleResult accepts anything for memories without a requestId', () => {
+    expect(isStaleResult({ enrichmentStatus: 'submitting' }, { requestId: 'x' })).toBe(false);
+    expect(isStaleResult({ enrichmentStatus: 'submitting' }, undefined)).toBe(false);
   });
 });

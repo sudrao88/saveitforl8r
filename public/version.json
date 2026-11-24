@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v147",
-  "buildNumber": 147,
-  "buildDate": "2026-11-24T03:49:39.000Z",
+  "version": "saveitforl8r-v148",
+  "buildNumber": 148,
+  "buildDate": "2026-11-24T04:40:14.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Notes save every place they mention, each pinned to Google Maps, and place links no longer open in the wrong city."
+  "changelog": "Editing a note no longer shows its old enrichment in place of the new one."
 }

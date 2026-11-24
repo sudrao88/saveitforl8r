@@ -42,11 +42,17 @@ export const validateContextFileRef = (fileUri, fileName) => {
 };
 
 export const validateEnrichInput = (req, res, next) => {
-  const { text, attachments, tags, location, memoryId } = req.body;
+  const { text, attachments, tags, location, memoryId, requestId } = req.body;
 
   if (memoryId !== undefined) {
     if (typeof memoryId !== 'string' || !UUID_REGEX.test(memoryId)) {
       return res.status(400).json({ error: 'memoryId must be a valid UUID' });
+    }
+  }
+
+  if (requestId !== undefined && requestId !== null) {
+    if (typeof requestId !== 'string' || !UUID_REGEX.test(requestId)) {
+      return res.status(400).json({ error: 'requestId must be a valid UUID' });
     }
   }
 
