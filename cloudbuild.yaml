@@ -26,29 +26,7 @@ steps:
       - 'server/'
 
   # -------------------------------------------------------------------------
-  # 2. Build Client Image
-  # -------------------------------------------------------------------------
-  # NOTE: Must use entrypoint bash so that secretEnv values (available as
-  # environment variables) are shell-expanded into the docker build-args.
-  # Without a shell, $$VAR in args is just an escape to literal $VAR which
-  # docker passes through unexpanded.
-  - name: 'gcr.io/cloud-builders/docker'
-    id: 'build-client'
-    secretEnv: ['VITE_GOOGLE_CLIENT_ID', 'VITE_GOOGLE_CLIENT_SECRET']
-    entrypoint: 'bash'
-    args:
-      - '-c'
-      - |
-        docker build \
-          --build-arg "VITE_GOOGLE_CLIENT_ID=$$VITE_GOOGLE_CLIENT_ID" \
-          --build-arg "VITE_GOOGLE_CLIENT_SECRET=$$VITE_GOOGLE_CLIENT_SECRET" \
-          --build-arg "VITE_PROXY_URL=${_SERVER_URL}" \
-          --build-arg "VITE_APP_URL=${_APP_URL}" \
-          -t "us-west1-docker.pkg.dev/$PROJECT_ID/saveitforl8r-repo/client:latest" \
-          .
-
-  # -------------------------------------------------------------------------
-  # 3. Push Images to Registry
+  # 2. Push Server Image to Registry
   # -------------------------------------------------------------------------
   - name: 'gcr.io/cloud-builders/docker'
     id: 'push-server'
@@ -56,72 +34,12 @@ steps:
       - 'push'
       - 'us-west1-docker.pkg.dev/$PROJECT_ID/saveitforl8r-repo/server:latest'
 
-  - name: 'gcr.io/cloud-builders/docker'
-    id: 'push-client'
-    args:
-      - 'push'
-      - 'us-west1-docker.pkg.dev/$PROJECT_ID/saveitforl8r-repo/client:latest'
-
   # -------------------------------------------------------------------------
-  # 4. Deploy to us-west1
+  # 3. Deploy Server to Cloud Run (asia-south1)
   # -------------------------------------------------------------------------
-  # Deploy Server
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    id: 'deploy-server-us-west1'
-    entrypoint: gcloud
-    args:
-      - 'run'
-      - 'deploy'
-      - 'saveitforl8r-server'
-      - '--image'
-      - 'us-west1-docker.pkg.dev/$PROJECT_ID/saveitforl8r-repo/server:latest'
-      - '--region'
-      - 'us-west1'
-      - '--platform'
-      - 'managed'
-      - '--allow-unauthenticated'
-      - '--set-secrets=GEMINI_API_KEY=GEMINI_API_KEY:latest,VITE_GOOGLE_CLIENT_ID=VITE_GOOGLE_CLIENT_ID:latest'
-      - '--port'
-      - '8081'
-      - '--min-instances'
-      - '0'
-      - '--max-instances'
-      - '10'
-      - '--concurrency'
-      - '80'
-      - '--cpu'
-      - '2'
-      - '--memory'
-      - '1Gi'
-      - '--timeout'
-      - '120'
-
-  # Deploy Client
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    id: 'deploy-client-us-west1'
-    entrypoint: gcloud
-    args:
-      - 'run'
-      - 'deploy'
-      - 'saveitforl8r-client'
-      - '--image'
-      - 'us-west1-docker.pkg.dev/$PROJECT_ID/saveitforl8r-repo/client:latest'
-      - '--region'
-      - 'us-west1'
-      - '--platform'
-      - 'managed'
-      - '--allow-unauthenticated'
-      - '--min-instances'
-      - '0'
-      - '--max-instances'
-      - '5'
-      - '--concurrency'
-      - '250'
-
-  # -------------------------------------------------------------------------
-  # 5. Deploy to asia-south1
-  # -------------------------------------------------------------------------
-  # Deploy Server
+  # api.saveitforl8r.com reaches this service through the Firebase Hosting
+  # rewrite in firebase.json (site: saveitforl8r-api). If the region or
+  # service name changes here, change it there too.
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'deploy-server-asia-south1'
     entrypoint: gcloud
@@ -137,6 +55,7 @@ steps:
       - 'managed'
       - '--allow-unauthenticated'
       - '--set-secrets=GEMINI_API_KEY=GEMINI_API_KEY:latest,VITE_GOOGLE_CLIENT_ID=VITE_GOOGLE_CLIENT_ID:latest'
+      - '--update-env-vars=^##^ALLOWED_ORIGINS=${_APP_URL},${_SERVER_URL},capacitor://localhost,http://localhost,https://localhost'
       - '--port'
       - '8081'
       - '--min-instances'
@@ -152,58 +71,38 @@ steps:
       - '--timeout'
       - '120'
 
-  # Deploy Client
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    id: 'deploy-client-asia-south1'
-    entrypoint: gcloud
+  # -------------------------------------------------------------------------
+  # 4. Build Client (static PWA → dist/)
+  # -------------------------------------------------------------------------
+  # node_modules is already in /workspace from step 0. Vite inlines the
+  # VITE_* environment variables at build time.
+  - name: 'node:20'
+    id: 'build-client'
+    secretEnv: ['VITE_GOOGLE_CLIENT_ID', 'VITE_GOOGLE_CLIENT_SECRET']
+    env:
+      - 'VITE_PROXY_URL=${_SERVER_URL}'
+      - 'VITE_APP_URL=${_APP_URL}'
+    entrypoint: 'npm'
+    args: ['run', 'build']
+
+  # -------------------------------------------------------------------------
+  # 5. Deploy Client + API front door to Firebase Hosting
+  # -------------------------------------------------------------------------
+  # Publishes dist/ to the saveitforl8r site and the Cloud Run rewrite to the
+  # saveitforl8r-api site (see firebase.json). Authenticates as the build
+  # service account via Application Default Credentials.
+  - name: 'node:20'
+    id: 'deploy-hosting'
+    entrypoint: 'npx'
     args:
-      - 'run'
+      - '--yes'
+      - 'firebase-tools@15.18.0'
       - 'deploy'
-      - 'saveitforl8r-client'
-      - '--image'
-      - 'us-west1-docker.pkg.dev/$PROJECT_ID/saveitforl8r-repo/client:latest'
-      - '--region'
-      - 'asia-south1'
-      - '--platform'
-      - 'managed'
-      - '--allow-unauthenticated'
-      - '--min-instances'
-      - '0'
-      - '--max-instances'
-      - '5'
-      - '--concurrency'
-      - '250'
-
-  # -------------------------------------------------------------------------
-  # 6. Post-Deploy Configuration (ALLOWED_ORIGINS)
-  # -------------------------------------------------------------------------
-  # Update Server config in us-west1
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    id: 'update-config-us-west1'
-    entrypoint: 'bash'
-    args:
-      - '-c'
-      - |
-        CLIENT_URL=$$(gcloud run services describe saveitforl8r-client --region us-west1 --format="value(status.url)")
-        ALLOWED_ORIGINS="https://saveitforl8r.com,https://api.saveitforl8r.com,capacitor://localhost,http://localhost,https://localhost"
-        if [ -n "$$CLIENT_URL" ]; then
-          ALLOWED_ORIGINS="$$ALLOWED_ORIGINS,$$CLIENT_URL"
-        fi
-        gcloud run services update saveitforl8r-server --region us-west1 --update-env-vars "^##^ALLOWED_ORIGINS=$$ALLOWED_ORIGINS"
-
-  # Update Server config in asia-south1
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    id: 'update-config-asia-south1'
-    entrypoint: 'bash'
-    args:
-      - '-c'
-      - |
-        CLIENT_URL=$$(gcloud run services describe saveitforl8r-client --region asia-south1 --format="value(status.url)")
-        ALLOWED_ORIGINS="https://saveitforl8r.com,https://api.saveitforl8r.com,capacitor://localhost,http://localhost,https://localhost"
-        if [ -n "$$CLIENT_URL" ]; then
-          ALLOWED_ORIGINS="$$ALLOWED_ORIGINS,$$CLIENT_URL"
-        fi
-        gcloud run services update saveitforl8r-server --region asia-south1 --update-env-vars "^##^ALLOWED_ORIGINS=$$ALLOWED_ORIGINS"
+      - '--only'
+      - 'hosting'
+      - '--project'
+      - '$PROJECT_ID'
+      - '--non-interactive'
 
 options:
   logging: CLOUD_LOGGING_ONLY
@@ -221,4 +120,3 @@ availableSecrets:
 
 images:
 - 'us-west1-docker.pkg.dev/$PROJECT_ID/saveitforl8r-repo/server:latest'
-- 'us-west1-docker.pkg.dev/$PROJECT_ID/saveitforl8r-repo/client:latest'
