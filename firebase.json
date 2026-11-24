@@ -44,7 +44,7 @@
           "destination": "/privacy-policy.html"
         },
         {
-          "source": "**",
+          "source": "!/@(assets|fonts)/**",
           "destination": "/index.html"
         }
       ]
