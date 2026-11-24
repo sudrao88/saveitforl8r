@@ -20,9 +20,28 @@ const FAST_POLL_TIER_MS = 15_000;
  * state, since the server may still be working or the Firestore record
  * just hasn't been written yet.
  */
+/**
+ * True when a result belongs to an earlier submission of this memory than the
+ * one in flight. The server keeps a memory's last result for days, so after an
+ * edit or retry a poll can reach the server before the new request has
+ * replaced it.
+ * - Result carries a requestId: it must match the memory's.
+ * - Result has none (written by an older server): trust it only once the server
+ *   has acknowledged this submission ('processing'), since by then the server
+ *   has replaced the old record.
+ */
+export const isStaleResult = (
+  memory: Pick<Memory, 'enrichmentRequestId' | 'enrichmentStatus'>,
+  result: { requestId?: string } | undefined,
+): boolean => {
+  if (!memory.enrichmentRequestId) return false;
+  if (result?.requestId) return result.requestId !== memory.enrichmentRequestId;
+  return memory.enrichmentStatus !== 'processing';
+};
+
 export const applyEnrichmentResult = async (
   memory: Memory,
-  result: { status: string; data?: any } | undefined
+  result: { status: string; data?: any; requestId?: string } | undefined
 ): Promise<{ updated: Memory; action: 'completed' | 'failed' } | null> => {
   const needsUpdate =
     (result?.status === 'completed' && result.data) ||
@@ -36,6 +55,8 @@ export const applyEnrichmentResult = async (
   // Skip if the memory was already enriched (prevents double-processing
   // when the polling loop fires again with a stale memoriesRef).
   if (!isMemoryInFlight(current)) return null;
+
+  if (isStaleResult(current, result)) return null;
 
   if (result?.status === 'completed' && result.data) {
     const allTags = Array.from(new Set([...(current.tags || []), ...(result.data.suggestedTags || [])]));

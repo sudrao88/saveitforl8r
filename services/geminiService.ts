@@ -21,6 +21,7 @@ interface EnrichmentInput {
   location?: { latitude: number; longitude: number };
   tags: string[];
   memoryId?: string;
+  requestId?: string;
 }
 
 interface SubmitEnrichmentResponse {
@@ -115,6 +116,7 @@ export const submitEnrichment = async (
   location?: { latitude: number; longitude: number },
   tags: string[] = [],
   memoryId?: string,
+  requestId?: string,
 ): Promise<void> => {
   // Strip base64 data from attachments that were uploaded via chunked upload
   // to avoid sending the massive payload — the server uses fileUri instead
@@ -130,6 +132,7 @@ export const submitEnrichment = async (
     location,
     tags,
     memoryId,
+    requestId,
   };
 
   try {
@@ -170,6 +173,7 @@ export const submitEnrichment = async (
 interface EnrichmentResultEntry {
   status: 'completed' | 'failed' | 'not_found' | string;
   data?: EnrichmentData;
+  requestId?: string;
 }
 
 interface EnrichmentResultsResponse {
@@ -177,9 +181,9 @@ interface EnrichmentResultsResponse {
 }
 
 export type EnrichmentPollResult =
-  | { status: 'completed'; data: EnrichmentData }
+  | { status: 'completed'; data: EnrichmentData; requestId?: string }
   | { status: 'processing' }
-  | { status: 'failed' }
+  | { status: 'failed'; requestId?: string }
   | { status: 'not_found' };
 
 /**
@@ -199,9 +203,9 @@ export const fetchPendingEnrichments = async (
       for (const id of memoryIds) {
         const entry = response.results[id];
         if (entry?.status === 'completed' && entry.data) {
-          result[id] = { status: 'completed', data: entry.data };
+          result[id] = { status: 'completed', data: entry.data, requestId: entry.requestId };
         } else if (entry?.status === 'failed') {
-          result[id] = { status: 'failed' };
+          result[id] = { status: 'failed', requestId: entry.requestId };
         } else if (entry?.status === 'processing') {
           result[id] = { status: 'processing' };
         } else {

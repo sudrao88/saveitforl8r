@@ -102,7 +102,10 @@ const groundLocations = async ({ ai, model, sanitized, groundedPlaces, detectedU
 export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GEMINI_TIMEOUT_MS, ENRICHMENT_COLLECTION, ENRICHMENT_TTL_MS, ENRICHMENT_FAILED_TTL_MS, aiLimiter }) => {
   const router = Router();
 
-  const persistEnrichmentResult = async (memoryId, userId, status, result) => {
+  // requestId identifies the submission this result belongs to. A result is
+  // not written over a newer submission's record (e.g. the user edited the
+  // note while this job was still running).
+  const persistEnrichmentResult = async (memoryId, userId, status, result, requestId) => {
     if (!db || !memoryId) return;
 
     const docRef = db.collection(ENRICHMENT_COLLECTION).doc(memoryId);
@@ -114,6 +117,11 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
         console.warn(`[Firestore] Ownership mismatch for enrichment ${memoryId}: requested by ${userId}, owned by ${existing.data().userId}`);
         return;
       }
+      const currentRequestId = existing.exists ? existing.data().requestId : undefined;
+      if (requestId && currentRequestId && currentRequestId !== requestId) {
+        console.log(`[Firestore] Skipping stale ${status} result for ${memoryId}: a newer submission is in flight`);
+        return;
+      }
 
       const doc = {
         userId,
@@ -122,6 +130,7 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
         expireAt: new Date(Date.now() + (status === 'completed' ? ENRICHMENT_TTL_MS : ENRICHMENT_FAILED_TTL_MS)),
       };
       if (result) doc.result = result;
+      if (requestId) doc.requestId = requestId;
       await docRef.set(doc);
     } catch (err) {
       console.error(`[Firestore] Failed to persist result for ${memoryId}:`, err.message);
@@ -153,7 +162,7 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
     validateEnrichInput,
     enrichLimiter,
     async (req, res) => {
-      const { text, attachments, location, tags, memoryId } = req.body;
+      const { text, attachments, location, tags, memoryId, requestId } = req.body;
 
       // Persist "processing" status
       if (db && memoryId) {
@@ -168,6 +177,7 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
             status: 'processing',
             createdAt: Date.now(),
             expireAt: new Date(Date.now() + ENRICHMENT_TTL_MS),
+            ...(requestId ? { requestId } : {}),
           });
         } catch (err) {
           console.error(`[Enrich] [${req.requestId}] Failed to persist processing status:`, err.message);
@@ -391,7 +401,7 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
             console.error(`[Enrich] [${req.requestId}] Embedding failed (non-fatal):`, embedErr.message);
           }
 
-          persistEnrichmentResult(memoryId, req.userId, 'completed', sanitized);
+          persistEnrichmentResult(memoryId, req.userId, 'completed', sanitized, requestId);
 
           // Schedule a delayed silent push (30s grace period)
           // If the client polls and retrieves the result within 30s, the push is unnecessary
@@ -447,7 +457,7 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
           // Attach OG preview images (from the parallel fetch started earlier)
           await attachOgPreviews(ogImagePromise, sanitizedFallback, req.requestId);
 
-          persistEnrichmentResult(memoryId, req.userId, 'completed', sanitizedFallback);
+          persistEnrichmentResult(memoryId, req.userId, 'completed', sanitizedFallback, requestId);
 
           // Schedule a delayed silent push (30s grace period)
           setTimeout(async () => {
@@ -462,7 +472,7 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
           }, 30_000);
         } catch (fallbackError) {
           console.error(`[Enrich] [${req.requestId}] Fallback also failed:`, fallbackError.message);
-          persistEnrichmentResult(memoryId, req.userId, 'failed', null);
+          persistEnrichmentResult(memoryId, req.userId, 'failed', null, requestId);
         }
       } finally {
         // Clean up any files uploaded via Gemini File API (best-effort)
@@ -499,9 +509,9 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
           if (data.userId !== req.userId) { results[memoryIds[i]] = { status: 'not_found' }; continue; }
 
           if (data.status === 'completed' && data.result) {
-            results[memoryIds[i]] = { status: 'completed', data: data.result };
+            results[memoryIds[i]] = { status: 'completed', data: data.result, ...(data.requestId ? { requestId: data.requestId } : {}) };
           } else if (data.status === 'failed') {
-            results[memoryIds[i]] = { status: 'failed' };
+            results[memoryIds[i]] = { status: 'failed', ...(data.requestId ? { requestId: data.requestId } : {}) };
           } else {
             results[memoryIds[i]] = { status: data.status || 'unknown' };
           }

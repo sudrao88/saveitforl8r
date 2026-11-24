@@ -287,7 +287,7 @@ export const useMemories = () => {
     // Submit enrichment (fileUri for uploaded attachments, inline data for small ones)
     startPolling();
     try {
-      await submitEnrichment(text, enrichmentAttachments, location, tags, memoryId);
+      await submitEnrichment(text, enrichmentAttachments, location, tags, memoryId, newMemory.enrichmentRequestId);
       updateUploadProgress(memoryId, null);
       // Server has acknowledged the job. Transition from 'submitting' to
       // 'processing' so the polling-driven failure path is the only one
@@ -330,6 +330,7 @@ export const useMemories = () => {
 
     const pendingMemory: Memory = {
         ...memory,
+        enrichmentRequestId: crypto.randomUUID(),
         enrichmentStatus: 'submitting',
         isPending: true,
         processingError: false,
@@ -360,6 +361,7 @@ export const useMemories = () => {
         tags,
         location,
         enrichmentStatus: 'submitting',
+        enrichmentRequestId: crypto.randomUUID(),
         isPending: true,
         processingError: false
       };
@@ -447,6 +449,9 @@ export const useMemories = () => {
         location: location || existing.location,
         enrichment: undefined, // Clear old enrichment to force re-processing
         enrichmentStatus: 'submitting',
+        // New ID so the previous submission's result (still on the server for
+        // a while) can't be applied in place of this one.
+        enrichmentRequestId: crypto.randomUUID(),
         isPending: true,
         processingError: false,
         timestamp: Date.now()
@@ -464,7 +469,7 @@ export const useMemories = () => {
       // Submit enrichment and start polling
       startPolling();
 
-      submitEnrichment(text, attachments, updatedMemory.location, tags, id)
+      submitEnrichment(text, attachments, updatedMemory.location, tags, id, updatedMemory.enrichmentRequestId)
         .then(async () => {
             // Server acknowledged — transition submitting → processing.
             const current = await getMemory(id);
