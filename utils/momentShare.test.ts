@@ -47,4 +47,16 @@ describe('formatMomentForShare', () => {
     expect(momentShareTitle(single)).toBe('✨ Cafes');
     expect(formatMomentForShare(single, [])).toBe('✨ Cafes\n0 notes\n────────────────\n\nNo notes yet.\n\n— Shared from SaveItForL8R');
   });
+
+  it('groups notes under section labels with continuous numbering', () => {
+    const notes = ['n1', 'n2', 'n3', 'n4'].map(id => note(id, { content: `Note ${id}` }));
+    const text = formatMomentForShare(moment, notes, [
+      { label: 'Laksa', noteIds: ['n3', 'n1'] },
+      { label: 'Empty', noteIds: ['gone'] },
+      { label: 'Satay', noteIds: ['n2'] },
+    ]);
+    const lines = text.split('─\n')[1].split('\n').filter(l => /^[A-Z0-9]/.test(l));
+    expect(lines).toEqual(['LAKSA', '1. Note n3', '2. Note n1', 'SATAY', '3. Note n2', '4. Note n4']);
+    expect(text).not.toContain('EMPTY');
+  });
 });

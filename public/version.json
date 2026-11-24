@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v144",
-  "buildNumber": 144,
-  "buildDate": "2026-11-22T13:29:00.000Z",
+  "version": "saveitforl8r-v145",
+  "buildNumber": 145,
+  "buildDate": "2026-11-23T03:08:24.309Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Share a moment and its notes as a formatted text note."
+  "changelog": "Moments with several notes are grouped into subsections by topic, kind, place or time."
 }
