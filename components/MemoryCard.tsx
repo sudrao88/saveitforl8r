@@ -346,8 +346,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
   }
 
   // Link backed by a Google Maps grounding result (server stores its placeId).
-  // Maps grounding terms require showing the place name and a "Google Maps"
-  // attribution with the link.
+  // Shown as a map-pin icon whose title names the place and Google Maps.
   // Notes about several places get one grounded link per place instead.
   const groundedPlaces = (enrichment?.places ?? []).filter((p) => p.placeId && p.mapsUri);
   const showPlaceList = groundedPlaces.length > 1;
@@ -782,12 +781,10 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                                     rel="noopener noreferrer"
                                     onClick={(e) => e.stopPropagation()}
                                     title={`Open ${place.name} in Google Maps`}
-                                    className="flex items-center gap-1.5 min-w-0 max-w-full px-2 py-1.5 rounded-(--radius-lg) text-xs font-normal text-(--color-text-secondary) hover:text-(--color-text-primary) hover:bg-(--color-surface-hover-subtle) transition-colors"
+                                    aria-label={`Open ${place.name} in Google Maps`}
+                                    className="p-2 rounded-(--radius-lg) text-(--color-text-tertiary) hover:text-(--color-accent) hover:bg-(--color-surface-hover-subtle) transition-colors"
                                 >
-                                    <MapPin size={14} className="shrink-0" />
-                                    <span className="truncate">{place.name}</span>
-                                    <span className="shrink-0 text-(--color-text-tertiary)" aria-hidden="true">·</span>
-                                    <span translate="no" className="shrink-0 whitespace-nowrap text-(--color-text-primary)">Google Maps</span>
+                                    <MapPin size={16} />
                                 </a>
                             ))}
                             {targetUri && groundedPlaceName && (
@@ -797,12 +794,10 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                                     rel="noopener noreferrer"
                                     onClick={(e) => e.stopPropagation()}
                                     title={`Open ${groundedPlaceName} in Google Maps`}
-                                    className="flex items-center gap-1.5 min-w-0 max-w-full px-2 py-1.5 rounded-(--radius-lg) text-xs font-normal text-(--color-text-secondary) hover:text-(--color-text-primary) hover:bg-(--color-surface-hover-subtle) transition-colors"
+                                    aria-label={`Open ${groundedPlaceName} in Google Maps`}
+                                    className="p-2 rounded-(--radius-lg) text-(--color-text-tertiary) hover:text-(--color-accent) hover:bg-(--color-surface-hover-subtle) transition-colors"
                                 >
-                                    <MapPin size={14} className="shrink-0" />
-                                    <span className="truncate">{groundedPlaceName}</span>
-                                    <span className="shrink-0 text-(--color-text-tertiary)" aria-hidden="true">·</span>
-                                    <span translate="no" className="shrink-0 whitespace-nowrap text-(--color-text-primary)">Google Maps</span>
+                                    <MapPin size={16} />
                                 </a>
                             )}
                             {targetUri && !groundedPlaceName && !hideMainLink && (
