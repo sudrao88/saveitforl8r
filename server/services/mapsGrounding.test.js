@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   shouldUseMapsGrounding,
   buildMapsToolConfig,
@@ -6,6 +6,10 @@ import {
   extractMapsPlaces,
   matchPlace,
   buildPlaceUri,
+  buildSearchUri,
+  ungroundedPlaces,
+  resolvePlacesWithMaps,
+  applyPlacesGrounding,
   applyMapsGrounding,
 } from './mapsGrounding.js';
 
@@ -105,17 +109,27 @@ describe('applyMapsGrounding', () => {
     expect(result.locationContext.placeId).toBe('ChIJthirdwave01');
     expect(result.locationContext.mapsUri).toBe(buildPlaceUri('Third Wave Coffee', 'ChIJthirdwave01'));
   });
-  it('drops an ungrounded mapsUri', () => {
-    const result = { locationContext: { name: 'Cafe', mapsUri: 'https://maps.google.com/fake', placeId: 'ChIJstale00001' } };
+  it('replaces an ungrounded mapsUri with a name + address search', () => {
+    const result = { locationContext: {
+      name: '18 Grams Specialty Coffee', address: '15 Cannon Street, Causeway Bay, Hong Kong',
+      mapsUri: 'https://maps.google.com/fake', placeId: 'ChIJstale00001',
+    } };
     applyMapsGrounding(result, []);
-    expect(result.locationContext.mapsUri).toBeUndefined();
+    expect(result.locationContext.mapsUri).toBe(
+      'https://www.google.com/maps/search/?api=1&query=18%20Grams%20Specialty%20Coffee%2C%2015%20Cannon%20Street%2C%20Causeway%20Bay%2C%20Hong%20Kong',
+    );
     expect(result.locationContext.placeId).toBeUndefined();
-    expect(result.locationContext.name).toBe('Cafe');
+  });
+  it('searches by name alone when there is no address', () => {
+    const result = { locationContext: { name: 'Cafe' } };
+    applyMapsGrounding(result, []);
+    expect(result.locationContext.mapsUri).toBe(buildSearchUri('Cafe'));
+    expect(result.locationContext.mapsUri).not.toContain('@');
   });
   it('does not ground a location with no name', () => {
     const result = { locationContext: { address: '1 Main St' } };
     applyMapsGrounding(result, [{ title: 'A', placeId: 'ChIJabcdefghij' }]);
-    expect(result.locationContext).toEqual({ address: '1 Main St' });
+    expect(result.locationContext).toEqual({ address: '1 Main St', mapsUri: buildSearchUri(undefined, '1 Main St') });
   });
   it('keeps a Maps link the user pasted', () => {
     const result = { locationContext: { name: 'Cafe' } };
@@ -126,5 +140,123 @@ describe('applyMapsGrounding', () => {
     const result = { summary: 'x' };
     applyMapsGrounding(result, [{ title: 'A', placeId: 'ChIJabcdefghij' }]);
     expect(result).toEqual({ summary: 'x' });
+  });
+});
+
+describe('applyPlacesGrounding', () => {
+  const grounded = [
+    { title: 'Toit Brewpub', placeId: 'ChIJtoit000001' },
+    { title: 'Arbor Brewing Company', placeId: 'ChIJarbor00001' },
+    { title: 'Byg Brewski Brewing Company', placeId: 'ChIJbyg0000001' },
+  ];
+
+  it('gives each mentioned place its own placeId', () => {
+    const result = {
+      locationIsRelevant: true,
+      locationContext: { name: 'Toit Brewpub', placeId: 'ChIJtoit000001', mapsUri: 'x' },
+      places: [{ name: 'Toit Brewpub', address: 'Indiranagar' }, { name: 'Arbor Brewing Company' }],
+    };
+    applyPlacesGrounding(result, grounded);
+    expect(result.places).toEqual([
+      { name: 'Toit Brewpub', address: 'Indiranagar', placeId: 'ChIJtoit000001', mapsUri: buildPlaceUri('Toit Brewpub', 'ChIJtoit000001') },
+      { name: 'Arbor Brewing Company', placeId: 'ChIJarbor00001', mapsUri: buildPlaceUri('Arbor Brewing Company', 'ChIJarbor00001') },
+    ]);
+  });
+
+  it('keeps an unmatched place without a placeId instead of guessing', () => {
+    const result = { places: [{ name: 'Arbor Brewing' }, { name: 'Some Unknown Cafe' }] };
+    applyPlacesGrounding(result, grounded);
+    expect(result.places[0].placeId).toBe('ChIJarbor00001');
+    expect(result.places[1]).toEqual({ name: 'Some Unknown Cafe', mapsUri: buildSearchUri('Some Unknown Cafe') });
+  });
+
+  it('never assigns one grounded place to two entries', () => {
+    const result = { places: [{ name: 'Toit' }, { name: 'Toit Brewpub' }] };
+    applyPlacesGrounding(result, grounded);
+    const ids = result.places.map((p) => p.placeId).filter(Boolean);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('builds a one-place list from locationContext when the model gave none', () => {
+    const result = { locationContext: { name: 'Toit Brewpub', address: '298 100 Feet Rd', placeId: 'ChIJtoit000001' } };
+    applyPlacesGrounding(result, grounded);
+    expect(result.places).toEqual([
+      { name: 'Toit Brewpub', address: '298 100 Feet Rd', placeId: 'ChIJtoit000001', mapsUri: buildPlaceUri('Toit Brewpub', 'ChIJtoit000001') },
+    ]);
+  });
+
+  it('keeps the main place and its list entry on the same placeId', () => {
+    const result = {
+      locationContext: { name: 'Byg Brewski', placeId: 'ChIJbyg0000001' },
+      places: [{ name: 'Byg Brewski Brewing Company' }],
+    };
+    applyPlacesGrounding(result, grounded);
+    expect(result.places[0].placeId).toBe('ChIJbyg0000001');
+  });
+
+  it('removes places when the note is not about a location', () => {
+    const result = { locationIsRelevant: false, places: [{ name: 'Toit Brewpub' }] };
+    applyPlacesGrounding(result, grounded);
+    expect(result.places).toBeUndefined();
+  });
+
+  it('leaves results with no places alone', () => {
+    const result = { summary: 'x' };
+    applyPlacesGrounding(result, grounded);
+    expect(result).toEqual({ summary: 'x' });
+  });
+});
+
+describe('ungroundedPlaces', () => {
+  it('lists the main place and list entries that have no placeId', () => {
+    expect(ungroundedPlaces({
+      locationContext: { name: '18 Grams', address: 'Causeway Bay' },
+      places: [{ name: '18 Grams' }, { name: 'Arbor', placeId: 'ChIJarbor00001' }, { name: 'Toit' }],
+    })).toEqual([{ name: '18 Grams', address: undefined }, { name: 'Toit', address: undefined }]);
+  });
+  it('adds the main place when it is missing from the list', () => {
+    expect(ungroundedPlaces({ locationContext: { name: '18 Grams', address: 'Causeway Bay' } }))
+      .toEqual([{ name: '18 Grams', address: 'Causeway Bay' }]);
+  });
+  it('is empty for grounded or non-location results', () => {
+    expect(ungroundedPlaces({ locationContext: { name: 'A', placeId: 'ChIJabcdefghij' } })).toEqual([]);
+    expect(ungroundedPlaces({ locationIsRelevant: false, locationContext: { name: 'A' } })).toEqual([]);
+    expect(ungroundedPlaces(undefined)).toEqual([]);
+  });
+});
+
+describe('resolvePlacesWithMaps', () => {
+  const fakeAi = (chunks) => ({ models: { generateContent: vi.fn().mockResolvedValue(responseWith(chunks)) } });
+
+  it('calls Gemini with only the Maps tool and returns grounded places', async () => {
+    const ai = fakeAi([{ maps: { title: '18 Grams Specialty Coffee', placeId: 'places/ChIJ18grams001', uri: 'https://maps.google.com/?cid=1' } }]);
+    const out = await resolvePlacesWithMaps(ai, 'gemini-4-hydrogen',
+      [{ name: '18 Grams Specialty Coffee', address: '15 Cannon Street, Causeway Bay, Hong Kong' }],
+      { latitude: 12.92, longitude: 77.57 });
+    expect(out).toEqual([{ title: '18 Grams Specialty Coffee', placeId: 'ChIJ18grams001' }]);
+    const req = ai.models.generateContent.mock.calls[0][0];
+    expect(req.model).toBe('gemini-4-hydrogen');
+    expect(req.config.tools).toEqual([{ googleMaps: {} }]);
+    expect(req.config.toolConfig).toEqual({ retrievalConfig: { latLng: { latitude: 12.92, longitude: 77.57 } } });
+    expect(req.contents[0].parts[0].text).toContain('18 Grams Specialty Coffee — 15 Cannon Street, Causeway Bay, Hong Kong');
+  });
+
+  it('skips the call when nothing needs resolving', async () => {
+    const ai = fakeAi([]);
+    expect(await resolvePlacesWithMaps(ai, 'm', [], undefined)).toEqual([]);
+    expect(ai.models.generateContent).not.toHaveBeenCalled();
+  });
+
+  it('end to end: an ungrounded place gets its placeId from the lookup', async () => {
+    const result = { locationIsRelevant: true, locationContext: { name: '18 Grams Specialty Coffee', address: '15 Cannon Street, Causeway Bay, Hong Kong' } };
+    applyMapsGrounding(result, []);
+    applyPlacesGrounding(result, []);
+    const ai = fakeAi([{ maps: { title: '18 Grams Specialty Coffee', placeId: 'places/ChIJ18grams001' } }]);
+    const extra = await resolvePlacesWithMaps(ai, 'm', ungroundedPlaces(result), undefined);
+    applyMapsGrounding(result, extra);
+    applyPlacesGrounding(result, extra);
+    expect(result.locationContext.placeId).toBe('ChIJ18grams001');
+    expect(result.locationContext.mapsUri).toBe(buildPlaceUri('18 Grams Specialty Coffee', 'ChIJ18grams001'));
+    expect(result.places[0].placeId).toBe('ChIJ18grams001');
   });
 });

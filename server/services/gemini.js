@@ -82,6 +82,18 @@ export const enrichmentSchema = {
         mapsUri: { type: Type.STRING, description: 'Leave empty. Filled in by the system from Google Maps grounding.' },
       },
     },
+    places: {
+      type: Type.ARRAY,
+      description: "Every distinct physical place the note refers to, in the order mentioned (include the locationContext place too). Omit when the note is not about places.",
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          name: { type: Type.STRING, description: 'The exact name of the place as listed on Google Maps.' },
+          address: { type: Type.STRING, description: 'Street address or locality, if known.' },
+        },
+        required: ['name'],
+      },
+    },
     entityContext: {
       type: Type.OBJECT,
       description: 'Details if the input is a Movie, Book, TV Show, Product, etc.',
@@ -282,6 +294,7 @@ The user's current GPS is Lat ${location.latitude}, Lng ${location.longitude}.
 1. INPUT IS KEY: The INPUT TEXT is the primary search term.
 2. USE GPS CONTEXT: When searching, explicitly include the GPS coordinates in your search query to prioritize results near the user.
    - Query format: "<input text> near ${location.latitude}, ${location.longitude}"
+   - EXCEPTION: if the INPUT TEXT, TAGS or attachments name a different city, area or address, search THERE instead (e.g. "18 Grams Causeway Bay Hong Kong"), not near the GPS.
 3. PLACE IDENTIFICATION:
    - If the search result confirms the INPUT TEXT is a specific place/business at this location, set 'locationIsRelevant' to TRUE.
    - Use Google Maps (when available) to confirm the exact place. Do NOT write 'locationContext.mapsUri' — the system attaches the verified Google Maps link.
@@ -296,7 +309,7 @@ The user's current GPS is Lat ${location.latitude}, Lng ${location.longitude}.
 
 RULES FOR LINKS:
 1. DO NOT generate generic external links (e.g. no IMDB, no Amazon, no Official Website links).
-2. LOCATION/BUSINESS: Do NOT write or guess 'locationContext.mapsUri'; the system attaches the verified Google Maps link. Set 'locationContext.name' to the place's exact name as listed on Google Maps.
+2. LOCATION/BUSINESS: Do NOT write or guess 'locationContext.mapsUri'; the system attaches the verified Google Maps link. Set 'locationContext.name' to the place's exact name as listed on Google Maps. If the note mentions more than one place (e.g. a dinner spot and a bar, or stops on a trip), list EVERY place in 'places' in the order mentioned, each with its exact Google Maps name, and look each one up on Google Maps; 'locationContext' describes the main place.
 
 ENTITY SPECIFIC INSTRUCTIONS:
 1. MOVIE/TV: Identify Title, Director/Year, and Description.
@@ -341,7 +354,7 @@ The user's current GPS is Lat ${location.latitude}, Lng ${location.longitude}.
 
 RULES FOR LINKS:
 1. DO NOT generate generic external links (e.g. no IMDB, no Amazon, no Official Website links).
-2. LOCATION/BUSINESS: Do NOT write or guess 'locationContext.mapsUri'; the system attaches the verified Google Maps link. Set 'locationContext.name' to the place's exact name as listed on Google Maps.
+2. LOCATION/BUSINESS: Do NOT write or guess 'locationContext.mapsUri'; the system attaches the verified Google Maps link. Set 'locationContext.name' to the place's exact name as listed on Google Maps. If the note mentions more than one place (e.g. a dinner spot and a bar, or stops on a trip), list EVERY place in 'places' in the order mentioned, each with its exact Google Maps name, and look each one up on Google Maps; 'locationContext' describes the main place.
 
 ENTITY SPECIFIC INSTRUCTIONS:
 1. MOVIE/TV: Identify Title, Director/Year, and Description.
@@ -683,6 +696,7 @@ The user's current GPS is Lat ${location.latitude}, Lng ${location.longitude}.
 1. INPUT IS KEY: The INPUT TEXT is the primary search term.
 2. USE GPS CONTEXT: When searching, explicitly include the GPS coordinates in your search query to prioritize results near the user.
    - Query format: "<input text> near ${location.latitude}, ${location.longitude}"
+   - EXCEPTION: if the INPUT TEXT, TAGS or attachments name a different city, area or address, search THERE instead (e.g. "18 Grams Causeway Bay Hong Kong"), not near the GPS.
 3. PLACE IDENTIFICATION:
    - If the search result confirms the INPUT TEXT is a specific place/business at this location, set 'locationIsRelevant' to TRUE.
    - Use Google Maps (when available) to confirm the exact place. Do NOT write 'locationContext.mapsUri' — the system attaches the verified Google Maps link.
@@ -697,7 +711,7 @@ The user's current GPS is Lat ${location.latitude}, Lng ${location.longitude}.
 
 RULES FOR LINKS:
 1. DO NOT generate generic external links (e.g. no IMDB, no Amazon, no Official Website links).
-2. LOCATION/BUSINESS: Do NOT write or guess 'locationContext.mapsUri'; the system attaches the verified Google Maps link. Set 'locationContext.name' to the place's exact name as listed on Google Maps.
+2. LOCATION/BUSINESS: Do NOT write or guess 'locationContext.mapsUri'; the system attaches the verified Google Maps link. Set 'locationContext.name' to the place's exact name as listed on Google Maps. If the note mentions more than one place (e.g. a dinner spot and a bar, or stops on a trip), list EVERY place in 'places' in the order mentioned, each with its exact Google Maps name, and look each one up on Google Maps; 'locationContext' describes the main place.
 
 ENTITY SPECIFIC INSTRUCTIONS:
 1. MOVIE/TV: Identify Title, Director/Year, and Description.
@@ -734,6 +748,7 @@ RULES:
 const MAX_STRING_LEN = 2_000;
 const MAX_TAG_LEN = 100;
 const MAX_TAGS = 20;
+const MAX_PLACES = 10;
 
 /** Sanitize and truncate all string-valued keys from `obj`. */
 const sanitizeObjectStrings = (obj, keys, maxLen = MAX_STRING_LEN) => {
@@ -769,6 +784,21 @@ export const sanitizeEnrichmentResult = (parsed) => {
     if (typeof loc.latitude === 'number' && isFinite(loc.latitude)) sanitizedLoc.latitude = loc.latitude;
     if (typeof loc.longitude === 'number' && isFinite(loc.longitude)) sanitizedLoc.longitude = loc.longitude;
     if (Object.keys(sanitizedLoc).length > 0) result.locationContext = sanitizedLoc;
+  }
+
+  if (Array.isArray(parsed.places) && parsed.locationIsRelevant !== false) {
+    const seen = new Set();
+    const places = [];
+    for (const p of parsed.places) {
+      if (!p || typeof p !== 'object') continue;
+      const place = sanitizeObjectStrings(p, ['name', 'address'], 300);
+      const key = (place.name || '').toLowerCase().trim();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      places.push(place);
+      if (places.length >= MAX_PLACES) break;
+    }
+    if (places.length > 0) result.places = places;
   }
 
   if (parsed.entityContext && typeof parsed.entityContext === 'object') {

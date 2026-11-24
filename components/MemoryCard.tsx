@@ -338,23 +338,24 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
   const locationContext = enrichment?.locationContext;
   let targetUri = locationContext?.mapsUri;
 
+  // Older notes may have no mapsUri. Search by name + address; don't centre on
+  // the user's GPS, which sends a search for a far-away place to the wrong city.
   if (!targetUri && locationContext?.name) {
-     const lat = memory.location?.latitude;
-     const lng = memory.location?.longitude;
-     const name = locationContext.name;
-     if (lat && lng) {
-        targetUri = `https://www.google.com/maps/search/${encodeURIComponent(name)}/@${lat},${lng},17z`;
-    } else {
-        targetUri = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name)}`;
-    }
+    const query = [locationContext.name, locationContext.address].filter(Boolean).join(', ');
+    targetUri = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
   }
 
   // Link backed by a Google Maps grounding result (server stores its placeId).
   // Maps grounding terms require showing the place name and a "Google Maps"
   // attribution with the link.
-  const groundedPlaceName = locationContext?.placeId && locationContext?.name && targetUri === locationContext.mapsUri
+  // Notes about several places get one grounded link per place instead.
+  const groundedPlaces = (enrichment?.places ?? []).filter((p) => p.placeId && p.mapsUri);
+  const showPlaceList = groundedPlaces.length > 1;
+  const groundedPlaceName = !showPlaceList && locationContext?.placeId && locationContext?.name && targetUri === locationContext.mapsUri
     ? locationContext.name
     : undefined;
+  // The per-place links already cover the main place's link.
+  const hideMainLink = showPlaceList && targetUri === locationContext?.mapsUri;
 
   const entity = enrichment?.entityContext;
 
@@ -773,6 +774,22 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                                     <Calculator size={16} />
                                 </button>
                             )}
+                            {showPlaceList && groundedPlaces.map((place) => (
+                                <a
+                                    key={place.placeId}
+                                    href={place.mapsUri}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                    title={`Open ${place.name} in Google Maps`}
+                                    className="flex items-center gap-1.5 min-w-0 max-w-full px-2 py-1.5 rounded-(--radius-lg) text-xs font-normal text-(--color-text-secondary) hover:text-(--color-text-primary) hover:bg-(--color-surface-hover-subtle) transition-colors"
+                                >
+                                    <MapPin size={14} className="shrink-0" />
+                                    <span className="truncate">{place.name}</span>
+                                    <span className="shrink-0 text-(--color-text-tertiary)" aria-hidden="true">·</span>
+                                    <span translate="no" className="shrink-0 whitespace-nowrap text-(--color-text-primary)">Google Maps</span>
+                                </a>
+                            ))}
                             {targetUri && groundedPlaceName && (
                                 <a
                                     href={targetUri}
@@ -788,7 +805,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                                     <span translate="no" className="shrink-0 whitespace-nowrap text-(--color-text-primary)">Google Maps</span>
                                 </a>
                             )}
-                            {targetUri && !groundedPlaceName && (
+                            {targetUri && !groundedPlaceName && !hideMainLink && (
                                 <a
                                     href={targetUri}
                                     target="_blank"

@@ -1,4 +1,13 @@
 
+/** A place a note mentions. `placeId`/`mapsUri` are set only when the place was
+ *  matched to a Google Maps grounding result. */
+export interface EnrichmentPlace {
+  name: string;
+  address?: string;
+  placeId?: string;
+  mapsUri?: string;
+}
+
 export interface GeoLocation {
   latitude: number;
   longitude: number;
@@ -47,6 +56,9 @@ export interface EnrichmentData {
     mapsUri?: string; // Google Maps link, set server-side from Maps grounding
     placeId?: string; // Google Maps place ID from Maps grounding
   };
+  /** Every place the note mentions, in order. For map rendering: resolve each
+   *  placeId to a position at render time (coordinates aren't stored). */
+  places?: EnrichmentPlace[];
   entityContext?: EntityContext;
   suggestedTags: string[];
   temporalContext?: TemporalContext;
