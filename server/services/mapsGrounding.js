@@ -84,19 +84,20 @@ const normalize = (s) => (typeof s === 'string' ? s.toLowerCase().normalize('NFK
  * Pick the grounded place that matches the place the model named. If the name
  * matches no title, use a place only when Maps returned exactly one.
  */
-export const matchPlace = (places, name) => {
-  if (places.length === 0) return undefined;
+export const matchPlace = (places, name, { exclude, allowSingle = true } = {}) => {
+  const candidates = exclude ? places.filter((p) => !exclude.has(p.placeId)) : places;
+  if (candidates.length === 0) return undefined;
   const target = normalize(name);
   if (target) {
-    const exact = places.find((p) => normalize(p.title) === target);
+    const exact = candidates.find((p) => normalize(p.title) === target);
     if (exact) return exact;
-    const partial = places.find((p) => {
+    const partial = candidates.find((p) => {
       const title = normalize(p.title);
       return title && (title.includes(target) || target.includes(title));
     });
     if (partial) return partial;
   }
-  return places.length === 1 ? places[0] : undefined;
+  return allowSingle && places.length === 1 && candidates.length === 1 ? candidates[0] : undefined;
 };
 
 /**
@@ -119,5 +120,62 @@ export const applyMapsGrounding = (sanitized, places, userUrls = []) => {
     if (userMapsUri) loc.mapsUri = userMapsUri;
     else delete loc.mapsUri;
   }
+  return sanitized;
+};
+
+/**
+ * Ground every place the note mentions, so a map can show all of them.
+ *
+ * Each entry in `sanitized.places` ({ name, address }) gets the placeId (and a
+ * link built from it) of the grounded Maps place with the same name. Each
+ * grounded place is used at most once, and a place with no name match is kept
+ * without a placeId rather than pinned to the wrong spot. If the model gave no
+ * list but did name a main place, the list is that one place, so every
+ * location note has a `places` array. The main place (locationContext) keeps
+ * the placeId it was matched to, so the two never disagree.
+ *
+ * Coordinates are not stored: Maps grounding returns none, and placeId is the
+ * one Maps field the grounding terms allow storing. A map resolves each
+ * placeId to a position when it renders.
+ */
+export const applyPlacesGrounding = (sanitized, groundedPlaces) => {
+  if (!sanitized || sanitized.locationIsRelevant === false) {
+    if (sanitized) delete sanitized.places;
+    return sanitized;
+  }
+  const loc = sanitized.locationContext;
+  let places = Array.isArray(sanitized.places) ? sanitized.places : [];
+  if (places.length === 0 && loc?.name) {
+    places = [{ name: loc.name, ...(loc.address ? { address: loc.address } : {}) }];
+  }
+  if (places.length === 0) {
+    delete sanitized.places;
+    return sanitized;
+  }
+
+  const used = new Set();
+  const mainKey = normalize(loc?.name);
+  // Reserve the main place's placeId first so it goes to the same-named entry.
+  if (loc?.placeId) used.add(loc.placeId);
+  let mainAssigned = false;
+
+  sanitized.places = places.map((place) => {
+    const out = { name: place.name };
+    if (place.address) out.address = place.address;
+    const key = normalize(place.name);
+    const isMain = mainKey && key && (key === mainKey || key.includes(mainKey) || mainKey.includes(key));
+    if (isMain && loc?.placeId && !mainAssigned) {
+      mainAssigned = true;
+      out.placeId = loc.placeId;
+    } else {
+      const match = matchPlace(groundedPlaces, place.name, { exclude: used, allowSingle: places.length === 1 });
+      if (match) {
+        used.add(match.placeId);
+        out.placeId = match.placeId;
+      }
+    }
+    if (out.placeId) out.mapsUri = buildPlaceUri(out.name, out.placeId);
+    return out;
+  });
   return sanitized;
 };

@@ -6,6 +6,7 @@ import {
   extractMapsPlaces,
   matchPlace,
   buildPlaceUri,
+  applyPlacesGrounding,
   applyMapsGrounding,
 } from './mapsGrounding.js';
 
@@ -125,6 +126,70 @@ describe('applyMapsGrounding', () => {
   it('leaves results without a location alone', () => {
     const result = { summary: 'x' };
     applyMapsGrounding(result, [{ title: 'A', placeId: 'ChIJabcdefghij' }]);
+    expect(result).toEqual({ summary: 'x' });
+  });
+});
+
+describe('applyPlacesGrounding', () => {
+  const grounded = [
+    { title: 'Toit Brewpub', placeId: 'ChIJtoit000001' },
+    { title: 'Arbor Brewing Company', placeId: 'ChIJarbor00001' },
+    { title: 'Byg Brewski Brewing Company', placeId: 'ChIJbyg0000001' },
+  ];
+
+  it('gives each mentioned place its own placeId', () => {
+    const result = {
+      locationIsRelevant: true,
+      locationContext: { name: 'Toit Brewpub', placeId: 'ChIJtoit000001', mapsUri: 'x' },
+      places: [{ name: 'Toit Brewpub', address: 'Indiranagar' }, { name: 'Arbor Brewing Company' }],
+    };
+    applyPlacesGrounding(result, grounded);
+    expect(result.places).toEqual([
+      { name: 'Toit Brewpub', address: 'Indiranagar', placeId: 'ChIJtoit000001', mapsUri: buildPlaceUri('Toit Brewpub', 'ChIJtoit000001') },
+      { name: 'Arbor Brewing Company', placeId: 'ChIJarbor00001', mapsUri: buildPlaceUri('Arbor Brewing Company', 'ChIJarbor00001') },
+    ]);
+  });
+
+  it('keeps an unmatched place without a placeId instead of guessing', () => {
+    const result = { places: [{ name: 'Arbor Brewing' }, { name: 'Some Unknown Cafe' }] };
+    applyPlacesGrounding(result, grounded);
+    expect(result.places[0].placeId).toBe('ChIJarbor00001');
+    expect(result.places[1]).toEqual({ name: 'Some Unknown Cafe' });
+  });
+
+  it('never assigns one grounded place to two entries', () => {
+    const result = { places: [{ name: 'Toit' }, { name: 'Toit Brewpub' }] };
+    applyPlacesGrounding(result, grounded);
+    const ids = result.places.map((p) => p.placeId).filter(Boolean);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('builds a one-place list from locationContext when the model gave none', () => {
+    const result = { locationContext: { name: 'Toit Brewpub', address: '298 100 Feet Rd', placeId: 'ChIJtoit000001' } };
+    applyPlacesGrounding(result, grounded);
+    expect(result.places).toEqual([
+      { name: 'Toit Brewpub', address: '298 100 Feet Rd', placeId: 'ChIJtoit000001', mapsUri: buildPlaceUri('Toit Brewpub', 'ChIJtoit000001') },
+    ]);
+  });
+
+  it('keeps the main place and its list entry on the same placeId', () => {
+    const result = {
+      locationContext: { name: 'Byg Brewski', placeId: 'ChIJbyg0000001' },
+      places: [{ name: 'Byg Brewski Brewing Company' }],
+    };
+    applyPlacesGrounding(result, grounded);
+    expect(result.places[0].placeId).toBe('ChIJbyg0000001');
+  });
+
+  it('removes places when the note is not about a location', () => {
+    const result = { locationIsRelevant: false, places: [{ name: 'Toit Brewpub' }] };
+    applyPlacesGrounding(result, grounded);
+    expect(result.places).toBeUndefined();
+  });
+
+  it('leaves results with no places alone', () => {
+    const result = { summary: 'x' };
+    applyPlacesGrounding(result, grounded);
     expect(result).toEqual({ summary: 'x' });
   });
 });

@@ -25,6 +25,7 @@ import {
   buildMapsToolConfig,
   extractMapsPlaces,
   applyMapsGrounding,
+  applyPlacesGrounding,
 } from '../services/mapsGrounding.js';
 import { sendSilentPush } from '../lib/silentPush.js';
 import {
@@ -316,7 +317,8 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
           const sanitized = sanitizeEnrichmentResult(parsed);
           const mapsPlaces = extractMapsPlaces(response);
           applyMapsGrounding(sanitized, mapsPlaces, detectedUrls);
-          if (useMaps) console.log(`[Enrich] [${req.requestId}] Maps grounding: ${mapsPlaces.length} place(s), mapsUri=${sanitized.locationContext?.mapsUri ? 'grounded' : 'none'}`);
+          applyPlacesGrounding(sanitized, mapsPlaces);
+          if (useMaps) console.log(`[Enrich] [${req.requestId}] Maps grounding: ${mapsPlaces.length} place(s), mapsUri=${sanitized.locationContext?.mapsUri ? 'grounded' : 'none'}, places=${sanitized.places?.filter((p) => p.placeId).length ?? 0}/${sanitized.places?.length ?? 0} grounded`);
           if (hasUrls) attachSourceUrl(sanitized, detectedUrls);
 
           // Attach OG preview images (awaiting the parallel fetch started earlier)
@@ -400,6 +402,7 @@ export const createEnrichRouter = ({ ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GE
           // The fallback runs without Maps grounding, so any mapsUri it wrote is
           // unverified; keep only a Maps link the user pasted.
           applyMapsGrounding(sanitizedFallback, extractMapsPlaces(response), detectedUrls);
+          applyPlacesGrounding(sanitizedFallback, []);
           if (hasUrls) attachSourceUrl(sanitizedFallback, detectedUrls);
 
           // Attach OG preview images (from the parallel fetch started earlier)
