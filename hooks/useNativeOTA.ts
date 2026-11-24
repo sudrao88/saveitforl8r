@@ -201,10 +201,11 @@ export const useNativeOTA = () => {
       // Fetch the local version (bundled in APK, or from OTA download dir) and the remote version in parallel
       const [localRes, remoteRes] = await Promise.all([
         fetch(`/version.json?t=${Date.now()}`, { cache: 'no-store' }),
-        fetch(`${REMOTE_VERSION_URL}?t=${Date.now()}`, {
-          cache: 'no-store',
-          headers: { 'Cache-Control': 'no-cache' },
-        }),
+        // No custom request headers: this is a cross-origin fetch from
+        // https://localhost, and a Cache-Control request header would force a
+        // CORS preflight that static hosting may not answer. The timestamp
+        // query and cache: 'no-store' already bypass caches.
+        fetch(`${REMOTE_VERSION_URL}?t=${Date.now()}`, { cache: 'no-store' }),
       ]);
 
       if (!remoteRes.ok) {

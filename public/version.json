@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v148",
-  "buildNumber": 148,
-  "buildDate": "2026-11-24T04:40:14.000Z",
+  "version": "saveitforl8r-v149",
+  "buildNumber": 149,
+  "buildDate": "2026-11-24T11:23:19.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Editing a note no longer shows its old enrichment in place of the new one."
+  "changelog": "The Android and iOS apps can check for updates again."
 }
