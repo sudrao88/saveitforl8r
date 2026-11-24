@@ -44,7 +44,8 @@ export interface EnrichmentData {
     operatingHours?: string;
     latitude?: number;
     longitude?: number;
-    mapsUri?: string; // Direct link to Google Places
+    mapsUri?: string; // Google Maps link, set server-side from Maps grounding
+    placeId?: string; // Google Maps place ID from Maps grounding
   };
   entityContext?: EntityContext;
   suggestedTags: string[];

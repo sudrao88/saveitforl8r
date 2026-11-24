@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v145",
-  "buildNumber": 145,
-  "buildDate": "2026-11-23T03:08:24.309Z",
+  "version": "saveitforl8r-v146",
+  "buildNumber": 146,
+  "buildDate": "2026-11-24T00:35:30.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Moments with several notes are grouped into subsections by topic, kind, place or time."
+  "changelog": "Place links now come from Google Maps grounding, so they open the right place, with a Google Maps attribution."
 }

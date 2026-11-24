@@ -79,7 +79,7 @@ export const enrichmentSchema = {
         operatingHours: { type: Type.STRING },
         latitude: { type: Type.NUMBER },
         longitude: { type: Type.NUMBER },
-        mapsUri: { type: Type.STRING, description: 'Direct Google Maps URL for the specific place found.' },
+        mapsUri: { type: Type.STRING, description: 'Leave empty. Filled in by the system from Google Maps grounding.' },
       },
     },
     entityContext: {
@@ -284,7 +284,7 @@ The user's current GPS is Lat ${location.latitude}, Lng ${location.longitude}.
    - Query format: "<input text> near ${location.latitude}, ${location.longitude}"
 3. PLACE IDENTIFICATION:
    - If the search result confirms the INPUT TEXT is a specific place/business at this location, set 'locationIsRelevant' to TRUE.
-   - You MUST populate 'locationContext.mapsUri' with the specific Google Maps link found in the search result.
+   - Use Google Maps (when available) to confirm the exact place. Do NOT write 'locationContext.mapsUri' — the system attaches the verified Google Maps link.
    - Populate 'locationContext.name' and 'locationContext.address'.
 4. NO GENERIC REVERSE GEOCODING:
    - Do NOT return the address of the coordinates if the INPUT TEXT does not match the place.
@@ -296,12 +296,12 @@ The user's current GPS is Lat ${location.latitude}, Lng ${location.longitude}.
 
 RULES FOR LINKS:
 1. DO NOT generate generic external links (e.g. no IMDB, no Amazon, no Official Website links).
-2. LOCATION/BUSINESS: 'locationContext.mapsUri' MUST be the Google Maps link found in the search result.
+2. LOCATION/BUSINESS: Do NOT write or guess 'locationContext.mapsUri'; the system attaches the verified Google Maps link. Set 'locationContext.name' to the place's exact name as listed on Google Maps.
 
 ENTITY SPECIFIC INSTRUCTIONS:
 1. MOVIE/TV: Identify Title, Director/Year, and Description.
 2. BOOK: Identify Title, Author, and Description.
-3. LOCATION/BUSINESS: Populate locationContext fully, especially mapsUri. For entityContext: populate 'subtitle' with the type of place (e.g. "South Indian Restaurant", "Craft Brewery", "Luxury Heritage Hotel"). For 'title': if the user expresses an intent or activity (e.g. "birthday party at Olive Garden"), use the intent as the title (e.g. "Birthday Party"). If the note is purely a place name with no additional intent, use the place name as the title. The place name always goes in locationContext.name.
+3. LOCATION/BUSINESS: Populate locationContext fully (name, address, operating hours). For entityContext: populate 'subtitle' with the type of place (e.g. "South Indian Restaurant", "Craft Brewery", "Luxury Heritage Hotel"). For 'title': if the user expresses an intent or activity (e.g. "birthday party at Olive Garden"), use the intent as the title (e.g. "Birthday Party"). If the note is purely a place name with no additional intent, use the place name as the title. The place name always goes in locationContext.name.
 
 OUTPUT FORMAT:
 You must return a raw JSON object (no markdown) matching this schema:
@@ -341,14 +341,14 @@ The user's current GPS is Lat ${location.latitude}, Lng ${location.longitude}.
 
 RULES FOR LINKS:
 1. DO NOT generate generic external links (e.g. no IMDB, no Amazon, no Official Website links).
-2. LOCATION/BUSINESS: 'locationContext.mapsUri' MUST be the Google Maps link if found in the URL content.
+2. LOCATION/BUSINESS: Do NOT write or guess 'locationContext.mapsUri'; the system attaches the verified Google Maps link. Set 'locationContext.name' to the place's exact name as listed on Google Maps.
 
 ENTITY SPECIFIC INSTRUCTIONS:
 1. MOVIE/TV: Identify Title, Director/Year, and Description.
 2. BOOK: Identify Title, Author, and Description.
 3. ARTICLE/WEBPAGE: Use the page title as the entity title, the site name as subtitle, and a concise summary as description.
 4. PRODUCT: Identify Product name, brand, and description.
-5. LOCATION/BUSINESS: Populate locationContext fully, especially mapsUri. For entityContext: populate 'subtitle' with the type of place (e.g. "South Indian Restaurant", "Craft Brewery", "Luxury Heritage Hotel"). For 'title': if the user expresses an intent or activity (e.g. "birthday party at Olive Garden"), use the intent as the title (e.g. "Birthday Party"). If the note is purely a place name with no additional intent, use the place name as the title. The place name always goes in locationContext.name.
+5. LOCATION/BUSINESS: Populate locationContext fully (name, address, operating hours). For entityContext: populate 'subtitle' with the type of place (e.g. "South Indian Restaurant", "Craft Brewery", "Luxury Heritage Hotel"). For 'title': if the user expresses an intent or activity (e.g. "birthday party at Olive Garden"), use the intent as the title (e.g. "Birthday Party"). If the note is purely a place name with no additional intent, use the place name as the title. The place name always goes in locationContext.name.
 
 OUTPUT FORMAT:
 You must return a raw JSON object (no markdown) matching this schema:
@@ -530,7 +530,7 @@ Search for the product to enrich with current pricing and reviews.`,
   place_restaurant: `This is a restaurant or place reference. You MUST extract and populate these fields:
 - 'menuHighlights': Notable dishes, specialties, or popular items.
 - 'ratings': Review ratings from Google, Yelp, etc.
-Also populate 'locationContext' with address, hours, and mapsUri. Set locationIsRelevant to true.
+Also populate 'locationContext' with name, address and hours (not mapsUri — the system adds the verified link). Set locationIsRelevant to true.
 For entityContext: populate 'subtitle' with the type of place (e.g. "South Indian Restaurant", "Craft Brewery", "Luxury Heritage Hotel", "Italian Pizzeria"). For 'title': if the user expresses an intent or activity (e.g. "team dinner at Olive Garden"), use the intent as the title (e.g. "Team Dinner"). If the note is purely a place name with no expressed intent, use the place/restaurant name as the title. The place name always goes in locationContext.name.`,
   video: `This is a video (e.g. YouTube). You MUST extract and populate these fields:
 - 'keyMoments': Key moments, highlights, or timestamps from the video.
@@ -685,7 +685,7 @@ The user's current GPS is Lat ${location.latitude}, Lng ${location.longitude}.
    - Query format: "<input text> near ${location.latitude}, ${location.longitude}"
 3. PLACE IDENTIFICATION:
    - If the search result confirms the INPUT TEXT is a specific place/business at this location, set 'locationIsRelevant' to TRUE.
-   - You MUST populate 'locationContext.mapsUri' with the specific Google Maps link found in the search result.
+   - Use Google Maps (when available) to confirm the exact place. Do NOT write 'locationContext.mapsUri' — the system attaches the verified Google Maps link.
    - Populate 'locationContext.name' and 'locationContext.address'.
 4. NO GENERIC REVERSE GEOCODING:
    - Do NOT return the address of the coordinates if the INPUT TEXT does not match the place.
@@ -697,12 +697,12 @@ The user's current GPS is Lat ${location.latitude}, Lng ${location.longitude}.
 
 RULES FOR LINKS:
 1. DO NOT generate generic external links (e.g. no IMDB, no Amazon, no Official Website links).
-2. LOCATION/BUSINESS: 'locationContext.mapsUri' MUST be the Google Maps link found in the search result.
+2. LOCATION/BUSINESS: Do NOT write or guess 'locationContext.mapsUri'; the system attaches the verified Google Maps link. Set 'locationContext.name' to the place's exact name as listed on Google Maps.
 
 ENTITY SPECIFIC INSTRUCTIONS:
 1. MOVIE/TV: Identify Title, Director/Year, and Description.
 2. BOOK: Identify Title, Author, and Description.
-3. LOCATION/BUSINESS: Populate locationContext fully, especially mapsUri. For entityContext: populate 'subtitle' with the type of place (e.g. "South Indian Restaurant", "Craft Brewery", "Luxury Heritage Hotel"). For 'title': if the user expresses an intent or activity (e.g. "birthday party at Olive Garden"), use the intent as the title (e.g. "Birthday Party"). If the note is purely a place name with no additional intent, use the place name as the title. The place name always goes in locationContext.name.
+3. LOCATION/BUSINESS: Populate locationContext fully (name, address, operating hours). For entityContext: populate 'subtitle' with the type of place (e.g. "South Indian Restaurant", "Craft Brewery", "Luxury Heritage Hotel"). For 'title': if the user expresses an intent or activity (e.g. "birthday party at Olive Garden"), use the intent as the title (e.g. "Birthday Party"). If the note is purely a place name with no additional intent, use the place name as the title. The place name always goes in locationContext.name.
 
 OUTPUT FORMAT:
 You must return a raw JSON object (no markdown) matching this schema:

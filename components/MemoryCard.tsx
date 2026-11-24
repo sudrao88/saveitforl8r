@@ -349,6 +349,13 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
     }
   }
 
+  // Link backed by a Google Maps grounding result (server stores its placeId).
+  // Maps grounding terms require showing the place name and a "Google Maps"
+  // attribution with the link.
+  const groundedPlaceName = locationContext?.placeId && locationContext?.name && targetUri === locationContext.mapsUri
+    ? locationContext.name
+    : undefined;
+
   const entity = enrichment?.entityContext;
 
   // If user provided a URL, use it as the link CTA
@@ -766,7 +773,22 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                                     <Calculator size={16} />
                                 </button>
                             )}
-                            {targetUri && (
+                            {targetUri && groundedPlaceName && (
+                                <a
+                                    href={targetUri}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                    title={`Open ${groundedPlaceName} in Google Maps`}
+                                    className="flex items-center gap-1.5 min-w-0 max-w-full px-2 py-1.5 rounded-(--radius-lg) text-xs font-normal text-(--color-text-secondary) hover:text-(--color-text-primary) hover:bg-(--color-surface-hover-subtle) transition-colors"
+                                >
+                                    <MapPin size={14} className="shrink-0" />
+                                    <span className="truncate">{groundedPlaceName}</span>
+                                    <span className="shrink-0 text-(--color-text-tertiary)" aria-hidden="true">·</span>
+                                    <span translate="no" className="shrink-0 whitespace-nowrap text-(--color-text-primary)">Google Maps</span>
+                                </a>
+                            )}
+                            {targetUri && !groundedPlaceName && (
                                 <a
                                     href={targetUri}
                                     target="_blank"
