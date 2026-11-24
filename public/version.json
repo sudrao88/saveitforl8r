@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v149",
-  "buildNumber": 149,
-  "buildDate": "2026-11-24T11:23:19.000Z",
+  "version": "saveitforl8r-v150",
+  "buildNumber": 150,
+  "buildDate": "2026-11-24T15:03:02.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "The Android and iOS apps can check for updates again."
+  "changelog": "Google Maps links now appear as a map-pin icon alongside a note's other icons."
 }
