@@ -338,15 +338,11 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
   const locationContext = enrichment?.locationContext;
   let targetUri = locationContext?.mapsUri;
 
+  // Older notes may have no mapsUri. Search by name + address; don't centre on
+  // the user's GPS, which sends a search for a far-away place to the wrong city.
   if (!targetUri && locationContext?.name) {
-     const lat = memory.location?.latitude;
-     const lng = memory.location?.longitude;
-     const name = locationContext.name;
-     if (lat && lng) {
-        targetUri = `https://www.google.com/maps/search/${encodeURIComponent(name)}/@${lat},${lng},17z`;
-    } else {
-        targetUri = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name)}`;
-    }
+    const query = [locationContext.name, locationContext.address].filter(Boolean).join(', ');
+    targetUri = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
   }
 
   // Link backed by a Google Maps grounding result (server stores its placeId).

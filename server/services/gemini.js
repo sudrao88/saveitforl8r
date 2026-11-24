@@ -294,6 +294,7 @@ The user's current GPS is Lat ${location.latitude}, Lng ${location.longitude}.
 1. INPUT IS KEY: The INPUT TEXT is the primary search term.
 2. USE GPS CONTEXT: When searching, explicitly include the GPS coordinates in your search query to prioritize results near the user.
    - Query format: "<input text> near ${location.latitude}, ${location.longitude}"
+   - EXCEPTION: if the INPUT TEXT, TAGS or attachments name a different city, area or address, search THERE instead (e.g. "18 Grams Causeway Bay Hong Kong"), not near the GPS.
 3. PLACE IDENTIFICATION:
    - If the search result confirms the INPUT TEXT is a specific place/business at this location, set 'locationIsRelevant' to TRUE.
    - Use Google Maps (when available) to confirm the exact place. Do NOT write 'locationContext.mapsUri' — the system attaches the verified Google Maps link.
@@ -695,6 +696,7 @@ The user's current GPS is Lat ${location.latitude}, Lng ${location.longitude}.
 1. INPUT IS KEY: The INPUT TEXT is the primary search term.
 2. USE GPS CONTEXT: When searching, explicitly include the GPS coordinates in your search query to prioritize results near the user.
    - Query format: "<input text> near ${location.latitude}, ${location.longitude}"
+   - EXCEPTION: if the INPUT TEXT, TAGS or attachments name a different city, area or address, search THERE instead (e.g. "18 Grams Causeway Bay Hong Kong"), not near the GPS.
 3. PLACE IDENTIFICATION:
    - If the search result confirms the INPUT TEXT is a specific place/business at this location, set 'locationIsRelevant' to TRUE.
    - Use Google Maps (when available) to confirm the exact place. Do NOT write 'locationContext.mapsUri' — the system attaches the verified Google Maps link.
