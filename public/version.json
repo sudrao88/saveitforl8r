@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v146",
-  "buildNumber": 146,
-  "buildDate": "2026-11-24T00:35:30.000Z",
+  "version": "saveitforl8r-v147",
+  "buildNumber": 147,
+  "buildDate": "2026-11-24T03:49:39.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Place links now come from Google Maps grounding, so they open the right place, with a Google Maps attribution."
+  "changelog": "Notes save every place they mention, each pinned to Google Maps, and place links no longer open in the wrong city."
 }
