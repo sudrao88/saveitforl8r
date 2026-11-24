@@ -5,6 +5,7 @@ import {
   isValidMapsUri,
   extractMapsPlaces,
   matchPlace,
+  buildPlaceUri,
   applyMapsGrounding,
 } from './mapsGrounding.js';
 
@@ -54,16 +55,16 @@ describe('isValidMapsUri', () => {
 });
 
 describe('extractMapsPlaces', () => {
-  it('reads maps chunks and ignores web chunks', () => {
+  it('keeps only title and placeId from maps chunks, ignoring web chunks', () => {
     const places = extractMapsPlaces(responseWith([
       { web: { uri: 'https://example.com', title: 'x' } },
       { maps: { uri: 'https://maps.google.com/?cid=1', title: 'Vidyarthi Bhavan', placeId: 'places/ChIJabcdefghij' } },
     ]));
-    expect(places).toEqual([{ uri: 'https://maps.google.com/?cid=1', title: 'Vidyarthi Bhavan', placeId: 'ChIJabcdefghij' }]);
+    expect(places).toEqual([{ title: 'Vidyarthi Bhavan', placeId: 'ChIJabcdefghij' }]);
   });
-  it('builds a URI from placeId when uri is missing or invalid', () => {
-    const [p] = extractMapsPlaces(responseWith([{ maps: { uri: 'https://bad.example', title: 'A', placeId: 'ChIJabcdefghij' } }]));
-    expect(p.uri).toBe('https://www.google.com/maps/place/?q=place_id:ChIJabcdefghij');
+  it('skips chunks without a valid placeId', () => {
+    expect(extractMapsPlaces(responseWith([{ maps: { uri: 'https://maps.google.com/?cid=1', title: 'A' } }]))).toEqual([]);
+    expect(extractMapsPlaces(responseWith([{ maps: { title: 'A', placeId: 'places/bad id!' } }]))).toEqual([]);
   });
   it('handles responses without grounding', () => {
     expect(extractMapsPlaces({})).toEqual([]);
@@ -71,35 +72,50 @@ describe('extractMapsPlaces', () => {
   });
 });
 
+describe('buildPlaceUri', () => {
+  it('builds a Maps URLs link pinned to the place ID', () => {
+    expect(buildPlaceUri('Café & Co', 'ChIJabcdefghij')).toBe(
+      'https://www.google.com/maps/search/?api=1&query=Caf%C3%A9%20%26%20Co&query_place_id=ChIJabcdefghij',
+    );
+    expect(isValidMapsUri(buildPlaceUri('A', 'ChIJabcdefghij'))).toBe(true);
+  });
+});
+
 describe('matchPlace', () => {
   const places = [
-    { title: 'Starbucks Reserve', uri: 'https://maps.google.com/?cid=1' },
-    { title: 'Third Wave Coffee', uri: 'https://maps.google.com/?cid=2' },
+    { title: 'Starbucks Reserve', placeId: 'ChIJstarbucks01' },
+    { title: 'Third Wave Coffee', placeId: 'ChIJthirdwave01' },
   ];
   it('matches by name, ignoring case and punctuation', () => {
-    expect(matchPlace(places, 'third-wave coffee').uri).toBe('https://maps.google.com/?cid=2');
-    expect(matchPlace(places, 'Starbucks').uri).toBe('https://maps.google.com/?cid=1');
+    expect(matchPlace(places, 'third-wave coffee').placeId).toBe('ChIJthirdwave01');
+    expect(matchPlace(places, 'Starbucks').placeId).toBe('ChIJstarbucks01');
   });
   it('does not guess among several places when the name does not match', () => {
     expect(matchPlace(places, 'Blue Tokai')).toBeUndefined();
   });
   it('uses the only place when there is one', () => {
-    expect(matchPlace([places[0]], 'Something else').uri).toBe('https://maps.google.com/?cid=1');
+    expect(matchPlace([places[0]], 'Something else').placeId).toBe('ChIJstarbucks01');
   });
 });
 
 describe('applyMapsGrounding', () => {
-  it('replaces a made-up mapsUri with the grounded one', () => {
+  it('replaces a made-up mapsUri with a place-ID link', () => {
     const result = { locationContext: { name: 'Third Wave Coffee', mapsUri: 'https://maps.google.com/fake' } };
-    applyMapsGrounding(result, [{ title: 'Third Wave Coffee', uri: 'https://maps.google.com/?cid=2', placeId: 'ChIJabcdefghij' }]);
-    expect(result.locationContext.mapsUri).toBe('https://maps.google.com/?cid=2');
-    expect(result.locationContext.placeId).toBe('ChIJabcdefghij');
+    applyMapsGrounding(result, [{ title: 'Third Wave Coffee', placeId: 'ChIJthirdwave01' }]);
+    expect(result.locationContext.placeId).toBe('ChIJthirdwave01');
+    expect(result.locationContext.mapsUri).toBe(buildPlaceUri('Third Wave Coffee', 'ChIJthirdwave01'));
   });
   it('drops an ungrounded mapsUri', () => {
-    const result = { locationContext: { name: 'Cafe', mapsUri: 'https://maps.google.com/fake' } };
+    const result = { locationContext: { name: 'Cafe', mapsUri: 'https://maps.google.com/fake', placeId: 'ChIJstale00001' } };
     applyMapsGrounding(result, []);
     expect(result.locationContext.mapsUri).toBeUndefined();
+    expect(result.locationContext.placeId).toBeUndefined();
     expect(result.locationContext.name).toBe('Cafe');
+  });
+  it('does not ground a location with no name', () => {
+    const result = { locationContext: { address: '1 Main St' } };
+    applyMapsGrounding(result, [{ title: 'A', placeId: 'ChIJabcdefghij' }]);
+    expect(result.locationContext).toEqual({ address: '1 Main St' });
   });
   it('keeps a Maps link the user pasted', () => {
     const result = { locationContext: { name: 'Cafe' } };
@@ -108,7 +124,7 @@ describe('applyMapsGrounding', () => {
   });
   it('leaves results without a location alone', () => {
     const result = { summary: 'x' };
-    applyMapsGrounding(result, [{ title: 'A', uri: 'https://maps.google.com/?cid=1' }]);
+    applyMapsGrounding(result, [{ title: 'A', placeId: 'ChIJabcdefghij' }]);
     expect(result).toEqual({ summary: 'x' });
   });
 });
