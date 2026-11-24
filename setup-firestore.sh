@@ -27,8 +27,8 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
 
 # Create Firestore database if it doesn't exist
 if ! gcloud firestore databases describe --database="(default)" &>/dev/null; then
-    echo "Creating Firestore database in us-central1..."
-    gcloud firestore databases create --location=us-central1
+    echo "Creating Firestore database in asia-south1 (same region as the Cloud Run server)..."
+    gcloud firestore databases create --location=asia-south1
 else
     echo "Firestore database already exists."
 fi
