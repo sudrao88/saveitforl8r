@@ -82,6 +82,9 @@ steps:
     env:
       - 'VITE_PROXY_URL=${_SERVER_URL}'
       - 'VITE_APP_URL=${_APP_URL}'
+      # Browser key for the Maps JavaScript SDK (public; restricted by HTTP
+      # referrer). Empty hides the in-app map buttons.
+      - 'VITE_GOOGLE_MAPS_API_KEY=${_GOOGLE_MAPS_API_KEY}'
     entrypoint: 'npm'
     args: ['run', 'build']
 
@@ -110,6 +113,7 @@ options:
 substitutions:
   _SERVER_URL: "https://api.saveitforl8r.com"
   _APP_URL: "https://saveitforl8r.com"
+  _GOOGLE_MAPS_API_KEY: ""
 
 availableSecrets:
   secretManager:

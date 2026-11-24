@@ -6,6 +6,13 @@ import { Memory, Moment, EMBEDDING_MODEL_ID } from '../types';
 
 vi.mock('../hooks/useBackButton', () => ({ useBackButton: () => {} }));
 
+const mapsConfigured = vi.fn(() => false);
+vi.mock('../services/googleMaps', () => ({
+  isMapsConfigured: () => mapsConfigured(),
+  loadGoogleMaps: () => Promise.reject(new Error('no SDK in tests')),
+  resolvePlaceLocations: async () => new Map(),
+}));
+
 const moment: Moment = {
   id: 'm1', title: 'Cafes in bangalore', terms: ['Cafes in bangalore'],
   termVectors: [[1, 0]], intentVector: [1, 0], embeddingModel: EMBEDDING_MODEL_ID,
@@ -140,5 +147,36 @@ describe('MomentSheet subsections', () => {
     expect(text).toContain('ESPRESSO\n\n1. Title a');
     expect(text).toContain('BRUNCH\n\n4. Title d');
     delete (navigator as { share?: unknown }).share;
+  });
+});
+
+describe('MomentSheet map', () => {
+  const withPlace = (m: Memory, name: string, placeId: string): Memory => ({
+    ...m,
+    enrichment: { ...m.enrichment!, places: [{ name, placeId, mapsUri: `https://maps.example/${placeId}` }] },
+  });
+  const renderWith = (memories: Memory[]) =>
+    render(
+      <MomentSheet
+        moment={moment} memories={memories} matches={[{ id: 'n1', score: 1 }, { id: 'n2', score: 0.5 }]}
+        isEmbedding={false} onClose={() => {}} onDelete={async () => {}} onHideNote={async () => {}} onRetryEmbedding={async () => {}}
+      />,
+    );
+
+  it('offers a map only when notes have places and the Maps SDK is configured', async () => {
+    const memories = [withPlace(note('n1', 'Beyond Bean Coffee'), 'Beyond Bean', 'ChIJbeyondbean1'), note('n2', 'Third Wave Coffee')];
+    mapsConfigured.mockReturnValue(false);
+    const first = renderWith(memories);
+    expect(screen.queryByLabelText('Show places on a map')).toBeNull();
+    first.unmount();
+
+    mapsConfigured.mockReturnValue(true);
+    const second = renderWith([note('n1', 'Beyond Bean Coffee'), note('n2', 'Third Wave Coffee')]);
+    expect(screen.queryByLabelText('Show places on a map')).toBeNull();
+    second.unmount();
+
+    renderWith(memories);
+    fireEvent.click(screen.getByLabelText('Show places on a map'));
+    expect(await screen.findByRole('dialog', { name: 'Map: Cafes in bangalore' })).toBeTruthy();
   });
 });

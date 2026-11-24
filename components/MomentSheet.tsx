@@ -11,7 +11,7 @@
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useBackButton } from '../hooks/useBackButton';
-import { X, Trash2, EyeOff, CloudOff, Loader2, RefreshCw, Share2, Check } from 'lucide-react';
+import { X, Trash2, EyeOff, CloudOff, Loader2, RefreshCw, Share2, Check, Map as MapIcon } from 'lucide-react';
 import { Moment, Memory, Attachment } from '../types';
 import MemoryPreviewModal from './MemoryPreviewModal';
 import MomentNoteDeletionSheet from './MomentNoteDeletionSheet';
@@ -22,6 +22,9 @@ import { noteTitle, noteSnippet, formatNoteDate as formatDate } from '../utils/n
 import { formatMomentForShare, momentShareTitle } from '../utils/momentShare';
 import { shareText } from '../services/platform';
 import { sectionMoment, SectionLens } from '../utils/momentSections';
+import { collectPlaces } from '../utils/mapPlaces';
+import { isMapsConfigured } from '../services/googleMaps';
+import PlacesMapSheet from './PlacesMapSheet';
 
 type SectionView = SectionLens | 'relevance';
 
@@ -130,6 +133,10 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
     writeSectionView(moment.id, view);
   }, [moment.id]);
 
+  // Places (with a Google Maps place ID) across this moment's notes.
+  const mapPlaces = useMemo(() => (isMapsConfigured() ? collectPlaces(notes) : []), [notes]);
+  const [showMap, setShowMap] = useState(false);
+
   const previewMemory = previewMemoryId ? memoriesMap.get(previewMemoryId) : undefined;
   const embedded = canMatchMoment(moment);
   const noteCount = notes.length;
@@ -230,6 +237,16 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
             <span className="text-xs text-(--color-text-tertiary)">
               {noteCount} {noteLabel}
             </span>
+          )}
+          {mapPlaces.length > 0 && (
+            <button
+              onClick={() => setShowMap(true)}
+              className={btn.icon}
+              aria-label="Show places on a map"
+              title="Show places on a map"
+            >
+              <MapIcon size={20} />
+            </button>
           )}
           <button
             onClick={handleShare}
@@ -343,6 +360,10 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
           </div>
         </div>
       </div>
+
+      {showMap && mapPlaces.length > 0 && (
+        <PlacesMapSheet title={moment.title} places={mapPlaces} onClose={() => setShowMap(false)} />
+      )}
 
       {/* Memory Preview Modal */}
       {previewMemory && (

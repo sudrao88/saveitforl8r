@@ -7,6 +7,10 @@ import { btn, card, chip, confirm, menu, overlay, text } from '../styles/design-
 import { downloadDataUri } from '../services/downloadService';
 import { ChecklistDisplay, parseChecklistFromHtml, serializeChecklistToHtml, cascadeToggle } from './ChecklistItems';
 import RecipeCalculatorDialog from './RecipeCalculatorDialog';
+import PlacesMapSheet from './PlacesMapSheet';
+import { notePlaces } from '../utils/mapPlaces';
+import { noteTitle } from '../utils/noteLabels';
+import { isMapsConfigured } from '../services/googleMaps';
 
 interface EnrichmentSectionProps {
   icon: React.ReactNode;
@@ -294,6 +298,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
   const [isShaking, setIsShaking] = useState(false);
   const [showCalculator, setShowCalculator] = useState(false);
+  const [showPlacesMap, setShowPlacesMap] = useState(false);
 
   const [isTruncated, setIsTruncated] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -354,6 +359,13 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
   const groundedPlaceName = !showPlaceList && locationContext?.placeId && locationContext?.name && targetUri === locationContext.mapsUri
     ? locationContext.name
     : undefined;
+  // With the Maps SDK available, several places open on one in-app map (each
+  // pin links out to Google Maps) instead of a row of separate links.
+  const mapPlaces = useMemo(
+    () => (showPlaceList && isMapsConfigured() ? notePlaces(memory) : []),
+    [showPlaceList, memory],
+  );
+  const showPlacesMapButton = mapPlaces.length > 1;
   // The per-place links already cover the main place's link.
   const hideMainLink = showPlaceList && targetUri === locationContext?.mapsUri;
 
@@ -774,7 +786,20 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                                     <Calculator size={16} />
                                 </button>
                             )}
-                            {showPlaceList && groundedPlaces.map((place) => (
+                            {showPlacesMapButton && (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); setShowPlacesMap(true); }}
+                                    title={`Show ${mapPlaces.length} places on a map`}
+                                    aria-label={`Show ${mapPlaces.length} places on a map`}
+                                    className={`${btn.base} ${btn.ghost} gap-1.5 min-w-0 max-w-full px-2 py-1.5 text-xs font-normal`}
+                                >
+                                    <MapPin size={14} className="shrink-0" />
+                                    <span className="truncate">{mapPlaces.length} places</span>
+                                    <span className="shrink-0 text-(--color-text-tertiary)" aria-hidden="true">·</span>
+                                    <span translate="no" className="shrink-0 whitespace-nowrap text-(--color-text-primary)">Google Maps</span>
+                                </button>
+                            )}
+                            {showPlaceList && !showPlacesMapButton && groundedPlaces.map((place) => (
                                 <a
                                     key={place.placeId}
                                     href={place.mapsUri}
@@ -1035,6 +1060,13 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                 ingredients={Array.isArray(enrichment?.ingredients) ? enrichment.ingredients : []}
                 onClose={() => setShowCalculator(false)}
             />
+            {showPlacesMap && (
+                <PlacesMapSheet
+                    title={noteTitle(memory)}
+                    places={mapPlaces}
+                    onClose={() => setShowPlacesMap(false)}
+                />
+            )}
           </div>
         </div>
       </div>
