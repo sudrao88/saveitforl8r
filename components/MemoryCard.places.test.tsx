@@ -37,18 +37,18 @@ describe('MemoryCard Google Maps links', () => {
     const arbor = screen.getByTitle('Open Arbor Brewing Company in Google Maps');
     expect(toit.getAttribute('href')).toBe(uri('Toit Brewpub', 'ChIJtoit000001'));
     expect(arbor.getAttribute('href')).toBe(uri('Arbor Brewing Company', 'ChIJarbor00001'));
-    expect(screen.getAllByText('Google Maps')).toHaveLength(2);
     expect(screen.queryByTitle('Open Link')).toBeNull();
     expect(screen.queryByText('Unknown Cafe')).toBeNull();
   });
 
-  it('shows a single attributed link for a one-place note', () => {
+  it('shows a single map-pin link for a one-place note', () => {
     render(<MemoryCard memory={note({
       locationIsRelevant: true,
       locationContext: { name: 'Toit Brewpub', placeId: 'ChIJtoit000001', mapsUri: uri('Toit Brewpub', 'ChIJtoit000001') },
       places: [{ name: 'Toit Brewpub', placeId: 'ChIJtoit000001', mapsUri: uri('Toit Brewpub', 'ChIJtoit000001') }],
     })} />);
-    expect(screen.getAllByText('Google Maps')).toHaveLength(1);
-    expect(screen.getByText('Google Maps').getAttribute('translate')).toBe('no');
+    expect(screen.getByTitle('Open Toit Brewpub in Google Maps').getAttribute('href')).toBe(uri('Toit Brewpub', 'ChIJtoit000001'));
+    expect(screen.queryByText('Google Maps')).toBeNull();
+    expect(screen.queryByTitle('Open Link')).toBeNull();
   });
 });
