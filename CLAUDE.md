@@ -45,7 +45,7 @@ The client-side React application uses Vite to inject environment variables at b
 |-------------------------|------------------------|---------------------|
 | `VITE_GOOGLE_CLIENT_ID` | Google OAuth client ID | `.env` / Docker ARG |
 | `VITE_PROXY_URL`        | URL of the backend proxy | `.env` / Docker ARG |
-| `VITE_GOOGLE_MAPS_API_KEY` | Browser key for the Maps JavaScript SDK (in-app place maps). Public; restrict it by HTTP referrer. Unset hides the map buttons. | `.env` / Cloud Build `_GOOGLE_MAPS_API_KEY` |
+| `VITE_GOOGLE_MAPS_API_KEY` | Browser key for the Maps JavaScript SDK (in-app place maps). Public; restrict it by HTTP referrer. Unset hides the map buttons. | `.env` / Secret Manager (read at build time) |
 
 ### Server-Side (Node.js)
 
