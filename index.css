@@ -49,6 +49,18 @@
   --color-scrollbar-thumb: #374151;
   --color-scrollbar-thumb-hover: #4b5563;
 
+  /* Map markers: one colour per moment subsection (paired with a shape so
+     categories stay distinguishable without colour). Read at runtime by
+     utils/mapMarkers, as the Maps SDK draws markers outside the DOM. */
+  --color-map-category-1: #3b82f6;
+  --color-map-category-2: #f97316;
+  --color-map-category-3: #a855f7;
+  --color-map-category-4: #10b981;
+  --color-map-category-5: #ec4899;
+  --color-map-category-6: #eab308;
+  --color-map-category-other: #6b7280;
+  --color-map-marker-outline: #ffffff;
+
   /* Z-index layers */
   --z-sticky: 10;
   --z-dropdown: 30;

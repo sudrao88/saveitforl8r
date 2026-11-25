@@ -23,7 +23,7 @@ import { noteTitle, noteSnippet, formatNoteDate as formatDate } from '../utils/n
 import { formatMomentForShare, momentShareTitle } from '../utils/momentShare';
 import { shareText } from '../services/platform';
 import { sectionMoment, SectionLens } from '../utils/momentSections';
-import { collectPlaces } from '../utils/mapPlaces';
+import { collectPlaces, categorisePlaces } from '../utils/mapPlaces';
 import { isMapsConfigured } from '../services/googleMaps';
 import PlacesMapSheet from './PlacesMapSheet';
 
@@ -137,8 +137,13 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
     writeSectionView(moment.id, view);
   }, [moment.id]);
 
-  // Places (with a Google Maps place ID) across this moment's notes.
-  const mapPlaces = useMemo(() => (isMapsConfigured() ? collectPlaces(notes) : []), [notes]);
+  // Places (with a Google Maps place ID) across this moment's notes, with
+  // pins styled by the subsection currently shown.
+  const activeSections = activeSectioning?.sections;
+  const mapPlaces = useMemo(
+    () => (isMapsConfigured() ? categorisePlaces(collectPlaces(notes), activeSections) : []),
+    [notes, activeSections],
+  );
   const [showMap, setShowMap] = useState(false);
 
   const previewMemory = previewMemoryId ? memoriesMap.get(previewMemoryId) : undefined;
@@ -244,6 +249,18 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
       </li>
     );
   };
+
+  const previewModal = previewMemory && (
+    <MemoryPreviewModal
+      memory={previewMemory}
+      onClose={() => setPreviewMemoryId(null)}
+      onViewAttachment={onViewAttachment}
+      onDelete={onMemoryDelete}
+      onEdit={onMemoryEdit}
+      onUpdate={onMemoryUpdate}
+      onTogglePin={onMemoryTogglePin}
+    />
+  );
 
   return (
     <div className={overlay.sheetBase}>
@@ -410,22 +427,18 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
         </div>
       </div>
 
-      {showMap && mapPlaces.length > 0 && (
-        <PlacesMapSheet title={moment.title} places={mapPlaces} onClose={() => setShowMap(false)} />
-      )}
-
-      {/* Memory Preview Modal */}
-      {previewMemory && (
-        <MemoryPreviewModal
-          memory={previewMemory}
-          onClose={() => setPreviewMemoryId(null)}
-          onViewAttachment={onViewAttachment}
-          onDelete={onMemoryDelete}
-          onEdit={onMemoryEdit}
-          onUpdate={onMemoryUpdate}
-          onTogglePin={onMemoryTogglePin}
-        />
-      )}
+      {/* Memory Preview Modal (inside the map when opened from a place card) */}
+      {showMap && mapPlaces.length > 0 ? (
+        <PlacesMapSheet
+          title={moment.title}
+          places={mapPlaces}
+          notes={memoriesMap}
+          onOpenNote={setPreviewMemoryId}
+          onClose={() => setShowMap(false)}
+        >
+          {previewModal}
+        </PlacesMapSheet>
+      ) : previewModal}
 
       {/* Delete Confirmation Dialog — Step 1: Choose scope */}
       {deleteConfirmStep === 'choose' && (
