@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { notePlaces, collectPlaces } from './mapPlaces';
+import { notePlaces, collectPlaces, categorisePlaces } from './mapPlaces';
 import { Memory } from '../types';
 
 const note = (id: string, title: string, enrichment: Partial<NonNullable<Memory['enrichment']>>): Memory => ({
@@ -46,5 +46,33 @@ describe('collectPlaces', () => {
     expect(places.map(p => p.name)).toEqual(['Toit', 'Arbor']);
     expect(places[0].noteTitles).toEqual(['Team dinner', 'Birthday']);
     expect(places[1].noteTitles).toEqual(['Team dinner']);
+    expect(places[0].noteIds).toEqual(['n1', 'n2']);
+    expect(places[1].noteIds).toEqual(['n1']);
+  });
+});
+
+describe('categorisePlaces', () => {
+  const places = collectPlaces([
+    note('n1', 'Team dinner', { places: [{ name: 'Toit', placeId: 'ChIJtoit000001' }] }),
+    note('n2', 'Trek', { places: [{ name: 'Nandi Hills', placeId: 'ChIJnandi00001' }, { name: 'Toit', placeId: 'ChIJtoit000001' }] }),
+    note('n3', 'Misc', { places: [{ name: 'Cubbon Park', placeId: 'ChIJcubbon0001' }] }),
+  ]);
+
+  it('puts each place in the section of the first note that mentions it', () => {
+    const out = categorisePlaces(places, [
+      { key: 'trips', label: 'Trips', noteIds: ['n2'] },
+      { key: 'food', label: 'Food', noteIds: ['n1'] },
+      { key: 'other', label: 'Other', noteIds: ['n3'] },
+    ]);
+    const byName = Object.fromEntries(out.map(p => [p.name, p.category]));
+    // Toit is mentioned by n1 first, so it follows n1's section.
+    expect(byName['Toit']).toEqual({ key: 'food', label: 'Food', index: 1 });
+    expect(byName['Nandi Hills']).toEqual({ key: 'trips', label: 'Trips', index: 0 });
+    expect(byName['Cubbon Park']).toEqual({ key: 'other', label: 'Other', index: -1 });
+  });
+
+  it('leaves places uncategorised without sections', () => {
+    expect(categorisePlaces(places, undefined)).toBe(places);
+    expect(categorisePlaces(places, [])).toBe(places);
   });
 });

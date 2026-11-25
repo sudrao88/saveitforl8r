@@ -8,6 +8,7 @@
 
 import { Memory } from '../types';
 import { noteTitle } from './noteLabels';
+import { MomentSection, OTHER_SECTION_KEY } from './momentSections';
 
 export interface MapPlace {
   placeId: string;
@@ -17,6 +18,17 @@ export interface MapPlace {
   mapsUri: string;
   /** Notes that mention this place (set when collecting across notes). */
   noteTitles?: string[];
+  /** Ids of those notes, in the order the notes were given. */
+  noteIds?: string[];
+  /** The subsection this place's pin belongs to (moments only). */
+  category?: MapCategory;
+}
+
+export interface MapCategory {
+  key: string;
+  label: string;
+  /** Position in the moment's sections, for the pin colour; -1 for "Other". */
+  index: number;
 }
 
 const placeUri = (name: string, placeId: string) =>
@@ -52,10 +64,35 @@ export const collectPlaces = (notes: Memory[]): MapPlace[] => {
       const existing = byId.get(place.placeId);
       if (existing) {
         if (!existing.noteTitles!.includes(title)) existing.noteTitles!.push(title);
+        if (!existing.noteIds!.includes(note.id)) existing.noteIds!.push(note.id);
       } else {
-        byId.set(place.placeId, { ...place, noteTitles: [title] });
+        byId.set(place.placeId, { ...place, noteTitles: [title], noteIds: [note.id] });
       }
     }
   }
   return [...byId.values()];
+};
+
+/**
+ * Puts each place in the moment subsection of the first note (in the order
+ * collectPlaces was given them, i.e. best match first) that mentions it, so
+ * the map's pins follow the grouping shown in the moment. Without sections
+ * the places are returned unchanged.
+ */
+export const categorisePlaces = (places: MapPlace[], sections?: MomentSection[]): MapPlace[] => {
+  if (!sections || sections.length === 0) return places;
+  const sectionOf = new Map<string, MapCategory>();
+  let index = 0;
+  for (const section of sections) {
+    const category: MapCategory = {
+      key: section.key,
+      label: section.label,
+      index: section.key === OTHER_SECTION_KEY ? -1 : index++,
+    };
+    for (const id of section.noteIds) if (!sectionOf.has(id)) sectionOf.set(id, category);
+  }
+  return places.map(place => {
+    const noteId = place.noteIds?.find(id => sectionOf.has(id));
+    return { ...place, category: noteId ? sectionOf.get(noteId) : undefined };
+  });
 };
