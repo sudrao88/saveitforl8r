@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v151",
-  "buildNumber": 151,
-  "buildDate": "2026-11-25T00:31:02.093Z",
+  "version": "saveitforl8r-v152",
+  "buildNumber": 152,
+  "buildDate": "2026-11-25T01:43:42.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Hidden notes in a moment can now be listed and brought back."
+  "changelog": "Notes naming a chain like Starbucks now keep every nearby branch instead of one that could be far away."
 }
