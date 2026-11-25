@@ -45,6 +45,40 @@ describe('MomentSheet', () => {
   });
 });
 
+describe('MomentSheet hidden notes', () => {
+  const renderWithHidden = (excludedNoteIds: string[], onUnhideNote = vi.fn(async () => {})) =>
+    render(
+      <MomentSheet
+        moment={{ ...moment, excludedNoteIds }}
+        memories={[note('n1', 'Beyond Bean Coffee'), note('n2', 'Third Wave Coffee')]}
+        matches={[{ id: 'n1', score: 1 }]}
+        isEmbedding={false}
+        onClose={() => {}}
+        onDelete={async () => {}}
+        onHideNote={async () => {}}
+        onUnhideNote={onUnhideNote}
+        onRetryEmbedding={async () => {}}
+      />,
+    );
+
+  it('lists hidden notes on request and unhides one', () => {
+    const onUnhideNote = vi.fn(async () => {});
+    renderWithHidden(['n2'], onUnhideNote);
+    expect(screen.queryByText('Third Wave Coffee')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /1 note hidden/ }));
+    expect(screen.getByText('Third Wave Coffee')).toBeTruthy();
+
+    fireEvent.click(screen.getByLabelText('Show in this moment'));
+    expect(onUnhideNote).toHaveBeenCalledWith('m1', 'n2');
+  });
+
+  it('does not count hidden notes that have since been deleted', () => {
+    renderWithHidden(['n2', 'gone']);
+    expect(screen.getByRole('button', { name: /1 note hidden/ })).toBeTruthy();
+  });
+});
+
 describe('MomentSheet sharing', () => {
   it('shares the moment as formatted text', async () => {
     const share = vi.fn().mockResolvedValue(undefined);
