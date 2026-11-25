@@ -348,9 +348,24 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
   // Link backed by a Google Maps grounding result (server stores its placeId).
   // Shown as a map-pin icon whose title names the place and Google Maps.
   // Notes about several places get one grounded link per place instead.
-  const groundedPlaces = (enrichment?.places ?? []).filter((p) => p.placeId && p.mapsUri);
+  // A chain is stored as one entry per branch, all with the same name; it gets
+  // a single pin that searches Maps for the name rather than one pin per branch.
+  const groundedPlaces: { name: string; mapsUri: string }[] = [];
+  const placeIndexByName = new Map<string, number>();
+  for (const p of enrichment?.places ?? []) {
+    if (!p.placeId || !p.mapsUri) continue;
+    const key = p.name.trim().toLowerCase();
+    const index = placeIndexByName.get(key);
+    if (index === undefined) {
+      placeIndexByName.set(key, groundedPlaces.length);
+      groundedPlaces.push({ name: p.name, mapsUri: p.mapsUri });
+    } else {
+      groundedPlaces[index].mapsUri = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.name)}`;
+    }
+  }
   const showPlaceList = groundedPlaces.length > 1;
-  const groundedPlaceName = !showPlaceList && locationContext?.placeId && locationContext?.name && targetUri === locationContext.mapsUri
+  const mainIsGrounded = Boolean(locationContext?.placeId) || groundedPlaces.length === 1;
+  const groundedPlaceName = !showPlaceList && mainIsGrounded && locationContext?.name && targetUri === locationContext.mapsUri
     ? locationContext.name
     : undefined;
   // The per-place links already cover the main place's link.
@@ -775,7 +790,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                             )}
                             {showPlaceList && groundedPlaces.map((place) => (
                                 <a
-                                    key={place.placeId}
+                                    key={place.name}
                                     href={place.mapsUri}
                                     target="_blank"
                                     rel="noopener noreferrer"

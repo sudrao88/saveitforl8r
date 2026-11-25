@@ -51,4 +51,37 @@ describe('MemoryCard Google Maps links', () => {
     expect(screen.queryByText('Google Maps')).toBeNull();
     expect(screen.queryByTitle('Open Link')).toBeNull();
   });
+
+  it('shows one map-pin link for a chain stored as several branches', () => {
+    const search = 'https://www.google.com/maps/search/?api=1&query=Starbucks';
+    render(<MemoryCard memory={note({
+      locationIsRelevant: true,
+      locationContext: { name: 'Starbucks', mapsUri: search },
+      places: [
+        { name: 'Starbucks', placeId: 'ChIJstarbucks01', mapsUri: uri('Starbucks', 'ChIJstarbucks01') },
+        { name: 'Starbucks', placeId: 'ChIJstarbucks02', mapsUri: uri('Starbucks', 'ChIJstarbucks02') },
+        { name: 'Starbucks', placeId: 'ChIJstarbucks03', mapsUri: uri('Starbucks', 'ChIJstarbucks03') },
+      ],
+    })} />);
+    const pins = screen.getAllByTitle('Open Starbucks in Google Maps');
+    expect(pins).toHaveLength(1);
+    expect(pins[0].getAttribute('href')).toBe(search);
+    expect(screen.queryByTitle('Open Link')).toBeNull();
+  });
+
+  it('shows one pin for a chain alongside pins for other places', () => {
+    render(<MemoryCard memory={note({
+      locationIsRelevant: true,
+      locationContext: { name: 'Toit Brewpub', placeId: 'ChIJtoit000001', mapsUri: uri('Toit Brewpub', 'ChIJtoit000001') },
+      places: [
+        { name: 'Toit Brewpub', placeId: 'ChIJtoit000001', mapsUri: uri('Toit Brewpub', 'ChIJtoit000001') },
+        { name: 'Starbucks', placeId: 'ChIJstarbucks01', mapsUri: uri('Starbucks', 'ChIJstarbucks01') },
+        { name: 'Starbucks', placeId: 'ChIJstarbucks02', mapsUri: uri('Starbucks', 'ChIJstarbucks02') },
+      ],
+    })} />);
+    expect(screen.getAllByTitle('Open Toit Brewpub in Google Maps')).toHaveLength(1);
+    const chain = screen.getAllByTitle('Open Starbucks in Google Maps');
+    expect(chain).toHaveLength(1);
+    expect(chain[0].getAttribute('href')).toBe('https://www.google.com/maps/search/?api=1&query=Starbucks');
+  });
 });

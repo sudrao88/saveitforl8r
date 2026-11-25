@@ -111,17 +111,50 @@ export const matchPlace = (places, name, { exclude, allowSingle = true } = {}) =
   return allowSingle && places.length === 1 && candidates.length === 1 ? candidates[0] : undefined;
 };
 
+/** Most branches of one chain stored for a single named place. */
+export const MAX_BRANCHES = 10;
+
+/**
+ * Every grounded place that matches the place the model named. A chain
+ * ("Starbucks") comes back from Maps as several places with the same title,
+ * one per branch; all of them are returned, in Maps' order. Branches are the
+ * places that share the matched place's title, so a loose name match never
+ * pulls in a differently named place.
+ */
+export const matchPlaces = (places, name, options = {}) => {
+  const first = matchPlace(places, name, options);
+  if (!first) return [];
+  const title = normalize(first.title);
+  const seen = new Set([first.placeId]);
+  const out = [first];
+  if (!title) return out;
+  for (const p of places) {
+    if (out.length >= MAX_BRANCHES) break;
+    if (seen.has(p.placeId) || options.exclude?.has(p.placeId)) continue;
+    if (normalize(p.title) !== title) continue;
+    seen.add(p.placeId);
+    out.push(p);
+  }
+  return out;
+};
+
 /**
  * Replace the model-written mapsUri with a link built from a grounded place ID.
  * A model-written mapsUri is never kept (models invent them). With no grounded
  * match, a Google Maps link the user pasted is used, else a Maps search for the
  * place's name and address.
+ *
+ * When Maps returned several branches for the name, no single branch is pinned:
+ * Maps gives no coordinates, so picking one (it used to be the first) can link
+ * to a branch far from the user. The link is a search instead, and
+ * applyPlacesGrounding stores every branch's placeId in `places`.
  */
 export const applyMapsGrounding = (sanitized, places, userUrls = []) => {
   const loc = sanitized?.locationContext;
   if (!loc) return sanitized;
 
-  const match = loc.name ? matchPlace(places, loc.name) : undefined;
+  const branches = loc.name ? matchPlaces(places, loc.name) : [];
+  const match = branches.length === 1 ? branches[0] : undefined;
   if (match) {
     loc.placeId = match.placeId;
     loc.mapsUri = buildPlaceUri(loc.name, match.placeId);
@@ -142,7 +175,10 @@ export const applyMapsGrounding = (sanitized, places, userUrls = []) => {
  * Each entry in `sanitized.places` ({ name, address }) gets the placeId (and a
  * link built from it) of the grounded Maps place with the same name. Each
  * grounded place is used at most once, and a place with no name match is kept
- * without a placeId rather than pinned to the wrong spot. If the model gave no
+ * without a placeId rather than pinned to the wrong spot. A place Maps returned
+ * several branches for (a chain) becomes one entry per branch, all with the
+ * same name and each with its own placeId; the model's address is dropped from
+ * those entries because it describes only one, unknown, branch. If the model gave no
  * list but did name a main place, the list is that one place, so every
  * location note has a `places` array. The main place (locationContext) keeps
  * the placeId it was matched to, so the two never disagree.
@@ -161,6 +197,15 @@ export const applyPlacesGrounding = (sanitized, groundedPlaces) => {
   if (places.length === 0 && loc?.name) {
     places = [{ name: loc.name, ...(loc.address ? { address: loc.address } : {}) }];
   }
+  // One entry per name: a second run (after the Maps lookup) starts again from
+  // the named places rather than from the branch entries of the first run.
+  const seenNames = new Set();
+  places = places.filter((p) => {
+    const key = normalize(p?.name);
+    if (!key || seenNames.has(key)) return false;
+    seenNames.add(key);
+    return true;
+  });
   if (places.length === 0) {
     delete sanitized.places;
     return sanitized;
@@ -172,7 +217,7 @@ export const applyPlacesGrounding = (sanitized, groundedPlaces) => {
   if (loc?.placeId) used.add(loc.placeId);
   let mainAssigned = false;
 
-  sanitized.places = places.map((place) => {
+  sanitized.places = places.flatMap((place) => {
     const out = { name: place.name };
     if (place.address) out.address = place.address;
     const key = normalize(place.name);
@@ -181,15 +226,16 @@ export const applyPlacesGrounding = (sanitized, groundedPlaces) => {
       mainAssigned = true;
       out.placeId = loc.placeId;
     } else {
-      const match = matchPlace(groundedPlaces, place.name, { exclude: used, allowSingle: places.length === 1 });
-      if (match) {
-        used.add(match.placeId);
-        out.placeId = match.placeId;
+      const branches = matchPlaces(groundedPlaces, place.name, { exclude: used, allowSingle: places.length === 1 });
+      branches.forEach((b) => used.add(b.placeId));
+      if (branches.length > 1) {
+        return branches.map((b) => ({ name: place.name, placeId: b.placeId, mapsUri: buildPlaceUri(place.name, b.placeId) }));
       }
+      if (branches.length === 1) out.placeId = branches[0].placeId;
     }
     const uri = out.placeId ? buildPlaceUri(out.name, out.placeId) : buildSearchUri(out.name, out.address);
     if (uri) out.mapsUri = uri;
-    return out;
+    return [out];
   });
   return sanitized;
 };
@@ -200,7 +246,11 @@ export const ungroundedPlaces = (sanitized) => {
   const list = Array.isArray(sanitized.places) ? sanitized.places : [];
   const out = list.filter((p) => p?.name && !p.placeId).map((p) => ({ name: p.name, address: p.address }));
   const loc = sanitized.locationContext;
-  if (loc?.name && !loc.placeId && !out.some((p) => normalize(p.name) === normalize(loc.name))) {
+  // A main place with several branches has no placeId of its own; its branches
+  // in the list carry them, so it is not ungrounded.
+  const mainKey = normalize(loc?.name);
+  const mainInList = list.some((p) => normalize(p?.name) === mainKey);
+  if (loc?.name && !loc.placeId && !mainInList) {
     out.unshift({ name: loc.name, address: loc.address });
   }
   return out.slice(0, 10);
