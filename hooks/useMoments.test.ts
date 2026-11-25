@@ -433,6 +433,39 @@ describe('useMoments', () => {
     });
   });
 
+  describe('unhideNoteInMoment', () => {
+    it('brings the note back into the matches and syncs the change', async () => {
+      const store = wireMomentStorage([makeMoment('m1', { excludedNoteIds: ['n1', 'n3'] })]);
+      const onChanged = vi.fn();
+      const memories = [makeMemory('n1', X), makeMemory('n2', X)];
+      const { result } = renderHook(() => useMoments(memories));
+      await flush();
+      act(() => result.current.setOnMomentChanged(onChanged));
+      expect(result.current.matchesByMoment.get('m1')!.map(m => m.id)).toEqual(['n2']);
+
+      await act(async () => {
+        await result.current.unhideNoteInMoment('m1', 'n1');
+      });
+
+      expect(store.get('m1')!.excludedNoteIds).toEqual(['n3']);
+      expect(result.current.matchesByMoment.get('m1')!.map(m => m.id).sort()).toEqual(['n1', 'n2']);
+      expect(onChanged).toHaveBeenCalledWith(expect.objectContaining({ id: 'm1', excludedNoteIds: ['n3'] }));
+    });
+
+    it('is a no-op for a note that is not hidden', async () => {
+      wireMomentStorage([makeMoment('m1')]);
+      const { result } = renderHook(() => useMoments([]));
+      await flush();
+      (storageService.saveMoment as any).mockClear();
+
+      await act(async () => {
+        await result.current.unhideNoteInMoment('m1', 'n1');
+      });
+
+      expect(storageService.saveMoment).not.toHaveBeenCalled();
+    });
+  });
+
   describe('deleteMoment', () => {
     it('persists a tombstone, removes it from the list, and syncs it', async () => {
       const store = wireMomentStorage([makeMoment('m1'), makeMoment('m2')]);
