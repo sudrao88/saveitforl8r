@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v152",
-  "buildNumber": 152,
-  "buildDate": "2026-11-25T01:43:42.000Z",
+  "version": "saveitforl8r-v153",
+  "buildNumber": 153,
+  "buildDate": "2026-11-25T04:14:36.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Notes naming a chain like Starbucks now keep every nearby branch instead of one that could be far away."
+  "changelog": "See a moment's places, or a note's several places, on a map inside the app."
 }

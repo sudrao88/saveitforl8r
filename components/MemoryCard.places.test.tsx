@@ -1,8 +1,15 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
-import { describe, it, expect, beforeAll } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 import MemoryCard from './MemoryCard';
 import { Memory } from '../types';
+
+const mapsConfigured = vi.fn(() => false);
+vi.mock('../services/googleMaps', () => ({
+  isMapsConfigured: () => mapsConfigured(),
+  loadGoogleMaps: () => Promise.reject(new Error('no SDK in tests')),
+  resolvePlaceLocations: async () => new Map(),
+}));
 
 const uri = (name: string, id: string) =>
   `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name)}&query_place_id=${id}`;
@@ -21,6 +28,37 @@ describe('MemoryCard Google Maps links', () => {
         addEventListener: () => {}, removeEventListener: () => {}, dispatchEvent: () => false,
       })) as unknown as typeof window.matchMedia;
     }
+  });
+
+  beforeEach(() => mapsConfigured.mockReturnValue(false));
+
+  it('opens the branches of a chain on the in-app map when the Maps SDK is configured', () => {
+    mapsConfigured.mockReturnValue(true);
+    render(<MemoryCard memory={note({
+      locationIsRelevant: true,
+      locationContext: { name: 'Starbucks', mapsUri: 'https://www.google.com/maps/search/?api=1&query=Starbucks' },
+      places: [
+        { name: 'Starbucks', placeId: 'ChIJsbux000001', mapsUri: uri('Starbucks', 'ChIJsbux000001') },
+        { name: 'Starbucks', placeId: 'ChIJsbux000002', mapsUri: uri('Starbucks', 'ChIJsbux000002') },
+      ],
+    })} />);
+    expect(screen.getByRole('button', { name: 'Show 2 places on a map' })).toBeTruthy();
+    expect(screen.queryByTitle('Open Starbucks in Google Maps')).toBeNull();
+  });
+
+  it('opens several places on the in-app map when the Maps SDK is configured', async () => {
+    mapsConfigured.mockReturnValue(true);
+    render(<MemoryCard memory={note({
+      locationIsRelevant: true,
+      locationContext: { name: 'Toit Brewpub', placeId: 'ChIJtoit000001', mapsUri: uri('Toit Brewpub', 'ChIJtoit000001') },
+      places: [
+        { name: 'Toit Brewpub', placeId: 'ChIJtoit000001', mapsUri: uri('Toit Brewpub', 'ChIJtoit000001') },
+        { name: 'Arbor Brewing Company', placeId: 'ChIJarbor00001', mapsUri: uri('Arbor Brewing Company', 'ChIJarbor00001') },
+      ],
+    })} />);
+    expect(screen.queryByTitle('Open Toit Brewpub in Google Maps')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Show 2 places on a map' }));
+    expect(await screen.findByRole('dialog', { name: /^Map:/ })).toBeTruthy();
   });
 
   it('shows one Google Maps link per grounded place', () => {

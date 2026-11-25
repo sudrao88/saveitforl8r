@@ -19,7 +19,7 @@
     "paths": {
       "@/*": ["./*"]
     },
-    "types": ["vite/client", "vitest/globals"]
+    "types": ["vite/client", "vitest/globals", "google.maps"]
   },
   "include": ["**/*.ts", "**/*.tsx", "**/*.d.ts"],
   "exclude": ["vite.config.ts"],

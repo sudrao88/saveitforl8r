@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
-import { Trash2, Loader2, Clock, ExternalLink, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, WifiOff, CloudOff, FileText, Paperclip, MoreVertical, AlertTriangle, AlertCircle, LogIn, Maximize2, Eye, Pin, Pencil, Lightbulb, CircleCheck, UtensilsCrossed, ListOrdered, ThumbsUp, ThumbsDown, DollarSign, MapPin, CalendarDays, ClipboardList, MessageSquare, Users, Mic, Code, Heart, Scale, GraduationCap, Briefcase, Music, Film, BookOpenCheck, Bookmark, Phone, Mail, ScrollText, Tag, Clock3, Flame, Quote, Hourglass, Sparkles, Calculator, CheckSquare, Square } from 'lucide-react';
+import { Trash2, Loader2, Clock, ExternalLink, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, WifiOff, CloudOff, FileText, Paperclip, MoreVertical, AlertTriangle, AlertCircle, LogIn, Maximize2, Eye, Pin, Pencil, Lightbulb, CircleCheck, UtensilsCrossed, ListOrdered, ThumbsUp, ThumbsDown, DollarSign, MapPin, CalendarDays, ClipboardList, MessageSquare, Users, Mic, Code, Heart, Scale, GraduationCap, Briefcase, Music, Film, BookOpenCheck, Bookmark, Phone, Mail, ScrollText, Tag, Clock3, Flame, Quote, Hourglass, Sparkles, Calculator, CheckSquare, Square, Map as MapIcon } from 'lucide-react';
 import { Memory, Attachment, UploadProgress, CalendarEvent, TodoItem, Moment, isMemoryInFlight, isMemoryFailed } from '../types.ts';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { FALLBACK_MOMENT_EMOJI } from './MomentBubble';
@@ -7,6 +7,10 @@ import { btn, card, chip, confirm, menu, overlay, text } from '../styles/design-
 import { downloadDataUri } from '../services/downloadService';
 import { ChecklistDisplay, parseChecklistFromHtml, serializeChecklistToHtml, cascadeToggle } from './ChecklistItems';
 import RecipeCalculatorDialog from './RecipeCalculatorDialog';
+import PlacesMapSheet from './PlacesMapSheet';
+import { notePlaces } from '../utils/mapPlaces';
+import { noteTitle } from '../utils/noteLabels';
+import { isMapsConfigured } from '../services/googleMaps';
 
 interface EnrichmentSectionProps {
   icon: React.ReactNode;
@@ -294,6 +298,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
   const [isShaking, setIsShaking] = useState(false);
   const [showCalculator, setShowCalculator] = useState(false);
+  const [showPlacesMap, setShowPlacesMap] = useState(false);
 
   const [isTruncated, setIsTruncated] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -368,8 +373,13 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
   const groundedPlaceName = !showPlaceList && mainIsGrounded && locationContext?.name && targetUri === locationContext.mapsUri
     ? locationContext.name
     : undefined;
-  // The per-place links already cover the main place's link.
-  const hideMainLink = showPlaceList && targetUri === locationContext?.mapsUri;
+  // With the Maps SDK available, a note with several place IDs (different
+  // places, or the branches of a chain) opens them on one in-app map, where
+  // each pin links out to Google Maps, instead of showing separate links.
+  const mapPlaces = useMemo(() => (isMapsConfigured() ? notePlaces(memory) : []), [memory]);
+  const showPlacesMapButton = mapPlaces.length > 1;
+  // The per-place links (or the map) already cover the main place's link.
+  const hideMainLink = (showPlaceList || showPlacesMapButton) && targetUri === locationContext?.mapsUri;
 
   const entity = enrichment?.entityContext;
 
@@ -788,7 +798,17 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                                     <Calculator size={16} />
                                 </button>
                             )}
-                            {showPlaceList && groundedPlaces.map((place) => (
+                            {showPlacesMapButton && (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); setShowPlacesMap(true); }}
+                                    title={`Show ${mapPlaces.length} places on a map`}
+                                    aria-label={`Show ${mapPlaces.length} places on a map`}
+                                    className={`${btn.icon} transition-colors`}
+                                >
+                                    <MapIcon size={16} />
+                                </button>
+                            )}
+                            {showPlaceList && !showPlacesMapButton && groundedPlaces.map((place) => (
                                 <a
                                     key={place.name}
                                     href={place.mapsUri}
@@ -802,7 +822,7 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                                     <MapPin size={16} />
                                 </a>
                             ))}
-                            {targetUri && groundedPlaceName && (
+                            {targetUri && groundedPlaceName && !showPlacesMapButton && (
                                 <a
                                     href={targetUri}
                                     target="_blank"
@@ -1045,6 +1065,13 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                 ingredients={Array.isArray(enrichment?.ingredients) ? enrichment.ingredients : []}
                 onClose={() => setShowCalculator(false)}
             />
+            {showPlacesMap && (
+                <PlacesMapSheet
+                    title={noteTitle(memory)}
+                    places={mapPlaces}
+                    onClose={() => setShowPlacesMap(false)}
+                />
+            )}
           </div>
         </div>
       </div>
