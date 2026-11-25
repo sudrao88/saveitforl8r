@@ -14,6 +14,15 @@ vi.mock('../services/googleMaps', () => ({
   resolvePlaceLocations: (ids: string[]) => resolvePlaceLocations(ids),
 }));
 
+const hasLocationPermission = vi.fn();
+let locationCallbacks: { onPosition: (p: { lat: number; lng: number; accuracy: number }) => void; onError: (e: string) => void } | null = null;
+const stopWatch = vi.fn();
+const watchUserLocation = vi.fn();
+vi.mock('../services/userLocation', () => ({
+  hasLocationPermission: () => hasLocationPermission(),
+  watchUserLocation: (onPosition: never, onError: never) => watchUserLocation(onPosition, onError),
+}));
+
 const places: MapPlace[] = [
   { placeId: 'ChIJtoit000001', name: 'Toit Brewpub', address: 'Indiranagar', mapsUri: 'https://maps.example/toit', noteTitles: ['Team dinner'] },
   { placeId: 'ChIJarbor00001', name: 'Arbor Brewing Company', mapsUri: 'https://maps.example/arbor' },
@@ -21,25 +30,41 @@ const places: MapPlace[] = [
 
 // Minimal stand-in for the Maps SDK: records markers so tests can tap them
 // and read back the icon each one is drawn with.
-interface FakeMarker { title: string; click: () => void; icon?: { url: string; scaledSize: { w: number } }; zIndex?: number }
+interface FakeMarker { title: string; click: () => void; icon?: { url: string; scaledSize: { w: number } }; zIndex?: number; position?: unknown; map?: unknown }
 const markers: FakeMarker[] = [];
 const fitBounds = vi.fn();
 const panTo = vi.fn();
+const setZoom = vi.fn();
 let mapClick: () => void = () => {};
+let mapDragStart: () => void = () => {};
+const circles: { radius: number; center: unknown }[] = [];
 const fakeMaps = () => {
-  class GoogleMap { fitBounds = fitBounds; panTo = panTo; addListener(_: string, fn: () => void) { mapClick = fn; } }
+  class GoogleMap {
+    fitBounds = fitBounds; panTo = panTo; setZoom = setZoom;
+    getZoom() { return 10; }
+    addListener(name: string, fn: () => void) { if (name === 'click') mapClick = fn; if (name === 'dragstart') mapDragStart = fn; }
+  }
   class Marker {
     rec: FakeMarker;
-    constructor(opts: { title: string }) { this.rec = { title: opts.title, click: () => {} }; markers.push(this.rec); }
+    constructor(opts: { title: string; position?: unknown; map?: unknown }) { this.rec = { title: opts.title, click: () => {}, position: opts.position, map: opts.map }; markers.push(this.rec); }
     addListener(_: string, fn: () => void) { this.rec.click = fn; }
     setIcon(icon: FakeMarker['icon']) { this.rec.icon = icon; }
     setZIndex(z?: number) { this.rec.zIndex = z; }
+    setPosition(p: unknown) { this.rec.position = p; }
+    setMap(m: unknown) { this.rec.map = m; }
+  }
+  class Circle {
+    rec: { radius: number; center: unknown };
+    constructor(opts: { radius: number; center: unknown }) { this.rec = { radius: opts.radius, center: opts.center }; circles.push(this.rec); }
+    setCenter(c: unknown) { this.rec.center = c; }
+    setRadius(r: number) { this.rec.radius = r; }
     setMap() {}
   }
   class LatLngBounds { extend() {} }
   class Size { constructor(public w: number, public h: number) {} }
   class Point { constructor(public x: number, public y: number) {} }
-  const libs: Record<string, unknown> = { maps: { Map: GoogleMap }, marker: { Marker }, core: { LatLngBounds, Size, Point } };
+  const ControlPosition = { RIGHT_CENTER: 'RIGHT_CENTER' };
+  const libs: Record<string, unknown> = { maps: { Map: GoogleMap, Circle }, marker: { Marker }, core: { LatLngBounds, Size, Point, ControlPosition } };
   return { importLibrary: async (name: string) => libs[name] };
 };
 
@@ -49,6 +74,15 @@ beforeEach(() => {
   markers.length = 0;
   fitBounds.mockClear();
   panTo.mockClear();
+  setZoom.mockClear();
+  circles.length = 0;
+  locationCallbacks = null;
+  stopWatch.mockClear();
+  hasLocationPermission.mockReset().mockResolvedValue(false);
+  watchUserLocation.mockReset().mockImplementation((onPosition, onError) => {
+    locationCallbacks = { onPosition, onError };
+    return stopWatch;
+  });
   loadGoogleMaps.mockReset().mockResolvedValue(fakeMaps());
   resolvePlaceLocations.mockReset().mockResolvedValue(new Map([
     ['ChIJtoit000001', { lat: 12.97, lng: 77.64 }],
@@ -148,5 +182,74 @@ describe('PlacesMapSheet', () => {
     expect(screen.getAllByRole('link').map(a => a.getAttribute('href'))).toEqual([
       'https://maps.example/toit', 'https://maps.example/arbor',
     ]);
+  });
+
+  describe('your location', () => {
+    const placeMarkers = () => markers.filter(m => m.title !== 'Your location');
+    const userMarker = () => markers.find(m => m.title === 'Your location');
+
+    it('does not ask for location until the button is tapped', async () => {
+      render(<PlacesMapSheet title="Breweries" places={places} onClose={() => {}} />);
+      await waitFor(() => expect(placeMarkers()).toHaveLength(2));
+      await waitFor(() => expect(hasLocationPermission).toHaveBeenCalled());
+      expect(watchUserLocation).not.toHaveBeenCalled();
+      expect(userMarker()).toBeUndefined();
+    });
+
+    it('shows the dot straight away when location is already allowed, without moving the map', async () => {
+      hasLocationPermission.mockResolvedValue(true);
+      render(<PlacesMapSheet title="Breweries" places={places} onClose={() => {}} />);
+      await waitFor(() => expect(watchUserLocation).toHaveBeenCalled());
+      React.act(() => locationCallbacks!.onPosition({ lat: 1, lng: 2, accuracy: 30 }));
+      expect(userMarker()?.position).toEqual({ lat: 1, lng: 2 });
+      expect(circles[0]).toEqual({ radius: 30, center: { lat: 1, lng: 2 } });
+      expect(panTo).not.toHaveBeenCalled();
+    });
+
+    it('centres on the user when the button is tapped, follows them, and stops following on pan', async () => {
+      render(<PlacesMapSheet title="Breweries" places={places} onClose={() => {}} />);
+      const button = await screen.findByRole('button', { name: 'Show your location' });
+      fireEvent.click(button);
+      expect(watchUserLocation).toHaveBeenCalledTimes(1);
+
+      React.act(() => locationCallbacks!.onPosition({ lat: 1, lng: 2, accuracy: 30 }));
+      expect(panTo).toHaveBeenLastCalledWith({ lat: 1, lng: 2 });
+      expect(setZoom).toHaveBeenCalledWith(15);
+      expect(screen.getByRole('button', { name: 'Following your location' }).getAttribute('aria-pressed')).toBe('true');
+
+      // Moving: the map follows.
+      React.act(() => locationCallbacks!.onPosition({ lat: 1.1, lng: 2.1, accuracy: 10 }));
+      expect(panTo).toHaveBeenLastCalledWith({ lat: 1.1, lng: 2.1 });
+      expect(userMarker()?.position).toEqual({ lat: 1.1, lng: 2.1 });
+      expect(circles).toHaveLength(1);
+      expect(circles[0].radius).toBe(10);
+
+      // Panning away stops following; further fixes only move the dot.
+      React.act(() => mapDragStart());
+      panTo.mockClear();
+      React.act(() => locationCallbacks!.onPosition({ lat: 1.2, lng: 2.2, accuracy: 10 }));
+      expect(panTo).not.toHaveBeenCalled();
+
+      // Tapping again goes back to the user, without starting a second watch.
+      fireEvent.click(screen.getByRole('button', { name: 'Show your location' }));
+      expect(panTo).toHaveBeenLastCalledWith({ lat: 1.2, lng: 2.2 });
+      expect(watchUserLocation).toHaveBeenCalledTimes(1);
+    });
+
+    it('explains when location access is denied', async () => {
+      render(<PlacesMapSheet title="Breweries" places={places} onClose={() => {}} />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Show your location' }));
+      React.act(() => locationCallbacks!.onError('denied'));
+      expect(screen.getByText(/Location access is off/)).toBeTruthy();
+      expect(stopWatch).toHaveBeenCalled();
+    });
+
+    it('stops watching when the map closes', async () => {
+      hasLocationPermission.mockResolvedValue(true);
+      const { unmount } = render(<PlacesMapSheet title="Breweries" places={places} onClose={() => {}} />);
+      await waitFor(() => expect(watchUserLocation).toHaveBeenCalled());
+      unmount();
+      expect(stopWatch).toHaveBeenCalled();
+    });
   });
 });

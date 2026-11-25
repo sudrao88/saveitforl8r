@@ -60,6 +60,8 @@
   --color-map-category-6: #eab308;
   --color-map-category-other: #6b7280;
   --color-map-marker-outline: #ffffff;
+  /* The user's own position ("you are here" dot and its accuracy halo). */
+  --color-map-user-location: #4285f4;
 
   /* Z-index layers */
   --z-sticky: 10;

@@ -42,6 +42,11 @@ export const btn = {
   // Outlined / subtle variants (bordered, muted background)
   outlinedSm:
     'flex items-center gap-1.5 px-3 py-2 rounded-(--radius-lg) text-xs font-medium bg-(--color-surface-raised) text-(--color-text-secondary) border border-(--color-border-default) hover:border-(--color-border-default) hover:text-(--color-text-primary) transition-all active:scale-95',
+  // Round floating control over a map (e.g. "my location")
+  floating:
+    'w-11 h-11 rounded-(--radius-full) bg-(--color-surface-overlay)/90 border border-(--color-border-default) text-(--color-text-secondary) hover:text-(--color-text-primary) shadow-lg backdrop-blur-sm',
+  floatingActive:
+    'w-11 h-11 rounded-(--radius-full) bg-(--color-surface-overlay)/90 border border-(--color-border-default) text-(--color-accent) hover:text-(--color-accent-hover) shadow-lg backdrop-blur-sm',
   outlinedDangerSm:
     'flex items-center gap-1.5 px-3 py-2 rounded-(--radius-lg) text-xs font-medium bg-(--color-danger)/20 text-(--color-danger) border border-(--color-danger)/30 hover:border-(--color-danger)/50 hover:text-(--color-danger) transition-all active:scale-95',
 } as const;

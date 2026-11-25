@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v154",
-  "buildNumber": 154,
-  "buildDate": "2026-11-25T23:40:38.000Z",
+  "version": "saveitforl8r-v155",
+  "buildNumber": 155,
+  "buildDate": "2026-11-25T23:48:12.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Places on a moment's map are coloured by group, and tapping one shows its notes in a card."
+  "changelog": "The map shows where you are, with a button to jump back to your location."
 }
