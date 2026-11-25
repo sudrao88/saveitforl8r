@@ -99,6 +99,8 @@ interface UseMomentsReturn {
   retryEmbedding: (momentId: string) => Promise<void>;
   /** Hide a matched note from a moment (synced) */
   hideNoteInMoment: (momentId: string, noteId: string) => Promise<void>;
+  /** Bring a hidden note back into a moment (synced) */
+  unhideNoteInMoment: (momentId: string, noteId: string) => Promise<void>;
   /** Soft-delete a moment */
   deleteMoment: (momentId: string) => Promise<void>;
   /** Set the callback that syncs a changed moment to Drive */
@@ -293,6 +295,21 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
     onMomentChangedRef.current?.(updated);
   }, [replaceInList]);
 
+  const unhideNoteInMoment = useCallback(async (momentId: string, noteId: string): Promise<void> => {
+    const latest = await getMoment(momentId);
+    if (!latest || latest.isDeleted) return;
+    const excluded = latest.excludedNoteIds || [];
+    if (!excluded.includes(noteId)) return;
+    const updated: Moment = {
+      ...latest,
+      excludedNoteIds: excluded.filter(id => id !== noteId),
+      updatedAt: Date.now(),
+    };
+    await saveMoment(updated);
+    replaceInList(updated);
+    onMomentChangedRef.current?.(updated);
+  }, [replaceInList]);
+
   // Soft-delete, then sync. The sync layer (performMomentSync) deletes the
   // Drive file and hard-deletes the local tombstone.
   const deleteMoment = useCallback(async (momentId: string): Promise<void> => {
@@ -332,6 +349,7 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
     embeddingIds,
     retryEmbedding,
     hideNoteInMoment,
+    unhideNoteInMoment,
     deleteMoment,
     setOnMomentChanged,
     refreshMoments,

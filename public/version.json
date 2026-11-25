@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v149",
-  "buildNumber": 149,
-  "buildDate": "2026-11-24T11:23:19.000Z",
+  "version": "saveitforl8r-v153",
+  "buildNumber": 153,
+  "buildDate": "2026-11-25T04:14:36.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "The Android and iOS apps can check for updates again."
+  "changelog": "See a moment's places, or a note's several places, on a map inside the app."
 }

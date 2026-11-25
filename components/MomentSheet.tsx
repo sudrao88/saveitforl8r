@@ -6,12 +6,13 @@
  * live as notes change. Larger moments are split into subsections on the
  * device (utils/momentSections), with chips to switch grouping or go back to
  * plain relevance order. Notes can be opened in a preview or hidden from this
- * moment. A moment can't be edited — delete it and create a new one.
+ * moment; hidden notes can be listed and brought back. A moment can't be
+ * edited — delete it and create a new one.
  */
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useBackButton } from '../hooks/useBackButton';
-import { X, Trash2, EyeOff, CloudOff, Loader2, RefreshCw, Share2, Check, Map as MapIcon } from 'lucide-react';
+import { X, Trash2, Eye, EyeOff, CloudOff, Loader2, RefreshCw, Share2, Check, ChevronDown, Map as MapIcon } from 'lucide-react';
 import { Moment, Memory, Attachment } from '../types';
 import MemoryPreviewModal from './MemoryPreviewModal';
 import MomentNoteDeletionSheet from './MomentNoteDeletionSheet';
@@ -65,6 +66,7 @@ interface MomentSheetProps {
   onClose: () => void;
   onDelete: (momentId: string) => Promise<void>;
   onHideNote: (momentId: string, noteId: string) => Promise<void>;
+  onUnhideNote?: (momentId: string, noteId: string) => Promise<void>;
   onRetryEmbedding: (momentId: string) => Promise<void>;
   onDeleteNotes?: (noteIds: string[]) => void;
   onViewAttachment?: (attachment: Attachment, allAttachments: Attachment[]) => void;
@@ -82,6 +84,7 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
   onClose,
   onDelete,
   onHideNote,
+  onUnhideNote,
   onRetryEmbedding,
   onDeleteNotes,
   onViewAttachment,
@@ -93,6 +96,7 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
   const [previewMemoryId, setPreviewMemoryId] = useState<string | null>(null);
   const [deleteConfirmStep, setDeleteConfirmStep] = useState<DeleteConfirmStep | null>(null);
   const [shareStatus, setShareStatus] = useState<'copied' | 'failed' | null>(null);
+  const [showHidden, setShowHidden] = useState(false);
 
   const memoriesMap = useMemo(() => new Map(memories.map(m => [m.id, m])), [memories]);
 
@@ -141,7 +145,17 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
   const embedded = canMatchMoment(moment);
   const noteCount = notes.length;
   const noteLabel = noteCount === 1 ? 'note' : 'notes';
-  const hiddenCount = moment.excludedNoteIds?.length ?? 0;
+  // Hidden notes that still exist, most recently hidden first. Ids of notes
+  // deleted since they were hidden are skipped.
+  const hiddenNotes = useMemo(() => {
+    const out: Memory[] = [];
+    for (const id of [...(moment.excludedNoteIds ?? [])].reverse()) {
+      const m = memoriesMap.get(id);
+      if (m && !m.isDeleted) out.push(m);
+    }
+    return out;
+  }, [moment.excludedNoteIds, memoriesMap]);
+  const hiddenCount = hiddenNotes.length;
 
   // Dismiss nested dialogs on Android back button
   useBackButton(() => setPreviewMemoryId(null), previewMemoryId !== null);
@@ -183,7 +197,7 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
     onClose();
   }, [moment.id, onDelete, onDeleteNotes, onClose]);
 
-  const renderNote = (memory: Memory) => {
+  const renderNote = (memory: Memory, hidden = false) => {
     const snippet = noteSnippet(memory);
     return (
       <li key={memory.id} className={`${card.base} flex items-start gap-2 p-3`}>
@@ -201,19 +215,32 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
           )}
           <p className={`${text.caption} mt-1`}>
             {formatDate(memory.timestamp)}
-            {matchedById.has(memory.id) && (
+            {!hidden && matchedById.has(memory.id) && (
               <span> · matched {matchedById.get(memory.id)!.join(', ')}</span>
             )}
           </p>
         </button>
-        <button
-          onClick={() => onHideNote(moment.id, memory.id)}
-          className={`${btn.icon} shrink-0`}
-          aria-label="Hide from this moment"
-          title="Hide from this moment"
-        >
-          <EyeOff size={16} />
-        </button>
+        {hidden ? (
+          onUnhideNote && (
+            <button
+              onClick={() => onUnhideNote(moment.id, memory.id)}
+              className={`${btn.icon} shrink-0`}
+              aria-label="Show in this moment"
+              title="Show in this moment"
+            >
+              <Eye size={16} />
+            </button>
+          )
+        ) : (
+          <button
+            onClick={() => onHideNote(moment.id, memory.id)}
+            className={`${btn.icon} shrink-0`}
+            aria-label="Hide from this moment"
+            title="Hide from this moment"
+          >
+            <EyeOff size={16} />
+          </button>
+        )}
       </li>
     );
   };
@@ -341,7 +368,7 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
                   ))}
                 </div>
               ) : (
-                <ul className="space-y-2">{notes.map(renderNote)}</ul>
+                <ul className="space-y-2">{notes.map(m => renderNote(m))}</ul>
               )}
             </>
           )}
@@ -352,12 +379,34 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
               <Trash2 size={14} />
               Delete moment
             </button>
-            {hiddenCount > 0 && (
+            {hiddenCount > 0 && (onUnhideNote ? (
+              <button
+                onClick={() => setShowHidden(v => !v)}
+                aria-expanded={showHidden}
+                aria-controls="moment-hidden-notes"
+                className={`${btn.base} ${btn.ghost} text-xs gap-1`}
+              >
+                {hiddenCount} {hiddenCount === 1 ? 'note' : 'notes'} hidden
+                <ChevronDown
+                  size={14}
+                  className={`transition-transform duration-(--duration-fast) ${showHidden ? 'rotate-180' : ''}`}
+                />
+              </button>
+            ) : (
               <span className={text.caption}>
                 {hiddenCount} {hiddenCount === 1 ? 'note' : 'notes'} hidden
               </span>
-            )}
+            ))}
           </div>
+
+          {showHidden && hiddenCount > 0 && onUnhideNote && (
+            <section id="moment-hidden-notes" aria-label="Hidden notes" className="mt-4">
+              <p className={`${text.caption} mb-2 px-1`}>
+                Hidden notes don’t appear in this moment. Tap the eye to bring one back.
+              </p>
+              <ul className="space-y-2 opacity-70">{hiddenNotes.map(m => renderNote(m, true))}</ul>
+            </section>
+          )}
         </div>
       </div>
 

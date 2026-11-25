@@ -5,6 +5,8 @@ import {
   isValidMapsUri,
   extractMapsPlaces,
   matchPlace,
+  matchPlaces,
+  MAX_BRANCHES,
   buildPlaceUri,
   buildSearchUri,
   ungroundedPlaces,
@@ -258,5 +260,64 @@ describe('resolvePlacesWithMaps', () => {
     expect(result.locationContext.placeId).toBe('ChIJ18grams001');
     expect(result.locationContext.mapsUri).toBe(buildPlaceUri('18 Grams Specialty Coffee', 'ChIJ18grams001'));
     expect(result.places[0].placeId).toBe('ChIJ18grams001');
+  });
+});
+
+describe('chains with several branches', () => {
+  const branches = [
+    { title: 'Starbucks', placeId: 'ChIJstarbucks01' },
+    { title: 'Starbucks', placeId: 'ChIJstarbucks02' },
+    { title: 'Third Wave Coffee', placeId: 'ChIJthirdwave01' },
+    { title: 'Starbucks', placeId: 'ChIJstarbucks03' },
+  ];
+  const ground = (result, places) => {
+    applyMapsGrounding(result, places);
+    applyPlacesGrounding(result, places);
+    return result;
+  };
+
+  it('matchPlaces returns every branch with the matched title', () => {
+    expect(matchPlaces(branches, 'Starbucks').map((p) => p.placeId)).toEqual(['ChIJstarbucks01', 'ChIJstarbucks02', 'ChIJstarbucks03']);
+    expect(matchPlaces(branches, 'Third Wave Coffee')).toHaveLength(1);
+    expect(matchPlaces(branches, 'Blue Tokai')).toEqual([]);
+  });
+  it('does not treat differently titled places as branches', () => {
+    const places = [{ title: 'Starbucks Reserve', placeId: 'ChIJreserve0001' }, { title: 'Starbucks', placeId: 'ChIJstarbucks01' }];
+    expect(matchPlaces(places, 'Starbucks').map((p) => p.placeId)).toEqual(['ChIJstarbucks01']);
+  });
+  it('caps the number of branches and ignores repeated place IDs', () => {
+    const many = Array.from({ length: 30 }, (_, i) => ({ title: 'Starbucks', placeId: `ChIJstarbucks${String(i).padStart(2, '0')}` }));
+    expect(matchPlaces(many, 'Starbucks')).toHaveLength(MAX_BRANCHES);
+    expect(matchPlaces([branches[0], branches[0]], 'Starbucks')).toHaveLength(1);
+  });
+
+  it('stores every branch placeId and does not pin the main link to one branch', () => {
+    const result = ground({ locationContext: { name: 'Starbucks', address: 'Far Away Mall' }, places: [{ name: 'Starbucks', address: 'Far Away Mall' }] }, branches);
+    expect(result.places).toEqual([
+      { name: 'Starbucks', placeId: 'ChIJstarbucks01', mapsUri: buildPlaceUri('Starbucks', 'ChIJstarbucks01') },
+      { name: 'Starbucks', placeId: 'ChIJstarbucks02', mapsUri: buildPlaceUri('Starbucks', 'ChIJstarbucks02') },
+      { name: 'Starbucks', placeId: 'ChIJstarbucks03', mapsUri: buildPlaceUri('Starbucks', 'ChIJstarbucks03') },
+    ]);
+    expect(result.locationContext.placeId).toBeUndefined();
+    expect(result.locationContext.mapsUri).not.toContain('query_place_id');
+    expect(ungroundedPlaces(result)).toEqual([]);
+  });
+  it('is stable when grounding runs a second time', () => {
+    const result = ground({ locationContext: { name: 'Starbucks' } }, branches);
+    const first = JSON.parse(JSON.stringify(result));
+    expect(ground(result, [...branches, ...branches])).toEqual(first);
+  });
+  it('keeps other places in the note alongside the branches', () => {
+    const result = ground({
+      locationContext: { name: 'Third Wave Coffee' },
+      places: [{ name: 'Third Wave Coffee' }, { name: 'Starbucks' }, { name: 'Unknown Cafe' }],
+    }, branches);
+    expect(result.locationContext.placeId).toBe('ChIJthirdwave01');
+    expect(result.places.map((p) => [p.name, p.placeId])).toEqual([
+      ['Third Wave Coffee', 'ChIJthirdwave01'],
+      ['Starbucks', 'ChIJstarbucks01'], ['Starbucks', 'ChIJstarbucks02'], ['Starbucks', 'ChIJstarbucks03'],
+      ['Unknown Cafe', undefined],
+    ]);
+    expect(ungroundedPlaces(result)).toEqual([{ name: 'Unknown Cafe', address: undefined }]);
   });
 });

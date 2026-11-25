@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
-import { Trash2, Loader2, Clock, ExternalLink, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, WifiOff, CloudOff, FileText, Paperclip, MoreVertical, AlertTriangle, AlertCircle, LogIn, Maximize2, Eye, Pin, Pencil, Lightbulb, CircleCheck, UtensilsCrossed, ListOrdered, ThumbsUp, ThumbsDown, DollarSign, MapPin, CalendarDays, ClipboardList, MessageSquare, Users, Mic, Code, Heart, Scale, GraduationCap, Briefcase, Music, Film, BookOpenCheck, Bookmark, Phone, Mail, ScrollText, Tag, Clock3, Flame, Quote, Hourglass, Sparkles, Calculator, CheckSquare, Square } from 'lucide-react';
+import { Trash2, Loader2, Clock, ExternalLink, Star, ShoppingBag, Tv, BookOpen, RefreshCcw, WifiOff, CloudOff, FileText, Paperclip, MoreVertical, AlertTriangle, AlertCircle, LogIn, Maximize2, Eye, Pin, Pencil, Lightbulb, CircleCheck, UtensilsCrossed, ListOrdered, ThumbsUp, ThumbsDown, DollarSign, MapPin, CalendarDays, ClipboardList, MessageSquare, Users, Mic, Code, Heart, Scale, GraduationCap, Briefcase, Music, Film, BookOpenCheck, Bookmark, Phone, Mail, ScrollText, Tag, Clock3, Flame, Quote, Hourglass, Sparkles, Calculator, CheckSquare, Square, Map as MapIcon } from 'lucide-react';
 import { Memory, Attachment, UploadProgress, CalendarEvent, TodoItem, Moment, isMemoryInFlight, isMemoryFailed } from '../types.ts';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { FALLBACK_MOMENT_EMOJI } from './MomentBubble';
@@ -351,23 +351,35 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
   }
 
   // Link backed by a Google Maps grounding result (server stores its placeId).
-  // Maps grounding terms require showing the place name and a "Google Maps"
-  // attribution with the link.
+  // Shown as a map-pin icon whose title names the place and Google Maps.
   // Notes about several places get one grounded link per place instead.
-  const groundedPlaces = (enrichment?.places ?? []).filter((p) => p.placeId && p.mapsUri);
+  // A chain is stored as one entry per branch, all with the same name; it gets
+  // a single pin that searches Maps for the name rather than one pin per branch.
+  const groundedPlaces: { name: string; mapsUri: string }[] = [];
+  const placeIndexByName = new Map<string, number>();
+  for (const p of enrichment?.places ?? []) {
+    if (!p.placeId || !p.mapsUri) continue;
+    const key = p.name.trim().toLowerCase();
+    const index = placeIndexByName.get(key);
+    if (index === undefined) {
+      placeIndexByName.set(key, groundedPlaces.length);
+      groundedPlaces.push({ name: p.name, mapsUri: p.mapsUri });
+    } else {
+      groundedPlaces[index].mapsUri = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.name)}`;
+    }
+  }
   const showPlaceList = groundedPlaces.length > 1;
-  const groundedPlaceName = !showPlaceList && locationContext?.placeId && locationContext?.name && targetUri === locationContext.mapsUri
+  const mainIsGrounded = Boolean(locationContext?.placeId) || groundedPlaces.length === 1;
+  const groundedPlaceName = !showPlaceList && mainIsGrounded && locationContext?.name && targetUri === locationContext.mapsUri
     ? locationContext.name
     : undefined;
-  // With the Maps SDK available, several places open on one in-app map (each
-  // pin links out to Google Maps) instead of a row of separate links.
-  const mapPlaces = useMemo(
-    () => (showPlaceList && isMapsConfigured() ? notePlaces(memory) : []),
-    [showPlaceList, memory],
-  );
+  // With the Maps SDK available, a note with several place IDs (different
+  // places, or the branches of a chain) opens them on one in-app map, where
+  // each pin links out to Google Maps, instead of showing separate links.
+  const mapPlaces = useMemo(() => (isMapsConfigured() ? notePlaces(memory) : []), [memory]);
   const showPlacesMapButton = mapPlaces.length > 1;
-  // The per-place links already cover the main place's link.
-  const hideMainLink = showPlaceList && targetUri === locationContext?.mapsUri;
+  // The per-place links (or the map) already cover the main place's link.
+  const hideMainLink = (showPlaceList || showPlacesMapButton) && targetUri === locationContext?.mapsUri;
 
   const entity = enrichment?.entityContext;
 
@@ -791,43 +803,36 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onDelete, onRetry, onUp
                                     onClick={(e) => { e.stopPropagation(); setShowPlacesMap(true); }}
                                     title={`Show ${mapPlaces.length} places on a map`}
                                     aria-label={`Show ${mapPlaces.length} places on a map`}
-                                    className={`${btn.base} ${btn.ghost} gap-1.5 min-w-0 max-w-full px-2 py-1.5 text-xs font-normal`}
+                                    className={`${btn.icon} transition-colors`}
                                 >
-                                    <MapPin size={14} className="shrink-0" />
-                                    <span className="truncate">{mapPlaces.length} places</span>
-                                    <span className="shrink-0 text-(--color-text-tertiary)" aria-hidden="true">·</span>
-                                    <span translate="no" className="shrink-0 whitespace-nowrap text-(--color-text-primary)">Google Maps</span>
+                                    <MapIcon size={16} />
                                 </button>
                             )}
                             {showPlaceList && !showPlacesMapButton && groundedPlaces.map((place) => (
                                 <a
-                                    key={place.placeId}
+                                    key={place.name}
                                     href={place.mapsUri}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     onClick={(e) => e.stopPropagation()}
                                     title={`Open ${place.name} in Google Maps`}
-                                    className="flex items-center gap-1.5 min-w-0 max-w-full px-2 py-1.5 rounded-(--radius-lg) text-xs font-normal text-(--color-text-secondary) hover:text-(--color-text-primary) hover:bg-(--color-surface-hover-subtle) transition-colors"
+                                    aria-label={`Open ${place.name} in Google Maps`}
+                                    className="p-2 rounded-(--radius-lg) text-(--color-text-tertiary) hover:text-(--color-accent) hover:bg-(--color-surface-hover-subtle) transition-colors"
                                 >
-                                    <MapPin size={14} className="shrink-0" />
-                                    <span className="truncate">{place.name}</span>
-                                    <span className="shrink-0 text-(--color-text-tertiary)" aria-hidden="true">·</span>
-                                    <span translate="no" className="shrink-0 whitespace-nowrap text-(--color-text-primary)">Google Maps</span>
+                                    <MapPin size={16} />
                                 </a>
                             ))}
-                            {targetUri && groundedPlaceName && (
+                            {targetUri && groundedPlaceName && !showPlacesMapButton && (
                                 <a
                                     href={targetUri}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     onClick={(e) => e.stopPropagation()}
                                     title={`Open ${groundedPlaceName} in Google Maps`}
-                                    className="flex items-center gap-1.5 min-w-0 max-w-full px-2 py-1.5 rounded-(--radius-lg) text-xs font-normal text-(--color-text-secondary) hover:text-(--color-text-primary) hover:bg-(--color-surface-hover-subtle) transition-colors"
+                                    aria-label={`Open ${groundedPlaceName} in Google Maps`}
+                                    className="p-2 rounded-(--radius-lg) text-(--color-text-tertiary) hover:text-(--color-accent) hover:bg-(--color-surface-hover-subtle) transition-colors"
                                 >
-                                    <MapPin size={14} className="shrink-0" />
-                                    <span className="truncate">{groundedPlaceName}</span>
-                                    <span className="shrink-0 text-(--color-text-tertiary)" aria-hidden="true">·</span>
-                                    <span translate="no" className="shrink-0 whitespace-nowrap text-(--color-text-primary)">Google Maps</span>
+                                    <MapPin size={16} />
                                 </a>
                             )}
                             {targetUri && !groundedPlaceName && !hideMainLink && (

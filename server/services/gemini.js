@@ -309,7 +309,7 @@ The user's current GPS is Lat ${location.latitude}, Lng ${location.longitude}.
 
 RULES FOR LINKS:
 1. DO NOT generate generic external links (e.g. no IMDB, no Amazon, no Official Website links).
-2. LOCATION/BUSINESS: Do NOT write or guess 'locationContext.mapsUri'; the system attaches the verified Google Maps link. Set 'locationContext.name' to the place's exact name as listed on Google Maps. If the note mentions more than one place (e.g. a dinner spot and a bar, or stops on a trip), list EVERY place in 'places' in the order mentioned, each with its exact Google Maps name, and look each one up on Google Maps; 'locationContext' describes the main place.
+2. LOCATION/BUSINESS: Do NOT write or guess 'locationContext.mapsUri'; the system attaches the verified Google Maps link. Set 'locationContext.name' to the place's exact name as listed on Google Maps. If the note mentions more than one place (e.g. a dinner spot and a bar, or stops on a trip), list EVERY place in 'places' in the order mentioned, each with its exact Google Maps name, and look each one up on Google Maps; 'locationContext' describes the main place. If a place is a chain with several branches (e.g. "Starbucks") and the note does not say which branch, look up its branches on Google Maps near the user's location (or in the area the note names); still list the chain ONCE in 'places'.
 
 ENTITY SPECIFIC INSTRUCTIONS:
 1. MOVIE/TV: Identify Title, Director/Year, and Description.
@@ -354,7 +354,7 @@ The user's current GPS is Lat ${location.latitude}, Lng ${location.longitude}.
 
 RULES FOR LINKS:
 1. DO NOT generate generic external links (e.g. no IMDB, no Amazon, no Official Website links).
-2. LOCATION/BUSINESS: Do NOT write or guess 'locationContext.mapsUri'; the system attaches the verified Google Maps link. Set 'locationContext.name' to the place's exact name as listed on Google Maps. If the note mentions more than one place (e.g. a dinner spot and a bar, or stops on a trip), list EVERY place in 'places' in the order mentioned, each with its exact Google Maps name, and look each one up on Google Maps; 'locationContext' describes the main place.
+2. LOCATION/BUSINESS: Do NOT write or guess 'locationContext.mapsUri'; the system attaches the verified Google Maps link. Set 'locationContext.name' to the place's exact name as listed on Google Maps. If the note mentions more than one place (e.g. a dinner spot and a bar, or stops on a trip), list EVERY place in 'places' in the order mentioned, each with its exact Google Maps name, and look each one up on Google Maps; 'locationContext' describes the main place. If a place is a chain with several branches (e.g. "Starbucks") and the note does not say which branch, look up its branches on Google Maps near the user's location (or in the area the note names); still list the chain ONCE in 'places'.
 
 ENTITY SPECIFIC INSTRUCTIONS:
 1. MOVIE/TV: Identify Title, Director/Year, and Description.
@@ -711,7 +711,7 @@ The user's current GPS is Lat ${location.latitude}, Lng ${location.longitude}.
 
 RULES FOR LINKS:
 1. DO NOT generate generic external links (e.g. no IMDB, no Amazon, no Official Website links).
-2. LOCATION/BUSINESS: Do NOT write or guess 'locationContext.mapsUri'; the system attaches the verified Google Maps link. Set 'locationContext.name' to the place's exact name as listed on Google Maps. If the note mentions more than one place (e.g. a dinner spot and a bar, or stops on a trip), list EVERY place in 'places' in the order mentioned, each with its exact Google Maps name, and look each one up on Google Maps; 'locationContext' describes the main place.
+2. LOCATION/BUSINESS: Do NOT write or guess 'locationContext.mapsUri'; the system attaches the verified Google Maps link. Set 'locationContext.name' to the place's exact name as listed on Google Maps. If the note mentions more than one place (e.g. a dinner spot and a bar, or stops on a trip), list EVERY place in 'places' in the order mentioned, each with its exact Google Maps name, and look each one up on Google Maps; 'locationContext' describes the main place. If a place is a chain with several branches (e.g. "Starbucks") and the note does not say which branch, look up its branches on Google Maps near the user's location (or in the area the note names); still list the chain ONCE in 'places'.
 
 ENTITY SPECIFIC INSTRUCTIONS:
 1. MOVIE/TV: Identify Title, Director/Year, and Description.
