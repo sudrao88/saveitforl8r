@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v153",
-  "buildNumber": 153,
-  "buildDate": "2026-11-25T04:14:36.000Z",
+  "version": "saveitforl8r-v154",
+  "buildNumber": 154,
+  "buildDate": "2026-11-25T23:40:38.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "See a moment's places, or a note's several places, on a map inside the app."
+  "changelog": "Places on a moment's map are coloured by group, and tapping one shows its notes in a card."
 }
