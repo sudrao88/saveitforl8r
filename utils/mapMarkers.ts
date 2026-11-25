@@ -134,3 +134,19 @@ export const markerIcon = (style: MarkerStyle, selected: boolean): MarkerIcon =>
     `</svg>`;
   return { url: dataUrl(svg), width: PIN_W, height: PIN_H, anchorX: cx, anchorY: tip };
 };
+
+/** The user's own position: a blue dot with a white ring, like Google Maps. */
+const USER_DOT = 22;
+
+export const userLocationColor = (): string => cssToken('--color-map-user-location', '#4285f4');
+
+export const userLocationIcon = (): MarkerIcon => {
+  const outline = cssToken('--color-map-marker-outline', FALLBACK_OUTLINE);
+  const c = USER_DOT / 2;
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${USER_DOT}" height="${USER_DOT}" viewBox="0 0 ${USER_DOT} ${USER_DOT}">` +
+    `<circle cx="${c}" cy="${c}" r="${c - 1}" fill="${outline}"/>` +
+    `<circle cx="${c}" cy="${c}" r="${c - 4}" fill="${userLocationColor()}"/>` +
+    `</svg>`;
+  return { url: dataUrl(svg), width: USER_DOT, height: USER_DOT, anchorX: c, anchorY: c };
+};

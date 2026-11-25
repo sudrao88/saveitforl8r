@@ -11,16 +11,22 @@
  *
  * The Maps SDK is loaded on demand (services/googleMaps), and each placeId is
  * resolved to a position when the sheet opens.
+ *
+ * The user's own position shows as a blue dot with an accuracy halo. If
+ * location is already allowed it appears straight away; otherwise the
+ * "my location" button asks for it. That button re-centres on the user and
+ * follows them until they pan the map away, like Google Maps.
  */
 
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import ReactDOM from 'react-dom';
-import { X, Loader2, MapPin, ExternalLink, CloudOff, RefreshCw } from 'lucide-react';
+import { X, Loader2, MapPin, ExternalLink, CloudOff, RefreshCw, Locate, LocateFixed, LocateOff } from 'lucide-react';
 import { overlay, btn, card, text, zIndex } from '../styles/design-system';
 import { useBackButton } from '../hooks/useBackButton';
 import { loadGoogleMaps, resolvePlaceLocations } from '../services/googleMaps';
 import { MapCategory, MapPlace } from '../utils/mapPlaces';
-import { markerIcon, markerStyle } from '../utils/mapMarkers';
+import { markerIcon, markerStyle, userLocationColor, userLocationIcon } from '../utils/mapMarkers';
+import { hasLocationPermission, watchUserLocation, LocationError, UserPosition } from '../services/userLocation';
 import { noteTitle, noteSnippet, formatNoteDate } from '../utils/noteLabels';
 import { Memory } from '../types';
 
@@ -37,10 +43,16 @@ interface PlacesMapSheetProps {
 }
 
 type Status = 'loading' | 'ready' | 'error';
+/** off: not watching; locating: waiting for a first fix; on: dot shown. */
+type LocationStatus = 'off' | 'locating' | 'on';
 
 const SINGLE_PLACE_ZOOM = 15;
+/** Zoom the "my location" button goes to when the map is further out. */
+const USER_LOCATION_ZOOM = 15;
 /** Selected pin draws above every badge. */
 const SELECTED_Z = 1000;
+/** The user's dot draws above place badges, below the selected pin. */
+const USER_Z = SELECTED_Z - 1;
 
 const categoryIndex = (category?: MapCategory) => category?.index ?? 0;
 
@@ -53,6 +65,114 @@ const PlacesMapSheet: React.FC<PlacesMapSheetProps> = ({ title, places, onClose,
   const [attempt, setAttempt] = useState(0);
   const [shownIds, setShownIds] = useState<Set<string>>(new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  // ── The user's own position ──
+  const markerClassRef = useRef<typeof google.maps.Marker | null>(null);
+  const circleClassRef = useRef<typeof google.maps.Circle | null>(null);
+  const userMarkerRef = useRef<google.maps.Marker | null>(null);
+  const userHaloRef = useRef<google.maps.Circle | null>(null);
+  const userPosRef = useRef<UserPosition | null>(null);
+  const stopWatchRef = useRef<(() => void) | null>(null);
+  /** While true, the map keeps the user in the centre as they move. */
+  const followRef = useRef(false);
+  const [locationStatus, setLocationStatus] = useState<LocationStatus>('off');
+  const [locationError, setLocationError] = useState<LocationError | null>(null);
+  const [following, setFollowing] = useState(false);
+
+  const setFollow = (value: boolean) => {
+    followRef.current = value;
+    setFollowing(value);
+  };
+
+  const centreOnUser = (pos: UserPosition) => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.panTo({ lat: pos.lat, lng: pos.lng });
+    if ((map.getZoom() ?? 0) < USER_LOCATION_ZOOM) map.setZoom(USER_LOCATION_ZOOM);
+  };
+
+  const drawUser = (pos: UserPosition) => {
+    const map = mapRef.current;
+    const core = coreRef.current;
+    const Marker = markerClassRef.current;
+    const Circle = circleClassRef.current;
+    if (!map || !core || !Marker || !Circle) return;
+    const position = { lat: pos.lat, lng: pos.lng };
+    if (!userMarkerRef.current) {
+      const icon = userLocationIcon();
+      userMarkerRef.current = new Marker({
+        map,
+        position,
+        title: 'Your location',
+        clickable: false,
+        zIndex: USER_Z,
+        icon: {
+          url: icon.url,
+          scaledSize: new core.Size(icon.width, icon.height),
+          anchor: new core.Point(icon.anchorX, icon.anchorY),
+        },
+      });
+      const color = userLocationColor();
+      userHaloRef.current = new Circle({
+        map,
+        center: position,
+        radius: pos.accuracy,
+        clickable: false,
+        strokeColor: color,
+        strokeOpacity: 0.4,
+        strokeWeight: 1,
+        fillColor: color,
+        fillOpacity: 0.15,
+      });
+    } else {
+      userMarkerRef.current.setPosition(position);
+      userHaloRef.current?.setCenter(position);
+      userHaloRef.current?.setRadius(pos.accuracy);
+    }
+  };
+
+  const stopWatching = () => {
+    stopWatchRef.current?.();
+    stopWatchRef.current = null;
+    userMarkerRef.current?.setMap(null);
+    userMarkerRef.current = null;
+    userHaloRef.current?.setMap(null);
+    userHaloRef.current = null;
+    userPosRef.current = null;
+    followRef.current = false;
+  };
+
+  /** Starts showing the user's dot; `centre` moves the map to the first fix. */
+  const startWatching = (centre: boolean) => {
+    if (stopWatchRef.current) return;
+    setLocationError(null);
+    setLocationStatus('locating');
+    let first = true;
+    stopWatchRef.current = watchUserLocation(
+      pos => {
+        userPosRef.current = pos;
+        setLocationStatus('on');
+        drawUser(pos);
+        if ((first && centre) || followRef.current) centreOnUser(pos);
+        first = false;
+      },
+      err => {
+        // A fix already on screen stays; a later hiccup isn't worth a warning.
+        if (userPosRef.current && err === 'unavailable') return;
+        stopWatching();
+        setFollow(false);
+        setLocationStatus('off');
+        setLocationError(err);
+      },
+    );
+  };
+
+  const onLocateClick = () => {
+    const pos = userPosRef.current;
+    setFollow(true);
+    if (pos) centreOnUser(pos);
+    else startWatching(true);
+  };
 
   useBackButton(onClose, true);
   // Back first dismisses the place card, like Google Maps.
@@ -75,7 +195,7 @@ const PlacesMapSheet: React.FC<PlacesMapSheetProps> = ({ title, places, onClose,
       try {
         const current = placesRef.current;
         const maps = await loadGoogleMaps();
-        const [{ Map: GoogleMap }, { Marker }, core] = await Promise.all([
+        const [{ Map: GoogleMap, Circle }, { Marker }, core] = await Promise.all([
           maps.importLibrary('maps') as Promise<google.maps.MapsLibrary>,
           maps.importLibrary('marker') as Promise<google.maps.MarkerLibrary>,
           maps.importLibrary('core') as Promise<google.maps.CoreLibrary>,
@@ -84,6 +204,8 @@ const PlacesMapSheet: React.FC<PlacesMapSheetProps> = ({ title, places, onClose,
         if (cancelled || !mapElRef.current) return;
         if (positions.size === 0) throw new Error('No places could be located');
         coreRef.current = core;
+        markerClassRef.current = Marker;
+        circleClassRef.current = Circle;
 
         const map = new GoogleMap(mapElRef.current, {
           center: positions.values().next().value,
@@ -91,6 +213,8 @@ const PlacesMapSheet: React.FC<PlacesMapSheetProps> = ({ title, places, onClose,
           colorScheme: 'DARK',
           disableDefaultUI: true,
           zoomControl: true,
+          // Bottom right is the "my location" button's, as in Google Maps.
+          zoomControlOptions: { position: core.ControlPosition.RIGHT_CENTER },
           clickableIcons: false,
           gestureHandling: 'greedy',
         });
@@ -110,10 +234,17 @@ const PlacesMapSheet: React.FC<PlacesMapSheetProps> = ({ title, places, onClose,
         }
         if (positions.size > 1) map.fitBounds(bounds, 64);
         map.addListener('click', () => setSelectedId(null));
+        // Moving the map by hand stops following the user.
+        map.addListener('dragstart', () => {
+          if (followRef.current) setFollow(false);
+        });
 
         setShownIds(new Set(positions.keys()));
         setSelectedId(positions.size === 1 ? [...positions.keys()][0] : null);
         setStatus('ready');
+
+        // Show where the user is without prompting, if they already allowed it.
+        if (await hasLocationPermission() && !cancelled) startWatching(false);
       } catch (err) {
         console.warn('[Maps] Could not show the map:', err);
         if (!cancelled) setStatus('error');
@@ -122,10 +253,15 @@ const PlacesMapSheet: React.FC<PlacesMapSheetProps> = ({ title, places, onClose,
 
     return () => {
       cancelled = true;
+      stopWatching();
+      setLocationStatus('off');
+      setFollow(false);
       markers.forEach(m => m.setMap(null));
       markers.clear();
       mapRef.current = null;
     };
+    // startWatching/stopWatching only touch refs and state setters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [placeKey, attempt]);
 
   // Badge for every place, a pin for the selected one.
@@ -193,7 +329,7 @@ const PlacesMapSheet: React.FC<PlacesMapSheetProps> = ({ title, places, onClose,
       <div className="relative flex-1 min-h-0">
         <div ref={mapElRef} className="absolute inset-0" data-testid="places-map" />
 
-        {status === 'ready' && (legend.length > 0 || missingCount > 0) && (
+        {status === 'ready' && (legend.length > 0 || missingCount > 0 || locationError) && (
           <div className={`absolute top-0 inset-x-0 ${zIndex.sticky} p-3 space-y-2 pointer-events-none`}>
             {legend.length > 0 && (
               <ul className="flex gap-2 overflow-x-auto pointer-events-auto" aria-label="Map key">
@@ -212,6 +348,13 @@ const PlacesMapSheet: React.FC<PlacesMapSheetProps> = ({ title, places, onClose,
             {missingCount > 0 && (
               <p className="inline-block px-3 py-1 rounded-(--radius-full) bg-(--color-surface-overlay)/90 text-xs text-(--color-text-secondary) shadow-lg">
                 {missingCount} {missingCount === 1 ? 'place' : 'places'} couldn’t be located on the map.
+              </p>
+            )}
+            {locationError && (
+              <p role="status" className="block w-fit px-3 py-1 rounded-(--radius-full) bg-(--color-surface-overlay)/90 text-xs text-(--color-text-secondary) shadow-lg">
+                {locationError === 'denied'
+                  ? 'Location access is off. Allow it in your settings to see where you are.'
+                  : 'Couldn’t find your location. Try again in a moment.'}
               </p>
             )}
           </div>
@@ -234,81 +377,106 @@ const PlacesMapSheet: React.FC<PlacesMapSheetProps> = ({ title, places, onClose,
           </div>
         )}
 
-        {selected && status === 'ready' && (
-          <section
-            key={selected.placeId}
-            aria-label={selected.name}
-            className={`absolute inset-x-0 bottom-0 ${zIndex.sticky} p-3 pb-[calc(0.75rem+var(--sab))] animate-in slide-in-from-bottom-4 fade-in duration-(--duration-normal)`}
+        {status === 'ready' && (
+          <div
+            className={`absolute inset-x-0 bottom-0 ${zIndex.sticky} p-3 pb-[calc(0.75rem+var(--sab))] flex flex-col gap-3 pointer-events-none`}
           >
-            <div className={`${overlay.modal} max-w-2xl mx-auto max-h-[55vh] flex flex-col`}>
-              <div className="flex items-start gap-3 p-4 pb-3">
-                {selectedIcon && <img src={selectedIcon.url} alt="" className="w-6 h-6 mt-0.5 shrink-0" />}
-                <div className="flex-1 min-w-0">
-                  <h3 className="text-base font-bold text-(--color-text-primary) line-clamp-2">{selected.name}</h3>
-                  {selected.address && (
-                    <p className="text-xs text-(--color-text-secondary) mt-0.5 line-clamp-2">{selected.address}</p>
-                  )}
-                  {selected.category && legend.length > 0 && (
-                    <p className={`${text.caption} mt-1 truncate`}>{selected.category.label}</p>
-                  )}
-                </div>
-                {shown.length > 1 && (
-                  <button
-                    onClick={() => setSelectedId(null)}
-                    className={`${overlay.closeBtnRight} shrink-0`}
-                    aria-label="Close place"
-                  >
-                    <X size={18} />
-                  </button>
+            <div className="flex justify-end pointer-events-auto self-end">
+              <button
+                onClick={onLocateClick}
+                className={`${btn.base} ${following ? btn.floatingActive : btn.floating}`}
+                aria-label={following ? 'Following your location' : 'Show your location'}
+                aria-pressed={following}
+                title="Your location"
+              >
+                {locationStatus === 'locating' ? (
+                  <Loader2 size={20} className="animate-spin" />
+                ) : locationError ? (
+                  <LocateOff size={20} />
+                ) : following ? (
+                  <LocateFixed size={20} />
+                ) : (
+                  <Locate size={20} />
                 )}
-              </div>
-              <div className="px-4 pb-3">
-                <a
-                  href={selected.mapsUri}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={`${btn.base} ${btn.primarySm} gap-1.5`}
-                >
-                  <ExternalLink size={14} />
-                  <span>Open in <span translate="no">Google Maps</span></span>
-                </a>
-              </div>
-              {selectedNotes.length > 0 ? (
-                <div className="border-t border-(--color-border-default) overflow-y-auto min-h-0 p-3 space-y-2">
-                  <p className={`${text.caption} px-1`}>
-                    {selectedNotes.length === 1 ? 'Your note' : `Your notes (${selectedNotes.length})`}
-                  </p>
-                  <ul className="space-y-2">
-                    {selectedNotes.map(note => {
-                      const snippet = noteSnippet(note);
-                      const body = (
-                        <>
-                          <p className="text-sm font-medium text-(--color-text-primary) line-clamp-2">{noteTitle(note)}</p>
-                          {snippet && <p className="text-xs text-(--color-text-secondary) mt-0.5 line-clamp-3">{snippet}</p>}
-                          <p className={`${text.caption} mt-1`}>{formatNoteDate(note.timestamp)}</p>
-                        </>
-                      );
-                      return (
-                        <li key={note.id}>
-                          {onOpenNote ? (
-                            <button onClick={() => onOpenNote(note.id)} className={`${card.interactive} w-full text-left p-3`}>
-                              {body}
-                            </button>
-                          ) : (
-                            <div className={`${card.base} p-3`}>{body}</div>
-                          )}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-              ) : (
-                !notes && selected.noteTitles && selected.noteTitles.length > 0 && (
-                  <p className={`${text.caption} px-4 pb-4 truncate`}>From {selected.noteTitles.join(', ')}</p>
-                )
-              )}
+              </button>
             </div>
-          </section>
+            {selected && (
+              <section
+                key={selected.placeId}
+                aria-label={selected.name}
+                className="pointer-events-auto animate-in slide-in-from-bottom-4 fade-in duration-(--duration-normal)"
+              >
+                <div className={`${overlay.modal} max-w-2xl mx-auto max-h-[55vh] flex flex-col`}>
+                  <div className="flex items-start gap-3 p-4 pb-3">
+                    {selectedIcon && <img src={selectedIcon.url} alt="" className="w-6 h-6 mt-0.5 shrink-0" />}
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-base font-bold text-(--color-text-primary) line-clamp-2">{selected.name}</h3>
+                      {selected.address && (
+                        <p className="text-xs text-(--color-text-secondary) mt-0.5 line-clamp-2">{selected.address}</p>
+                      )}
+                      {selected.category && legend.length > 0 && (
+                        <p className={`${text.caption} mt-1 truncate`}>{selected.category.label}</p>
+                      )}
+                    </div>
+                    {shown.length > 1 && (
+                      <button
+                        onClick={() => setSelectedId(null)}
+                        className={`${overlay.closeBtnRight} shrink-0`}
+                        aria-label="Close place"
+                      >
+                        <X size={18} />
+                      </button>
+                    )}
+                  </div>
+                  <div className="px-4 pb-3">
+                    <a
+                      href={selected.mapsUri}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`${btn.base} ${btn.primarySm} gap-1.5`}
+                    >
+                      <ExternalLink size={14} />
+                      <span>Open in <span translate="no">Google Maps</span></span>
+                    </a>
+                  </div>
+                  {selectedNotes.length > 0 ? (
+                    <div className="border-t border-(--color-border-default) overflow-y-auto min-h-0 p-3 space-y-2">
+                      <p className={`${text.caption} px-1`}>
+                        {selectedNotes.length === 1 ? 'Your note' : `Your notes (${selectedNotes.length})`}
+                      </p>
+                      <ul className="space-y-2">
+                        {selectedNotes.map(note => {
+                          const snippet = noteSnippet(note);
+                          const body = (
+                            <>
+                              <p className="text-sm font-medium text-(--color-text-primary) line-clamp-2">{noteTitle(note)}</p>
+                              {snippet && <p className="text-xs text-(--color-text-secondary) mt-0.5 line-clamp-3">{snippet}</p>}
+                              <p className={`${text.caption} mt-1`}>{formatNoteDate(note.timestamp)}</p>
+                            </>
+                          );
+                          return (
+                            <li key={note.id}>
+                              {onOpenNote ? (
+                                <button onClick={() => onOpenNote(note.id)} className={`${card.interactive} w-full text-left p-3`}>
+                                  {body}
+                                </button>
+                              ) : (
+                                <div className={`${card.base} p-3`}>{body}</div>
+                              )}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  ) : (
+                    !notes && selected.noteTitles && selected.noteTitles.length > 0 && (
+                      <p className={`${text.caption} px-4 pb-4 truncate`}>From {selected.noteTitles.join(', ')}</p>
+                    )
+                  )}
+                </div>
+              </section>
+            )}
+          </div>
         )}
       </div>
 
