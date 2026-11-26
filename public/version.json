@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v156",
-  "buildNumber": 156,
-  "buildDate": "2026-11-26T00:14:05.000Z",
+  "version": "saveitforl8r-v157",
+  "buildNumber": 157,
+  "buildDate": "2026-11-26T01:31:43.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Tap a group in the map's key to show only its places; tap it again to see them all."
+  "changelog": "The map's group chips scroll smoothly without a scrollbar."
 }
