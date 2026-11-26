@@ -67,6 +67,8 @@ interface MomentSheetProps {
   memories: Memory[];
   matches: MomentMatch[];
   isEmbedding: boolean;
+  /** True while the server is working out this moment's sections. */
+  isSectioning?: boolean;
   onClose: () => void;
   onDelete: (momentId: string) => Promise<void>;
   onHideNote: (momentId: string, noteId: string) => Promise<void>;
@@ -87,6 +89,7 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
   memories,
   matches,
   isEmbedding,
+  isSectioning = false,
   onClose,
   onDelete,
   onHideNote,
@@ -385,9 +388,9 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
             </div>
           ) : (
             <>
-              {sectionings.length > 0 && (
-                <div className="flex flex-wrap gap-2 mb-4" role="group" aria-label="Group notes by">
-                  {(['relevance', ...sectionings.map(s => s.lens)] as SectionView[]).map(view => (
+              {(sectionings.length > 0 || isSectioning) && (
+                <div className="flex flex-wrap items-center gap-2 mb-4" role="group" aria-label="Group notes by">
+                  {sectionings.length > 0 && (['relevance', ...sectionings.map(s => s.lens)] as SectionView[]).map(view => (
                     <button
                       key={view}
                       onClick={() => handleSelectView(view)}
@@ -397,6 +400,14 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
                       {view === 'relevance' ? 'Relevance' : LENS_LABELS[view]}
                     </button>
                   ))}
+                  {/* Shown beside the chips while sections are fetched; the
+                      notes stay usable underneath. */}
+                  {isSectioning && (
+                    <span role="status" className={`${text.caption} flex items-center gap-1.5 px-1`}>
+                      <Loader2 size={14} className="animate-spin text-(--color-accent)" aria-hidden="true" />
+                      Organising notes…
+                    </span>
+                  )}
                 </div>
               )}
               {activeSectioning ? (

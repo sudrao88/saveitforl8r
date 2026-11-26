@@ -100,6 +100,8 @@ interface UseMomentsReturn {
   creating: boolean;
   /** Moment ids whose terms are being embedded right now */
   embeddingIds: Set<string>;
+  /** Moment ids whose sections are being fetched from the server right now */
+  sectioningIds: Set<string>;
   /** Retry embedding a moment that's waiting for its vectors */
   retryEmbedding: (momentId: string) => Promise<void>;
   /** Hide a matched note from a moment (synced) */
@@ -125,6 +127,7 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
   const [momentsList, setMomentsList] = useState<Moment[]>([]);
   const [creating, setCreating] = useState(false);
   const [embeddingIds, setEmbeddingIds] = useState<Set<string>>(new Set());
+  const [sectioningIds, setSectioningIds] = useState<Set<string>>(new Set());
 
   const loaded = useRef(false);
   const onMomentChangedRef = useRef<((moment: Moment) => void) | undefined>(undefined);
@@ -338,6 +341,7 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
     if (!plan) return;
 
     inFlightSections.current.add(momentId);
+    setSectioningIds(prev => new Set(prev).add(momentId));
     try {
       const result = await requestMomentSections(buildSectionRequest(moment, plan));
 
@@ -364,6 +368,11 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
       console.warn(`[Moments] Sections request failed for ${momentId}:`, err);
     } finally {
       inFlightSections.current.delete(momentId);
+      setSectioningIds(prev => {
+        const next = new Set(prev);
+        next.delete(momentId);
+        return next;
+      });
     }
   }, [replaceInList]);
 
@@ -407,6 +416,7 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
     createNewMoment,
     creating,
     embeddingIds,
+    sectioningIds,
     retryEmbedding,
     hideNoteInMoment,
     unhideNoteInMoment,

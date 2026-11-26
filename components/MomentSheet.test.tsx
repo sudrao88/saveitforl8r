@@ -175,7 +175,7 @@ describe('MomentSheet subsections', () => {
       assigned: { a: 's1', b: 's1', c: 's1', d: 's2', e: 's2', f: 's2' },
       generatedAt: 5, noteCount: 6, otherCount: 0,
     };
-    const sheet = (m: Moment, onEnsureSections = vi.fn()) => (
+    const sheet = (m: Moment, onEnsureSections = vi.fn(), isSectioning = false) => (
       <MomentSheet
         moment={m}
         memories={memories}
@@ -186,6 +186,7 @@ describe('MomentSheet subsections', () => {
         onHideNote={async () => {}}
         onRetryEmbedding={async () => {}}
         onEnsureSections={onEnsureSections}
+        isSectioning={isSectioning}
       />
     );
     const scroller = (container: HTMLElement) => container.querySelector('.overflow-y-auto') as HTMLElement;
@@ -223,6 +224,17 @@ describe('MomentSheet subsections', () => {
       first.unmount();
       render(sheet({ ...moment, aiSections }));
       expect(headings()).toEqual(['Coffee Bars', 'Weekend Brunch']);
+    });
+
+    it('shows a loader while sections are fetched, without hiding the notes', () => {
+      const { rerender } = render(sheet(moment, vi.fn(), true));
+      expect(screen.getByRole('status').textContent).toContain('Organising notes');
+      expect(titles()).toHaveLength(6);
+      fireEvent.click(screen.getByRole('button', { name: 'Timeline' }));
+      expect(headings()).toEqual(['8–10 Jun 2025', '10–12 Mar 2025']);
+
+      rerender(sheet({ ...moment, aiSections }, vi.fn(), false));
+      expect(screen.queryByRole('status')).toBeNull();
     });
 
     it('falls back to the on-device grouping when the model found no split', () => {
