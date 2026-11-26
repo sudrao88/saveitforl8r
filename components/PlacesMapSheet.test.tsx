@@ -30,7 +30,7 @@ const places: MapPlace[] = [
 
 // Minimal stand-in for the Maps SDK: records markers so tests can tap them
 // and read back the icon each one is drawn with.
-interface FakeMarker { title: string; click: () => void; icon?: { url: string; scaledSize: { w: number } }; zIndex?: number; position?: unknown; map?: unknown }
+interface FakeMarker { title: string; click: () => void; icon?: { url: string; scaledSize: { w: number } }; zIndex?: number; position?: unknown; map?: unknown; visible?: boolean }
 const markers: FakeMarker[] = [];
 const fitBounds = vi.fn();
 const panTo = vi.fn();
@@ -52,6 +52,7 @@ const fakeMaps = () => {
     setZIndex(z?: number) { this.rec.zIndex = z; }
     setPosition(p: unknown) { this.rec.position = p; }
     setMap(m: unknown) { this.rec.map = m; }
+    setVisible(v: boolean) { this.rec.visible = v; }
   }
   class Circle {
     rec: { radius: number; center: unknown };
@@ -145,6 +146,56 @@ describe('PlacesMapSheet', () => {
     const key = screen.getByRole('list', { name: 'Map key' });
     expect(key.textContent).toContain('Food & drink');
     expect(key.textContent).toContain('Travel');
+  });
+
+  it('shows legend labels in capitals', async () => {
+    const categorised: MapPlace[] = [
+      { ...places[0], category: { key: 'food', label: 'Food & drink', index: 0 } },
+      { ...places[1], category: { key: 'travel', label: 'Travel', index: 1 } },
+    ];
+    render(<PlacesMapSheet title="Breweries" places={categorised} onClose={() => {}} />);
+    await waitFor(() => expect(markers).toHaveLength(2));
+    expect(screen.getByText('Food & drink').className).toContain('uppercase');
+  });
+
+  it('filters the map to one group when its legend entry is tapped, and back again', async () => {
+    const third = { placeId: 'ChIJcubbon0001', name: 'Cubbon Park', mapsUri: 'https://maps.example/cubbon' };
+    resolvePlaceLocations.mockResolvedValue(new Map([
+      ['ChIJtoit000001', { lat: 12.97, lng: 77.64 }],
+      ['ChIJarbor00001', { lat: 12.96, lng: 77.6 }],
+      ['ChIJcubbon0001', { lat: 12.98, lng: 77.59 }],
+    ]));
+    const categorised: MapPlace[] = [
+      { ...places[0], category: { key: 'food', label: 'Food & drink', index: 0 } },
+      { ...places[1], category: { key: 'food', label: 'Food & drink', index: 0 } },
+      { ...third, category: { key: 'parks', label: 'Parks', index: 1 } },
+    ];
+    render(<PlacesMapSheet title="Weekend" places={categorised} onClose={() => {}} />);
+    await waitFor(() => expect(markers).toHaveLength(3));
+    const visible = () => markers.filter(m => m.visible !== false).map(m => m.title);
+    expect(visible()).toEqual(['Toit Brewpub', 'Arbor Brewing Company', 'Cubbon Park']);
+
+    // Select a place that the filter will hide: its card closes.
+    React.act(() => markers[2].click());
+    expect(screen.getByRole('region', { name: 'Cubbon Park' })).toBeTruthy();
+
+    fitBounds.mockClear();
+    const food = screen.getByRole('button', { name: /Show only Food & drink/ });
+    fireEvent.click(food);
+    expect(visible()).toEqual(['Toit Brewpub', 'Arbor Brewing Company']);
+    expect(food.getAttribute('aria-pressed')).toBe('true');
+    expect(fitBounds).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('region', { name: 'Cubbon Park' })).toBeNull();
+
+    // A single-place group is centred rather than fitted.
+    fireEvent.click(screen.getByRole('button', { name: /Show only Parks/ }));
+    expect(visible()).toEqual(['Cubbon Park']);
+    expect(panTo).toHaveBeenLastCalledWith({ lat: 12.98, lng: 77.59 });
+
+    // Tapping the active entry again shows everything.
+    fireEvent.click(screen.getByRole('button', { name: /Show all places/ }));
+    expect(visible()).toHaveLength(3);
+    expect(screen.getAllByRole('button', { pressed: false }).length).toBeGreaterThanOrEqual(2);
   });
 
   it('shows the notes about the selected place and opens one', async () => {
