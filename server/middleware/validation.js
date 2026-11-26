@@ -226,6 +226,60 @@ export const validateMomentEmbedInput = (req, res, next) => {
   next();
 };
 
+/** Limits for /api/moment/sections. Mirrored client-side in utils/momentAiSections.ts. */
+export const MAX_SECTION_NOTES = 60;
+export const MAX_EXISTING_SECTIONS = 6;
+const MAX_SECTION_ID_LENGTH = 64;
+
+const isShortString = (v, max) => typeof v === 'string' && v.length <= max;
+
+export const validateMomentSectionsInput = (req, res, next) => {
+  const { title, notes, existing } = req.body;
+
+  if (typeof title !== 'string' || !title.trim() || title.length > 2200)
+    return res.status(400).json({ error: 'title must be a non-empty string' });
+  if (!Array.isArray(notes) || notes.length === 0)
+    return res.status(400).json({ error: 'notes must be a non-empty array' });
+  if (notes.length > MAX_SECTION_NOTES)
+    return res.status(400).json({ error: `Too many notes (max ${MAX_SECTION_NOTES})` });
+
+  const ids = new Set();
+  for (const n of notes) {
+    if (!n || typeof n !== 'object')
+      return res.status(400).json({ error: 'Each note must be an object' });
+    if (typeof n.id !== 'string' || !n.id || n.id.length > MAX_SECTION_ID_LENGTH || ids.has(n.id))
+      return res.status(400).json({ error: 'Each note needs a unique id' });
+    ids.add(n.id);
+    if (!isShortString(n.title, 500) || !n.title.trim())
+      return res.status(400).json({ error: 'Each note needs a title (max 500 chars)' });
+    if (n.summary !== undefined && !isShortString(n.summary, 1000))
+      return res.status(400).json({ error: 'Note summary too long (max 1000 chars)' });
+    if (n.type !== undefined && !isShortString(n.type, 200))
+      return res.status(400).json({ error: 'Note type too long (max 200 chars)' });
+    if (n.tags !== undefined && (!Array.isArray(n.tags) || n.tags.length > 20 || !n.tags.every((t) => isShortString(t, 100))))
+      return res.status(400).json({ error: 'Note tags must be up to 20 short strings' });
+  }
+
+  if (existing !== undefined) {
+    if (!Array.isArray(existing) || existing.length > MAX_EXISTING_SECTIONS)
+      return res.status(400).json({ error: `existing must be an array of up to ${MAX_EXISTING_SECTIONS} sections` });
+    const sectionIds = new Set();
+    for (const s of existing) {
+      if (!s || typeof s !== 'object')
+        return res.status(400).json({ error: 'Each existing section must be an object' });
+      if (typeof s.id !== 'string' || !s.id || s.id.length > MAX_SECTION_ID_LENGTH || sectionIds.has(s.id))
+        return res.status(400).json({ error: 'Each existing section needs a unique id' });
+      sectionIds.add(s.id);
+      if (!isShortString(s.label, 100) || !s.label.trim())
+        return res.status(400).json({ error: 'Each existing section needs a label (max 100 chars)' });
+      if (s.description !== undefined && !isShortString(s.description, 500))
+        return res.status(400).json({ error: 'Section description too long (max 500 chars)' });
+    }
+  }
+
+  next();
+};
+
 export const validateUploadInit = (req, res, next) => {
   const { fileName, fileSize, mimeType, totalChunks, memoryId } = req.body;
 

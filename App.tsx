@@ -135,6 +135,7 @@ const AppContent: React.FC = () => {
     retryEmbedding: retryMomentEmbedding,
     hideNoteInMoment,
     unhideNoteInMoment,
+    ensureMomentSections,
     deleteMoment,
     setOnMomentChanged,
     refreshMoments,
@@ -1266,6 +1267,7 @@ const AppContent: React.FC = () => {
               onHideNote={hideNoteInMoment}
               onUnhideNote={unhideNoteInMoment}
               onRetryEmbedding={retryMomentEmbedding}
+              onEnsureSections={ensureMomentSections}
               onDeleteNotes={handleDeleteNotes}
               onViewAttachment={handleViewAttachment}
               onMemoryDelete={handleDeleteMemory}

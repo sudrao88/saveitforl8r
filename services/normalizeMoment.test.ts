@@ -86,4 +86,22 @@ describe('normalizeMemory (legacy moments fields)', () => {
     const out = normalizeMemory(memory);
     expect(out.enrichment).toEqual({ summary: 's', suggestedTags: [] });
   });
+  it('keeps well-formed model sections and drops malformed ones', () => {
+    const aiSections = {
+      sections: [{ id: 's1', label: 'Food', description: '' }],
+      assigned: { n1: 's1', n2: '' },
+      generatedAt: 1, noteCount: 6, otherCount: 1,
+    };
+    const base = { id: 'm1', title: 'T', terms: ['T'], createdAt: 0, updatedAt: 0 };
+    expect(normalizeMoment({ ...base, aiSections } as Moment).aiSections).toEqual(aiSections);
+    for (const bad of [
+      'yes',
+      { ...aiSections, sections: [{ label: 'no id' }] },
+      { ...aiSections, assigned: ['n1'] },
+      { ...aiSections, assigned: { n1: 3 } },
+      { ...aiSections, noteCount: 'six' },
+    ]) {
+      expect(normalizeMoment({ ...base, aiSections: bad } as unknown as Moment).aiSections).toBeUndefined();
+    }
+  });
 });

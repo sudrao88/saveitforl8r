@@ -166,6 +166,71 @@ describe('MomentSheet subsections', () => {
     expect(onHideNote).toHaveBeenCalledWith('m1', 'd');
   });
 
+  describe('sections from the server model', () => {
+    const aiSections = {
+      sections: [
+        { id: 's1', label: 'Coffee Bars', description: '' },
+        { id: 's2', label: 'Weekend Brunch', description: '' },
+      ],
+      assigned: { a: 's1', b: 's1', c: 's1', d: 's2', e: 's2', f: 's2' },
+      generatedAt: 5, noteCount: 6, otherCount: 0,
+    };
+    const sheet = (m: Moment, onEnsureSections = vi.fn()) => (
+      <MomentSheet
+        moment={m}
+        memories={memories}
+        matches={matches}
+        isEmbedding={false}
+        onClose={() => {}}
+        onDelete={async () => {}}
+        onHideNote={async () => {}}
+        onRetryEmbedding={async () => {}}
+        onEnsureSections={onEnsureSections}
+      />
+    );
+    const scroller = (container: HTMLElement) => container.querySelector('.overflow-y-auto') as HTMLElement;
+
+    it('asks for sections once when the sheet opens', () => {
+      const onEnsureSections = vi.fn();
+      const { rerender } = render(sheet(moment, onEnsureSections));
+      rerender(sheet({ ...moment, updatedAt: 1 }, onEnsureSections));
+      expect(onEnsureSections).toHaveBeenCalledTimes(1);
+      expect(onEnsureSections).toHaveBeenCalledWith('m1');
+    });
+
+    it('shows them in place of the on-device type and topic groupings', () => {
+      render(sheet({ ...moment, aiSections }));
+      expect(headings()).toEqual(['Coffee Bars', 'Weekend Brunch']);
+      expect(screen.getByRole('button', { name: 'Sections' }).getAttribute('aria-pressed')).toBe('true');
+      expect(screen.queryByRole('button', { name: 'Types' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Topics' })).toBeNull();
+      expect(screen.getByRole('button', { name: 'Timeline' })).toBeTruthy();
+    });
+
+    it('swaps them in when they arrive and the list has not been scrolled', () => {
+      const { rerender } = render(sheet(moment));
+      expect(headings()).toEqual(['Espresso', 'Brunch']);
+      rerender(sheet({ ...moment, aiSections }));
+      expect(headings()).toEqual(['Coffee Bars', 'Weekend Brunch']);
+    });
+
+    it('holds them back until the next open when the list has been scrolled', () => {
+      const first = render(sheet(moment));
+      scroller(first.container).scrollTop = 120;
+      first.rerender(sheet({ ...moment, aiSections }));
+      expect(headings()).toEqual(['Espresso', 'Brunch']);
+
+      first.unmount();
+      render(sheet({ ...moment, aiSections }));
+      expect(headings()).toEqual(['Coffee Bars', 'Weekend Brunch']);
+    });
+
+    it('falls back to the on-device grouping when the model found no split', () => {
+      render(sheet({ ...moment, aiSections: { ...aiSections, sections: [], assigned: {} } }));
+      expect(headings()).toEqual(['Espresso', 'Brunch']);
+    });
+  });
+
   it('shows no grouping chips for a small moment', () => {
     renderSheet([{ id: 'n1', score: 1 }, { id: 'n2', score: 0.5 }]);
     expect(screen.queryByRole('button', { name: 'Relevance' })).toBeNull();

@@ -8,6 +8,7 @@
  *   routes/enrich.js         — /api/enrich + /api/enrich/results
  *   routes/query.js          — /api/query
  *   routes/moment.js         — /api/moment/embed (intent + term vectors, emoji for moments)
+ *                              /api/moment/sections (named sections for a moment's notes)
  *   lib/sanitize.js          — Shared sanitization utilities
  */
 import crypto from 'crypto';

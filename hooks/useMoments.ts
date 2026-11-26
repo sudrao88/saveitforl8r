@@ -17,7 +17,8 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Memory, Moment, EMBEDDING_MODEL_ID } from '../types';
 import { getMoments, getMoment, saveMoment } from '../services/storageService';
-import { embedMomentTerms } from '../services/geminiService';
+import { embedMomentTerms, requestMomentSections } from '../services/geminiService';
+import { applySectionResult, buildSectionRequest, planSectionRequest } from '../utils/momentAiSections';
 import {
   canMatchMoment,
   hasIntentVector,
@@ -33,6 +34,10 @@ import {
 // After a failed embed, wait this long before retrying the same moment so a
 // persistent error (signed out, rate limited) doesn't fire on every refresh.
 const EMBED_RETRY_DELAY_MS = 60_000;
+
+// After a failed sections request, leave that moment alone for this long, so
+// reopening it doesn't call the server again and again.
+const SECTIONS_RETRY_DELAY_MS = 10 * 60_000;
 
 // Set localStorage 'debug:moments' to '1' to log, for every moment, how each
 // note was matched: for hybrid moments the concepts, the word each note hit
@@ -101,6 +106,11 @@ interface UseMomentsReturn {
   hideNoteInMoment: (momentId: string, noteId: string) => Promise<void>;
   /** Bring a hidden note back into a moment (synced) */
   unhideNoteInMoment: (momentId: string, noteId: string) => Promise<void>;
+  /**
+   * Called when a moment is opened: ask the server for its sections if the
+   * rules in utils/momentAiSections.ts say it is time, and store the answer.
+   */
+  ensureMomentSections: (momentId: string) => Promise<void>;
   /** Soft-delete a moment */
   deleteMoment: (momentId: string) => Promise<void>;
   /** Set the callback that syncs a changed moment to Drive */
@@ -310,6 +320,53 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
     onMomentChangedRef.current?.(updated);
   }, [replaceInList]);
 
+  const matchesRef = useRef<Map<string, MomentMatch[]>>(new Map());
+  const noteIndexRef = useRef<MomentNoteIndex | null>(null);
+  const inFlightSections = useRef<Set<string>>(new Set());
+  const lastSectionsFailure = useRef<Map<string, number>>(new Map());
+
+  const ensureMomentSections = useCallback(async (momentId: string): Promise<void> => {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+    if (inFlightSections.current.has(momentId)) return;
+    const failedAt = lastSectionsFailure.current.get(momentId);
+    if (failedAt && Date.now() - failedAt < SECTIONS_RETRY_DELAY_MS) return;
+
+    const moment = momentsListRef.current.find(m => m.id === momentId);
+    const index = noteIndexRef.current;
+    if (!moment || moment.isDeleted || !index) return;
+    const plan = planSectionRequest(moment, matchesRef.current.get(momentId) ?? [], index.byId);
+    if (!plan) return;
+
+    inFlightSections.current.add(momentId);
+    try {
+      const result = await requestMomentSections(buildSectionRequest(moment, plan));
+
+      const latest = await getMoment(momentId);
+      if (!latest || latest.isDeleted) return;
+      // Another device answered (and synced) meanwhile: keep that.
+      if ((latest.aiSections?.generatedAt ?? 0) !== (moment.aiSections?.generatedAt ?? 0)) return;
+      const now = Date.now();
+      const updated: Moment = {
+        ...latest,
+        aiSections: applySectionResult(
+          latest, plan, result, matchesRef.current.get(momentId) ?? [], noteIndexRef.current?.byId ?? index.byId, now,
+        ),
+        updatedAt: now,
+      };
+      await saveMoment(updated);
+      replaceInList(updated);
+      onMomentChangedRef.current?.(updated);
+      lastSectionsFailure.current.delete(momentId);
+    } catch (err) {
+      // Nothing is recorded on the moment: a failure (offline, rate limited,
+      // server error) is not an answer.
+      lastSectionsFailure.current.set(momentId, Date.now());
+      console.warn(`[Moments] Sections request failed for ${momentId}:`, err);
+    } finally {
+      inFlightSections.current.delete(momentId);
+    }
+  }, [replaceInList]);
+
   // Soft-delete, then sync. The sync layer (performMomentSync) deletes the
   // Drive file and hard-deletes the local tombstone.
   const deleteMoment = useCallback(async (momentId: string): Promise<void> => {
@@ -341,6 +398,9 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
     return map;
   }, [moments, noteIndex]);
 
+  useEffect(() => { matchesRef.current = matchesByMoment; }, [matchesByMoment]);
+  useEffect(() => { noteIndexRef.current = noteIndex; }, [noteIndex]);
+
   return {
     moments,
     matchesByMoment,
@@ -350,6 +410,7 @@ export const useMoments = (memories: Memory[]): UseMomentsReturn => {
     retryEmbedding,
     hideNoteInMoment,
     unhideNoteInMoment,
+    ensureMomentSections,
     deleteMoment,
     setOnMomentChanged,
     refreshMoments,

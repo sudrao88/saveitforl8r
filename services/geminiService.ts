@@ -1,6 +1,7 @@
 
 import { EnrichmentData, Memory, Attachment, ChatMessage, isMemoryInFlight, isMemoryFailed } from '../types.ts';
 import { postProxy, getProxyUrl } from './proxyService.ts';
+import type { SectionRequest, SectionResult } from '../utils/momentAiSections.ts';
 import { getValidToken } from './googleAuth.ts';
 import { enqueue as bgSyncEnqueue } from './backgroundSyncQueue.ts';
 import { uploadFileChunked, LARGE_PAYLOAD_THRESHOLD } from './chunkUploadService.ts';
@@ -102,6 +103,22 @@ export const embedMomentTerms = async (terms: string[]): Promise<MomentEmbedResu
     throw new Error('Unexpected moment concepts');
   }
   return result;
+};
+
+/**
+ * Ask the server model to split a moment's notes into named sections (or to
+ * place leftover notes into its existing ones). Sends a short card per note,
+ * never full content. An empty list means "no worthwhile split".
+ */
+export const requestMomentSections = async (request: SectionRequest): Promise<SectionResult[]> => {
+  // The server gives the model one 30s budget.
+  const result = await postProxy<{ sections: SectionResult[] }>('/api/moment/sections', request, { timeout: 45_000 });
+  if (!Array.isArray(result?.sections)) throw new Error('Unexpected moment sections response');
+  return result.sections.filter(
+    s =>
+      s && typeof s === 'object' && typeof s.label === 'string' &&
+      Array.isArray(s.noteIds) && s.noteIds.every(id => typeof id === 'string'),
+  );
 };
 
 /**

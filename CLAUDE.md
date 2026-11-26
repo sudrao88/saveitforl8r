@@ -71,7 +71,7 @@ The client-side React application uses Vite to inject environment variables at b
 - **Server-Side API Key**: The `GEMINI_API_KEY` is stored securely in Google Secret Manager and only accessible by the server-side proxy, never the client.
 - **Authentication Proxy**: All AI-related requests are sent to the secure server proxy, which validates the user's Google OAuth token before proceeding. This prevents anonymous API abuse. Validated tokens are cached for 5 minutes server-side to reduce latency.
 - **CORS**: The proxy server restricts origins via the `ALLOWED_ORIGINS` environment variable. Only explicitly listed origins can make cross-origin requests.
-- **Rate Limiting**: Per-user rate limits are enforced on `/api/enrich` (20/min), `/api/query` (10/min) and `/api/moment/embed` (20/min) to prevent API abuse.
+- **Rate Limiting**: Per-user rate limits are enforced on `/api/enrich` (20/min), `/api/query` (10/min), `/api/moment/embed` (20/min) and `/api/moment/sections` (10/min) to prevent API abuse.
 - **Input Validation**: All proxy endpoints validate request payloads (text length, attachment count/size/MIME type, tag limits, coordinate ranges) before processing.
 - **Prompt Injection Mitigation**: System instructions are separated from user content using Gemini's `systemInstruction` config. User inputs are sanitized (control characters stripped) before embedding in prompts.
 - **Security Headers**: The proxy uses `helmet` for HTTP security headers. Firebase Hosting (`firebase.json`) adds `X-Content-Type-Options`, `X-Frame-Options`, and `Referrer-Policy` to the client.
@@ -91,6 +91,7 @@ Three thresholds bound per-note attachment payloads. Keep them in sync when chan
 
 - **Client Secret in Bundle**: `VITE_GOOGLE_CLIENT_SECRET` is embedded in the client-side JavaScript at build time. This is an accepted risk because Google treats web client secrets as non-confidential when used with PKCE. The secret alone cannot be used to impersonate users. A future Backend-for-Frontend (BFF) refactor could move token exchange to the proxy server.
 - **Query Endpoint Privacy**: The `/api/query` endpoint requires decrypted memories to be sent to the server for AI-powered search. The proxy temporarily has access to plaintext content during request processing. This is architecturally necessary for the feature.
+- **Moment Sections Privacy**: Opening a moment can send `/api/moment/sections` a short plaintext card for each of its notes (title, summary, type, tags; never the full content or attachments) so the model can name sections. This happens without an explicit user action, but rarely: only when a moment with 6 or more notes has no sections yet, or has gathered more than 4 notes (and more than 15% of its notes) that fit none and that number has grown since the last request. The rules live in `utils/momentAiSections.ts`; the result is stored on the moment and synced, so other devices do not ask again. Nothing is persisted server-side.
 
 ## Design System
 

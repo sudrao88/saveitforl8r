@@ -306,6 +306,32 @@ export enum ViewMode {
  * stored or synced themselves. A moment is fixed once created — to change its
  * terms, delete it and create a new one.
  */
+/** One named section of a moment, proposed by the server model. */
+export interface MomentAiSection {
+  id: string;                     // Stable within the moment
+  label: string;
+  description: string;            // One sentence; sent back when sections are extended
+}
+
+/**
+ * A moment's sections as last worked out by the server model, synced with the
+ * moment so every device shows the same ones and none asks again needlessly.
+ */
+export interface MomentAiSections {
+  /** Empty when the model was asked and found no worthwhile split. */
+  sections: MomentAiSection[];
+  /**
+   * Where the model put each note it saw: note id to section id, or '' for a
+   * note that fit none. Notes saved later are placed on the device.
+   */
+  assigned: Record<string, string>;
+  generatedAt: number;
+  /** Notes in the moment when this was generated. */
+  noteCount: number;
+  /** Notes left outside every section right after this was generated. */
+  otherCount: number;
+}
+
 export interface Moment {
   id: string;                     // crypto.randomUUID(), stable across devices
   title: string;                  // Display title (the terms joined)
@@ -334,6 +360,8 @@ export interface Moment {
   embeddingModel?: string;        // Model that produced termVectors / intentVector
   emoji?: string;                 // Picked from the server's emoji dictionary
   excludedNoteIds?: string[];     // Matched notes the user chose to hide
+  /** Sections from the server model (utils/momentAiSections.ts). Absent until first asked for. */
+  aiSections?: MomentAiSections;
   createdAt: number;
   updatedAt: number;
   isDeleted?: boolean;            // Soft-delete for multi-device sync (tombstone)
