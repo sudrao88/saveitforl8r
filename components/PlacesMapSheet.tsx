@@ -6,7 +6,8 @@
  *
  * Works like Google Maps: places are small round badges, coloured and shaped
  * by the moment subsection they belong to (with a legend when there is more
- * than one). Tapping a badge turns it into a larger pin and slides up a card
+ * than one; tapping a legend entry shows only that group's places, tapping it
+ * again shows them all). Tapping a badge turns it into a larger pin and slides up a card
  * with the place and the notes that mention it; tapping the map dismisses it.
  *
  * The Maps SDK is loaded on demand (services/googleMaps), and each placeId is
@@ -21,7 +22,7 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import ReactDOM from 'react-dom';
 import { X, Loader2, MapPin, ExternalLink, CloudOff, RefreshCw, Locate, LocateFixed, LocateOff } from 'lucide-react';
-import { overlay, btn, card, text, zIndex } from '../styles/design-system';
+import { overlay, btn, card, chip, text, zIndex } from '../styles/design-system';
 import { useBackButton } from '../hooks/useBackButton';
 import { loadGoogleMaps, resolvePlaceLocations } from '../services/googleMaps';
 import { MapCategory, MapPlace } from '../utils/mapPlaces';
@@ -55,6 +56,7 @@ const SELECTED_Z = 1000;
 const USER_Z = SELECTED_Z - 1;
 
 const categoryIndex = (category?: MapCategory) => category?.index ?? 0;
+const inFilter = (place: MapPlace, filterKey: string | null) => !filterKey || place.category?.key === filterKey;
 
 const PlacesMapSheet: React.FC<PlacesMapSheetProps> = ({ title, places, onClose, notes, onOpenNote, children }) => {
   const mapElRef = useRef<HTMLDivElement>(null);
@@ -65,6 +67,9 @@ const PlacesMapSheet: React.FC<PlacesMapSheetProps> = ({ title, places, onClose,
   const [attempt, setAttempt] = useState(0);
   const [shownIds, setShownIds] = useState<Set<string>>(new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const positionsRef = useRef<Map<string, google.maps.LatLngLiteral>>(new Map());
+  /** Legend filter: only places in this category are shown (null: all). */
+  const [filterKey, setFilterKey] = useState<string | null>(null);
 
   // ── The user's own position ──
   const markerClassRef = useRef<typeof google.maps.Marker | null>(null);
@@ -204,6 +209,7 @@ const PlacesMapSheet: React.FC<PlacesMapSheetProps> = ({ title, places, onClose,
         if (cancelled || !mapElRef.current) return;
         if (positions.size === 0) throw new Error('No places could be located');
         coreRef.current = core;
+        positionsRef.current = positions;
         markerClassRef.current = Marker;
         circleClassRef.current = Circle;
 
@@ -259,6 +265,7 @@ const PlacesMapSheet: React.FC<PlacesMapSheetProps> = ({ title, places, onClose,
       markers.forEach(m => m.setMap(null));
       markers.clear();
       mapRef.current = null;
+      setFilterKey(null);
     };
     // startWatching/stopWatching only touch refs and state setters.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -281,6 +288,34 @@ const PlacesMapSheet: React.FC<PlacesMapSheetProps> = ({ title, places, onClose,
       marker.setZIndex(selected ? SELECTED_Z : undefined);
     }
   }, [status, selectedId, categoryKey]);
+
+  // Legend filter: hide the other groups' places.
+  useEffect(() => {
+    if (status !== 'ready') return;
+    for (const place of placesRef.current) {
+      markersRef.current.get(place.placeId)?.setVisible(inFilter(place, filterKey));
+    }
+  }, [status, filterKey, categoryKey]);
+
+  /** Shows only one group's places (or all again), and frames them. */
+  const toggleFilter = (key: string) => {
+    const next = filterKey === key ? null : key;
+    setFilterKey(next);
+    const visible = places.filter(p => inFilter(p, next) && positionsRef.current.has(p.placeId));
+    if (selectedId && !visible.some(p => p.placeId === selectedId)) setSelectedId(null);
+    const map = mapRef.current;
+    const core = coreRef.current;
+    if (!map || !core || visible.length === 0) return;
+    setFollow(false);
+    if (visible.length === 1) {
+      map.panTo(positionsRef.current.get(visible[0].placeId)!);
+      map.setZoom(SINGLE_PLACE_ZOOM);
+      return;
+    }
+    const bounds = new core.LatLngBounds();
+    for (const p of visible) bounds.extend(positionsRef.current.get(p.placeId)!);
+    map.fitBounds(bounds, 64);
+  };
 
   const shown = places.filter(p => shownIds.has(p.placeId));
   const selected = shown.find(p => p.placeId === selectedId);
@@ -333,16 +368,23 @@ const PlacesMapSheet: React.FC<PlacesMapSheetProps> = ({ title, places, onClose,
           <div className={`absolute top-0 inset-x-0 ${zIndex.sticky} p-3 space-y-2 pointer-events-none`}>
             {legend.length > 0 && (
               <ul className="flex gap-2 overflow-x-auto pointer-events-auto" aria-label="Map key">
-                {legend.map(({ category, count }) => (
-                  <li
-                    key={category.key}
-                    className="flex items-center gap-1.5 shrink-0 max-w-48 pl-1 pr-3 py-1 rounded-(--radius-full) bg-(--color-surface-overlay)/90 border border-(--color-border-default) shadow-lg"
-                  >
-                    <img src={markerIcon(markerStyle(category.index), false).url} alt="" className="w-5 h-5 shrink-0" />
-                    <span className="text-xs text-(--color-text-primary) truncate">{category.label}</span>
-                    <span className="text-xs text-(--color-text-tertiary) shrink-0">{count}</span>
-                  </li>
-                ))}
+                {legend.map(({ category, count }) => {
+                  const active = filterKey === category.key;
+                  return (
+                    <li key={category.key} className="shrink-0">
+                      <button
+                        onClick={() => toggleFilter(category.key)}
+                        aria-pressed={active}
+                        aria-label={`${active ? 'Show all places' : `Show only ${category.label}`} (${count})`}
+                        className={`${chip.base} ${active ? chip.active : chip.inactive} max-w-56 pl-1 shadow-lg`}
+                      >
+                        <img src={markerIcon(markerStyle(category.index), false).url} alt="" className="w-5 h-5 shrink-0" />
+                        <span className="uppercase tracking-wide truncate">{category.label}</span>
+                        <span className="font-medium opacity-70 shrink-0">{count}</span>
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
             )}
             {missingCount > 0 && (

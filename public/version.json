@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v155",
-  "buildNumber": 155,
-  "buildDate": "2026-11-25T23:48:12.000Z",
+  "version": "saveitforl8r-v156",
+  "buildNumber": 156,
+  "buildDate": "2026-11-26T00:14:05.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "The map shows where you are, with a button to jump back to your location."
+  "changelog": "Tap a group in the map's key to show only its places; tap it again to see them all."
 }
