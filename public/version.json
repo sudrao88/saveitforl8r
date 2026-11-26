@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v159",
-  "buildNumber": 159,
-  "buildDate": "2026-11-26T02:19:45.000Z",
+  "version": "saveitforl8r-v160",
+  "buildNumber": 160,
+  "buildDate": "2026-11-26T04:28:48.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Moments group their notes by type, such as restaurants and hotels."
+  "changelog": "Moments with six or more notes get named sections when you open them."
 }
