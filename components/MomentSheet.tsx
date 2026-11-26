@@ -31,7 +31,7 @@ type SectionView = SectionLens | 'relevance';
 
 const LENS_LABELS: Record<SectionLens, string> = {
   topic: 'Topics',
-  kind: 'Kinds',
+  kind: 'Types',
   place: 'Places',
   time: 'Timeline',
 };

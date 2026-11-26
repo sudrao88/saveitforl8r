@@ -138,9 +138,9 @@ describe('MomentSheet subsections', () => {
 
   it('groups notes under section headers, best grouping first', () => {
     renderSectioned();
-    expect(headings()).toEqual(['espresso', 'brunch']);
+    expect(headings()).toEqual(['Espresso', 'Brunch']);
     expect(titles()).toEqual(['Title a', 'Title b', 'Title c', 'Title d', 'Title e', 'Title f']);
-    expect(screen.getByRole('button', { name: 'Topics' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('button', { name: 'Types' }).getAttribute('aria-pressed')).toBe('true');
   });
 
   it('switches grouping, goes back to relevance order, and remembers the choice', () => {

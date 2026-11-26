@@ -57,9 +57,7 @@ const twoTopics = () => [
 
 describe('sectionMoment: topic lens', () => {
   it('splits embedding clusters and labels them from their own tags', () => {
-    const out = run(twoTopics());
-    expect(out[0].lens).toBe('topic');
-    expect(shape(out[0])).toEqual([
+    expect(shape(lens(run(twoTopics()), 'topic'))).toEqual([
       ['ramen', ['a', 'b', 'c']],
       ['temples', ['d', 'e', 'f']],
     ]);
@@ -69,7 +67,7 @@ describe('sectionMoment: topic lens', () => {
     const notes = twoTopics();
     const order = ['e', 'a', 'f', 'c', 'd', 'b'];
     const matches = order.map((id, i) => ({ id, score: 1 - i / 10 }));
-    expect(shape(run(notes, moment, matches)[0])).toEqual([
+    expect(shape(lens(run(notes, moment, matches), 'topic'))).toEqual([
       ['temples', ['e', 'f', 'd']],
       ['ramen', ['a', 'c', 'b']],
     ]);
@@ -77,7 +75,7 @@ describe('sectionMoment: topic lens', () => {
 
   it('never labels a section with words the moment already says', () => {
     const notes = twoTopics().map(n => ({ ...n, tags: [...n.tags, 'japan', 'Japan Trip'] }));
-    const labels = run(notes)[0].sections.map(s => s.label);
+    const labels = lens(run(notes), 'topic')!.sections.map(s => s.label);
     expect(labels).toEqual(['ramen', 'temples']);
   });
 
@@ -109,6 +107,22 @@ describe('sectionMoment: topic lens', () => {
     expect(topic.sections[2]).toMatchObject({ key: OTHER_SECTION_KEY, noteIds: ['z'] });
   });
 
+  it('splits notes that share most of their meaning, by how they differ', () => {
+    // Every note is within 22 degrees of the others (cosine above 0.92).
+    const notes = [0, 1, 2, 20, 21, 22].map((deg, i) => note(`n${i}`, at(deg), [i < 3 ? 'ramen' : 'temples']));
+    expect(shape(lens(run(notes), 'topic'))).toEqual([
+      ['ramen', ['n0', 'n1', 'n2']],
+      ['temples', ['n3', 'n4', 'n5']],
+    ]);
+  });
+
+  it('moves a lone note into the cluster it sits with', () => {
+    // 'z' is a cluster of one, between the ramen notes and well away from the temples.
+    const out = run([...twoTopics(), note('y', at(180), ['onsen']), note('z', at(4), ['misc'])]);
+    const topic = lens(out, 'topic')!;
+    expect(topic.sections.find(s => s.label === 'ramen')!.noteIds).toContain('z');
+  });
+
   it('stays flat when the notes are all alike', () => {
     const notes = [0, 1, 2, 3, 4, 5, 6, 7].map(i => note(`n${i}`, at(i), ['ramen']));
     expect(run(notes)).toEqual([]);
@@ -124,7 +138,7 @@ describe('sectionMoment: topic lens', () => {
     const expected = sectionMoment(moment, matches, new Map(notes.map(n => [n.id, n])));
     const shuffled = new Map([...notes].reverse().map(n => [n.id, n]));
     expect(sectionMoment(moment, matches, shuffled)).toEqual(expected);
-    expect(expected[0].sections.map(s => s.label)).toEqual(['ramen', 'temples', 'onsen']);
+    expect(lens(expected, 'topic')!.sections.map(s => s.label)).toEqual(['ramen', 'temples', 'onsen']);
   });
 });
 
@@ -143,6 +157,11 @@ describe('sectionMoment: kind lens', () => {
       ['Food & drink', ['a', 'b', 'c']],
       ['Books', ['d', 'e', 'f']],
     ]);
+  });
+
+  it('leads when it agrees with what the notes are about', () => {
+    const out = run(kinds().map(n => ({ ...n, tags: ['x'] })));
+    expect(out[0].lens).toBe('kind');
   });
 
   it('ranks below topic when it cuts across what the notes are about', () => {
@@ -174,9 +193,83 @@ describe('sectionMoment: kind lens', () => {
     const notes = [0, 5, 10, 90, 95, 100].map((deg, i) => note(`n${i}`, at(deg)));
     const matches = notes.map((n, i) => ({ id: n.id, score: 1 - i / 10, matched: [i < 3 ? 'pasta' : 'risotto'] }));
     expect(shape(lens(run(notes, hybrid, matches), 'kind'))).toEqual([
-      ['pasta', ['n0', 'n1', 'n2']],
-      ['risotto', ['n3', 'n4', 'n5']],
+      ['Pasta', ['n0', 'n1', 'n2']],
+      ['Risotto', ['n3', 'n4', 'n5']],
     ]);
+  });
+
+  const spot = (id: string, deg: number | null, subtitle?: string, extra: Record<string, unknown> = {}) =>
+    note(id, deg === null ? null : at(deg), [], {
+      enrichment: {
+        contentType: 'place_restaurant',
+        entityContext: { type: 'Place', title: `Spot ${id}`, ...(subtitle ? { subtitle } : {}) },
+        ...extra,
+      },
+    });
+
+  it('groups places by the kind of place', () => {
+    const out = run([
+      spot('a', 0, 'South Indian Restaurant'), spot('b', 5, 'Thai Restaurant'), spot('c', 10, 'Family restaurant'),
+      spot('d', 90, 'Heritage Hotel'), spot('e', 95, 'Boutique Hotel'), spot('f', 100, 'Hotel'),
+    ]);
+    expect(out[0].lens).toBe('kind');
+    expect(shape(out[0])).toEqual([
+      ['Restaurant', ['a', 'b', 'c']],
+      ['Hotel', ['d', 'e', 'f']],
+    ]);
+  });
+
+  it('splits a kind nearly every note shares into its own kinds', () => {
+    const out = run([
+      spot('a', 0, 'South Indian Restaurant'), spot('b', 5, 'South Indian Restaurant'),
+      spot('c', 10, 'North Indian Restaurant'),
+      spot('d', 60, 'Thai Restaurant'), spot('e', 65, 'Thai Restaurant'),
+      spot('f', 120, 'Craft Brewery'), spot('g', 125, 'Brewery'),
+    ]);
+    expect(shape(lens(out, 'kind'))).toEqual([
+      ['Indian Restaurant', ['a', 'b', 'c']],
+      ['Thai Restaurant', ['d', 'e']],
+      ['Brewery', ['f', 'g']],
+    ]);
+  });
+
+  it('reads the subtitle as a kind only for places', () => {
+    const book = (id: string, deg: number, author: string) =>
+      note(id, at(deg), [], { enrichment: { contentType: 'book', entityContext: { type: 'Book', title: id, subtitle: author } } });
+    const out = run([
+      book('a', 0, 'Jane Austen'), book('b', 5, 'Jane Austen'), book('c', 10, 'Jane Austen'),
+      book('d', 90, 'Leo Tolstoy'), book('e', 95, 'Leo Tolstoy'), book('f', 100, 'Leo Tolstoy'),
+    ]);
+    expect(lens(out, 'kind')).toBeUndefined();
+  });
+
+  it('groups by tags when nothing else tells the notes apart', () => {
+    expect(shape(lens(run(twoTopics()), 'kind'))).toEqual([
+      ['Ramen', ['a', 'b', 'c']],
+      ['Temples', ['d', 'e', 'f']],
+    ]);
+  });
+
+  it('puts a note with no type in the section its embedding sits with', () => {
+    const out = run([
+      spot('a', 0, 'Thai Restaurant'), spot('b', 6, 'Sushi Restaurant'), spot('c', 12, 'Restaurant'),
+      spot('d', 90, 'Hotel'), spot('e', 96, 'Hotel'), spot('f', 102, 'Hotel'),
+      note('g', at(5)), note('h', at(200)), note('i', null),
+    ]);
+    expect(shape(lens(out, 'kind'))).toEqual([
+      ['Restaurant', ['a', 'b', 'c', 'g']],
+      ['Hotel', ['d', 'e', 'f']],
+      ['Other', ['h', 'i']],
+    ]);
+  });
+
+  it('never uses a kind the moment already names', () => {
+    const hotels: Moment = { ...moment, title: 'Hotels', terms: ['Hotels'] };
+    const out = run([
+      spot('a', 0, 'Thai Restaurant'), spot('b', 6, 'Sushi Restaurant'), spot('c', 12, 'Restaurant'),
+      spot('d', 90, 'Hotel'), spot('e', 96, 'Hotel'), spot('f', 102, 'Hotel'),
+    ], hotels);
+    expect(lens(out, 'kind')).toBeUndefined();
   });
 
   it('works for notes without embeddings', () => {

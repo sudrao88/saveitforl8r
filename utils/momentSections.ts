@@ -7,18 +7,25 @@
  * notes, so every device shows the same sections.
  *
  * Four "lenses" each propose a grouping:
+ *  - kind:  what the notes are. Every note carries several type words (kind
+ *    of place, entity type, content family, genre, tags, the word it matched
+ *    a concept on); the few words that best cover the moment become the
+ *    sections;
  *  - topic: clusters of similar notes (embeddings), labelled from the notes'
  *    own keywords;
- *  - kind:  what the notes are (content type, entity type, or the word each
- *    note matched a concept on);
  *  - place: notes about places near each other;
  *  - time:  bursts of notes saved close together.
  *
+ * Notes in one moment all resemble the moment, so their embeddings are
+ * compared after removing what they share (the mean vector): what is left is
+ * how each note differs from the rest.
+ *
  * A grouping is kept only when it is worth showing (enough notes, 2 to 6
- * sections of at least 2 notes, few leftovers). The kept ones are ranked by a
- * shared score led by how well the grouping agrees with the embeddings, so a
- * kind/place/time grouping wins only when it also reflects what the notes are
- * about. No viable grouping means the moment stays a flat list.
+ * sections of at least 2 notes, few leftovers). For kind and topic, a
+ * leftover note joins the section it clearly sits with in embedding space.
+ * The kind grouping leads unless the embeddings contradict it; the others
+ * are ranked by a shared score led by how well the grouping agrees with the
+ * embeddings. No viable grouping means the moment stays a flat list.
  */
 
 import { Memory, Moment } from '../types';
@@ -51,14 +58,29 @@ export const MIN_SECTION_SIZE = 2;
 export const MAX_SECTIONS = 6;
 /** A grouping is dropped when more than this share of notes is left over. */
 export const MAX_OTHER_SHARE = 0.35;
-/** Topic clusters must be at least this well separated (mean silhouette). */
-export const MIN_TOPIC_SILHOUETTE = 0.05;
 /**
- * ...and on average each note must be this much closer (cosine) to its own
- * cluster than to the next one. Silhouette alone is relative, so it would
- * happily cut an evenly spread set of near-identical notes in half.
+ * Topic clusters must be at least this well separated (mean silhouette of the
+ * centred vectors).
+ */
+export const MIN_TOPIC_SILHOUETTE = 0.1;
+/**
+ * ...and on average each note must be this much closer (cosine, uncentred) to
+ * its own cluster than to the next one. Centring magnifies small differences,
+ * so alone it would happily cut a set of near-identical notes in half.
  */
 export const MIN_TOPIC_GAP = 0.04;
+/**
+ * A leftover note joins a section only when it is this much closer to it
+ * than to the next one (relative), and no further out than the section's own
+ * furthest note.
+ */
+export const ADOPT_MARGIN = 0.15;
+/**
+ * The kind lens is tried twice: once ignoring type words on more than this
+ * share of the notes (so "Restaurant" on nearly everything gives way to the
+ * kinds of restaurant), once with every word. The better grouping is kept.
+ */
+export const MAX_KIND_SHARE = 0.6;
 /** A label must appear on at least this share of its section's notes. */
 export const MIN_LABEL_SHARE = 0.5;
 /** Places closer than this are one area (about city scale). */
@@ -74,7 +96,7 @@ export const OTHER_SECTION_KEY = 'other';
 // so it ranks below any grouping they do support without being discarded.
 const WEAK_COHERENCE = 0.02;
 
-const LENS_ORDER: SectionLens[] = ['topic', 'kind', 'place', 'time'];
+const LENS_ORDER: SectionLens[] = ['kind', 'topic', 'place', 'time'];
 
 interface Item {
   id: string;
@@ -82,6 +104,8 @@ interface Item {
   /** Position in the match list (0 = best). */
   rank: number;
   v: number[] | null;
+  /** `v` with the moment's mean vector removed, unit length. */
+  c: number[] | null;
   matched?: string[];
 }
 
@@ -99,18 +123,47 @@ const byIdAsc = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 /** Cosine distance between two notes; null when either has no usable vector. */
 type Distance = (a: Item, b: Item) => number | null;
 
-const makeDistance = (): Distance => {
+const makeDistance = (vector: (item: Item) => number[] | null): Distance => {
   const cache = new Map<string, number | null>();
   return (a, b) => {
     const k = a.id < b.id ? `${a.id}|${b.id}` : `${b.id}|${a.id}`;
     let d = cache.get(k);
     if (d === undefined) {
-      d = a.v && b.v && a.v.length === b.v.length ? 1 - dot(a.v, b.v) : null;
+      const va = vector(a);
+      const vb = vector(b);
+      d = va && vb && va.length === vb.length ? 1 - dot(va, vb) : null;
       cache.set(k, d);
     }
     return d;
   };
 };
+
+/**
+ * Fill in each note's centred vector: its embedding minus the mean of all the
+ * moment's notes, rescaled to unit length. Summed in id order so the result
+ * never depends on match order.
+ */
+const centreVectors = (items: Item[]): void => {
+  const vectored = items.filter(i => i.v).sort((a, b) => byIdAsc(a.id, b.id));
+  if (vectored.length < 2) return;
+  const dim = vectored[0].v!.length;
+  const usable = vectored.filter(i => i.v!.length === dim);
+  const mean = new Array<number>(dim).fill(0);
+  for (const i of usable) for (let k = 0; k < dim; k++) mean[k] += i.v![k];
+  for (let k = 0; k < dim; k++) mean[k] /= usable.length;
+  for (const i of usable) {
+    const c = i.v!.map((x, k) => x - mean[k]);
+    const norm = Math.sqrt(c.reduce((s, x) => s + x * x, 0));
+    i.c = norm > 1e-9 ? c.map(x => x / norm) : null;
+  }
+};
+
+interface Distances {
+  /** Between centred vectors: how notes differ within this moment. */
+  centred: Distance;
+  /** Between the embeddings as stored. */
+  raw: Distance;
+}
 
 const meanDistance = (item: Item, others: Item[], dist: Distance): number | null => {
   let sum = 0;
@@ -144,7 +197,6 @@ const separation = (groups: Item[][], dist: Distance): Separation | null => {
   for (let g = 0; g < groups.length; g++) {
     for (const item of groups[g]) {
       total++;
-      if (!item.v) continue;
       const a = meanDistance(item, groups[g], dist);
       let b: number | null = null;
       for (let h = 0; h < groups.length; h++) {
@@ -174,10 +226,51 @@ const balance = (sizes: number[]): number => {
   return h / Math.log(sizes.length);
 };
 
+/**
+ * Move each leftover note into the group it clearly belongs with: distinctly
+ * nearer to it than to any other group, and no further out than the group's
+ * own furthest member. Every decision uses the groups as given, so the
+ * outcome doesn't depend on the order of the leftovers.
+ */
+const adoptLeftovers = (groups: Item[][], rest: Item[], dist: Distance): Item[][] => {
+  if (rest.length === 0 || groups.length < 2) return groups;
+  const reach = groups.map(g => {
+    let max: number | null = null;
+    for (const item of g) {
+      const d = meanDistance(item, g, dist);
+      if (d !== null && (max === null || d > max)) max = d;
+    }
+    return max;
+  });
+  const out = groups.map(g => [...g]);
+  for (const item of rest) {
+    let best = -1;
+    let a = Infinity;
+    let b = Infinity;
+    for (let g = 0; g < groups.length; g++) {
+      const d = meanDistance(item, groups[g], dist);
+      if (d === null) continue;
+      if (d < a) {
+        b = a;
+        a = d;
+        best = g;
+      } else if (d < b) {
+        b = d;
+      }
+    }
+    if (best < 0 || b === Infinity || reach[best] === null || a > reach[best]!) continue;
+    if (b <= 0 || (b - a) / b < ADOPT_MARGIN) continue;
+    out[best].push(item);
+  }
+  return out;
+};
+
 interface Scored {
   sections: MomentSection[];
   score: number;
   separation: Separation | null;
+  /** The notes of each named section (no "Other"), in section order. */
+  members: Item[][];
 }
 
 /**
@@ -189,7 +282,7 @@ const finalize = (
   groups: Group[],
   items: Item[],
   dist: Distance,
-  order: 'rank' | 'given' = 'rank',
+  { order = 'rank', adopt = false }: { order?: 'rank' | 'given'; adopt?: boolean } = {},
 ): Scored | null => {
   const itemById = new Map(items.map(i => [i.id, i]));
   const rankOf = (id: string) => itemById.get(id)!.rank;
@@ -222,6 +315,16 @@ const finalize = (
   }
   if (kept.length < 2) return null;
 
+  if (adopt) {
+    const named = new Set(kept.flatMap(g => g.ids));
+    const adopted = adoptLeftovers(
+      kept.map(g => g.ids.map(id => itemById.get(id)!)),
+      items.filter(i => !named.has(i.id)),
+      dist,
+    );
+    kept.forEach((g, i) => (g.ids = adopted[i].map(x => x.id)));
+  }
+
   const sectioned = kept.reduce((s, g) => s + g.ids.length, 0);
   const coverage = sectioned / items.length;
   if (1 - coverage > MAX_OTHER_SHARE) return null;
@@ -236,11 +339,12 @@ const finalize = (
   const rest = items.filter(i => !inSection.has(i.id)).map(i => i.id);
   if (rest.length > 0) sections.push({ key: OTHER_SECTION_KEY, label: 'Other', noteIds: rest });
 
-  const sep = separation(kept.map(g => g.ids.map(id => itemById.get(id)!)), dist);
+  const members = kept.map(g => g.ids.map(id => itemById.get(id)!));
+  const sep = separation(members, dist);
   const coherence = Math.max(sep?.silhouette ?? WEAK_COHERENCE, WEAK_COHERENCE);
   const quality = kept.reduce((s, g) => s + g.quality * g.ids.length, 0) / sectioned;
   const score = coherence * coverage * balance(kept.map(g => g.ids.length)) * quality;
-  return { sections, score, separation: sep };
+  return { sections, score, separation: sep, members };
 };
 
 // --- Labels from the notes' own words ---------------------------------------
@@ -258,6 +362,30 @@ const humanize = (s: string): string => {
   return t ? t[0].toUpperCase() + t.slice(1) : t;
 };
 
+/**
+ * Enrichment puts the kind of place ("South Indian Restaurant") in the entity
+ * subtitle, but only for places: for a book the subtitle is its author.
+ */
+const PLACE_ENTITY = /\b(place|restaurant|caf[eé]|bar|hotel|location|venue|shop|store|attraction|landmark)\b/i;
+
+/**
+ * The kind of place a note is about, from most to least specific:
+ * "South Indian Restaurant", "Indian Restaurant", "Restaurant". The head noun
+ * comes last, so dropping leading words generalizes the phrase.
+ */
+const placeTypePhrases = (item: Item): string[] => {
+  const e = item.m.enrichment;
+  const subtitle = cleanLabel(e?.entityContext?.subtitle);
+  if (!subtitle) return [];
+  const isPlace =
+    String(e?.contentType || '').toLowerCase() === 'place_restaurant' ||
+    PLACE_ENTITY.test(String(e?.entityContext?.type || ''));
+  if (!isPlace) return [];
+  const words = subtitle.split(' ').map(w => w.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '')).filter(Boolean);
+  if (words.length === 0 || words.length > 5 || words.some(w => /\p{N}/u.test(w))) return [];
+  return words.map((_, i) => capitalize(words.slice(i).join(' ')));
+};
+
 /** Keywords a note carries, as normalized key to the spelling used. */
 const noteKeywords = (item: Item, implied: Set<string>): Map<string, string> => {
   const e = item.m.enrichment;
@@ -266,6 +394,7 @@ const noteKeywords = (item: Item, implied: Set<string>): Map<string, string> => 
     ...(e?.suggestedTags || []),
     ...(Array.isArray(e?.themes) ? e!.themes! : []),
     e?.entityContext?.type || '',
+    ...placeTypePhrases(item),
     e?.contentType ? humanize(e.contentType) : '',
     e?.locationIsRelevant !== false ? e?.locationContext?.name || '' : '',
     ...(item.matched || []),
@@ -325,6 +454,8 @@ const distinctiveLabel = (
   return best ? pickLabel(best.spellings) : null;
 };
 
+const capitalize = (s: string): string => (s ? s[0].toUpperCase() + s.slice(1) : s);
+
 const truncate = (s: string, max: number): string => (s.length > max ? `${s.slice(0, max - 1).trimEnd()}…` : s);
 
 // --- Lens: topic ------------------------------------------------------------
@@ -334,53 +465,68 @@ const truncate = (s: string, max: number): string => (s.length > max ? `${s.slic
  * size from maxK down to 2, as lists of indices into `items`.
  */
 const agglomerate = (items: Item[], dist: Distance, maxK: number): number[][][] => {
-  let clusters: number[][] = items.map((_, i) => [i]);
+  const n = items.length;
+  // Linkage between clusters, addressed by each cluster's smallest index.
+  const link = new Float64Array(n * n);
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) link[i * n + j] = link[j * n + i] = dist(items[i], items[j]) ?? 1;
+  }
+  const members: number[][] = items.map((_, i) => [i]);
+  let active = items.map((_, i) => i);
   const levels: number[][][] = [];
-  const linkage = (a: number[], b: number[]) => {
-    let sum = 0;
-    for (const i of a) for (const j of b) sum += dist(items[i], items[j]) ?? 1;
-    return sum / (a.length * b.length);
-  };
-  while (clusters.length > 1) {
-    if (clusters.length <= maxK) levels.push(clusters.map(c => [...c]));
-    let bi = 0;
-    let bj = 1;
+  while (active.length > 1) {
+    if (active.length <= maxK) levels.push(active.map(s => [...members[s]]));
+    let bi = active[0];
+    let bj = active[1];
     let bd = Infinity;
-    for (let i = 0; i < clusters.length; i++) {
-      for (let j = i + 1; j < clusters.length; j++) {
-        const d = linkage(clusters[i], clusters[j]);
+    for (let x = 0; x < active.length; x++) {
+      for (let y = x + 1; y < active.length; y++) {
+        const d = link[active[x] * n + active[y]];
         if (d < bd) {
           bd = d;
-          bi = i;
-          bj = j;
+          bi = active[x];
+          bj = active[y];
         }
       }
     }
-    const mergedCluster = [...clusters[bi], ...clusters[bj]].sort((a, b) => a - b);
-    clusters = clusters.filter((_, i) => i !== bi && i !== bj);
-    clusters.push(mergedCluster);
-    clusters.sort((a, b) => a[0] - b[0]);
+    // Merge bj into bi (bi < bj, so the merged cluster keeps bi's address).
+    const ni = members[bi].length;
+    const nj = members[bj].length;
+    for (const s of active) {
+      if (s === bi || s === bj) continue;
+      const d = (ni * link[bi * n + s] + nj * link[bj * n + s]) / (ni + nj);
+      link[bi * n + s] = link[s * n + bi] = d;
+    }
+    members[bi] = [...members[bi], ...members[bj]].sort((p, q) => p - q);
+    active = active.filter(s => s !== bj);
   }
   return levels;
 };
 
-const distinctTopics = (sep: Separation | null): sep is Separation =>
-  sep !== null && sep.silhouette >= MIN_TOPIC_SILHOUETTE && sep.gap >= MIN_TOPIC_GAP;
+/** Separation of topic clusters: centred for shape, raw for real distance. */
+const topicSeparation = (clusters: Item[][], dist: Distances): Separation | null => {
+  const sep = separation(clusters, dist.centred);
+  if (!sep || sep.silhouette < MIN_TOPIC_SILHOUETTE) return null;
+  const raw = separation(clusters, dist.raw);
+  return raw && raw.gap >= MIN_TOPIC_GAP ? sep : null;
+};
 
-const topicLens = (moment: Moment, items: Item[], dist: Distance): Scored | null => {
+const topicLens = (moment: Moment, items: Item[], dist: Distances): Scored | null => {
   // Sorted by id so the clustering never depends on match order.
-  const vectored = items.filter(i => i.v).sort((a, b) => byIdAsc(a.id, b.id));
+  const vectored = items.filter(i => i.c).sort((a, b) => byIdAsc(a.id, b.id));
   if (vectored.length < MIN_SECTIONED_NOTES) return null;
 
   // Pick the cut with the best separation, weighted by how many notes it keeps.
   let best: { clusters: Item[][]; value: number } | null = null;
-  for (const level of agglomerate(vectored, dist, MAX_SECTIONS)) {
-    const clusters = level.filter(c => c.length >= MIN_SECTION_SIZE).map(c => c.map(i => vectored[i]));
-    if (clusters.length < 2) continue;
+  for (const level of agglomerate(vectored, dist.centred, MAX_SECTIONS)) {
+    const large = level.filter(c => c.length >= MIN_SECTION_SIZE).map(c => c.map(i => vectored[i]));
+    if (large.length < 2) continue;
+    const inLarge = new Set(large.flat());
+    const clusters = adoptLeftovers(large, vectored.filter(i => !inLarge.has(i)), dist.centred);
     const covered = clusters.reduce((s, c) => s + c.length, 0);
     if (1 - covered / items.length > MAX_OTHER_SHARE) continue;
-    const sep = separation(clusters, dist);
-    if (!distinctTopics(sep)) continue;
+    const sep = topicSeparation(clusters, dist);
+    if (!sep) continue;
     const value = sep.silhouette * (covered / items.length);
     // Levels run from most to fewest clusters; on a tie the fewer win.
     if (!best || value >= best.value) best = { clusters, value };
@@ -404,9 +550,9 @@ const topicLens = (moment: Moment, items: Item[], dist: Distance): Scored | null
     return { label: `Like “${truncate(noteTitle(central.m).replace(/\s+/g, ' ').trim(), 40)}”`, ids, quality: 0.6 };
   });
 
-  const scored = finalize(groups, items, dist);
+  const scored = finalize(groups, items, dist.centred);
   // Merging same-label clusters can blur the separation; check it again.
-  return scored && distinctTopics(scored.separation) ? scored : null;
+  return scored && topicSeparation(scored.members, dist) ? scored : null;
 };
 
 // --- Lens: kind -------------------------------------------------------------
@@ -449,32 +595,89 @@ const CONTENT_FAMILIES: Record<string, string> = {
   quote: 'Quotes',
 };
 
-const groupBy = (items: Item[], value: (item: Item) => string | undefined): Group[] => {
-  const groups = new Map<string, { spellings: Map<string, number>; ids: string[] }>();
-  for (const item of items) {
-    const label = cleanLabel(value(item));
-    if (!label) continue;
-    const key = tokenize(label).join(' ') || label.toLowerCase();
-    let g = groups.get(key);
-    if (!g) groups.set(key, (g = { spellings: new Map(), ids: [] }));
-    g.ids.push(item.id);
-    g.spellings.set(label, (g.spellings.get(label) ?? 0) + 1);
-  }
-  return [...groups.entries()]
-    .sort((a, b) => byIdAsc(a[0], b[0]))
-    .map(([, g]) => ({ label: pickLabel(g.spellings), ids: g.ids, quality: 1 }));
+interface TypeWord {
+  key: string;
+  /** How much the source says about what a note is; also the label quality. */
+  weight: number;
+  spellings: Map<string, number>;
+  ids: Set<string>;
+}
+
+/**
+ * Every word that says what kind of thing a note is, strongest source first:
+ * kind of place, entity type, the word matched on a concept, content family,
+ * genre, then the user's and the AI's tags.
+ */
+const typeWordsOf = (item: Item): { word: string; weight: number; matched?: boolean }[] => {
+  const e = item.m.enrichment;
+  const from = (weight: number, words: unknown[]) => words.map(w => ({ word: String(w ?? ''), weight }));
+  return [
+    ...from(1, placeTypePhrases(item)),
+    ...from(1, [e?.entityContext?.type]),
+    // A concept's synonyms are the moment's own words, yet which one a note
+    // matched is exactly what tells the notes apart.
+    ...from(1, item.matched || []).map(w => ({ ...w, matched: true })),
+    ...from(0.9, [CONTENT_FAMILIES[String(e?.contentType || '').toLowerCase()]]),
+    ...from(0.9, [typeof e?.genre === 'string' ? e.genre : '']),
+    ...from(0.8, item.m.tags || []),
+    ...from(0.7, e?.suggestedTags || []),
+  ];
 };
 
-const kindLens = (moment: Moment, items: Item[], dist: Distance): Scored | null => {
-  const facets: ((item: Item) => string | undefined)[] = [
-    i => CONTENT_FAMILIES[String(i.m.enrichment?.contentType || '').toLowerCase()],
-    i => i.m.enrichment?.entityContext?.type,
-    // Hybrid moments: the word each note matched a concept on, per concept.
-    ...(moment.concepts || []).map((_, c) => (i: Item) => i.matched?.[c]),
-  ];
+const collectTypeWords = (items: Item[], implied: Set<string>): TypeWord[] => {
+  const byKey = new Map<string, TypeWord>();
+  for (const item of items) {
+    const seen = new Set<string>();
+    for (const { word, weight, matched } of typeWordsOf(item)) {
+      const label = cleanLabel(word);
+      const key = label ? suggestionKey(label) : null;
+      if (!key || seen.has(key) || (!matched && impliedByMoment(key, implied))) continue;
+      seen.add(key);
+      let w = byKey.get(key);
+      if (!w) byKey.set(key, (w = { key, weight, spellings: new Map(), ids: new Set() }));
+      w.weight = Math.max(w.weight, weight);
+      w.ids.add(item.id);
+      const spelling = capitalize(label);
+      w.spellings.set(spelling, (w.spellings.get(spelling) ?? 0) + 1);
+    }
+  }
+  return [...byKey.values()].filter(w => w.ids.size >= MIN_SECTION_SIZE).sort((a, b) => byIdAsc(a.key, b.key));
+};
+
+/**
+ * Choose the type words that become sections: repeatedly take the word that
+ * names the most notes not yet in a section (weighted by its source; on a
+ * tie the more specific phrase wins). Each note lands in the first chosen
+ * word it carries.
+ */
+const coverWithTypes = (words: TypeWord[], maxSize: number): Group[] => {
+  const pool = words.filter(w => w.ids.size <= maxSize);
+  const covered = new Set<string>();
+  const groups: Group[] = [];
+  const specificity = (w: TypeWord) => w.key.split(' ').length;
+  while (groups.length < MAX_SECTIONS) {
+    let best: { word: TypeWord; ids: string[]; gain: number } | null = null;
+    for (const word of pool) {
+      const ids = [...word.ids].filter(id => !covered.has(id));
+      if (ids.length < MIN_SECTION_SIZE) continue;
+      const gain = ids.length * word.weight;
+      if (!best || gain > best.gain || (gain === best.gain && specificity(word) > specificity(best.word))) {
+        best = { word, ids, gain };
+      }
+    }
+    if (!best) break;
+    best.ids.forEach(id => covered.add(id));
+    groups.push({ label: pickLabel(best.word.spellings), ids: best.ids, quality: best.word.weight });
+  }
+  return groups;
+};
+
+const kindLens = (moment: Moment, items: Item[], dist: Distances): Scored | null => {
+  const words = collectTypeWords(items, momentTokens(moment));
   let best: Scored | null = null;
-  for (const facet of facets) {
-    const scored = finalize(groupBy(items, facet), items, dist);
+  // Narrow words first: on a tie the finer grouping is kept.
+  for (const maxSize of [Math.floor(items.length * MAX_KIND_SHARE), items.length - 1]) {
+    const scored = finalize(coverWithTypes(words, maxSize), items, dist.centred, { adopt: true });
     if (scored && (!best || scored.score > best.score)) best = scored;
   }
   return best;
@@ -540,7 +743,7 @@ const sharedArea = (group: Placed[]): string | null => {
   return lists[0][lists[0].length - shared];
 };
 
-const placeLens = (items: Item[], dist: Distance): Scored | null => {
+const placeLens = (items: Item[], dist: Distances): Scored | null => {
   const placed = items
     .map(placeOf)
     .filter((p): p is Placed => p !== null)
@@ -579,7 +782,7 @@ const placeLens = (items: Item[], dist: Distance): Scored | null => {
     }
     if (names.size > 0) groups.push({ label: `Near ${pickLabel(names)}`, ids, quality: 0.8 });
   }
-  return finalize(groups, items, dist);
+  return finalize(groups, items, dist.centred);
 };
 
 // --- Lens: time -------------------------------------------------------------
@@ -594,7 +797,7 @@ const timeLabel = (start: number, end: number): string => {
   return `${a.getDate()} ${month(a)} ${a.getFullYear()}`;
 };
 
-const timeLens = (items: Item[], dist: Distance): Scored | null => {
+const timeLens = (items: Item[], dist: Distances): Scored | null => {
   const sorted = [...items].sort((a, b) => a.m.timestamp - b.m.timestamp || byIdAsc(a.id, b.id));
   const gaps = sorted.slice(1).map((it, i) => it.m.timestamp - sorted[i].m.timestamp);
   if (gaps.length === 0) return null;
@@ -613,7 +816,7 @@ const timeLens = (items: Item[], dist: Distance): Scored | null => {
     ids: b.map(i => i.id),
     quality: 1,
   }));
-  return finalize(groups, items, dist, 'given');
+  return finalize(groups, items, dist.centred, { order: 'given' });
 };
 
 // --- Entry point ------------------------------------------------------------
@@ -631,19 +834,29 @@ export const sectionMoment = (
   for (const match of matches) {
     const m = byId.get(match.id);
     if (!m || m.isDeleted) continue;
-    items.push({ id: m.id, m, rank: items.length, v: noteVector(m), matched: match.matched });
+    items.push({ id: m.id, m, rank: items.length, v: noteVector(m), c: null, matched: match.matched });
   }
   if (items.length < MIN_SECTIONED_NOTES) return [];
 
-  const dist = makeDistance();
+  centreVectors(items);
+  const dist: Distances = { centred: makeDistance(i => i.c), raw: makeDistance(i => i.v) };
   const proposals: [SectionLens, Scored | null][] = [
-    ['topic', topicLens(moment, items, dist)],
     ['kind', kindLens(moment, items, dist)],
+    ['topic', topicLens(moment, items, dist)],
     ['place', placeLens(items, dist)],
     ['time', timeLens(items, dist)],
   ];
+  // Kinds lead unless the embeddings say the split cuts across what the notes
+  // are about; everything else is ranked by score.
+  const leads = (lens: SectionLens, s: Scored) =>
+    lens === 'kind' && (s.separation === null || s.separation.silhouette >= 0) ? 0 : 1;
   return proposals
     .filter((p): p is [SectionLens, Scored] => p[1] !== null)
-    .map(([lens, s]) => ({ lens, sections: s.sections, score: s.score }))
-    .sort((a, b) => b.score - a.score || LENS_ORDER.indexOf(a.lens) - LENS_ORDER.indexOf(b.lens));
+    .sort(
+      (a, b) =>
+        leads(a[0], a[1]) - leads(b[0], b[1]) ||
+        b[1].score - a[1].score ||
+        LENS_ORDER.indexOf(a[0]) - LENS_ORDER.indexOf(b[0]),
+    )
+    .map(([lens, s]) => ({ lens, sections: s.sections, score: s.score }));
 };
