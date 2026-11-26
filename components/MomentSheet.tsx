@@ -3,14 +3,16 @@
  *
  * Full-screen sheet for one moment: its terms, and every note that matches
  * them, best match first. Matches are computed locally (useMoments) and update
- * live as notes change. Larger moments are split into subsections on the
- * device (utils/momentSections), with chips to switch grouping or go back to
- * plain relevance order. Notes can be opened in a preview or hidden from this
+ * live as notes change. Larger moments are split into subsections: named
+ * sections from the server model when the moment has them
+ * (utils/momentAiSections), otherwise groupings worked out on the device
+ * (utils/momentSections), with chips to switch grouping or go back to plain
+ * relevance order. Opening the sheet asks for sections if it is time to. Notes can be opened in a preview or hidden from this
  * moment; hidden notes can be listed and brought back. A moment can't be
  * edited — delete it and create a new one.
  */
 
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useBackButton } from '../hooks/useBackButton';
 import { X, Trash2, Eye, EyeOff, CloudOff, Loader2, RefreshCw, Share2, Check, ChevronDown, Map as MapIcon } from 'lucide-react';
 import { Moment, Memory, Attachment } from '../types';
@@ -22,7 +24,8 @@ import { canMatchMoment, MomentMatch } from '../utils/momentMatching';
 import { noteTitle, noteSnippet, formatNoteDate as formatDate } from '../utils/noteLabels';
 import { formatMomentForShare, momentShareTitle } from '../utils/momentShare';
 import { shareText } from '../services/platform';
-import { sectionMoment, SectionLens } from '../utils/momentSections';
+import { sectionMoment, MomentSectioning, SectionLens } from '../utils/momentSections';
+import { layoutAiSections } from '../utils/momentAiSections';
 import { collectPlaces, categorisePlaces } from '../utils/mapPlaces';
 import { isMapsConfigured } from '../services/googleMaps';
 import PlacesMapSheet from './PlacesMapSheet';
@@ -30,6 +33,7 @@ import PlacesMapSheet from './PlacesMapSheet';
 type SectionView = SectionLens | 'relevance';
 
 const LENS_LABELS: Record<SectionLens, string> = {
+  ai: 'Sections',
   topic: 'Topics',
   kind: 'Types',
   place: 'Places',
@@ -68,6 +72,8 @@ interface MomentSheetProps {
   onHideNote: (momentId: string, noteId: string) => Promise<void>;
   onUnhideNote?: (momentId: string, noteId: string) => Promise<void>;
   onRetryEmbedding: (momentId: string) => Promise<void>;
+  /** Called once when the sheet opens; may fetch sections for the moment. */
+  onEnsureSections?: (momentId: string) => void;
   onDeleteNotes?: (noteIds: string[]) => void;
   onViewAttachment?: (attachment: Attachment, allAttachments: Attachment[]) => void;
   onMemoryDelete?: (id: string) => void;
@@ -86,6 +92,7 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
   onHideNote,
   onUnhideNote,
   onRetryEmbedding,
+  onEnsureSections,
   onDeleteNotes,
   onViewAttachment,
   onMemoryDelete,
@@ -117,11 +124,36 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
     [matches],
   );
 
+  // Opening a moment is the only time its sections are asked for.
+  useEffect(() => {
+    onEnsureSections?.(moment.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [moment.id]);
+
+  // Sections that arrive while the sheet is open replace what is on screen
+  // only if the list hasn't been scrolled; otherwise they wait for the next
+  // open, so the notes never jump under the reader.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [shownAi, setShownAi] = useState({ momentId: moment.id, ai: moment.aiSections });
+  useEffect(() => {
+    setShownAi(prev => {
+      if (prev.momentId !== moment.id) return { momentId: moment.id, ai: moment.aiSections };
+      if (prev.ai?.generatedAt === moment.aiSections?.generatedAt) return prev;
+      return (scrollRef.current?.scrollTop ?? 0) > 0 ? prev : { momentId: moment.id, ai: moment.aiSections };
+    });
+  }, [moment.id, moment.aiSections]);
+
   // Ways to split the notes into subsections, best first (empty: stay flat).
-  const sectionings = useMemo(
-    () => sectionMoment(moment, matches, memoriesMap),
-    [moment, matches, memoriesMap],
-  );
+  // The model's sections stand in for the on-device type and topic groupings.
+  const sectionings = useMemo((): MomentSectioning[] => {
+    const local = sectionMoment(moment, matches, memoriesMap);
+    const ai = layoutAiSections({ ...moment, aiSections: shownAi.ai }, matches, memoriesMap);
+    if (!ai) return local;
+    return [
+      { lens: 'ai', sections: ai.sections, score: Infinity },
+      ...local.filter(s => s.lens !== 'kind' && s.lens !== 'topic'),
+    ];
+  }, [moment, matches, memoriesMap, shownAi]);
   const [chosenView, setChosenView] = useState<SectionView | null>(
     () => (readSectionViews()[moment.id] as SectionView | undefined) ?? null,
   );
@@ -308,7 +340,7 @@ const MomentSheet: React.FC<MomentSheetProps> = ({
         </p>
       )}
 
-      <div className="flex-1 overflow-y-auto">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto">
         <div className="max-w-2xl mx-auto p-4 sm:p-8 pb-32">
           {/* Terms */}
           <div className="flex flex-wrap gap-2 mb-6">

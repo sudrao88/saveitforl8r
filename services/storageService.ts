@@ -138,6 +138,17 @@ const LEGACY_MOMENT_FIELDS = [
  * objective becomes its single term; it has no termVectors yet, so useMoments
  * embeds it (and re-syncs the clean record) on the next online load.
  */
+const isValidAiSections = (value: unknown): boolean => {
+  const s = value as Record<string, unknown> | null;
+  if (!s || typeof s !== 'object') return false;
+  if (!Array.isArray(s.sections) || !s.sections.every(
+    x => x && typeof x === 'object' && typeof x.id === 'string' && x.id && typeof x.label === 'string' && x.label,
+  )) return false;
+  if (!s.assigned || typeof s.assigned !== 'object' || Array.isArray(s.assigned)) return false;
+  if (!Object.values(s.assigned).every(v => typeof v === 'string')) return false;
+  return [s.generatedAt, s.noteCount, s.otherCount].every(n => typeof n === 'number' && Number.isFinite(n));
+};
+
 export const normalizeMoment = (raw: Moment): Moment => {
   const legacy = raw as Moment & Record<string, unknown>;
   let terms = Array.isArray(raw.terms)
@@ -170,6 +181,9 @@ export const normalizeMoment = (raw: Moment): Moment => {
   }
   if (moment.excludedNoteIds !== undefined && !Array.isArray(moment.excludedNoteIds)) {
     delete moment.excludedNoteIds;
+  }
+  if (moment.aiSections !== undefined && !isValidAiSections(moment.aiSections)) {
+    delete moment.aiSections;
   }
   return moment as Moment;
 };

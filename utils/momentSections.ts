@@ -35,7 +35,8 @@ import { MomentMatch, noteVector } from './momentMatching';
 import { centroid, pickLabel, suggestionKey } from './momentSuggestions';
 import { noteTitle } from './noteLabels';
 
-export type SectionLens = 'topic' | 'kind' | 'place' | 'time';
+/** 'ai' sections come from the server model (utils/momentAiSections.ts), the rest are worked out here. */
+export type SectionLens = 'ai' | 'topic' | 'kind' | 'place' | 'time';
 
 export interface MomentSection {
   /** Stable within one sectioning; 'other' for the leftovers. */
@@ -817,6 +818,26 @@ const timeLens = (items: Item[], dist: Distances): Scored | null => {
     quality: 1,
   }));
   return finalize(groups, items, dist.centred, { order: 'given' });
+};
+
+// --- Placing notes into groups made elsewhere --------------------------------
+
+/**
+ * For notes outside every group, the group each clearly belongs with by
+ * embedding: note id to index into `groups`. Notes that sit with no group (or
+ * have no vector) are left out. `notes` is the whole moment, so vectors are
+ * centred the same way as for the lenses above.
+ */
+export const adoptIntoGroups = (groups: string[][], restIds: string[], notes: Memory[]): Map<string, number> => {
+  const items: Item[] = notes.map((m, rank) => ({ id: m.id, m, rank, v: noteVector(m), c: null }));
+  centreVectors(items);
+  const byId = new Map(items.map(i => [i.id, i]));
+  const pick = (ids: string[]) => ids.map(id => byId.get(id)).filter((i): i is Item => !!i);
+  const members = groups.map(pick);
+  const adopted = adoptLeftovers(members, pick(restIds), makeDistance(i => i.c));
+  const out = new Map<string, number>();
+  adopted.forEach((group, g) => group.slice(members[g].length).forEach(item => out.set(item.id, g)));
+  return out;
 };
 
 // --- Entry point ------------------------------------------------------------

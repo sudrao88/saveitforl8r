@@ -466,6 +466,120 @@ describe('useMoments', () => {
     });
   });
 
+  describe('ensureMomentSections', () => {
+    const notes = (n: number) => Array.from({ length: n }, (_, i) => makeMemory(`n${i}`, X));
+    const answer = (ids: string[][]) =>
+      ids.map((noteIds, i) => ({ label: `Section ${i + 1}`, description: '', noteIds }));
+
+    const open = async (memories: Memory[], moments: Moment[] = [makeMoment('m1')]) => {
+      const store = wireMomentStorage(moments);
+      const onChanged = vi.fn();
+      const hook = renderHook(() => useMoments(memories));
+      await flush();
+      act(() => hook.result.current.setOnMomentChanged(onChanged));
+      const ensure = () => act(async () => { await hook.result.current.ensureMomentSections('m1'); });
+      return { store, onChanged, ensure, ...hook };
+    };
+
+    beforeEach(() => {
+      (geminiService.requestMomentSections as any).mockResolvedValue(
+        answer([['n0', 'n1', 'n2'], ['n3', 'n4', 'n5']]),
+      );
+    });
+
+    it('asks once for a moment with six notes, then stores and syncs the sections', async () => {
+      const { store, onChanged, ensure } = await open(notes(6));
+      await ensure();
+
+      expect(geminiService.requestMomentSections).toHaveBeenCalledTimes(1);
+      const request = (geminiService.requestMomentSections as any).mock.calls[0][0];
+      expect(request.title).toBe('Test');
+      expect(request.notes).toHaveLength(6);
+      const saved = store.get('m1')!.aiSections!;
+      expect(saved.sections.map(s => s.label)).toEqual(['Section 1', 'Section 2']);
+      expect(saved.noteCount).toBe(6);
+      expect(onChanged).toHaveBeenCalledWith(expect.objectContaining({ id: 'm1', aiSections: saved }));
+
+      await ensure();
+      expect(geminiService.requestMomentSections).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not ask for a moment with fewer than six notes', async () => {
+      const { ensure } = await open(notes(5));
+      await ensure();
+      expect(geminiService.requestMomentSections).not.toHaveBeenCalled();
+    });
+
+    it('does not ask when a moment is created', async () => {
+      const { result } = await open(notes(6), []);
+      await act(async () => { await result.current.createNewMoment(['Test']); });
+      expect(geminiService.requestMomentSections).not.toHaveBeenCalled();
+    });
+
+    it('stores an empty answer so the moment is not asked about again', async () => {
+      (geminiService.requestMomentSections as any).mockResolvedValue([]);
+      const { store, ensure } = await open(notes(6));
+      await ensure();
+      await ensure();
+      expect(geminiService.requestMomentSections).toHaveBeenCalledTimes(1);
+      expect(store.get('m1')!.aiSections).toMatchObject({ sections: [], noteCount: 6 });
+    });
+
+    it('records nothing on a failure and does not retry on the next open', async () => {
+      (geminiService.requestMomentSections as any).mockRejectedValue(new Error('Proxy error 429'));
+      const { store, ensure } = await open(notes(6));
+      await ensure();
+      await ensure();
+      expect(geminiService.requestMomentSections).toHaveBeenCalledTimes(1);
+      expect(store.get('m1')!.aiSections).toBeUndefined();
+    });
+
+    it('does not ask while offline', async () => {
+      const { ensure } = await open(notes(6));
+      setOnline(false);
+      await ensure();
+      expect(geminiService.requestMomentSections).not.toHaveBeenCalled();
+    });
+
+    it('makes one call when the moment is opened twice at once', async () => {
+      let release: (v: unknown) => void = () => {};
+      (geminiService.requestMomentSections as any).mockImplementation(
+        () => new Promise(r => { release = () => r(answer([['n0', 'n1', 'n2'], ['n3', 'n4', 'n5']])); }),
+      );
+      const { result } = await open(notes(6));
+      await act(async () => {
+        const first = result.current.ensureMomentSections('m1');
+        const second = result.current.ensureMomentSections('m1');
+        await new Promise(r => setTimeout(r, 0));
+        release(null);
+        await Promise.all([first, second]);
+      });
+      expect(geminiService.requestMomentSections).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps sections that synced in from another device during the request', async () => {
+      const { store, ensure } = await open(notes(6));
+      const theirs = { sections: [], assigned: {}, generatedAt: 777, noteCount: 6, otherCount: 0 };
+      (geminiService.requestMomentSections as any).mockImplementation(async () => {
+        store.set('m1', { ...store.get('m1')!, aiSections: theirs });
+        return answer([['n0', 'n1', 'n2'], ['n3', 'n4', 'n5']]);
+      });
+      await ensure();
+      expect(store.get('m1')!.aiSections).toEqual(theirs);
+    });
+
+    it('does not resurrect a moment deleted during the request', async () => {
+      const { store, ensure } = await open(notes(6));
+      (geminiService.requestMomentSections as any).mockImplementation(async () => {
+        store.set('m1', { ...store.get('m1')!, isDeleted: true });
+        return [];
+      });
+      (storageService.saveMoment as any).mockClear();
+      await ensure();
+      expect(storageService.saveMoment).not.toHaveBeenCalled();
+    });
+  });
+
   describe('deleteMoment', () => {
     it('persists a tombstone, removes it from the list, and syncs it', async () => {
       const store = wireMomentStorage([makeMoment('m1'), makeMoment('m2')]);
