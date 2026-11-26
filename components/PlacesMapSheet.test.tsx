@@ -158,8 +158,8 @@ describe('PlacesMapSheet', () => {
     expect(screen.getByText('Food & drink').className).toContain('uppercase');
   });
 
-  it('scrolls the legend without a scrollbar, sizing chips so 3.5 show when there are more than 3', async () => {
-    const labels = ['Food & drink', 'Travel', 'Parks', 'Museums'];
+  it('scrolls the legend without a scrollbar and shows each label in full', async () => {
+    const labels = ['Food & drink', 'Learning & research', 'Parks', 'Museums'];
     const ps: MapPlace[] = labels.map((label, i) => ({
       placeId: `ChIJplace0000${i}`, name: `${label} place`, mapsUri: 'https://maps.example/x',
       category: { key: `k${i}`, label, index: i },
@@ -170,7 +170,9 @@ describe('PlacesMapSheet', () => {
     const key = screen.getByRole('list', { name: 'Map key' });
     expect(key.className).toContain('no-scrollbar');
     expect(key.className).toContain('overflow-x-auto');
-    for (const li of Array.from(key.children)) expect(li.className).toContain('w-[calc((100%-1.5rem)/3.5)]');
+    // Chips keep their natural width: no fixed sizing and no truncated labels.
+    for (const li of Array.from(key.children)) expect(li.className).not.toMatch(/w-\[|max-w/);
+    expect(screen.getByText('Learning & research').className).not.toContain('truncate');
   });
 
   it('filters the map to one group when its legend entry is tapped, and back again', async () => {

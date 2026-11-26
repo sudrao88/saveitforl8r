@@ -367,28 +367,25 @@ const PlacesMapSheet: React.FC<PlacesMapSheetProps> = ({ title, places, onClose,
         {status === 'ready' && (legend.length > 0 || missingCount > 0 || locationError) && (
           <div className={`absolute top-0 inset-x-0 ${zIndex.sticky} p-3 space-y-2 pointer-events-none`}>
             {legend.length > 0 && (
-              // Scrolls edge to edge with no scrollbar. With 4+ groups each chip
-              // is sized so three and a half fit, so the cut-off one at the
-              // right edge shows there is more to scroll to (as in Google Maps).
+              // Chips size to their full names and scroll edge to edge with no
+              // scrollbar, as in Google Maps.
               <ul
                 className="flex gap-2 overflow-x-auto no-scrollbar touch-pan-x -mx-3 -my-1 py-1 pl-3 [&>li:last-child]:mr-3 pointer-events-auto"
                 aria-label="Map key"
               >
                 {legend.map(({ category, count }) => {
                   const active = filterKey === category.key;
-                  // Fixed-width chips leave little room: give it all to the label.
-                  const compact = legend.length > 3;
                   return (
-                    <li key={category.key} className={compact ? 'shrink-0 w-[calc((100%-1.5rem)/3.5)]' : 'shrink-0 max-w-56'}>
+                    <li key={category.key} className="shrink-0">
                       <button
                         onClick={() => toggleFilter(category.key)}
                         aria-pressed={active}
                         aria-label={`${active ? 'Show all places' : `Show only ${category.label}`} (${count})`}
-                        className={`${chip.base} ${active ? chip.active : chip.inactive} w-full pl-1 ${compact ? 'pr-2' : ''} shadow-lg`}
+                        className={`${chip.base} ${active ? chip.active : chip.inactive} pl-1 whitespace-nowrap shadow-lg`}
                       >
                         <img src={markerIcon(markerStyle(category.index), false).url} alt="" className="w-5 h-5 shrink-0" />
-                        <span className={`uppercase truncate ${compact ? '' : 'tracking-wide'}`}>{category.label}</span>
-                        {!compact && <span className="font-medium opacity-70 shrink-0">{count}</span>}
+                        <span className="uppercase tracking-wide">{category.label}</span>
+                        <span className="font-medium opacity-70">{count}</span>
                       </button>
                     </li>
                   );
