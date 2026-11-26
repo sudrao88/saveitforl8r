@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v158",
-  "buildNumber": 158,
-  "buildDate": "2026-11-26T02:19:34.000Z",
+  "version": "saveitforl8r-v159",
+  "buildNumber": 159,
+  "buildDate": "2026-11-26T02:19:45.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "The map's group chips scroll smoothly without a scrollbar."
+  "changelog": "Moments group their notes by type, such as restaurants and hotels."
 }
