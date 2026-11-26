@@ -158,6 +158,21 @@ describe('PlacesMapSheet', () => {
     expect(screen.getByText('Food & drink').className).toContain('uppercase');
   });
 
+  it('scrolls the legend without a scrollbar, sizing chips so 3.5 show when there are more than 3', async () => {
+    const labels = ['Food & drink', 'Travel', 'Parks', 'Museums'];
+    const ps: MapPlace[] = labels.map((label, i) => ({
+      placeId: `ChIJplace0000${i}`, name: `${label} place`, mapsUri: 'https://maps.example/x',
+      category: { key: `k${i}`, label, index: i },
+    }));
+    resolvePlaceLocations.mockResolvedValue(new Map(ps.map((p, i) => [p.placeId, { lat: 12 + i / 100, lng: 77 }])));
+    render(<PlacesMapSheet title="Weekend" places={ps} onClose={() => {}} />);
+    await waitFor(() => expect(markers).toHaveLength(4));
+    const key = screen.getByRole('list', { name: 'Map key' });
+    expect(key.className).toContain('no-scrollbar');
+    expect(key.className).toContain('overflow-x-auto');
+    for (const li of Array.from(key.children)) expect(li.className).toContain('w-[calc((100%-1.5rem)/3.5)]');
+  });
+
   it('filters the map to one group when its legend entry is tapped, and back again', async () => {
     const third = { placeId: 'ChIJcubbon0001', name: 'Cubbon Park', mapsUri: 'https://maps.example/cubbon' };
     resolvePlaceLocations.mockResolvedValue(new Map([
