@@ -557,6 +557,23 @@ describe('useMoments', () => {
       expect(geminiService.requestMomentSections).toHaveBeenCalledTimes(1);
     });
 
+    it('reports the moment as being sectioned only while the request is out', async () => {
+      let release: (v: unknown) => void = () => {};
+      (geminiService.requestMomentSections as any).mockImplementation(
+        () => new Promise(r => { release = () => r([]); }),
+      );
+      const { result } = await open(notes(6));
+      expect(result.current.sectioningIds.has('m1')).toBe(false);
+      let pending: Promise<void> = Promise.resolve();
+      await act(async () => {
+        pending = result.current.ensureMomentSections('m1');
+        await new Promise(r => setTimeout(r, 0));
+      });
+      expect(result.current.sectioningIds.has('m1')).toBe(true);
+      await act(async () => { release(null); await pending; });
+      expect(result.current.sectioningIds.has('m1')).toBe(false);
+    });
+
     it('keeps sections that synced in from another device during the request', async () => {
       const { store, ensure } = await open(notes(6));
       const theirs = { sections: [], assigned: {}, generatedAt: 777, noteCount: 6, otherCount: 0 };

@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v160",
-  "buildNumber": 160,
-  "buildDate": "2026-11-26T04:28:48.000Z",
+  "version": "saveitforl8r-v161",
+  "buildNumber": 161,
+  "buildDate": "2026-11-26T08:51:49.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Moments with six or more notes get named sections when you open them."
+  "changelog": "A small loader shows while a moment's sections are being worked out."
 }

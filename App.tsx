@@ -132,6 +132,7 @@ const AppContent: React.FC = () => {
     createNewMoment,
     creating: momentCreating,
     embeddingIds: momentEmbeddingIds,
+    sectioningIds: momentSectioningIds,
     retryEmbedding: retryMomentEmbedding,
     hideNoteInMoment,
     unhideNoteInMoment,
@@ -1262,6 +1263,7 @@ const AppContent: React.FC = () => {
               memories={memories}
               matches={matchesByMoment.get(frozenActiveMoment.id) ?? []}
               isEmbedding={momentEmbeddingIds.has(frozenActiveMoment.id)}
+              isSectioning={momentSectioningIds.has(frozenActiveMoment.id)}
               onClose={handleMomentClose}
               onDelete={deleteMoment}
               onHideNote={hideNoteInMoment}
