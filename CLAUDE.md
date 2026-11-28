@@ -90,7 +90,7 @@ Three thresholds bound per-note attachment payloads. Keep them in sync when chan
 ### Accepted Risks
 
 - **Client Secret in Bundle**: `VITE_GOOGLE_CLIENT_SECRET` is embedded in the client-side JavaScript at build time. This is an accepted risk because Google treats web client secrets as non-confidential when used with PKCE. The secret alone cannot be used to impersonate users. A future Backend-for-Frontend (BFF) refactor could move token exchange to the proxy server.
-- **Query Endpoint Privacy**: The `/api/query` endpoint requires decrypted memories to be sent to the server for AI-powered search. The proxy temporarily has access to plaintext content during request processing. This is architecturally necessary for the feature.
+- **Search Query Privacy**: Search (`components/SearchPage.tsx`, `hooks/useNoteSearch.ts`, `utils/noteSearch.ts`) ranks notes on the device: BM25 keyword matching fused with cosine similarity against each note's synced `gemini-embedding-2` vector. Only the typed query text (debounced, never note content) is sent to `/api/embed` to get a query vector; offline, search is keyword-only. Recent searches stay in `localStorage` on the device. The legacy `/api/query` endpoint (which received decrypted memories) is no longer called by the client.
 - **Moment Sections Privacy**: Opening a moment can send `/api/moment/sections` a short plaintext card for each of its notes (title, summary, type, tags; never the full content or attachments) so the model can name sections. This happens without an explicit user action, but rarely: only when a moment with 6 or more notes has no sections yet, or has gathered more than 4 notes (and more than 15% of its notes) that fit none and that number has grown since the last request. The rules live in `utils/momentAiSections.ts`; the result is stored on the moment and synced, so other devices do not ask again. Nothing is persisted server-side.
 
 ## Design System
@@ -150,7 +150,7 @@ Preferred scale: `1`, `1.5`, `2`, `3`, `4`, `6`, `8`. Avoid `2.5` except for but
 | `--z-dropdown` | `30` | Dropdowns, popovers |
 | `--z-overlay` | `50` | Lightweight overlays, install bars |
 | `--z-modal` | `60` | Modal dialogs |
-| `--z-sheet` | `70` | Full-screen sheets, chat |
+| `--z-sheet` | `70` | Full-screen sheets |
 | `--z-toast` | `80` | Toast notifications |
 | `--z-tooltip` | `90` | Tooltips |
 

@@ -34,7 +34,7 @@ const K1 = 1.2;
 const B = 0.75;
 
 // How much a hit in each field counts. Short identifying fields first.
-const FIELD_WEIGHTS = {
+export const FIELD_WEIGHTS = {
   title: 3,
   tags: 3,
   type: 2,
@@ -46,7 +46,7 @@ const FIELD_WEIGHTS = {
   content: 1,
 } as const;
 
-type FieldName = keyof typeof FIELD_WEIGHTS;
+export type FieldName = keyof typeof FIELD_WEIGHTS;
 
 // Long note bodies are capped so one huge note doesn't dominate the index.
 const MAX_CONTENT_CHARS = 3000;

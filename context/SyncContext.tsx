@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, ReactNode, useRef, useEffect } from 'react';
-import { getMemories, getMemory, saveMemory, deleteMemory, reconcileEmbeddings, getAllMomentsIncludingDeleted, saveMoment, deleteMomentHard, getAllCalendarEventsIncludingDeleted, saveCalendarEvent, deleteCalendarEventHard, getAllTodoItemsIncludingDeleted, updateTodoItem, deleteTodoItemHard, normalizeMemory } from '../services/storageService';
+import { getMemories, getMemory, saveMemory, deleteMemory, getAllMomentsIncludingDeleted, saveMoment, deleteMomentHard, getAllCalendarEventsIncludingDeleted, saveCalendarEvent, deleteCalendarEventHard, getAllTodoItemsIncludingDeleted, updateTodoItem, deleteTodoItemHard, normalizeMemory } from '../services/storageService';
 
 import {
     listAllFiles,
@@ -924,7 +924,6 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                     onProgress: onSyncProgressRef.current,
                     onMemorySynced: onMemorySyncedRef.current,
                 });
-                reconcileEmbeddings().catch(e => console.error("[Sync] RAG Reconciliation failed:", e));
                 resolve();
             } catch (e: any) {
                 console.error('[Sync] Sync process failed:', e);

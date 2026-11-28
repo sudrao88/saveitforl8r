@@ -2,15 +2,14 @@
 import React, { useState, useRef } from 'react';
 import { useBackButton } from '../hooks/useBackButton';
 
-import { X, Download, Upload, Info, RefreshCw, Cloud, CloudOff, AlertTriangle, AlertCircle, ShieldCheck, LogOut, Settings, Cpu, CheckCircle2, Loader2, Database, ChevronDown, Trash2, Bell, BellOff, Sun, Moon, Monitor, Palette } from 'lucide-react';
+import { X, Download, Upload, Info, RefreshCw, Cloud, CloudOff, AlertTriangle, AlertCircle, ShieldCheck, LogOut, Settings, CheckCircle2, Loader2, Database, Trash2, Bell, BellOff, Sun, Moon, Monitor, Palette } from 'lucide-react';
 
 import { useExportImport } from '../hooks/useExportImport';
 import { useEncryptionSettings } from '../hooks/useEncryptionSettings';
 import { useSync } from '../hooks/useSync';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { useAuth } from '../hooks/useAuth';
-import { ModelStatus, EmbeddingStats } from '../hooks/useAdaptiveSearch';
-import { factoryReset, forceReindexAll, ReconcileReport } from '../services/storageService';
+import { factoryReset } from '../services/storageService';
 import { btn, overlay } from '../styles/design-system';
 import { useTheme, ThemePreference } from '../context/ThemeContext';
 
@@ -21,16 +20,7 @@ interface SettingsModalProps {
   appVersion: string | null;
   syncError: string | null;
   onSyncComplete?: () => void;
-  modelStatus: ModelStatus;
-  downloadProgress?: any;
-  retryDownload: () => void;
-  embeddingStats?: EmbeddingStats;
-  retryFailedEmbeddings?: () => void;
   totalMemories: number;
-  lastError?: string | null;
-  closeWorkerDB?: () => void;
-  reconcileReport?: ReconcileReport | null;
-  onUpdateReport?: (report: ReconcileReport) => void;
   notificationsSupported?: boolean;
   notificationsEnabled?: boolean;
   notificationPermission?: 'granted' | 'denied' | 'prompt';
@@ -66,23 +56,6 @@ const SettingsInfo: React.FC<{ label: string; description: string }> = ({ label,
     <p className="text-xs text-(--color-text-secondary)">{description}</p>
   </div>
 );
-
-const ExpandableSection: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  return (
-    <div className="bg-(--color-surface-overlay)/50 p-3 rounded-(--radius-lg) border border-(--color-border-subtle)">
-      <button onClick={() => setIsOpen(!isOpen)} className="w-full flex items-center justify-between text-left">
-        <span className="text-xs font-bold text-(--color-text-secondary)">Detailed Index Stats</span>
-        <ChevronDown size={16} className={`text-(--color-text-secondary) transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-      </button>
-      {isOpen && (
-        <div className="mt-3 pt-3 border-t border-(--color-border-subtle) animate-in fade-in duration-(--duration-normal)">
-          {children}
-        </div>
-      )}
-    </div>
-  );
-};
 
 const FactoryResetModal: React.FC<{ isOpen: boolean; onClose: () => void; onConfirm: () => void; }> = ({ isOpen, onClose, onConfirm }) => {
     const [confirmationText, setConfirmationText] = useState('');
@@ -153,9 +126,7 @@ const ThemeOption: React.FC<{
 const SettingsModal: React.FC<SettingsModalProps> = (props) => {
   const {
     onClose, onImportSuccess, appVersion,
-    syncError, onSyncComplete, modelStatus, downloadProgress, retryDownload,
-    embeddingStats, retryFailedEmbeddings, totalMemories, lastError, closeWorkerDB,
-    onUpdateReport,
+    syncError, onSyncComplete,
     notificationsSupported, notificationsEnabled, notificationPermission,
     notificationTime, onNotificationsEnabledChange, onNotificationTimeChange,
     previousDayNotificationEnabled, previousDayNotificationTime,
@@ -165,7 +136,6 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
   } = props;
   
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
-  const [isReindexing, setIsReindexing] = useState(false);
   const { theme, resolvedTheme, setTheme } = useTheme();
 
   // Dismiss factory reset dialog on Android back button
@@ -186,30 +156,12 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
       } catch (e: any) { console.error("Sync failed:", e); }
   };
   const handleUnlink = () => { unlink(); };
-  const handleForceReindex = async () => {
-      if (isReindexing) return;
-      setIsReindexing(true);
-      try {
-          const report = await forceReindexAll();
-          if (onUpdateReport) onUpdateReport(report);
-      } catch (e) {
-          console.error("Manual reindex failed", e);
-      } finally {
-          setIsReindexing(false);
-      }
-  };
 
   const handleFactoryResetConfirm = () => {
-      closeWorkerDB?.();
-      setTimeout(() => {
-          factoryReset();
-          setIsResetModalOpen(false);
-      }, 100);
+      factoryReset();
+      setIsResetModalOpen(false);
   };
   
-  const statsReady = embeddingStats?.completed || 0;
-  const statsPending = embeddingStats?.pending || 0;
-  const statsFailed = embeddingStats?.failed || 0;
 
   return (
     <div className="fixed inset-0 z-(--z-sheet) flex items-end sm:items-center justify-center bg-(--color-surface-overlay)/80 backdrop-blur-sm p-0 sm:p-4">
@@ -232,7 +184,7 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
         <div className="overflow-y-auto p-4 sm:p-6 flex-1 space-y-6 overscroll-contain" style={{ paddingBottom: 'max(24px, var(--sab))' }}>
 
 
-          {(syncError || modelStatus === 'error') && (
+          {syncError && (
             <div className="space-y-3">
               {syncError && (
                 isOnline ? (
@@ -256,18 +208,6 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
                   </div>
                 )
               )}
-              {modelStatus === 'error' && (
-                <div className="flex items-start gap-3 p-3 bg-(--color-warning)/30 border border-(--color-warning)/60 rounded-(--radius-xl)">
-                  <AlertTriangle size={18} className="text-(--color-warning) shrink-0 mt-0.5" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-(--color-warning)">AI Model Download Error</p>
-                    <p className="text-xs text-(--color-warning)/80 mt-0.5 break-words">{lastError || 'The local AI model failed to load. Offline search is unavailable.'}</p>
-                  </div>
-                  <button onClick={retryDownload} className={`${btn.base} ${btn.warningSm} shrink-0 gap-1.5`}>
-                    <RefreshCw size={14} /> Retry
-                  </button>
-                </div>
-              )}
             </div>
           )}
 
@@ -284,38 +224,6 @@ const SettingsModal: React.FC<SettingsModalProps> = (props) => {
                 <ThemeOption label="System" icon={Monitor} selected={theme === 'system'} onClick={() => setTheme('system')} />
               </div>
             </div>
-          </SettingsCard>
-
-          <SettingsCard title="AI & Index" icon={Cpu}>
-            <SettingsRow>
-               <SettingsInfo label="Local AI Index" description="On-device model for offline search capabilities." />
-               <div className="flex items-center gap-2">
-
-
-                 <span className={`text-xs px-2 py-1 rounded-(--radius-md) font-medium ${modelStatus === 'ready' ? 'bg-(--color-success)/30 text-(--color-success)' : modelStatus === 'error' ? 'bg-(--color-danger)/30 text-(--color-danger)' : 'bg-(--color-warning)/30 text-(--color-warning)'}`}>{modelStatus}</span>
-
-                 <button onClick={handleForceReindex} disabled={isReindexing} className={`${btn.base} ${btn.secondarySm} gap-1.5`}>
-                    {isReindexing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Re-index
-                 </button>
-               </div>
-            </SettingsRow>
-            <ExpandableSection>
-                {lastError && <p className="text-xs text-(--color-danger) bg-(--color-danger)/20 p-2 rounded-(--radius-md) mb-2">{lastError}</p>}
-                {modelStatus === 'downloading' && (
-                    <div className="space-y-1 mb-2">
-                        <div className="flex justify-between text-xs text-(--color-text-secondary)"><span>Downloading...</span><span>{downloadProgress ? Math.round(downloadProgress.progress || 0) : 0}%</span></div>
-                        <div className="h-1 w-full bg-(--color-surface-raised) rounded-full"><div className="h-full bg-(--color-accent) rounded-full" style={{ width: `${downloadProgress?.progress || 0}%` }}></div></div>
-                    </div>
-                )}
-                <div className="grid grid-cols-3 gap-2 text-center text-xs">
-                    <div className="bg-(--color-surface-raised)/50 p-2 rounded-(--radius-lg)"><span className="block font-bold text-lg text-(--color-success)">{statsReady}</span><span className="text-(--color-text-secondary)">Ready</span></div>
-                    <div className="bg-(--color-surface-raised)/50 p-2 rounded-(--radius-lg)"><span className="block font-bold text-lg text-(--color-accent)">{statsPending}</span><span className="text-(--color-text-secondary)">Pending</span></div>
-                    <div className="bg-(--color-surface-raised)/50 p-2 rounded-(--radius-lg)"><span className="block font-bold text-lg text-(--color-danger)">{statsFailed}</span><span className="text-(--color-text-secondary)">Failed</span></div>
-                </div>
-                 {statsFailed > 0 && retryFailedEmbeddings && (
-                    <button onClick={retryFailedEmbeddings} className={`${btn.base} ${btn.dangerSm} w-full mt-2 bg-(--color-danger)/30 hover:bg-(--color-danger)/40 text-(--color-danger)`}>Retry {statsFailed} Failed Items</button>
-                )}
-            </ExpandableSection>
           </SettingsCard>
 
           {notificationsSupported && (
