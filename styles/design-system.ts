@@ -47,6 +47,9 @@ export const btn = {
     'w-11 h-11 rounded-(--radius-full) bg-(--color-surface-overlay)/90 border border-(--color-border-default) text-(--color-text-secondary) hover:text-(--color-text-primary) shadow-lg backdrop-blur-sm',
   floatingActive:
     'w-11 h-11 rounded-(--radius-full) bg-(--color-surface-overlay)/90 border border-(--color-border-default) text-(--color-accent) hover:text-(--color-accent-hover) shadow-lg backdrop-blur-sm',
+  // Floating action button (assistant entry point)
+  fab:
+    'w-12 h-12 rounded-(--radius-full) bg-(--color-accent) hover:bg-(--color-accent-hover) text-(--color-text-primary) shadow-xl',
   // Full-width tappable list row (search results, recent searches)
   listRow:
     'w-full justify-start text-left gap-3 px-3 py-3 rounded-(--radius-md) hover:bg-(--color-surface-hover-subtle) active:bg-(--color-surface-hover)',
@@ -102,6 +105,9 @@ export const overlay = {
   navBtn:
     'absolute z-(--z-sticky) p-3 rounded-full bg-(--color-surface-base)/40 hover:bg-(--color-surface-base)/70 text-(--color-text-primary)/70 hover:text-(--color-text-primary) transition-all active:scale-90 backdrop-blur-sm',
   // ─── Animation class pairs for AnimatedPresence ──────────
+  // Docked side panel (desktop assistant): slides in from the right edge
+  panelEnter: 'animate-in slide-in-from-right-full duration-(--duration-normal) ease-out',
+  panelExit: 'animate-out slide-out-to-right-full fill-mode-forwards pointer-events-none duration-(--duration-normal) ease-in',
   sheetEnter: 'animate-in slide-in-from-bottom-full duration-(--duration-sheet) ease-out',
   sheetExit: 'animate-out slide-out-to-bottom-full fill-mode-forwards pointer-events-none duration-(--duration-sheet) ease-in',
   modalEnter: 'animate-in slide-in-from-bottom-full duration-(--duration-slow) ease-out',

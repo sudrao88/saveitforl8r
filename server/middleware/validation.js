@@ -20,27 +20,6 @@ export const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9
 /** Gemini File API URIs follow this pattern. */
 export const GEMINI_FILE_URI_RE = /^https:\/\/generativelanguage\.googleapis\.com\//;
 
-/** Gemini File API names look like "files/abc123" — used for ai.files.delete. */
-const GEMINI_FILE_NAME_RE = /^files\/[A-Za-z0-9_-]+$/;
-
-/**
- * Validates an optional pair (fileUri, fileName) referencing a Gemini File
- * API upload — used by /api/query when the inline memories payload exceeds
- * the 1.2 MB threshold.
- *
- * Returns null when valid (or both fields absent), or an error string.
- */
-export const validateContextFileRef = (fileUri, fileName) => {
-  if (fileUri === undefined && fileName === undefined) return null;
-  if (typeof fileUri !== 'string' || !GEMINI_FILE_URI_RE.test(fileUri)) {
-    return 'fileUri must be a valid Gemini File API URI';
-  }
-  if (typeof fileName !== 'string' || !GEMINI_FILE_NAME_RE.test(fileName)) {
-    return 'fileName must be a valid Gemini File API name (e.g. "files/abc123")';
-  }
-  return null;
-};
-
 export const validateEnrichInput = (req, res, next) => {
   const { text, attachments, tags, location, memoryId, requestId } = req.body;
 
@@ -120,42 +99,67 @@ export const validateEnrichInput = (req, res, next) => {
   next();
 };
 
-const MAX_HISTORY_TURNS = 10;
-const MAX_TURN_TEXT_LENGTH = 4000;
+// --- Assistant ---
 
-export const validateQueryInput = (req, res, next) => {
-  const { query, memories, history, memoriesFileUri, memoriesFileName } = req.body;
+export const MAX_ASSISTANT_HISTORY_TURNS = 12;
+export const MAX_ASSISTANT_TURN_LENGTH = 6000;
+export const MAX_ASSISTANT_QUESTION_LENGTH = 2000;
+export const MAX_ASSISTANT_TOOL_RESULTS = 12;
+export const MAX_ASSISTANT_RESULT_LENGTH = 40_000;
+export const MAX_ASSISTANT_RESULTS_TOTAL = 160_000;
+const MAX_ASSISTANT_ARGS_LENGTH = 400;
+const ASSISTANT_TOOL_NAMES = ['search_notes', 'get_notes', 'list_notes'];
+const ASSISTANT_MAX_STEPS = 4;
 
-  if (!query || typeof query !== 'string')
-    return res.status(400).json({ error: 'query is required and must be a string' });
-  if (query.length > 2_000)
-    return res.status(400).json({ error: 'query too long (max 2000 chars)' });
+export const validateAssistantStepInput = (req, res, next) => {
+  const { question, history, toolResults, step, context } = req.body || {};
+  const fail = (error) => res.status(400).json({ error });
 
-  const fileRefError = validateContextFileRef(memoriesFileUri, memoriesFileName);
-  if (fileRefError) return res.status(400).json({ error: `memoriesFileUri/Name: ${fileRefError}` });
+  if (typeof question !== 'string' || !question.trim()) return fail('question is required and must be a string');
+  if (question.length > MAX_ASSISTANT_QUESTION_LENGTH)
+    return fail(`question too long (max ${MAX_ASSISTANT_QUESTION_LENGTH} chars)`);
 
-  // When memoriesFileUri is provided, the memories array is optional —
-  // the LLM reads the context from the uploaded Gemini File.
-  if (memories !== undefined) {
-    if (!Array.isArray(memories))
-      return res.status(400).json({ error: 'memories must be an array' });
-    if (memories.length > 200)
-      return res.status(400).json({ error: 'Too many memories (max 200)' });
-  }
+  if (step !== undefined && (!Number.isInteger(step) || step < 1 || step > ASSISTANT_MAX_STEPS))
+    return fail(`step must be an integer from 1 to ${ASSISTANT_MAX_STEPS}`);
 
   if (history !== undefined) {
-    if (!Array.isArray(history))
-      return res.status(400).json({ error: 'history must be an array' });
-    if (history.length > MAX_HISTORY_TURNS)
-      return res.status(400).json({ error: `Too many history turns (max ${MAX_HISTORY_TURNS})` });
+    if (!Array.isArray(history)) return fail('history must be an array');
+    if (history.length > MAX_ASSISTANT_HISTORY_TURNS)
+      return fail(`Too many history turns (max ${MAX_ASSISTANT_HISTORY_TURNS})`);
     for (const turn of history) {
-      if (!turn.role || !['user', 'model'].includes(turn.role))
-        return res.status(400).json({ error: 'Each history turn must have role "user" or "model"' });
-      if (!turn.text || typeof turn.text !== 'string')
-        return res.status(400).json({ error: 'Each history turn must have a text string' });
-      if (turn.text.length > MAX_TURN_TEXT_LENGTH)
-        return res.status(400).json({ error: `History turn text too long (max ${MAX_TURN_TEXT_LENGTH} chars)` });
+      if (!turn || !['user', 'model'].includes(turn.role))
+        return fail('Each history turn must have role "user" or "model"');
+      if (typeof turn.text !== 'string' || !turn.text)
+        return fail('Each history turn must have a text string');
+      if (turn.text.length > MAX_ASSISTANT_TURN_LENGTH)
+        return fail(`History turn text too long (max ${MAX_ASSISTANT_TURN_LENGTH} chars)`);
     }
+  }
+
+  if (toolResults !== undefined) {
+    if (!Array.isArray(toolResults)) return fail('toolResults must be an array');
+    if (toolResults.length > MAX_ASSISTANT_TOOL_RESULTS)
+      return fail(`Too many tool results (max ${MAX_ASSISTANT_TOOL_RESULTS})`);
+    let total = 0;
+    for (const r of toolResults) {
+      if (!r || !ASSISTANT_TOOL_NAMES.includes(r.tool)) return fail('Each tool result must name a known tool');
+      if (typeof r.args !== 'string' || r.args.length > MAX_ASSISTANT_ARGS_LENGTH)
+        return fail(`Each tool result must have an args string (max ${MAX_ASSISTANT_ARGS_LENGTH} chars)`);
+      if (typeof r.result !== 'string') return fail('Each tool result must have a result string');
+      if (r.result.length > MAX_ASSISTANT_RESULT_LENGTH)
+        return fail(`Tool result too long (max ${MAX_ASSISTANT_RESULT_LENGTH} chars)`);
+      total += r.result.length;
+    }
+    if (total > MAX_ASSISTANT_RESULTS_TOTAL)
+      return fail(`Tool results too long in total (max ${MAX_ASSISTANT_RESULTS_TOTAL} chars)`);
+  }
+
+  if (context !== undefined) {
+    if (!context || typeof context !== 'object' || Array.isArray(context)) return fail('context must be an object');
+    if (context.today !== undefined && (typeof context.today !== 'string' || context.today.length > 60))
+      return fail('context.today must be a short string');
+    if (context.noteCount !== undefined && (!Number.isInteger(context.noteCount) || context.noteCount < 0))
+      return fail('context.noteCount must be a non-negative integer');
   }
 
   next();
