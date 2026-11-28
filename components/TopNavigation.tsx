@@ -1,8 +1,7 @@
 import React from 'react';
-import { Settings, Search, RefreshCw, AlertCircle, Download, AlertTriangle, Loader2, CloudOff } from 'lucide-react';
+import { Settings, Search, RefreshCw, AlertCircle, Loader2, CloudOff } from 'lucide-react';
 import { Logo } from './icons';
 import { ViewMode } from '../types';
-import { ModelStatus } from '../hooks/useAdaptiveSearch';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { btn } from '../styles/design-system';
 
@@ -14,7 +13,6 @@ interface TopNavigationProps {
   onUpdateApp: () => void;
   syncError: boolean;
   isSyncingDownload: boolean;
-  modelStatus: ModelStatus;
   isOtaDownloading?: boolean;
 }
 
@@ -26,11 +24,10 @@ const TopNavigation = React.forwardRef<HTMLElement, TopNavigationProps>(({
     onUpdateApp,
     syncError,
     isSyncingDownload,
-    modelStatus,
     isOtaDownloading
 }, ref) => {
   const isOnline = useOnlineStatus();
-  const showOffline = !isOnline && (syncError || modelStatus === 'error');
+  const showOffline = !isOnline && syncError;
   const showSyncError = isOnline && syncError;
   return (
     <nav ref={ref} className="px-4 py-3 sm:px-8 flex justify-center">
@@ -84,19 +81,15 @@ const TopNavigation = React.forwardRef<HTMLElement, TopNavigationProps>(({
           >
             {isSyncingDownload ? (
                 <RefreshCw size={20} className="text-(--color-accent) animate-spin" />
-            ) : modelStatus === 'downloading' ? (
-                <Loader2 size={20} className="text-(--color-accent) animate-spin" />
             ) : showOffline ? (
                 <CloudOff size={20} className="text-(--color-text-tertiary)" />
             ) : showSyncError ? (
                 <AlertCircle size={20} className="text-(--color-danger)" />
-            ) : modelStatus === 'error' ? (
-                <AlertTriangle size={20} className="text-(--color-danger)" />
             ) : (
                 <Settings size={20} className="text-(--color-text-tertiary) group-hover:text-(--color-text-primary) group-hover:rotate-90 transition-transform duration-(--duration-normal)" />
             )}
 
-            {(showSyncError || (isOnline && modelStatus === 'error')) && !isSyncingDownload && modelStatus !== 'downloading' && (
+            {showSyncError && !isSyncingDownload && (
                 <span className="absolute -top-1 -right-1 flex h-3 w-3">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-(--color-danger) opacity-75"></span>
                     <span className="relative inline-flex rounded-full h-3 w-3 bg-(--color-danger)"></span>

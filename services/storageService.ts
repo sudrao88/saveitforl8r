@@ -1,7 +1,6 @@
 
-import { Memory, Moment, CalendarEvent, TodoItem, isMemoryFailed } from '../types.ts';
+import { Memory, Moment, CalendarEvent, TodoItem } from '../types.ts';
 import { encryptData, decryptData, decryptBatch, EncryptedPayload } from './encryptionService';
-import { db } from './db';
 import { storage } from './platform';
 
 const DB_NAME = 'SaveItForL8rDB';
@@ -12,16 +11,6 @@ const LEGACY_MOMENT_SYNTHESIS_STORE = 'momentSyntheses';
 const CALENDAR_EVENTS_STORE = 'calendarEvents';
 const TODO_ITEMS_STORE = 'todoItems';
 const DB_VERSION = 6;
-
-export interface ReconcileReport {
-    total: number;
-    enriched: number;
-    toQueue: number;
-    alreadyIndexed: number;
-    pendingInQueue: number;
-    error: string | null;
-    timestamp: number;
-}
 
 // Singleton IndexedDB connection — avoids opening a new connection per operation.
 // Under load (hundreds of memories, rapid saves during sync), this eliminates
@@ -212,81 +201,6 @@ const rehydrateMemory = async (stored: StoredMemory): Promise<Memory> => {
   return normalizeMemory(stored as unknown as Memory);
 };
 
-// Resilient helper to queue memories
-const queueMemoriesForEmbedding = async (memories: Memory[]) => {
-    if (memories.length === 0) return;
-    
-    const queueItems: any[] = [];
-    
-    for (const memory of memories) {
-        if (!memory.enrichment) continue;
-
-        // Clear existing state for this note
-        try {
-            await db.vectors.where('originalId').equals(memory.id).delete();
-            await db.processingQueue.where('noteId').equals(memory.id).delete();
-        } catch (e) { console.error(`[RAG] Reset error for ${memory.id}`, e); }
-
-        // Construct Rich Text Payload
-        let textPayload = "";
-        if (memory.content) textPayload += `CONTENT: ${memory.content}\n`;
-        if (memory.enrichment) {
-            if (memory.enrichment.summary) textPayload += `SUMMARY: ${memory.enrichment.summary}\n`;
-            if (memory.enrichment.visualDescription) textPayload += `VISUAL: ${memory.enrichment.visualDescription}\n`;
-            if (memory.enrichment.suggestedTags?.length) textPayload += `TAGS: ${memory.enrichment.suggestedTags.join(', ')}\n`;
-            if (memory.enrichment.locationContext?.name) textPayload += `LOCATION: ${memory.enrichment.locationContext.name}\n`;
-            if (memory.enrichment.entityContext) {
-                if (memory.enrichment.entityContext.type) textPayload += `TYPE: ${memory.enrichment.entityContext.type}\n`;
-                if (memory.enrichment.entityContext.title) textPayload += `ENTITY: ${memory.enrichment.entityContext.title}\n`;
-                if (memory.enrichment.entityContext.subtitle) textPayload += `SUBTITLE: ${memory.enrichment.entityContext.subtitle}\n`;
-                if (memory.enrichment.entityContext.description) textPayload += `DESCRIPTION: ${memory.enrichment.entityContext.description}\n`;
-            }
-        }
-        if (memory.tags?.length) textPayload += `USER TAGS: ${memory.tags.join(', ')}\n`;
-
-        if (textPayload.trim().length > 0) {
-            queueItems.push({
-                noteId: memory.id,
-                type: 'text',
-                contentOrPath: textPayload.trim(),
-                retryCount: 0,
-                status: 'pending_embedding',
-                timestamp: Date.now()
-            });
-        }
-
-        // Attachments - Process lazily or with safety
-        if (memory.attachments) {
-            for (const att of memory.attachments) {
-                if (att.data && (att.mimeType === 'application/pdf' || att.mimeType.startsWith('image/'))) {
-                    // We add a 'pending_extraction' task. 
-                    // To avoid fetch errors blocking the loop, we assume the worker handles the blob if we can get it.
-                    // If we can't get the blob now, we skip this attachment but keep the note context task.
-                    try {
-                        // Data URI to Blob
-                        const res = await fetch(att.data);
-                        const blob = await res.blob();
-                        queueItems.push({
-                            noteId: memory.id,
-                            type: att.mimeType === 'application/pdf' ? 'pdf' : 'image',
-                            contentOrPath: blob,
-                            retryCount: 0,
-                            status: 'pending_extraction',
-                            timestamp: Date.now()
-                        });
-                    } catch (err) {
-                        console.error(`[RAG] Skip attachment for ${memory.id}`, err);
-                    }
-                }
-            }
-        }
-    }
-
-    if (queueItems.length > 0) {
-        await db.processingQueue.bulkPut(queueItems);
-    }
-};
-
 export const getMemories = async (): Promise<Memory[]> => {
   try {
     const dbInstance = await openDB();
@@ -360,9 +274,6 @@ export const getMemory = async (id: string): Promise<Memory | null> => {
 
 export const saveMemory = async (memory: Memory): Promise<void> => {
   const { id, timestamp, ...sensitiveData } = memory;
-  if (sensitiveData.enrichment) {
-      queueMemoriesForEmbedding([memory]).catch(e => console.error("RAG queue error", e));
-  }
   const encryptedPayload = await encryptData(sensitiveData);
   const storedItem: StoredMemory = { id, timestamp, encryptedData: encryptedPayload };
   const dbInstance = await openDB();
@@ -376,11 +287,6 @@ export const saveMemory = async (memory: Memory): Promise<void> => {
 };
 
 export const deleteMemory = async (id: string): Promise<void> => {
-  try {
-      await db.vectors.where('originalId').equals(id).delete();
-      await db.processingQueue.where('noteId').equals(id).delete();
-  } catch (e) { console.error("Failed to delete from RAG DB", e); }
-
   const dbInstance = await openDB();
   return new Promise((resolve, reject) => {
     const tx = dbInstance.transaction(STORE_NAME, 'readwrite');
@@ -398,58 +304,24 @@ export const updateMemoryTags = async (id: string, newTags: string[]): Promise<v
   await saveMemory(memory);
 };
 
-export const reconcileEmbeddings = async (): Promise<ReconcileReport> => {
-  const report: ReconcileReport = { total: 0, enriched: 0, toQueue: 0, alreadyIndexed: 0, pendingInQueue: 0, error: null, timestamp: Date.now() };
-  try {
-    // 1. Ensure DB is open and indices are ready
-    await db.open();
-    
-    const memories = await getMemories();
-    report.total = memories.length;
-    
-    const enrichedMemories = memories.filter(m => m.enrichment && !m.isDeleted && !isMemoryFailed(m));
-    report.enriched = enrichedMemories.length;
+/**
+ * The retired on-device search index (local embedding model vectors and its
+ * processing queue). Search now uses the synced server embeddings, so drop
+ * the old database. Idempotent; a missing database is a no-op.
+ */
+export const LEGACY_SEARCH_DB_NAME = 'SaveItForL8rRAG';
 
-    if (enrichedMemories.length === 0) return report;
-
-    // Use uniqueKeys() to get only the distinct originalIds without loading
-    // full vector records (which include large number[] arrays) into memory
-    const embeddedIdKeys = await db.vectors.orderBy('originalId').uniqueKeys();
-    const embeddedIds2 = new Set(embeddedIdKeys as string[]);
-    report.alreadyIndexed = embeddedIds2.size;
-
-    // Only load active queue items (pending states), not completed/failed
-    const activeQueueItems = await db.processingQueue
-        .where('status').anyOf('pending_extraction', 'pending_embedding')
-        .toArray();
-    const activeQueueIds2 = new Set(activeQueueItems.map(q => q.noteId));
-
-    report.pendingInQueue = activeQueueIds2.size;
-
-    const toQueue = enrichedMemories.filter(m => !embeddedIds2.has(m.id) && !activeQueueIds2.has(m.id));
-    report.toQueue = toQueue.length;
-    
-    if (toQueue.length > 0) {
-        await queueMemoriesForEmbedding(toQueue);
-    }
-    return report;
-  } catch (error: any) {
-      console.error("[RAG] Reconciliation failed:", error);
-      report.error = error.message || String(error);
-      return report;
-  }
-};
-
-export const forceReindexAll = async (): Promise<ReconcileReport> => {
+export const deleteLegacySearchIndex = (): Promise<void> =>
+  new Promise((resolve) => {
     try {
-        console.log("[RAG] Force Reindexing All...");
-        await db.vectors.clear();
-        await db.processingQueue.clear();
-        return await reconcileEmbeddings();
-    } catch (e: any) {
-        return { total: 0, enriched: 0, toQueue: 0, alreadyIndexed: 0, pendingInQueue: 0, error: e.message, timestamp: Date.now() };
+      const req = indexedDB.deleteDatabase(LEGACY_SEARCH_DB_NAME);
+      req.onsuccess = () => resolve();
+      req.onerror = () => resolve();
+      req.onblocked = () => resolve();
+    } catch {
+      resolve();
     }
-};
+  });
 
 // --- Moments CRUD ---
 
@@ -837,7 +709,6 @@ export const deleteTodoItemHard = async (id: string): Promise<void> => {
 export const factoryReset = async () => {
     try {
         console.log("Starting Factory Reset...");
-        try { db.close(); } catch (e) { console.warn('[FactoryReset] RAG DB close failed (non-fatal):', e); }
         // Close the singleton IDB connection so deleteDatabase can proceed
         try { cachedDB?.close(); } catch (e) { console.warn('[FactoryReset] Main DB close failed (non-fatal):', e); } finally { cachedDB = null; dbOpenPromise = null; }
 
@@ -866,7 +737,6 @@ export const factoryReset = async () => {
 
         const dbsToReset = [
             { name: 'SaveItForL8rDB', stores: ['memories', 'moments', 'calendarEvents', 'todoItems'] },
-            { name: 'SaveItForL8rRAG', stores: ['vectors', 'processingQueue'] },
             { name: 'auth_db', stores: ['tokens'] },
             { name: 'saveitforl8r-share', stores: ['shares'] }
         ];

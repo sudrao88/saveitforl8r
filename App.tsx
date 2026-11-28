@@ -20,7 +20,7 @@ import { useFrozenValue } from './hooks/useAnimatedUnmount';
 
 // Lazy-load heavy components that aren't needed on initial render.
 // lazyWithRetry clears stale SW caches and reloads if a chunk fails to import.
-const ChatInterface = lazyWithRetry(() => import('./components/ChatInterface'));
+const SearchPage = lazyWithRetry(() => import('./components/SearchPage'));
 const SettingsModal = lazyWithRetry(() => import('./components/SettingsModal'));
 const NewMemoryPage = lazyWithRetry(() => import('./components/NewMemoryPage'));
 const MomentSheet = lazyWithRetry(() => import('./components/MomentSheet'));
@@ -38,7 +38,7 @@ import { useServiceWorker } from './hooks/useServiceWorker';
 import { useShareReceiver } from './hooks/useShareReceiver';
 import { useSync } from './hooks/useSync';
 import { useAuth } from './hooks/useAuth';
-import { useAdaptiveSearch } from './hooks/useAdaptiveSearch';
+import { useOnlineStatus } from './hooks/useOnlineStatus';
 import { useHotkeys } from './hooks/useHotkeys';
 import { useMoments } from './hooks/useMoments';
 import { useMomentSuggestions } from './hooks/useMomentSuggestions';
@@ -54,7 +54,7 @@ import { useDismissOrphanKeyboard } from './hooks/useDismissOrphanKeyboard';
 import { tryBackHandlers } from './hooks/useBackButton';
 import { SyncProvider } from './context/SyncContext';
 import { ThemeProvider } from './context/ThemeContext';
-import { reconcileEmbeddings, ReconcileReport, getMemories as getStoredMemories } from './services/storageService';
+import { getMemories as getStoredMemories, deleteLegacySearchIndex } from './services/storageService';
 import { ViewMode, Memory, Attachment, Moment, QuickNoteState, CalendarEvent, TodoItem, isMemoryInFlight, isMemoryFailed } from './types';
 import { initGA } from './services/analytics';
 import { escapeHtml } from './utils/editorUtils';
@@ -74,7 +74,6 @@ const AppContent: React.FC = () => {
   const [isCaptureOpen, setIsCaptureOpen] = useState(false);
   const [expandedMemory, setExpandedMemory] = useState<Memory | null>(null);
   const [viewingGallery, setViewingGallery] = useState<{ attachments: Attachment[]; currentIndex: number } | null>(null);
-  const [reconcileReport, setReconcileReport] = useState<ReconcileReport | null>(null);
   const [editingMemory, setEditingMemory] = useState<Memory | null>(null);
   const [activeMoment, setActiveMoment] = useState<Moment | null>(null);
   const [showAllMoments, setShowAllMoments] = useState(false);
@@ -104,7 +103,7 @@ const AppContent: React.FC = () => {
   const { sync, isSyncing, isSyncingDownload, syncError, getSyncStatusMap, syncStatusVersion, retrySyncFile, syncFile, setOnSyncProgress, setOnMemorySynced, syncMoment, syncCalendarEvents, syncTodoItems } = useSync();
   const { authStatus, login, unlink, recheckAuth } = useAuth();
 
-  const { modelStatus, downloadProgress, retryDownload, search, embeddingStats, retryFailedEmbeddings, deleteNoteFromIndex, lastError, closeWorkerDB, isOnline } = useAdaptiveSearch();
+  const isOnline = useOnlineStatus();
 
   const {
     memories,
@@ -420,14 +419,12 @@ const AppContent: React.FC = () => {
   }, [dismissSuggestion]);
 
   const handleFullRefresh = useCallback(async () => {
-      const [, , , , report] = await Promise.all([
+      await Promise.all([
         refreshMemories(),
         refreshMoments(),
         refreshEvents(),
         refreshTodoItems(),
-        reconcileEmbeddings(),
       ]);
-      setReconcileReport(report);
   }, [refreshMemories, refreshMoments, refreshEvents, refreshTodoItems]);
 
   const syncRef = useRef(sync);
@@ -528,7 +525,8 @@ const AppContent: React.FC = () => {
     // Defer non-critical background work so user interactions (e.g. tapping
     // the quick note bar to open the keyboard) are not blocked.
     setTimeout(() => {
-      reconcileEmbeddings().then(setReconcileReport).catch(console.error);
+      // One-time cleanup of the retired on-device search index (model vectors + queue).
+      deleteLegacySearchIndex().catch(console.error);
 
       if (authStatus === 'linked') {
           syncRef.current().then(() => {
@@ -744,7 +742,7 @@ const AppContent: React.FC = () => {
     setExpandedMemory(null);
   }, []);
 
-  const handleChatClose = useCallback(() => {
+  const handleSearchClose = useCallback(() => {
     setView(ViewMode.FEED);
   }, []);
 
@@ -774,7 +772,6 @@ const AppContent: React.FC = () => {
 
   const handleDeleteMemory = useCallback((id: string) => {
     handleDelete(id);
-    deleteNoteFromIndex(id);
     removeEventsForMemory(id).then(tombstones => {
       if (tombstones.length > 0) {
         syncCalendarEvents(tombstones).catch(err => console.error('[Calendar] Failed to sync deleted events:', err));
@@ -786,13 +783,12 @@ const AppContent: React.FC = () => {
       }
     }).catch(err => console.error('[Todo] Failed to remove items for memory:', err));
     if (expandedMemory?.id === id) setExpandedMemory(null);
-  }, [handleDelete, expandedMemory, deleteNoteFromIndex, removeEventsForMemory, syncCalendarEvents, removeTodoItemsForMemory, syncTodoItems]);
+  }, [handleDelete, expandedMemory, removeEventsForMemory, syncCalendarEvents, removeTodoItemsForMemory, syncTodoItems]);
 
   const handleDeleteNotes = useCallback(async (noteIds: string[]) => {
     await Promise.all(noteIds.map(async (id) => {
       try {
         await handleDelete(id);
-        deleteNoteFromIndex(id);
         const eventTombstones = await removeEventsForMemory(id);
         if (eventTombstones.length > 0) {
           await syncCalendarEvents(eventTombstones);
@@ -805,7 +801,7 @@ const AppContent: React.FC = () => {
         console.error(`[DeleteNotes] Failed to delete note ${id}:`, err);
       }
     }));
-  }, [handleDelete, deleteNoteFromIndex, removeEventsForMemory, syncCalendarEvents, removeTodoItemsForMemory, syncTodoItems]);
+  }, [handleDelete, removeEventsForMemory, syncCalendarEvents, removeTodoItemsForMemory, syncTodoItems]);
 
   const handleUpdateCalendarEvent = useCallback(async (eventId: string, changes: Partial<CalendarEvent>) => {
     const updated = await updateEvent(eventId, changes);
@@ -893,6 +889,12 @@ const AppContent: React.FC = () => {
 
     return () => window.removeEventListener('onWidgetSearch', processWidgetSearch);
   }, []);
+
+  // Search spans every note, independent of the feed's active filters.
+  const searchableMemories = useMemo(
+    () => memories.filter(m => !m.isDeleted && !m.isDeleting),
+    [memories],
+  );
 
   const displayMemories = useMemo(() => {
     const active = filteredMemories.filter(m => !m.isDeleting);
@@ -1021,7 +1023,6 @@ const AppContent: React.FC = () => {
               onUpdateApp={handleUpdateApp}
               syncError={!!syncError}
               isSyncingDownload={isSyncingDownload}
-              modelStatus={modelStatus}
               isOtaDownloading={isOtaDownloading}
             />
         </div>
@@ -1145,14 +1146,15 @@ const AppContent: React.FC = () => {
         className="fixed inset-0 z-(--z-modal)"
       >
         <ErrorBoundary
-          fallbackTitle="Brain Search encountered an error"
-          fallbackMessage="The AI search feature hit an unexpected issue. Your memories are safe — try reloading."
+          fallbackTitle="Search encountered an error"
+          fallbackMessage="Search hit an unexpected issue. Your memories are safe — try reloading."
         >
           <Suspense fallback={null}>
-            <ChatInterface
-              memories={displayMemories}
-              onClose={handleChatClose}
-              searchFunction={search}
+            <SearchPage
+              memories={searchableMemories}
+              onClose={handleSearchClose}
+              calendarEvents={calendarEvents}
+              todoItems={todoItems}
               onViewAttachment={handleViewAttachment}
               onDelete={handleDeleteMemory}
               onEdit={handleEditMemory}
@@ -1224,15 +1226,7 @@ const AppContent: React.FC = () => {
               appVersion={versionToDisplay}
               syncError={syncError}
               onSyncComplete={handleFullRefresh}
-              modelStatus={modelStatus}
-              downloadProgress={downloadProgress}
-              retryDownload={retryDownload}
-              embeddingStats={embeddingStats}
-              retryFailedEmbeddings={retryFailedEmbeddings}
               totalMemories={activeMemoryCount}
-              lastError={lastError}
-              closeWorkerDB={closeWorkerDB}
-              reconcileReport={reconcileReport}
               notificationsSupported={notificationsSupported}
               notificationsEnabled={notificationsEnabled}
               notificationPermission={notificationPermission}

@@ -40,8 +40,8 @@ const EmptyState: React.FC<EmptyStateProps> = ({ hasMemories, clearFilters }) =>
               </div>
               <div className={`${card.base} px-3 py-3`}>
                 <div className="text-lg mb-1">🔮</div>
-                <h3 className={text.subheading}>Brain Search</h3>
-                <p className={`${text.caption} leading-snug`}>Ask questions, get answers from your notes</p>
+                <h3 className={text.subheading}>Smart Search</h3>
+                <p className={`${text.caption} leading-snug`}>Find notes by keyword or by meaning</p>
               </div>
               <div className={`${card.base} px-3 py-3`}>
                 <div className="text-lg mb-1">🧩</div>

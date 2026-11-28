@@ -31,7 +31,6 @@ vi.mock('../services/storageService', () => ({
   saveMemory: vi.fn().mockResolvedValue(undefined),
   deleteMemory: vi.fn().mockResolvedValue(undefined),
   normalizeMemory: vi.fn((memory: any) => memory),
-  reconcileEmbeddings: vi.fn().mockResolvedValue({ total: 0, enriched: 0, toQueue: 0, alreadyIndexed: 0, pendingInQueue: 0, error: null, timestamp: Date.now() }),
   getAllMomentsIncludingDeleted: vi.fn().mockResolvedValue([]),
   saveMoment: vi.fn().mockResolvedValue(undefined),
   deleteMomentHard: vi.fn().mockResolvedValue(undefined),

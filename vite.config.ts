@@ -46,7 +46,6 @@ export default defineConfig(({ mode }) => {
           manualChunks: {
             'vendor-react': ['react', 'react-dom'],
             'vendor-marked': ['marked'],
-            'vendor-dexie': ['dexie'],
             'vendor-pdf': ['pdfjs-dist'],
           },
         },
@@ -56,8 +55,5 @@ export default defineConfig(({ mode }) => {
       format: 'es',
       plugins: () => [react()]
     },
-    optimizeDeps: {
-      exclude: ['@xenova/transformers', '@orama/orama']
-    }
   };
 });

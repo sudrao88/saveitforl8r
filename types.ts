@@ -285,12 +285,6 @@ export interface UploadProgress {
   totalBytes: number;
 }
 
-export interface ChatMessage {
-  role: 'user' | 'model';
-  text: string;
-  sources?: string[]; // IDs of memories used
-}
-
 export enum ViewMode {
   FEED = 'FEED',
   RECALL = 'RECALL',
