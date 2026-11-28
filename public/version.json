@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v161",
-  "buildNumber": 161,
-  "buildDate": "2026-11-26T08:51:49.000Z",
+  "version": "saveitforl8r-v162",
+  "buildNumber": 162,
+  "buildDate": "2026-11-28T08:22:35.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "A small loader shows while a moment's sections are being worked out."
+  "changelog": "Search is now a simple list of notes, matched by keyword and by meaning as you type."
 }
