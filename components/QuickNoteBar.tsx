@@ -508,7 +508,7 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
                 contentEditable
                 tabIndex={0}
                 role="textbox"
-                className="w-full min-h-[1.5em] max-h-[6em] overflow-y-auto bg-(--color-surface-raised) text-base text-(--color-text-primary) rounded-(--radius-xl) px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-(--color-accent)/40 border border-(--color-border-default) focus:border-(--color-accent)/50 transition-colors prose prose-invert max-w-none rich-editor rich-editor--compact text-left touch-manipulation"
+                className="w-full min-h-[1.5em] max-h-[6em] overflow-y-auto no-scrollbar bg-(--color-surface-raised) text-base text-(--color-text-primary) rounded-(--radius-xl) px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-(--color-accent)/40 border border-(--color-border-default) focus:border-(--color-accent)/50 transition-colors prose prose-invert max-w-none rich-editor rich-editor--compact text-left touch-manipulation"
                 dir="ltr"
                 onClick={handleEditorTap}
                 onKeyUp={checkFormats}

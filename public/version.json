@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v163",
-  "buildNumber": 163,
-  "buildDate": "2026-11-28T13:31:25.839Z",
+  "version": "saveitforl8r-v164",
+  "buildNumber": 164,
+  "buildDate": "2026-11-28T13:49:03.000Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "New assistant: ask questions about your notes and their attachments, and see which notes each answer came from."
+  "changelog": "Cleaner text boxes: the note bar and the assistant's question box no longer show a scroll bar."
 }
