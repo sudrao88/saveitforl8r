@@ -6,7 +6,10 @@
  *   middleware/validation.js — Request input validation
  *   services/gemini.js       — Schemas, prompts, sanitization
  *   routes/enrich.js         — /api/enrich + /api/enrich/results
- *   routes/query.js          — /api/query
+ *   routes/assistant.js      — /api/assistant/step (one step of the notes assistant)
+ *                              /api/assistant/attachment (read one file of a note)
+ *   lib/driveNotes.js        — Fetch a note's attachment from the user's Drive
+ *   lib/assistant.js         — Assistant prompt, schema, step normalization
  *   routes/moment.js         — /api/moment/embed (intent + term vectors, emoji for moments)
  *                              /api/moment/sections (named sections for a moment's notes)
  *   lib/sanitize.js          — Shared sanitization utilities
@@ -20,7 +23,7 @@ import rateLimit from 'express-rate-limit';
 import { GoogleGenAI } from '@google/genai';
 import { Firestore } from '@google-cloud/firestore';
 import { createEnrichRouter } from './routes/enrich.js';
-import { createQueryRouter } from './routes/query.js';
+import { createAssistantRouter } from './routes/assistant.js';
 import { createEmbedRouter } from './routes/embed.js';
 import { createMomentRouter } from './routes/moment.js';
 import { createPushRouter } from './routes/push.js';
@@ -145,7 +148,7 @@ app.get('/health', healthLimiter, async (_req, res) => {
 const sharedDeps = { ai, db, MODEL_NAME, FALLBACK_MODEL_NAME, GEMINI_TIMEOUT_MS, ENRICHMENT_COLLECTION, ENRICHMENT_TTL_MS, ENRICHMENT_FAILED_TTL_MS, aiLimiter };
 
 app.use('/api/enrich', createEnrichRouter(sharedDeps));
-app.use('/api/query', createQueryRouter(sharedDeps));
+app.use('/api/assistant', createAssistantRouter(sharedDeps));
 app.use('/api/embed', createEmbedRouter(sharedDeps));
 app.use('/api/push', createPushRouter({ db }));
 app.use('/api/upload', createUploadRouter({ ai, db }));

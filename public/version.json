@@ -1,7 +1,7 @@
 {
-  "version": "saveitforl8r-v162",
-  "buildNumber": 162,
-  "buildDate": "2026-11-28T08:22:35.000Z",
+  "version": "saveitforl8r-v163",
+  "buildNumber": 163,
+  "buildDate": "2026-11-28T13:31:25.839Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "Search is now a simple list of notes, matched by keyword and by meaning as you type."
+  "changelog": "New assistant: ask questions about your notes and their attachments, and see which notes each answer came from."
 }

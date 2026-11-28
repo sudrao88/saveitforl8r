@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, Suspense } from 'react';
-import { Bell, RefreshCw, X } from 'lucide-react';
+import { Bell, RefreshCw, Sparkles, X } from 'lucide-react';
 import { App as CapacitorApp, URLOpenListenerEvent } from '@capacitor/app';
 import { isNative } from './services/platform';
 import MemoryCard from './components/MemoryCard';
@@ -21,6 +21,7 @@ import { useFrozenValue } from './hooks/useAnimatedUnmount';
 // Lazy-load heavy components that aren't needed on initial render.
 // lazyWithRetry clears stale SW caches and reloads if a chunk fails to import.
 const SearchPage = lazyWithRetry(() => import('./components/SearchPage'));
+const AssistantPanel = lazyWithRetry(() => import('./components/AssistantPanel'));
 const SettingsModal = lazyWithRetry(() => import('./components/SettingsModal'));
 const NewMemoryPage = lazyWithRetry(() => import('./components/NewMemoryPage'));
 const MomentSheet = lazyWithRetry(() => import('./components/MomentSheet'));
@@ -39,6 +40,7 @@ import { useShareReceiver } from './hooks/useShareReceiver';
 import { useSync } from './hooks/useSync';
 import { useAuth } from './hooks/useAuth';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
+import { useMediaQuery, DESKTOP_QUERY } from './hooks/useMediaQuery';
 import { useHotkeys } from './hooks/useHotkeys';
 import { useMoments } from './hooks/useMoments';
 import { useMomentSuggestions } from './hooks/useMomentSuggestions';
@@ -68,9 +70,14 @@ const SHEET_DURATION = 600;
 
 /** Must match --duration-slow in index.css (used by overlay.viewEnter / viewExit / modalEnter / modalExit / backdropEnter / backdropExit). */
 const VIEW_DURATION = 400;
+// Docked assistant panel slide (matches --duration-normal)
+const PANEL_DURATION = 250;
 
 const AppContent: React.FC = () => {
   const [view, setView] = useState<ViewMode>(ViewMode.FEED);
+  const [isAssistantOpen, setIsAssistantOpen] = useState(false);
+  // Desktop docks the assistant beside the feed; smaller screens get a full-screen sheet.
+  const isDesktop = useMediaQuery(DESKTOP_QUERY);
   const [isCaptureOpen, setIsCaptureOpen] = useState(false);
   const [expandedMemory, setExpandedMemory] = useState<Memory | null>(null);
   const [viewingGallery, setViewingGallery] = useState<{ attachments: Attachment[]; currentIndex: number } | null>(null);
@@ -682,6 +689,8 @@ const AppContent: React.FC = () => {
         handleCaptureClose();
       } else if (view === ViewMode.RECALL) {
         setView(ViewMode.FEED);
+      } else if (isAssistantOpen) {
+        setIsAssistantOpen(false);
       } else if (canGoBack) {
         window.history.back();
       } else {
@@ -696,7 +705,7 @@ const AppContent: React.FC = () => {
       // Since addListener is async in some versions, but usually returns PluginListenerHandle
       listener.then(handle => handle.remove()).catch(e => console.error(e));
     };
-  }, [viewingGallery, expandedMemory, isSettingsOpen, setIsSettingsOpen, editingMemory, isCaptureOpen, view, activeMoment, activeSuggestion, showAllMoments, showCalendarAgenda, showTodoList, showDeletionCandidates, showCreateMoment, handleCaptureClose, handleEditClose]);
+  }, [viewingGallery, expandedMemory, isSettingsOpen, setIsSettingsOpen, editingMemory, isCaptureOpen, view, isAssistantOpen, activeMoment, activeSuggestion, showAllMoments, showCalendarAgenda, showTodoList, showDeletionCandidates, showCreateMoment, handleCaptureClose, handleEditClose]);
 
   useEffect(() => {
     if (shareData) {
@@ -745,6 +754,9 @@ const AppContent: React.FC = () => {
   const handleSearchClose = useCallback(() => {
     setView(ViewMode.FEED);
   }, []);
+
+  const handleAssistantOpen = useCallback(() => setIsAssistantOpen(true), []);
+  const handleAssistantClose = useCallback(() => setIsAssistantOpen(false), []);
 
   const handleSetView = useCallback((newView: ViewMode) => {
     setView(newView);
@@ -972,7 +984,11 @@ const AppContent: React.FC = () => {
   }, [isCaptureOpen, quickNoteExpandState, shareData]);
 
   // Truly fullscreen views (opaque surface at z-sheet / z-modal) — QuickNoteBar must hide
-  const isFullscreenViewOpen = !!editingMemory || isCaptureOpen || view === ViewMode.RECALL || !!viewingGallery;
+  // The assistant only counts as fullscreen on small screens; on desktop it is
+  // docked beside the feed, which stays interactive.
+  const isAssistantFullscreen = isAssistantOpen && !isDesktop;
+  const isAssistantDocked = isAssistantOpen && isDesktop;
+  const isFullscreenViewOpen = !!editingMemory || isCaptureOpen || view === ViewMode.RECALL || !!viewingGallery || isAssistantFullscreen;
   // Any overlay (fullscreen OR sheet) — feed behind gets pointer-events-none + aria-hidden
   const anyOverlayOpen = isFullscreenViewOpen || !!liveExpandedMemory || isSettingsOpen || !!liveActiveMoment || !!activeSuggestion || showAllMoments || showCalendarAgenda || showTodoList || showDeletionCandidates;
 
@@ -1009,10 +1025,19 @@ const AppContent: React.FC = () => {
   const frozenViewingGallery = useFrozenValue(viewingGallery);
   const frozenMomentError = useFrozenValue(momentError);
 
+  const assistantFab = (
+    <button onClick={handleAssistantOpen} className={`${btn.base} ${btn.fab}`} aria-label="Ask the assistant" title="Ask the assistant">
+      <Sparkles size={22} />
+    </button>
+  );
+
   return (
     <div className="min-h-screen bg-(--color-surface-base) flex flex-col">
       {/* Feed layout — always rendered, overlaid by fullscreen views */}
-      <div className={feedLocked ? 'pointer-events-none' : undefined} aria-hidden={feedLocked || undefined}>
+      <div
+        className={[feedLocked ? 'pointer-events-none' : '', isAssistantDocked ? 'lg:pr-104' : ''].filter(Boolean).join(' ') || undefined}
+        aria-hidden={feedLocked || undefined}
+      >
         <div className="sticky top-0 z-(--z-overlay) bg-(--color-surface-base)/80 backdrop-blur-md pt-[var(--sat)]">
             <TopNavigation
               ref={topNavInnerRef}
@@ -1132,7 +1157,13 @@ const AppContent: React.FC = () => {
             ref={quickNoteBarRef}
             onSave={handleQuickNoteSave}
             onExpand={handleQuickNoteExpand}
+            floatingAction={assistantFab}
           />
+        )}
+
+        {/* Desktop: the assistant button sits at the bottom right of the feed */}
+        {!isFullscreenViewOpen && !isAssistantOpen && (
+          <div className="hidden lg:block fixed bottom-6 right-6 z-(--z-modal)">{assistantFab}</div>
         )}
       </div>
 
@@ -1153,6 +1184,36 @@ const AppContent: React.FC = () => {
             <SearchPage
               memories={searchableMemories}
               onClose={handleSearchClose}
+              calendarEvents={calendarEvents}
+              todoItems={todoItems}
+              onViewAttachment={handleViewAttachment}
+              onDelete={handleDeleteMemory}
+              onEdit={handleEditMemory}
+              onUpdate={updateMemoryContent}
+              onTogglePin={handleTogglePin}
+            />
+          </Suspense>
+        </ErrorBoundary>
+      </AnimatedPresence>
+
+      <AnimatedPresence
+        isOpen={isAssistantOpen}
+        enterClassName={isDesktop ? overlay.panelEnter : overlay.viewEnter}
+        exitClassName={isDesktop ? overlay.panelExit : overlay.viewExit}
+        duration={isDesktop ? PANEL_DURATION : VIEW_DURATION}
+        className={isDesktop ? 'fixed inset-y-0 right-0 w-104 z-(--z-overlay)' : 'fixed inset-0 z-(--z-modal)'}
+      >
+        <ErrorBoundary
+          fallbackTitle="The assistant encountered an error"
+          fallbackMessage="The assistant hit an unexpected issue. Your memories are safe — try reopening it."
+        >
+          <Suspense fallback={null}>
+            <AssistantPanel
+              memories={searchableMemories}
+              onClose={handleAssistantClose}
+              isDocked={isDesktop}
+              isAuthenticated={authStatus === 'linked'}
+              onSignIn={login}
               calendarEvents={calendarEvents}
               todoItems={todoItems}
               onViewAttachment={handleViewAttachment}

@@ -20,6 +20,8 @@ marked.setOptions({ breaks: true, gfm: true });
 interface QuickNoteBarProps {
   onSave: (text: string, attachments: Attachment[], tags: string[]) => Promise<void>;
   onExpand: (state: QuickNoteState) => void;
+  /** Floating control shown above the bar's right edge on small screens. */
+  floatingAction?: React.ReactNode;
 }
 
 export interface QuickNoteBarHandle {
@@ -31,7 +33,7 @@ export interface QuickNoteBarHandle {
 
 // ChecklistItemData imported from ./ChecklistItems
 
-const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave, onExpand }, ref) => {
+const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave, onExpand, floatingAction }, ref) => {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [tags, setTags] = useState<string[]>([]);
   const [showTags, setShowTags] = useState(false);
@@ -404,6 +406,9 @@ const QuickNoteBar = forwardRef<QuickNoteBarHandle, QuickNoteBarProps>(({ onSave
         bottom: keyboardHeight > 0 ? `${keyboardHeight}px` : undefined,
       }}
     >
+      {floatingAction && keyboardHeight === 0 && (
+        <div className="absolute bottom-full right-3 mb-1 lg:hidden">{floatingAction}</div>
+      )}
       <div className="bg-(--color-surface-overlay)/95 backdrop-blur-xl border-2 border-(--color-accent) rounded-(--radius-xl) shadow-[0_0_16px_rgba(156,163,175,0.3)]">
         {/* File too large warning */}
         {rejectedFiles.length > 0 && (
