@@ -108,7 +108,7 @@ export const MAX_ASSISTANT_TOOL_RESULTS = 12;
 export const MAX_ASSISTANT_RESULT_LENGTH = 40_000;
 export const MAX_ASSISTANT_RESULTS_TOTAL = 160_000;
 const MAX_ASSISTANT_ARGS_LENGTH = 400;
-const ASSISTANT_TOOL_NAMES = ['search_notes', 'get_notes', 'list_notes'];
+const ASSISTANT_TOOL_NAMES = ['search_notes', 'get_notes', 'list_notes', 'read_attachment'];
 const ASSISTANT_MAX_STEPS = 4;
 
 export const validateAssistantStepInput = (req, res, next) => {
@@ -160,6 +160,51 @@ export const validateAssistantStepInput = (req, res, next) => {
       return fail('context.today must be a short string');
     if (context.noteCount !== undefined && (!Number.isInteger(context.noteCount) || context.noteCount < 0))
       return fail('context.noteCount must be a non-negative integer');
+  }
+
+  next();
+};
+
+const ASSISTANT_NOTE_ID_RE = /^[A-Za-z0-9_-]{1,100}$/;
+/** Inline attachment data above this must be pre-uploaded and sent as a fileUri. */
+export const MAX_ASSISTANT_INLINE_ATTACHMENT_CHARS = 1_200_000;
+
+/**
+ * /api/assistant/attachment. With only noteId + attachmentId the server reads
+ * the file from the user's Drive. The app-upload fallback adds mimeType and
+ * either a pre-uploaded Gemini file (fileUri + fileName) or small inline data.
+ */
+export const validateAssistantAttachmentInput = (req, res, next) => {
+  const { noteId, attachmentId, name, question, mimeType, fileUri, fileName, data } = req.body || {};
+  const fail = (error) => res.status(400).json({ error });
+
+  if (typeof noteId !== 'string' || !ASSISTANT_NOTE_ID_RE.test(noteId)) return fail('noteId is required');
+  if (typeof attachmentId !== 'string' || !attachmentId || attachmentId.length > 100)
+    return fail('attachmentId is required (max 100 chars)');
+  if (typeof question !== 'string' || !question.trim() || question.length > 500)
+    return fail('question is required (max 500 chars)');
+  if (name !== undefined && (typeof name !== 'string' || name.length > 256))
+    return fail('name must be a string (max 256 chars)');
+
+  const hasFile = fileUri !== undefined || fileName !== undefined;
+  const hasData = data !== undefined;
+  if (hasFile && hasData) return fail('Send either fileUri or data, not both');
+
+  if (hasFile) {
+    if (typeof fileUri !== 'string' || !GEMINI_FILE_URI_RE.test(fileUri))
+      return fail('fileUri must be a valid Gemini File API URI');
+    if (typeof fileName !== 'string' || !/^files\/[A-Za-z0-9_-]+$/.test(fileName))
+      return fail('fileName must be a valid Gemini File API name (e.g. "files/abc123")');
+  }
+  if (hasData) {
+    if (typeof data !== 'string' || !data) return fail('data must be a base64 string');
+    if (data.length > MAX_ASSISTANT_INLINE_ATTACHMENT_CHARS)
+      return fail(`data too long (max ${MAX_ASSISTANT_INLINE_ATTACHMENT_CHARS} chars); upload the file instead`);
+    if (!/^[A-Za-z0-9+/]+={0,2}$/.test(data)) return fail('data must be base64');
+  }
+  if (hasFile || hasData) {
+    if (typeof mimeType !== 'string' || !ALLOWED_MIME_TYPES.includes(mimeType))
+      return fail(`Unsupported mimeType. Allowed: ${ALLOWED_MIME_TYPES.join(', ')}`);
   }
 
   next();

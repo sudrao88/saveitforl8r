@@ -3,13 +3,16 @@ import { Memory } from '../types';
 
 vi.mock('./proxyService', () => ({ postProxy: vi.fn() }));
 vi.mock('./geminiService', () => ({ embedTexts: vi.fn() }));
+vi.mock('./assistantAttachments', () => ({ readAttachment: vi.fn() }));
 
 import { postProxy } from './proxyService';
 import { embedTexts } from './geminiService';
-import { AssistantCancelledError, buildHistory, MAX_ASSISTANT_STEPS, MAX_HISTORY_TURNS, runAssistantTurn } from './assistantService';
+import { readAttachment } from './assistantAttachments';
+import { AssistantCancelledError, buildHistory, MAX_ASSISTANT_STEPS, MAX_ATTACHMENT_READS, MAX_HISTORY_TURNS, runAssistantTurn } from './assistantService';
 
 const post = vi.mocked(postProxy);
 const embed = vi.mocked(embedTexts);
+const readFile = vi.mocked(readAttachment);
 
 const note = (id: string, content: string, extra: Partial<Memory> = {}): Memory => ({
   id, timestamp: new Date(2026, 2, 10, 12).getTime(), content, tags: [], ...extra,
@@ -24,6 +27,7 @@ const bodyOf = (call: number) => post.mock.calls[call][1] as any;
 beforeEach(() => {
   post.mockReset();
   embed.mockReset();
+  readFile.mockReset();
   embed.mockResolvedValue([]); // no query vector: keyword-only search
 });
 
@@ -85,6 +89,24 @@ describe('runAssistantTurn', () => {
     const body = bodyOf(0);
     expect(body.history).toEqual([{ role: 'user', text: 'ramen?' }, { role: 'model', text: 'Ichiran.' }]);
     expect(body.toolResults.map((r: any) => `${r.tool}:${r.args}`)).toContain('get_notes:n1');
+  });
+
+  it('opens attachments through read_attachment, up to a per-question limit', async () => {
+    const open = { tool: 'read_attachment', noteId: 'n1', attachment: 'menu.pdf', query: 'prices' };
+    post
+      .mockResolvedValueOnce({ type: 'tools', calls: [open, open] })
+      .mockResolvedValueOnce({ type: 'tools', calls: [open, open] })
+      .mockResolvedValueOnce({ type: 'answer', answer: 'Ramen is 980 yen.', sources: ['n1'] });
+    readFile.mockResolvedValue({ tool: 'read_attachment', args: 'n1, "menu.pdf"', result: 'FILE: menu.pdf\nRamen 980 yen' });
+
+    const out = await runAssistantTurn({ question: 'How much is the ramen?', history: [], memories: notes });
+
+    expect(out.answer).toBe('Ramen is 980 yen.');
+    expect(readFile).toHaveBeenCalledTimes(MAX_ATTACHMENT_READS);
+    const sent = bodyOf(2).toolResults.filter((r: any) => r.tool === 'read_attachment');
+    expect(sent).toHaveLength(4);
+    expect(sent[0].result).toContain('Ramen 980 yen');
+    expect(sent[3].result).toContain('No more files can be opened');
   });
 
   it('never runs more than the maximum number of steps', async () => {

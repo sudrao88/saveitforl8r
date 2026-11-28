@@ -1,4 +1,4 @@
-import { Memory } from '../types';
+import { Attachment, Memory } from '../types';
 import { noteTitle } from './noteLabels';
 import { searchNotes } from './noteSearch';
 
@@ -13,7 +13,11 @@ import { searchNotes } from './noteSearch';
 export type AssistantToolCall =
   | { tool: 'search_notes'; query: string; queryVector?: number[]; limit?: number }
   | { tool: 'get_notes'; ids: string[] }
-  | { tool: 'list_notes'; after?: string; before?: string; tag?: string; type?: string; limit?: number };
+  | { tool: 'list_notes'; after?: string; before?: string; tag?: string; type?: string; limit?: number }
+  | { tool: 'read_attachment'; noteId: string; attachment: string; query: string };
+
+/** Tools answered from the notes already on the device, with no network call. */
+export type LocalToolCall = Exclude<AssistantToolCall, { tool: 'read_attachment' }>;
 
 export interface AssistantToolResult {
   tool: AssistantToolCall['tool'];
@@ -208,8 +212,8 @@ const runList = (call: Extract<AssistantToolCall, { tool: 'list_notes' }>, memor
   return { tool: 'list_notes', args, result };
 };
 
-/** Run one tool call against the user's notes. */
-export const runAssistantTool = (call: AssistantToolCall, memories: Memory[]): AssistantToolResult => {
+/** Run one local tool call against the user's notes. */
+export const runAssistantTool = (call: LocalToolCall, memories: Memory[]): AssistantToolResult => {
   const live = memories.filter(m => !m.isDeleted && !m.isDeleting);
   const out =
     call.tool === 'search_notes' ? runSearch(call, live)
@@ -235,5 +239,25 @@ export const appendToolResult = (results: AssistantToolResult[], next: Assistant
 export const describeToolCall = (call: AssistantToolCall): string => {
   if (call.tool === 'search_notes') return `Searching notes for “${clip(call.query, 40)}”…`;
   if (call.tool === 'get_notes') return call.ids.length === 1 ? 'Reading a note…' : `Reading ${call.ids.length} notes…`;
+  if (call.tool === 'read_attachment') return `Opening ${clip(call.attachment || 'an attachment', 40)}…`;
   return 'Looking through your notes…';
+};
+
+const looseName = (name: string): string => name.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+
+/**
+ * The attachment a read_attachment call refers to. Names are matched loosely
+ * (the model's copy may differ in case or punctuation); a note with a single
+ * attachment matches whatever name was given.
+ */
+export const findAttachment = (memory: Memory, name: string): Attachment | undefined => {
+  const attachments = memory.attachments || [];
+  if (attachments.length === 0) return undefined;
+  const wanted = looseName(name || '');
+  return (
+    attachments.find(a => a.name === name)
+    || (wanted ? attachments.find(a => looseName(a.name) === wanted) : undefined)
+    || (wanted ? attachments.find(a => looseName(a.name).includes(wanted) || wanted.includes(looseName(a.name))) : undefined)
+    || (attachments.length === 1 ? attachments[0] : undefined)
+  );
 };

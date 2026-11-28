@@ -7,6 +7,8 @@
  *   services/gemini.js       — Schemas, prompts, sanitization
  *   routes/enrich.js         — /api/enrich + /api/enrich/results
  *   routes/assistant.js      — /api/assistant/step (one step of the notes assistant)
+ *                              /api/assistant/attachment (read one file of a note)
+ *   lib/driveNotes.js        — Fetch a note's attachment from the user's Drive
  *   lib/assistant.js         — Assistant prompt, schema, step normalization
  *   routes/moment.js         — /api/moment/embed (intent + term vectors, emoji for moments)
  *                              /api/moment/sections (named sections for a moment's notes)

@@ -10,7 +10,8 @@
  */
 import { Memory } from '../types';
 import { embedTexts } from './geminiService';
-import { postProxy } from './proxyService';
+import { AssistantCancelledError, postAssistant } from './assistantApi';
+import { readAttachment } from './assistantAttachments';
 import {
   AssistantToolCall,
   AssistantToolResult,
@@ -28,6 +29,8 @@ export const MAX_TURN_LENGTH = 6000;
 export const MAX_QUESTION_LENGTH = 2000;
 /** Notes cited by the previous answer that are re-read for a follow-up. */
 const MAX_FOLLOW_UP_NOTES = 3;
+/** Files opened per question; each one is a slow round trip. */
+export const MAX_ATTACHMENT_READS = 3;
 // Each step is one Gemini call; the hosting layer cuts requests off at 60s.
 const STEP_TIMEOUT_MS = 55_000;
 
@@ -57,27 +60,10 @@ interface StepRequest {
   context: { today: string; noteCount: number };
 }
 
-export class AssistantCancelledError extends Error {
-  constructor() {
-    super('Assistant request cancelled');
-    this.name = 'AssistantCancelledError';
-  }
-}
+export { AssistantCancelledError };
 
-const postStep = async (body: StepRequest, signal?: AbortSignal): Promise<StepResponse> => {
-  // postProxy only applies its own timeout when no signal is passed, so
-  // combine the caller's cancel signal and the step timeout here.
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), STEP_TIMEOUT_MS);
-  const onAbort = () => controller.abort();
-  signal?.addEventListener('abort', onAbort);
-  try {
-    return await postProxy<StepResponse>('/api/assistant/step', body, { signal: controller.signal });
-  } finally {
-    clearTimeout(timer);
-    signal?.removeEventListener('abort', onAbort);
-  }
-};
+const postStep = (body: StepRequest, signal?: AbortSignal): Promise<StepResponse> =>
+  postAssistant<StepResponse>('/api/assistant/step', body, STEP_TIMEOUT_MS, signal);
 
 const todayLabel = (now: Date): string =>
   `${localDate(now.getTime())} (${now.toLocaleDateString('en-US', { weekday: 'long' })})`;
@@ -133,6 +119,7 @@ export const runAssistantTurn = async ({
   };
 
   let results: AssistantToolResult[] = [];
+  let attachmentReads = 0;
 
   // Seed the first step with a search for the question itself, so most
   // questions are answered in a single model call.
@@ -159,13 +146,7 @@ export const runAssistantTurn = async ({
 
   for (let step = 1; step <= MAX_ASSISTANT_STEPS; step++) {
     onStatus?.(step === 1 ? 'Thinking…' : 'Putting it together…');
-    let response: StepResponse;
-    try {
-      response = await postStep({ ...request, toolResults: results, step }, signal);
-    } catch (e) {
-      throwIfCancelled();
-      throw e;
-    }
+    const response = await postStep({ ...request, toolResults: results, step }, signal);
     throwIfCancelled();
 
     if (response.type === 'answer') {
@@ -178,7 +159,19 @@ export const runAssistantTurn = async ({
 
     for (const call of response.calls || []) {
       onStatus?.(describeToolCall(call));
-      results = appendToolResult(results, runAssistantTool(call, live));
+      if (call.tool !== 'read_attachment') {
+        results = appendToolResult(results, runAssistantTool(call, live));
+      } else if (attachmentReads >= MAX_ATTACHMENT_READS) {
+        results = appendToolResult(results, {
+          tool: 'read_attachment',
+          args: `${call.noteId}, ${JSON.stringify((call.attachment || "").slice(0, 200))}`,
+          result: 'No more files can be opened for this question. Answer with what you have.',
+        });
+      } else {
+        attachmentReads++;
+        results = appendToolResult(results, await readAttachment(call, live, { signal, onStatus }));
+        throwIfCancelled();
+      }
     }
   }
 

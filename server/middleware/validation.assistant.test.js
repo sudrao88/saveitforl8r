@@ -1,6 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   validateAssistantStepInput,
+  validateAssistantAttachmentInput,
+  MAX_ASSISTANT_INLINE_ATTACHMENT_CHARS,
   MAX_ASSISTANT_HISTORY_TURNS,
   MAX_ASSISTANT_QUESTION_LENGTH,
   MAX_ASSISTANT_RESULT_LENGTH,
@@ -53,6 +55,46 @@ describe('validateAssistantStepInput', () => {
     ['a negative note count', { ...valid(), context: { noteCount: -1 } }],
   ])('rejects %s', (_name, body) => {
     const { res, next } = run(body);
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
+  });
+});
+
+describe('validateAssistantAttachmentInput', () => {
+  const runAtt = (body) => {
+    const res = { status: vi.fn().mockReturnThis(), json: vi.fn().mockReturnThis() };
+    const next = vi.fn();
+    validateAssistantAttachmentInput({ body }, res, next);
+    return { res, next };
+  };
+  const base = () => ({ noteId: 'note-1', attachmentId: 'att-1', name: 'lease.pdf', question: 'notice period?' });
+  const uploaded = () => ({
+    ...base(),
+    mimeType: 'application/pdf',
+    fileUri: 'https://generativelanguage.googleapis.com/v1beta/files/abc',
+    fileName: 'files/abc',
+  });
+
+  it('accepts a Drive read, an uploaded file and small inline data', () => {
+    expect(runAtt(base()).next).toHaveBeenCalled();
+    expect(runAtt(uploaded()).next).toHaveBeenCalled();
+    expect(runAtt({ ...base(), mimeType: 'image/png', data: 'iVBORw0KGgo=' }).next).toHaveBeenCalled();
+  });
+
+  it.each([
+    ['a note id with query characters', { ...base(), noteId: "a' or 'b" }],
+    ['a missing attachment id', { ...base(), attachmentId: '' }],
+    ['a missing question', { ...base(), question: ' ' }],
+    ['an oversized question', { ...base(), question: 'x'.repeat(501) }],
+    ['a file URI outside the Gemini File API', { ...uploaded(), fileUri: 'https://evil.example/files/abc' }],
+    ['a file URI without its file name', { ...uploaded(), fileName: undefined }],
+    ['an uploaded file without a mime type', { ...uploaded(), mimeType: undefined }],
+    ['an unsupported mime type', { ...uploaded(), mimeType: 'application/zip' }],
+    ['both a file and inline data', { ...uploaded(), data: 'AAAA' }],
+    ['inline data that is not base64', { ...base(), mimeType: 'image/png', data: 'data:image/png;base64,AAAA' }],
+    ['oversized inline data', { ...base(), mimeType: 'image/png', data: 'A'.repeat(MAX_ASSISTANT_INLINE_ATTACHMENT_CHARS + 4) }],
+  ])('rejects %s', (_name, body) => {
+    const { res, next } = runAtt(body);
     expect(next).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(400);
   });

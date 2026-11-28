@@ -3,6 +3,8 @@ import {
   buildAssistantContents,
   normalizeAssistantHistory,
   normalizeAssistantStep,
+  normalizeAttachmentText,
+  buildAttachmentContents,
   FALLBACK_ANSWER,
   MAX_ASSISTANT_STEPS,
   MAX_CALLS_PER_STEP,
@@ -114,5 +116,33 @@ describe('normalizeAssistantStep', () => {
     for (const parsed of [null, {}, { calls: [{ tool: 'nope' }], answer: '' }, { calls: 'x', answer: 5 }]) {
       expect(normalizeAssistantStep(parsed)).toEqual({ type: 'answer', answer: FALLBACK_ANSWER, beyondNotes: '', sources: [] });
     }
+  });
+});
+
+describe('read_attachment', () => {
+  it('is a valid tool call with a default question', () => {
+    const out = normalizeAssistantStep({
+      calls: [
+        { tool: 'read_attachment', noteId: 'n1', attachment: 'lease.pdf', query: 'termination clause' },
+        { tool: 'read_attachment', noteId: 'n2', attachment: 'scan.png' },
+        { tool: 'read_attachment', attachment: 'orphan.pdf' },
+      ],
+    });
+    expect(out.calls).toEqual([
+      { tool: 'read_attachment', noteId: 'n1', attachment: 'lease.pdf', query: 'termination clause' },
+      { tool: 'read_attachment', noteId: 'n2', attachment: 'scan.png', query: 'Summarize the key contents of this file.' },
+    ]);
+  });
+
+  it('builds the reading request with the file before the question', () => {
+    const filePart = { inlineData: { data: 'AAAA', mimeType: 'application/pdf' } };
+    const [turn] = buildAttachmentContents({ filePart, fileName: 'lease.pdf', question: 'notice period?' });
+    expect(turn.parts[0]).toBe(filePart);
+    expect(turn.parts[1].text).toBe('FILE NAME: lease.pdf\n\nQUESTION:\nnotice period?');
+  });
+
+  it('sanitizes what the model read', () => {
+    expect(normalizeAttachmentText('Notice is <b>60 days</b>.')).toBe('Notice is 60 days.');
+    expect(normalizeAttachmentText(undefined)).toBe('The file could not be read.');
   });
 });
