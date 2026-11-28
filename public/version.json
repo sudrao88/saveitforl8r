@@ -3,5 +3,5 @@
   "buildNumber": 163,
   "buildDate": "2026-11-28T13:31:25.839Z",
   "minNativeVersion": "1.0.0",
-  "changelog": "New assistant: ask questions about your notes and get answers with the notes they came from."
+  "changelog": "New assistant: ask questions about your notes and their attachments, and see which notes each answer came from."
 }
